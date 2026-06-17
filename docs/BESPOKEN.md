@@ -37,6 +37,25 @@ In the Bespoken plugin settings:
 
 Generate audio for an entry as usual; it now renders in your self-hosted voice.
 
+### Voice configuration
+
+The plugin's **Voices** table (Settings → Voice configuration) maps to this
+service as follows:
+
+| Column | With this service |
+|---|---|
+| **Voice name** | A label for your CMS users — anything you like. |
+| **Voice ID** | The voice **slug** from your dashboard (e.g. `john`) — *not* an ElevenLabs ID. It's used directly in `…/v1/text-to-speech/{voice_id}`. |
+| **Voice model** | Ignored by the backend (Chatterbox is always used). It only affects plugin-side chunking/stitching; `Eleven v3` is fine. |
+| **Pronunciation rule set** | Plugin-side text processing — unaffected by the backend. |
+
+> **The endpoint is plugin-wide.** The "API endpoint URL" is a single setting for
+> the whole plugin, so **every** voice in the table uses that endpoint. You can't
+> mix ElevenLabs voices and self-hosted voices in one install: when the endpoint
+> points at this service, every Voice ID must be a slug that exists in your
+> dashboard, and ElevenLabs library IDs (e.g. `nPczCjzI2devNBz1zQrb`) won't
+> resolve. Switch the endpoint back to ElevenLabs to use ElevenLabs voice IDs.
+
 ### How the voice settings map
 
 The service maps the ElevenLabs voice settings onto its backend:
