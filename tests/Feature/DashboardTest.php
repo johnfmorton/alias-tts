@@ -107,6 +107,22 @@ class DashboardTest extends TestCase
         $this->assertNotEmpty($response->getContent());
     }
 
+    public function test_authenticated_user_is_sent_from_login_to_dashboard(): void
+    {
+        $this->actingAs($this->admin())
+            ->get('/login')
+            ->assertRedirect(route('admin.dashboard'));
+    }
+
+    public function test_landing_links_to_dashboard_for_authenticated_users(): void
+    {
+        // Guests are pointed at the login page...
+        $this->get('/')->assertOk()->assertSee('/login');
+
+        // ...an authenticated admin goes straight to the dashboard.
+        $this->actingAs($this->admin())->get('/')->assertOk()->assertSee('/admin');
+    }
+
     private function silentWav(float $seconds): string
     {
         $sampleRate = 44100;

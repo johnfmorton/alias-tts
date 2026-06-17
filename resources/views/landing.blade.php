@@ -15,7 +15,7 @@
             the companion server for the Bespoken Craft CMS plugin.
         </p>
         <div class="mt-8 flex items-center gap-3">
-            <a href="{{ route('login') }}"
+            <a href="{{ auth()->check() ? route('admin.dashboard') : route('login') }}"
                class="rounded-lg bg-cyan-500 px-5 py-2.5 text-sm font-medium text-zinc-950 transition hover:bg-cyan-400">
                 Open dashboard
             </a>

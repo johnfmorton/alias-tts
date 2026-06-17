@@ -17,6 +17,11 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   sentence-aware chunks (Chatterbox is short-form), each generated separately and
   the audio concatenated into one file. Tunable via `TTS_CHUNK_CHARS` (default 280).
 
+### Fixed
+- Logged-in users now land on the dashboard from the landing page and `/login`
+  instead of bouncing back to the homepage (the "Open dashboard" link points
+  authenticated users to `/admin`, and `/login` redirects them there too).
+
 ## [0.1.0] - 2026-06-17
 
 ### Added
