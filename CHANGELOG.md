@@ -29,6 +29,8 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - Response caching keyed on voice + reference fingerprint + text + settings +
   seed; re-recording a voice automatically invalidates its cached audio.
 - Feature and unit tests; Pint code style.
+- MIT license.
+- GitHub Actions CI running Pint and the test suite (with ffmpeg in the runner).
 
 ### Notes
 - Chatterbox inference on Replicate is not bit-for-bit deterministic even at a

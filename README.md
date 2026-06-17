@@ -1,5 +1,7 @@
 # tts — self-hosted, ElevenLabs-compatible TTS API
 
+![CI](https://github.com/johnfmorton/bespoken-tts-service/actions/workflows/ci.yml/badge.svg)
+
 A personal text-to-speech service that mimics the ElevenLabs HTTP API so existing
 clients (e.g. the Bespoken Craft plugin) work by changing only the base URL and
 key. A Laravel app on your Forge server handles auth, caching, storage, and the
@@ -116,3 +118,7 @@ ddev artisan test           # uses the fake provider + real ffmpeg
   async/webhook path for long text.
 - Phase 3: admin panel, additional provider drivers (Modal/Fal/local + an
   ElevenLabs pass-through), real streaming.
+
+## License
+
+[MIT](LICENSE) © John F. Morton
