@@ -16,6 +16,9 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - Automatic **text chunking** for long input — text is split into short,
   sentence-aware chunks (Chatterbox is short-form), each generated separately and
   the audio concatenated into one file. Tunable via `TTS_CHUNK_CHARS` (default 280).
+- **Edit voices** from the dashboard — rename the `voice_id` (slug), change the
+  default seed, or replace the reference clip (renaming moves the stored clip to
+  match).
 
 ### Fixed
 - Logged-in users now land on the dashboard from the landing page and `/login`

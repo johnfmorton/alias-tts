@@ -5,6 +5,7 @@ namespace Tests\Feature;
 use App\Models\ApiKey;
 use App\Models\User;
 use App\Models\Voice;
+use App\Services\VoiceService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\Storage;
@@ -121,6 +122,41 @@ class DashboardTest extends TestCase
 
         // ...an authenticated admin goes straight to the dashboard.
         $this->actingAs($this->admin())->get('/')->assertOk()->assertSee('/admin');
+    }
+
+    public function test_admin_can_update_a_voice(): void
+    {
+        $admin = $this->admin();
+        $voice = app(VoiceService::class)->register('Old', 'old-slug', $this->silentWav(0.2), 'wav', false, 5);
+        $oldRef = $voice->reference_audio_path;
+
+        $this->actingAs($admin)->put(route('admin.voices.update', $voice), [
+            'name' => 'New Name',
+            'slug' => 'new-slug',
+            'seed' => 9,
+        ])->assertRedirect(route('admin.voices.index'));
+
+        $voice->refresh();
+        $this->assertSame('new-slug', $voice->slug);
+        $this->assertSame('New Name', $voice->name);
+        $this->assertSame(9, $voice->settings['seed']);
+        $this->assertStringContainsString('new-slug', $voice->reference_audio_path);
+        Storage::disk('local')->assertExists($voice->reference_audio_path);
+        Storage::disk('local')->assertMissing($oldRef);
+    }
+
+    public function test_update_rejects_a_duplicate_slug(): void
+    {
+        $admin = $this->admin();
+        Voice::create(['slug' => 'taken', 'name' => 'Taken']);
+        $voice = Voice::create(['slug' => 'mine', 'name' => 'Mine']);
+
+        $this->actingAs($admin)->put(route('admin.voices.update', $voice), [
+            'name' => 'Mine',
+            'slug' => 'taken',
+        ])->assertSessionHasErrors('slug');
+
+        $this->assertSame('mine', $voice->fresh()->slug);
     }
 
     private function silentWav(float $seconds): string

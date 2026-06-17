@@ -59,6 +59,62 @@ class VoiceService
     }
 
     /**
+     * Update an existing voice — rename its voice_id (slug), name, default seed,
+     * and optionally replace the reference clip. When the slug changes without a
+     * replacement clip, the stored reference is moved to match the new slug.
+     */
+    public function update(
+        Voice $voice,
+        string $name,
+        string $slug,
+        ?string $audioBytes,
+        ?string $ext,
+        bool $normalize,
+        ?int $seed,
+    ): Voice {
+        $disk = Storage::disk(config('tts.storage_disk'));
+        $referencePath = $voice->reference_audio_path;
+
+        if ($audioBytes !== null) {
+            $bytes = $audioBytes;
+            $extension = strtolower($ext ?: 'wav');
+            if ($normalize) {
+                $bytes = $this->converter->normalizeReference($audioBytes);
+                $extension = 'wav';
+            }
+            $newPath = config('tts.reference_path').'/'.$slug.'.'.$extension;
+            $disk->put($newPath, $bytes);
+            if ($referencePath && $referencePath !== $newPath) {
+                $disk->delete($referencePath);
+            }
+            $referencePath = $newPath;
+        } elseif ($referencePath && $slug !== $voice->slug) {
+            $extension = strtolower(pathinfo($referencePath, PATHINFO_EXTENSION)) ?: 'wav';
+            $newPath = config('tts.reference_path').'/'.$slug.'.'.$extension;
+            if ($newPath !== $referencePath && $disk->exists($referencePath)) {
+                $disk->move($referencePath, $newPath);
+                $referencePath = $newPath;
+            }
+        }
+
+        $settings = is_array($voice->settings) ? $voice->settings : [];
+        if ($seed !== null) {
+            $settings['seed'] = $seed;
+        } else {
+            unset($settings['seed']);
+        }
+
+        $voice->update([
+            'name' => $name,
+            'slug' => $slug,
+            'reference_audio_path' => $referencePath,
+            'settings' => $settings ?: null,
+        ]);
+
+        return $voice;
+    }
+
+    /**
      * Export a voice to a portable .zip (a `voice.json` manifest + the reference
      * clip) that can be imported into another instance.
      */

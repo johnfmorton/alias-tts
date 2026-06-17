@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Admin;
 
 use App\Http\Controllers\Controller;
 use App\Http\Requests\StoreVoiceRequest;
+use App\Http\Requests\UpdateVoiceRequest;
 use App\Models\ApiKey;
 use App\Models\Voice;
 use App\Services\SpeechService;
@@ -48,6 +49,29 @@ class VoiceController extends Controller
 
         return redirect()->route('admin.voices.index')
             ->with('success', "Voice '{$voice->slug}' saved.");
+    }
+
+    public function edit(Voice $voice): View
+    {
+        return view('admin.voices.edit', compact('voice'));
+    }
+
+    public function update(UpdateVoiceRequest $request, Voice $voice): RedirectResponse
+    {
+        $file = $request->file('audio');
+
+        $voice = $this->voices->update(
+            voice: $voice,
+            name: $request->input('name'),
+            slug: $request->input('slug'),
+            audioBytes: $file ? (string) file_get_contents($file->getRealPath()) : null,
+            ext: $file?->getClientOriginalExtension(),
+            normalize: (bool) config('tts.normalize_reference') && ! $request->boolean('raw'),
+            seed: $request->filled('seed') ? (int) $request->input('seed') : null,
+        );
+
+        return redirect()->route('admin.voices.index')
+            ->with('success', "Voice '{$voice->slug}' updated.");
     }
 
     /**
