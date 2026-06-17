@@ -1,0 +1,128 @@
+<?php
+
+namespace Tests\Feature;
+
+use App\Models\ApiKey;
+use App\Models\User;
+use App\Models\Voice;
+use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Http\UploadedFile;
+use Illuminate\Support\Facades\Storage;
+use Tests\TestCase;
+
+class DashboardTest extends TestCase
+{
+    use RefreshDatabase;
+
+    protected function setUp(): void
+    {
+        parent::setUp();
+
+        config(['tts.provider' => 'fake', 'tts.storage_disk' => 'local']);
+        Storage::fake('local');
+    }
+
+    private function admin(): User
+    {
+        return User::factory()->create(['is_super_admin' => true]);
+    }
+
+    public function test_landing_is_public(): void
+    {
+        $this->get('/')->assertOk()->assertSee('Bespoken TTS');
+    }
+
+    public function test_admin_requires_login(): void
+    {
+        $this->get('/admin')->assertRedirect(route('login'));
+    }
+
+    public function test_admin_can_log_in_and_out(): void
+    {
+        $admin = User::factory()->create(['is_super_admin' => true, 'password' => 'secret123']);
+
+        $this->post(route('login.submit'), ['email' => $admin->email, 'password' => 'secret123'])
+            ->assertRedirect(route('admin.dashboard'));
+        $this->assertAuthenticatedAs($admin);
+
+        $this->post(route('logout'))->assertRedirect(route('login'));
+        $this->assertGuest();
+    }
+
+    public function test_non_admin_is_forbidden(): void
+    {
+        $user = User::factory()->create(['is_super_admin' => false]);
+
+        $this->actingAs($user)->get('/admin')->assertForbidden();
+    }
+
+    public function test_admin_can_create_toggle_and_delete_api_key(): void
+    {
+        $admin = $this->admin();
+
+        $this->actingAs($admin)->post(route('admin.api-keys.store'), ['name' => 'test'])
+            ->assertRedirect(route('admin.api-keys.index'))
+            ->assertSessionHas('new_key');
+
+        $key = ApiKey::firstWhere('name', 'test');
+        $this->assertNotNull($key);
+        $this->assertTrue($key->is_active);
+
+        $this->actingAs($admin)->post(route('admin.api-keys.toggle', $key));
+        $this->assertFalse($key->fresh()->is_active);
+
+        $this->actingAs($admin)->delete(route('admin.api-keys.destroy', $key));
+        $this->assertNull(ApiKey::find($key->id));
+    }
+
+    public function test_admin_can_upload_and_delete_voice(): void
+    {
+        $admin = $this->admin();
+        $file = UploadedFile::fake()->createWithContent('ref.wav', $this->silentWav(0.3));
+
+        $this->actingAs($admin)->post(route('admin.voices.store'), [
+            'name' => 'Test Voice',
+            'slug' => 'test-voice',
+            'audio' => $file,
+        ])->assertRedirect(route('admin.voices.index'));
+
+        $voice = Voice::firstWhere('slug', 'test-voice');
+        $this->assertNotNull($voice);
+        $this->assertNotNull($voice->reference_audio_path);
+        Storage::disk('local')->assertExists($voice->reference_audio_path);
+
+        $this->actingAs($admin)->delete(route('admin.voices.destroy', $voice));
+        $this->assertNull(Voice::firstWhere('slug', 'test-voice'));
+    }
+
+    public function test_admin_can_test_a_voice(): void
+    {
+        $admin = $this->admin();
+        $voice = Voice::create(['slug' => 'tv', 'name' => 'TV']);
+
+        $response = $this->actingAs($admin)->post(route('admin.voices.test', $voice));
+
+        $response->assertOk();
+        $this->assertStringStartsWith('audio/mpeg', (string) $response->headers->get('content-type'));
+        $this->assertNotEmpty($response->getContent());
+    }
+
+    private function silentWav(float $seconds): string
+    {
+        $sampleRate = 44100;
+        $channels = 1;
+        $bits = 16;
+        $numSamples = (int) ($sampleRate * $seconds);
+        $dataSize = $numSamples * $channels * ($bits / 8);
+        $byteRate = $sampleRate * $channels * ($bits / 8);
+        $blockAlign = $channels * ($bits / 8);
+
+        $header = 'RIFF'.pack('V', 36 + $dataSize).'WAVE';
+        $header .= 'fmt '.pack('V', 16).pack('v', 1).pack('v', $channels)
+            .pack('V', $sampleRate).pack('V', $byteRate)
+            .pack('v', $blockAlign).pack('v', $bits);
+        $header .= 'data'.pack('V', $dataSize);
+
+        return $header.str_repeat("\x00", $dataSize);
+    }
+}

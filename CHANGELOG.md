@@ -30,7 +30,16 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   seed; re-recording a voice automatically invalidates its cached audio.
 - Feature and unit tests; Pint code style.
 - MIT license.
-- GitHub Actions CI running Pint and the test suite (with ffmpeg in the runner).
+- GitHub Actions CI running Pint and the test suite (with ffmpeg in the runner;
+  builds the dashboard assets).
+- **Password-protected web dashboard** (Tailwind): minimal public landing,
+  session login (single seeded admin via `ADMIN_EMAIL`/`ADMIN_PASSWORD` or
+  `admin:create`), API-key management, voice management ("train" = upload a
+  reference clip → instant zero-shot registration + normalization), and a
+  Test-voice preview. Home page surfaces copy-paste Bespoken connection details.
+  Built on an `is_super_admin` flag + `EnsureUserIsAdmin` middleware as the seam
+  for future multi-user roles. Shared `VoiceService` backs both the dashboard and
+  the `voice:create` command.
 
 ### Notes
 - Chatterbox inference on Replicate is not bit-for-bit deterministic even at a

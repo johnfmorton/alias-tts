@@ -25,8 +25,10 @@ drivers can be added later without touching the rest of the app.
 ```bash
 ddev start
 ddev artisan migrate
-ddev artisan apikey:create "me"             # prints sk_... (use in xi-api-key header)
-ddev artisan voice:create "John" ./sample.wav --slug=john   # register a voice
+ddev npm install && ddev npm run build        # build the dashboard assets
+ddev artisan admin:create admin@example.com   # create the dashboard login (prompts for a password)
+ddev artisan apikey:create "me"               # or generate keys from the dashboard
+ddev artisan voice:create "John" ./sample.wav --slug=john   # or add voices from the dashboard
 ```
 
 The local `.env` defaults to `TTS_PROVIDER=fake`, so the app runs without a
@@ -64,6 +66,21 @@ curl -k -X POST https://tts.ddev.site/v1/text-to-speech/john \
 `{voice_id}` matches a Voice's `slug` first, then its UUID — set a slug equal to
 your existing ElevenLabs `voice_id` for a true drop-in swap.
 
+## Dashboard
+
+A password-protected control panel (at `/`) lets you **generate API keys**,
+**manage and "train" voices** (upload a reference clip — it's normalized and
+registered instantly; Chatterbox is zero-shot, so there's no training job), and
+**test a voice**. Its home shows copy-paste connection details (base URL, key,
+voice IDs) for the Bespoken plugin.
+
+Build assets and create an admin first:
+
+```bash
+npm ci && npm run build
+php artisan admin:create you@example.com   # or set ADMIN_EMAIL/ADMIN_PASSWORD and `php artisan db:seed`
+```
+
 ## Management commands
 
 ```bash
@@ -97,6 +114,9 @@ a registered voice slug. The plugin sends no `output_format` and concatenates
 
 - New PHP 8.3 site; `composer install`, `php artisan migrate`.
 - **Install `ffmpeg`** on the server (`apt install ffmpeg`).
+- **Build dashboard assets:** `npm ci && npm run build` (Node 20+).
+- **Create the admin:** set `ADMIN_EMAIL`/`ADMIN_PASSWORD` then `php artisan db:seed`,
+  or run `php artisan admin:create`.
 - Set `TTS_PROVIDER=replicate`, `REPLICATE_API_TOKEN`, and storage
   (`TTS_STORAGE_DISK=local|s3`).
 - Raise the site's PHP `max_execution_time` and nginx `fastcgi_read_timeout`

@@ -1,5 +1,6 @@
 <?php
 
+use App\Http\Middleware\EnsureUserIsAdmin;
 use Illuminate\Foundation\Application;
 use Illuminate\Foundation\Configuration\Exceptions;
 use Illuminate\Foundation\Configuration\Middleware;
@@ -14,10 +15,16 @@ return Application::configure(basePath: dirname(__DIR__))
         then: function () {
             // ElevenLabs-compatible routes, mounted at the root (no /api prefix).
             Route::group([], base_path('routes/v1.php'));
+
+            // Password-protected control panel.
+            Route::middleware(['web', 'auth', EnsureUserIsAdmin::class])
+                ->prefix('admin')
+                ->name('admin.')
+                ->group(base_path('routes/admin.php'));
         },
     )
     ->withMiddleware(function (Middleware $middleware): void {
-        //
+        $middleware->redirectGuestsTo(fn () => route('login'));
     })
     ->withExceptions(function (Exceptions $exceptions): void {
         $exceptions->shouldRenderJsonWhen(

@@ -2,12 +2,8 @@
 
 namespace App\Console\Commands;
 
-use App\Models\Voice;
-use App\Services\Audio\AudioConverter;
+use App\Services\VoiceService;
 use Illuminate\Console\Command;
-use Illuminate\Support\Facades\Storage;
-use Illuminate\Support\Str;
-use Throwable;
 
 class VoiceCreate extends Command
 {
@@ -20,13 +16,13 @@ class VoiceCreate extends Command
 
     protected $description = 'Register a voice (and store its reference clip for zero-shot cloning)';
 
-    public function handle(AudioConverter $converter): int
+    public function handle(VoiceService $voices): int
     {
-        $name = $this->argument('name');
-        $slug = $this->option('slug') ?: Str::slug($name);
         $audio = $this->argument('audio');
+        $seed = $this->option('seed') !== null ? (int) $this->option('seed') : null;
 
-        $referencePath = null;
+        $bytes = null;
+        $ext = null;
         $normalized = false;
 
         if ($audio) {
@@ -36,30 +32,19 @@ class VoiceCreate extends Command
                 return Command::FAILURE;
             }
 
-            $disk = config('tts.storage_disk');
             $bytes = (string) file_get_contents($audio);
             $ext = strtolower(pathinfo($audio, PATHINFO_EXTENSION)) ?: 'wav';
-
-            if (config('tts.normalize_reference') && ! $this->option('raw')) {
-                try {
-                    $bytes = $converter->normalizeReference($bytes);
-                    $ext = 'wav';
-                    $normalized = true;
-                } catch (Throwable $e) {
-                    $this->warn('Normalization failed; storing the clip as-is: '.$e->getMessage());
-                }
-            }
-
-            $referencePath = config('tts.reference_path').'/'.$slug.'.'.$ext;
-            Storage::disk($disk)->put($referencePath, $bytes);
+            $normalized = (bool) config('tts.normalize_reference') && ! $this->option('raw');
         }
 
-        $attributes = ['name' => $name, 'reference_audio_path' => $referencePath];
-        if ($this->option('seed') !== null) {
-            $attributes['settings'] = ['seed' => (int) $this->option('seed')];
-        }
-
-        $voice = Voice::updateOrCreate(['slug' => $slug], $attributes);
+        $voice = $voices->register(
+            name: $this->argument('name'),
+            slug: $this->option('slug') ?: null,
+            audioBytes: $bytes,
+            ext: $ext,
+            normalize: $normalized,
+            seed: $seed,
+        );
 
         $this->info('Voice saved.');
         $this->newLine();
