@@ -1,0 +1,3 @@
+# Adds ffmpeg to the web container for audio format conversion (WAV -> MP3, etc.)
+webimage_extra_packages:
+  - ffmpeg
