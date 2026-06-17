@@ -1,5 +1,11 @@
 <x-layout title="Voices" description="Each voice maps a voice_id to a reference clip for zero-shot cloning.">
-    <div class="mb-4 flex justify-end">
+    <div class="mb-4 flex flex-wrap items-center justify-between gap-3">
+        <form method="POST" action="{{ route('admin.voices.import') }}" enctype="multipart/form-data" class="flex items-center gap-2">
+            @csrf
+            <input type="file" name="archive" accept=".zip" required
+                   class="block text-sm text-zinc-400 file:mr-3 file:rounded-lg file:border-0 file:bg-zinc-800 file:px-3 file:py-1.5 file:text-sm file:text-zinc-200 hover:file:bg-zinc-700">
+            <button type="submit" class="rounded-lg border border-zinc-700 px-3 py-1.5 text-sm hover:bg-zinc-800">Import</button>
+        </form>
         <a href="{{ route('admin.voices.create') }}" class="rounded-lg bg-cyan-500 px-4 py-2 text-sm font-medium text-zinc-950 hover:bg-cyan-400">Add voice</a>
     </div>
 
@@ -36,10 +42,13 @@
                                     class="rounded-md border border-zinc-700 px-2.5 py-1 text-xs hover:bg-zinc-800 disabled:cursor-not-allowed disabled:opacity-40">Test</button>
                             <audio id="audio-{{ $voice->id }}" controls class="mt-2 hidden w-44"></audio>
                         </td>
-                        <td class="px-4 py-3 text-right">
-                            <form method="POST" action="{{ route('admin.voices.destroy', $voice) }}" onsubmit="return confirm('Delete this voice and its reference clip?')">@csrf @method('DELETE')
-                                <button class="rounded-md border border-red-500/30 px-2.5 py-1 text-xs text-red-400 hover:bg-red-500/10">Delete</button>
-                            </form>
+                        <td class="px-4 py-3">
+                            <div class="flex justify-end gap-1.5">
+                                <a href="{{ route('admin.voices.export', $voice) }}" class="rounded-md border border-zinc-700 px-2.5 py-1 text-xs hover:bg-zinc-800">Export</a>
+                                <form method="POST" action="{{ route('admin.voices.destroy', $voice) }}" onsubmit="return confirm('Delete this voice and its reference clip?')">@csrf @method('DELETE')
+                                    <button class="rounded-md border border-red-500/30 px-2.5 py-1 text-xs text-red-400 hover:bg-red-500/10">Delete</button>
+                                </form>
+                            </div>
                         </td>
                     </tr>
                 @empty

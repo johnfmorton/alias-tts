@@ -81,6 +81,13 @@ npm ci && npm run build
 php artisan admin:create you@example.com   # or set ADMIN_EMAIL/ADMIN_PASSWORD and `php artisan db:seed`
 ```
 
+### Moving voices between environments
+
+A voice is just a database row plus its reference clip — neither is in git. To
+copy one to another install (e.g. local → production), **export** it to a
+portable `.zip` and **import** it on the other side, from the dashboard's Voices
+page or via `voice:export` / `voice:import`.
+
 ## Management commands
 
 ```bash
@@ -88,6 +95,8 @@ ddev artisan apikey:create "name" [--rate-limit=N]      # N = requests/hour
 ddev artisan apikey:list
 ddev artisan voice:create "Name" [audio] [--slug=] [--raw]
 ddev artisan voice:list
+ddev artisan voice:export <slug> [--output=path]   # -> <slug>.bespoken-voice.zip
+ddev artisan voice:import <file.zip>
 ```
 
 ### Reference audio normalization

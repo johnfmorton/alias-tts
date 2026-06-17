@@ -23,5 +23,7 @@ Route::delete('/api-keys/{apiKey}', [ApiKeyController::class, 'destroy'])->name(
 Route::get('/voices', [VoiceController::class, 'index'])->name('voices.index');
 Route::get('/voices/create', [VoiceController::class, 'create'])->name('voices.create');
 Route::post('/voices', [VoiceController::class, 'store'])->name('voices.store');
+Route::post('/voices/import', [VoiceController::class, 'import'])->name('voices.import');
+Route::get('/voices/{voice}/export', [VoiceController::class, 'export'])->name('voices.export');
 Route::post('/voices/{voice}/test', [VoiceController::class, 'test'])->name('voices.test');
 Route::delete('/voices/{voice}', [VoiceController::class, 'destroy'])->name('voices.destroy');

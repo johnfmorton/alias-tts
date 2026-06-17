@@ -9,6 +9,7 @@ use App\Models\Voice;
 use App\Services\SpeechService;
 use App\Services\VoiceService;
 use Illuminate\Http\RedirectResponse;
+use Illuminate\Http\Request;
 use Illuminate\View\View;
 use Symfony\Component\HttpFoundation\Response;
 use Throwable;
@@ -75,6 +76,30 @@ class VoiceController extends Controller
 
         return response($this->speechService->audioBytes($speech), 200)
             ->header('Content-Type', $speech->mime_type ?: 'audio/mpeg');
+    }
+
+    public function export(Voice $voice): Response
+    {
+        return response($this->voices->export($voice), 200)
+            ->header('Content-Type', 'application/zip')
+            ->header('Content-Disposition', 'attachment; filename="'.$voice->slug.'.bespoken-voice.zip"');
+    }
+
+    public function import(Request $request): RedirectResponse
+    {
+        $request->validate([
+            'archive' => ['required', 'file', 'mimes:zip', 'max:51200'], // 50 MB
+        ]);
+
+        try {
+            $voice = $this->voices->import((string) file_get_contents($request->file('archive')->getRealPath()));
+        } catch (Throwable $e) {
+            report($e);
+
+            return redirect()->route('admin.voices.index')->with('error', 'Import failed: '.$e->getMessage());
+        }
+
+        return redirect()->route('admin.voices.index')->with('success', "Voice '{$voice->slug}' imported.");
     }
 
     public function destroy(Voice $voice): RedirectResponse
