@@ -9,6 +9,7 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 ### Added
 - Deployment guide (`docs/DEPLOYMENT.md`) covering Laravel Forge (step by step)
   and generic hosts, including the ffmpeg requirement and the dashboard asset build.
+- Bespoken plugin integration guide (`docs/BESPOKEN.md`).
 
 ## [0.1.0] - 2026-06-17
 

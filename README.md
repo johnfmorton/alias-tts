@@ -110,6 +110,8 @@ set the `xi-api-key` to an `apikey:create` key, and use a `voice_id` that matche
 a registered voice slug. The plugin sends no `output_format` and concatenates
 `.mp3` chunks, which is why this service always emits a fixed mono MP3 profile.
 
+See **[docs/BESPOKEN.md](docs/BESPOKEN.md)** for the full step-by-step integration guide.
+
 ## Production (Laravel Forge)
 
 See **[docs/DEPLOYMENT.md](docs/DEPLOYMENT.md)** for the full step-by-step guide
