@@ -22,6 +22,34 @@ class AudioConverterTest extends TestCase
         $this->assertSame(1, $channels);
     }
 
+    public function test_crossfade_shortens_concatenated_output(): void
+    {
+        $converter = new AudioConverter(config('tts.ffmpeg_path', 'ffmpeg'));
+        $chunks = [$this->silentMonoWav(0.3), $this->silentMonoWav(0.3), $this->silentMonoWav(0.3)];
+
+        config(['tts.chunk_crossfade_ms' => 0]);
+        [$hard, $mime] = $converter->concatenate($chunks, 'mp3_44100_128', 'wav');
+
+        config(['tts.chunk_crossfade_ms' => 50]);
+        [$crossfaded] = $converter->concatenate($chunks, 'mp3_44100_128', 'wav');
+
+        $this->assertSame('audio/mpeg', $mime);
+        $this->assertNotEmpty($crossfaded);
+        $this->assertLessThan(strlen($hard), strlen($crossfaded), 'Crossfaded chunks overlap, so the output is shorter.');
+    }
+
+    private function silentMonoWav(float $seconds): string
+    {
+        $rate = 44100;
+        $samples = (int) ($rate * $seconds);
+        $data = str_repeat("\x00", $samples * 2);
+
+        return 'RIFF'.pack('V', 36 + strlen($data)).'WAVE'
+            .'fmt '.pack('V', 16).pack('v', 1).pack('v', 1)
+            .pack('V', $rate).pack('V', $rate * 2).pack('v', 2).pack('v', 16)
+            .'data'.pack('V', strlen($data)).$data;
+    }
+
     /**
      * Build a loud (near-full-scale) stereo 16-bit PCM WAV in memory.
      */

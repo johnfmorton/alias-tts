@@ -22,6 +22,8 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - **Regenerate (rotate) an API key** from the dashboard — issues a new secret
   while keeping the key's name, rate limit, and usage history; the old value
   stops working immediately.
+- **Crossfade between generated chunks** (~25 ms, `TTS_CHUNK_CROSSFADE_MS`; set 0
+  for a hard join) for click-free seams when long text is split and concatenated.
 
 ### Fixed
 - Logged-in users now land on the dashboard from the landing page and `/login`

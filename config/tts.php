@@ -45,6 +45,10 @@ return [
     // shorter calls.
     'chunk_chars' => (int) env('TTS_CHUNK_CHARS', 280),
 
+    // Crossfade (ms) applied between concatenated chunks to avoid clicks/gaps at
+    // the seams. Set 0 for a hard join.
+    'chunk_crossfade_ms' => (int) env('TTS_CHUNK_CROSSFADE_MS', 25),
+
     'ttl_hours' => (int) env('TTS_TTL_HOURS', 720), // cache generated audio for 30 days
 
     /*

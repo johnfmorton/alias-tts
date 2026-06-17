@@ -75,6 +75,7 @@ class AudioConverter
         }
 
         $spec = $this->parseFormat($outputFormat);
+        $crossfadeMs = (int) config('tts.chunk_crossfade_ms', 25);
 
         $files = [];
         foreach ($inputChunks as $bytes) {
@@ -83,22 +84,48 @@ class AudioConverter
             $files[] = $file;
         }
 
-        $list = tempnam(sys_get_temp_dir(), 'tts_list_');
-        file_put_contents($list, implode("\n", array_map(
-            static fn ($file) => "file '".$file."'",
-            $files
-        ))."\n");
-
-        $out = tempnam(sys_get_temp_dir(), 'tts_catout_');
+        $list = null;
+        $outFile = tempnam(sys_get_temp_dir(), 'tts_catout_');
 
         try {
-            $args = array_merge(
-                [$this->ffmpegPath, '-y', '-hide_banner', '-loglevel', 'error',
-                    '-f', 'concat', '-safe', '0', '-i', $list,
-                    '-ac', '1', '-ar', (string) $spec['rate']],
-                $spec['codec_args'],
-                [$out]
-            );
+            if ($crossfadeMs > 0) {
+                // Crossfade successive chunks so seams have no clicks/gaps.
+                $d = rtrim(rtrim(number_format($crossfadeMs / 1000, 3, '.', ''), '0'), '.');
+                $last = count($files) - 1;
+                $filterParts = [];
+                $prev = '[0:a]';
+                for ($i = 1; $i <= $last; $i++) {
+                    $label = $i === $last ? '[out]' : "[a{$i}]";
+                    $filterParts[] = "{$prev}[{$i}:a]acrossfade=d={$d}:c1=tri:c2=tri{$label}";
+                    $prev = $label;
+                }
+
+                $args = [$this->ffmpegPath, '-y', '-hide_banner', '-loglevel', 'error'];
+                foreach ($files as $file) {
+                    $args[] = '-i';
+                    $args[] = $file;
+                }
+                $args = array_merge($args, [
+                    '-filter_complex', implode(';', $filterParts),
+                    '-map', '[out]',
+                    '-ac', '1', '-ar', (string) $spec['rate'],
+                ], $spec['codec_args'], [$outFile]);
+            } else {
+                // Hard join via the concat demuxer.
+                $list = tempnam(sys_get_temp_dir(), 'tts_list_');
+                file_put_contents($list, implode("\n", array_map(
+                    static fn ($file) => "file '".$file."'",
+                    $files
+                ))."\n");
+
+                $args = array_merge(
+                    [$this->ffmpegPath, '-y', '-hide_banner', '-loglevel', 'error',
+                        '-f', 'concat', '-safe', '0', '-i', $list,
+                        '-ac', '1', '-ar', (string) $spec['rate']],
+                    $spec['codec_args'],
+                    [$outFile]
+                );
+            }
 
             $process = new Process($args);
             $process->setTimeout(300);
@@ -108,7 +135,7 @@ class AudioConverter
                 throw new RuntimeException('ffmpeg concatenation failed: '.trim($process->getErrorOutput()));
             }
 
-            $bytes = file_get_contents($out);
+            $bytes = file_get_contents($outFile);
             if ($bytes === false || $bytes === '') {
                 throw new RuntimeException('ffmpeg produced no concatenated output.');
             }
@@ -118,8 +145,10 @@ class AudioConverter
             foreach ($files as $file) {
                 @unlink($file);
             }
-            @unlink($list);
-            @unlink($out);
+            if ($list !== null) {
+                @unlink($list);
+            }
+            @unlink($outFile);
         }
     }
 
