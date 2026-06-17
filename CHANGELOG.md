@@ -19,6 +19,9 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - **Edit voices** from the dashboard — rename the `voice_id` (slug), change the
   default seed, or replace the reference clip (renaming moves the stored clip to
   match).
+- **Regenerate (rotate) an API key** from the dashboard — issues a new secret
+  while keeping the key's name, rate limit, and usage history; the old value
+  stops working immediately.
 
 ### Fixed
 - Logged-in users now land on the dashboard from the landing page and `/login`

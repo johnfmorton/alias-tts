@@ -38,4 +38,14 @@ class ApiKey extends Model
             'rate_limit' => $rateLimit,
         ]);
     }
+
+    /**
+     * Issue a new secret for this key. The previous value stops working.
+     */
+    public function rotate(): self
+    {
+        $this->update(['key' => 'sk_'.Str::random(32)]);
+
+        return $this;
+    }
 }

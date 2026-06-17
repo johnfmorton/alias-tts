@@ -44,6 +44,15 @@ class ApiKeyController extends Controller
             ->with('success', 'API key '.($apiKey->is_active ? 'activated' : 'deactivated').'.');
     }
 
+    public function regenerate(ApiKey $apiKey): RedirectResponse
+    {
+        $apiKey->rotate();
+
+        return redirect()->route('admin.api-keys.index')
+            ->with('success', "Key '{$apiKey->name}' regenerated — update your clients with the new value.")
+            ->with('new_key', $apiKey->key);
+    }
+
     public function destroy(ApiKey $apiKey): RedirectResponse
     {
         $apiKey->delete();

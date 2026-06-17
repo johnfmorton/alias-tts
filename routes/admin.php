@@ -17,6 +17,7 @@ Route::get('/api-keys', [ApiKeyController::class, 'index'])->name('api-keys.inde
 Route::get('/api-keys/create', [ApiKeyController::class, 'create'])->name('api-keys.create');
 Route::post('/api-keys', [ApiKeyController::class, 'store'])->name('api-keys.store');
 Route::post('/api-keys/{apiKey}/toggle', [ApiKeyController::class, 'toggle'])->name('api-keys.toggle');
+Route::post('/api-keys/{apiKey}/regenerate', [ApiKeyController::class, 'regenerate'])->name('api-keys.regenerate');
 Route::delete('/api-keys/{apiKey}', [ApiKeyController::class, 'destroy'])->name('api-keys.destroy');
 
 // Voices

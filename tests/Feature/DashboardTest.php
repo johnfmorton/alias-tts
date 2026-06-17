@@ -159,6 +159,29 @@ class DashboardTest extends TestCase
         $this->assertSame('mine', $voice->fresh()->slug);
     }
 
+    public function test_admin_can_regenerate_an_api_key(): void
+    {
+        $admin = $this->admin();
+        $key = ApiKey::generate('rotate-me', 100);
+        $old = $key->key;
+
+        $this->actingAs($admin)->post(route('admin.api-keys.regenerate', $key))
+            ->assertRedirect(route('admin.api-keys.index'))
+            ->assertSessionHas('new_key');
+
+        $key->refresh();
+        $this->assertNotSame($old, $key->key);
+        $this->assertStringStartsWith('sk_', $key->key);
+        $this->assertSame('rotate-me', $key->name);
+        $this->assertSame(100, $key->rate_limit);
+
+        // The old value no longer authenticates against the API.
+        Voice::create(['slug' => 'rk', 'name' => 'RK']);
+        $this->withHeaders(['xi-api-key' => $old])
+            ->postJson('/v1/text-to-speech/rk', ['text' => 'hi'])
+            ->assertStatus(401);
+    }
+
     private function silentWav(float $seconds): string
     {
         $sampleRate = 44100;
