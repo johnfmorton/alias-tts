@@ -17,6 +17,7 @@ class SpeechService
     public function __construct(
         private TtsProvider $provider,
         private AudioConverter $converter,
+        private TextChunker $chunker,
     ) {}
 
     /**
@@ -69,10 +70,20 @@ class SpeechService
                 $providerSettings['seed'] = $seed;
             }
 
-            $raw = $this->provider->synthesize($text, $referencePath, $providerSettings);
+            // Chatterbox is short-form, so split long text into chunks, generate
+            // each, and concatenate the audio into a single file.
+            $chunks = $this->chunker->split($text, (int) config('tts.chunk_chars', 280));
+            if ($chunks === []) {
+                $chunks = [$text];
+            }
 
-            [$bytes, $mime, $ext] = $this->converter->convert(
-                $raw,
+            $rawParts = [];
+            foreach ($chunks as $chunk) {
+                $rawParts[] = $this->provider->synthesize($chunk, $referencePath, $providerSettings);
+            }
+
+            [$bytes, $mime, $ext] = $this->converter->concatenate(
+                $rawParts,
                 $outputFormat,
                 $this->provider->outputContainer(),
             );

@@ -60,6 +60,70 @@ class AudioConverter
     }
 
     /**
+     * Concatenate multiple audio byte-chunks (same container) into a single file
+     * in the requested output format. Used when long text is split into chunks.
+     *
+     * @param  array<int, string>  $inputChunks
+     * @return array{0: string, 1: string, 2: string} [bytes, mimeType, extension]
+     */
+    public function concatenate(array $inputChunks, string $outputFormat, string $inputContainer = 'wav'): array
+    {
+        $inputChunks = array_values($inputChunks);
+
+        if (count($inputChunks) === 1) {
+            return $this->convert($inputChunks[0], $outputFormat, $inputContainer);
+        }
+
+        $spec = $this->parseFormat($outputFormat);
+
+        $files = [];
+        foreach ($inputChunks as $bytes) {
+            $file = tempnam(sys_get_temp_dir(), 'tts_cat_');
+            file_put_contents($file, $bytes);
+            $files[] = $file;
+        }
+
+        $list = tempnam(sys_get_temp_dir(), 'tts_list_');
+        file_put_contents($list, implode("\n", array_map(
+            static fn ($file) => "file '".$file."'",
+            $files
+        ))."\n");
+
+        $out = tempnam(sys_get_temp_dir(), 'tts_catout_');
+
+        try {
+            $args = array_merge(
+                [$this->ffmpegPath, '-y', '-hide_banner', '-loglevel', 'error',
+                    '-f', 'concat', '-safe', '0', '-i', $list,
+                    '-ac', '1', '-ar', (string) $spec['rate']],
+                $spec['codec_args'],
+                [$out]
+            );
+
+            $process = new Process($args);
+            $process->setTimeout(300);
+            $process->run();
+
+            if (! $process->isSuccessful()) {
+                throw new RuntimeException('ffmpeg concatenation failed: '.trim($process->getErrorOutput()));
+            }
+
+            $bytes = file_get_contents($out);
+            if ($bytes === false || $bytes === '') {
+                throw new RuntimeException('ffmpeg produced no concatenated output.');
+            }
+
+            return [$bytes, $spec['mime'], $spec['ext']];
+        } finally {
+            foreach ($files as $file) {
+                @unlink($file);
+            }
+            @unlink($list);
+            @unlink($out);
+        }
+    }
+
+    /**
      * Normalize a reference voice clip for zero-shot cloning: downmix to mono,
      * trim leading/trailing silence, loudness-normalize, and cap the true peak
      * so the result can never clip. Returns 16-bit PCM WAV bytes.

@@ -39,6 +39,12 @@ return [
     |--------------------------------------------------------------------------
     */
     'max_text_length' => (int) env('TTS_MAX_TEXT_LENGTH', 5000),
+
+    // Long text is split into ~this many characters per backend call (Chatterbox
+    // is short-form), then the generated audio is concatenated. Lower = more,
+    // shorter calls.
+    'chunk_chars' => (int) env('TTS_CHUNK_CHARS', 280),
+
     'ttl_hours' => (int) env('TTS_TTL_HOURS', 720), // cache generated audio for 30 days
 
     /*

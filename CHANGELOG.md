@@ -13,6 +13,9 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - Voice **export / import** — move a voice (manifest + reference clip) between
   installs as a portable `.zip`, from the dashboard's Voices page or via the
   `voice:export` / `voice:import` commands.
+- Automatic **text chunking** for long input — text is split into short,
+  sentence-aware chunks (Chatterbox is short-form), each generated separately and
+  the audio concatenated into one file. Tunable via `TTS_CHUNK_CHARS` (default 280).
 
 ## [0.1.0] - 2026-06-17
 

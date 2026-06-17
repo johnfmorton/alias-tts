@@ -62,6 +62,8 @@ curl -k -X POST https://tts.ddev.site/v1/text-to-speech/john \
 - **Success:** raw audio bytes (`audio/mpeg` by default) + `request-id` header.
 - **Error:** JSON `{"detail":{"message": "..."}}` (ElevenLabs shape).
 - Identical requests are cached (keyed on voice+text+settings+format).
+- Long text is automatically split into short, backend-friendly chunks and the
+  audio concatenated (Chatterbox is short-form). Tune with `TTS_CHUNK_CHARS`.
 
 `{voice_id}` matches a Voice's `slug` first, then its UUID — set a slug equal to
 your existing ElevenLabs `voice_id` for a true drop-in swap.
