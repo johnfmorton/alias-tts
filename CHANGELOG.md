@@ -7,6 +7,10 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 ## [Unreleased]
 
 ### Added
+- `NEXT_STEPS_17JUN2026.md` — plan to let the service own all chunking so the
+  Bespoken plugin can send whole articles ("send-whole"), plus Replicate **429
+  retry/backoff** so generation survives the burst rate limit. Planning only; no
+  behavior change yet.
 - Deployment guide (`docs/DEPLOYMENT.md`) covering Laravel Forge (step by step)
   and generic hosts, including the ffmpeg requirement and the dashboard asset build.
 - Bespoken plugin integration guide (`docs/BESPOKEN.md`).
