@@ -112,6 +112,9 @@ a registered voice slug. The plugin sends no `output_format` and concatenates
 
 ## Production (Laravel Forge)
 
+See **[docs/DEPLOYMENT.md](docs/DEPLOYMENT.md)** for the full step-by-step guide
+(Laravel Forge + generic hosts). In short:
+
 - New PHP 8.3 site; `composer install`, `php artisan migrate`.
 - **Install `ffmpeg`** on the server (`apt install ffmpeg`).
 - **Build dashboard assets:** `npm ci && npm run build` (Node 20+).
