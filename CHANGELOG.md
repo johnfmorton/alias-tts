@@ -6,6 +6,8 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.1.0] - 2026-06-17
+
 ### Added
 - Initial self-hosted, **ElevenLabs-compatible** TTS service (Laravel) — a
   companion server for the Bespoken Craft plugin.
@@ -46,4 +48,5 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   fixed seed; the response cache guarantees stable output for repeated identical
   requests.
 
-[Unreleased]: https://github.com/johnfmorton/bespoken-tts-service
+[Unreleased]: https://github.com/johnfmorton/bespoken-tts-service/compare/v0.1.0...HEAD
+[0.1.0]: https://github.com/johnfmorton/bespoken-tts-service/releases/tag/v0.1.0
