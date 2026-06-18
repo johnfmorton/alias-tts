@@ -63,69 +63,80 @@ class AudioConverter
      * Concatenate multiple audio byte-chunks (same container) into a single file
      * in the requested output format. Used when long text is split into chunks.
      *
+     * Each chunk is first edge-trimmed and faded: Chatterbox appends a low-level
+     * "swoosh"/hiss tail to most generations, and left in place it lands exactly
+     * at every seam (which falls at a sentence/paragraph boundary), so trimming
+     * it is the core fix for the noisy pauses. The trimmed chunks are then joined
+     * with a controlled amount of true digital silence — $seamGapsMs[i] ms after
+     * chunk i — giving clean, click-free seams and natural pacing (callers pass a
+     * larger gap at paragraph seams than at sentence seams).
+     *
      * @param  array<int, string>  $inputChunks
+     * @param  array<int, int>  $seamGapsMs  silence (ms) to insert after each chunk; the entry after the last chunk is ignored
      * @return array{0: string, 1: string, 2: string} [bytes, mimeType, extension]
      */
-    public function concatenate(array $inputChunks, string $outputFormat, string $inputContainer = 'wav'): array
+    public function concatenate(array $inputChunks, string $outputFormat, string $inputContainer = 'wav', array $seamGapsMs = []): array
     {
         $inputChunks = array_values($inputChunks);
+        $spec = $this->parseFormat($outputFormat);
+
+        $threshold = (string) config('tts.chunk_trim_threshold', '-40dB');
+        $fadeMs = max(0, (int) config('tts.chunk_fade_ms', 8));
 
         if (count($inputChunks) === 1) {
-            return $this->convert($inputChunks[0], $outputFormat, $inputContainer);
+            // Trim the single chunk's edges too (drops the trailing artifact),
+            // then encode to the requested format.
+            $trimmed = $this->trimChunk($inputChunks[0], $spec['rate'], $threshold, $fadeMs);
+
+            return $this->convert($trimmed, $outputFormat, 'wav');
         }
 
-        $spec = $this->parseFormat($outputFormat);
-        $crossfadeMs = (int) config('tts.chunk_crossfade_ms', 25);
+        $files = [];          // every temp file to clean up
+        $silenceCache = [];    // gap ms => silence temp file (reused across seams)
+        $entries = [];         // concat demuxer list lines
 
-        $files = [];
-        foreach ($inputChunks as $bytes) {
-            $file = tempnam(sys_get_temp_dir(), 'tts_cat_');
-            file_put_contents($file, $bytes);
-            $files[] = $file;
-        }
-
-        $list = null;
         $outFile = tempnam(sys_get_temp_dir(), 'tts_catout_');
+        $list = tempnam(sys_get_temp_dir(), 'tts_list_');
+        $files[] = $list;
 
         try {
-            if ($crossfadeMs > 0) {
-                // Crossfade successive chunks so seams have no clicks/gaps.
-                $d = rtrim(rtrim(number_format($crossfadeMs / 1000, 3, '.', ''), '0'), '.');
-                $last = count($files) - 1;
-                $filterParts = [];
-                $prev = '[0:a]';
-                for ($i = 1; $i <= $last; $i++) {
-                    $label = $i === $last ? '[out]' : "[a{$i}]";
-                    $filterParts[] = "{$prev}[{$i}:a]acrossfade=d={$d}:c1=tri:c2=tri{$label}";
-                    $prev = $label;
+            $last = count($inputChunks) - 1;
+
+            foreach ($inputChunks as $i => $bytes) {
+                $chunkFile = tempnam(sys_get_temp_dir(), 'tts_cat_');
+                file_put_contents($chunkFile, $this->trimChunk($bytes, $spec['rate'], $threshold, $fadeMs));
+                $files[] = $chunkFile;
+                $entries[] = "file '".$chunkFile."'";
+
+                if ($i >= $last) {
+                    continue;
                 }
 
-                $args = [$this->ffmpegPath, '-y', '-hide_banner', '-loglevel', 'error'];
-                foreach ($files as $file) {
-                    $args[] = '-i';
-                    $args[] = $file;
+                $gapMs = max(0, (int) ($seamGapsMs[$i] ?? 0));
+                if ($gapMs === 0) {
+                    continue;
                 }
-                $args = array_merge($args, [
-                    '-filter_complex', implode(';', $filterParts),
-                    '-map', '[out]',
-                    '-ac', '1', '-ar', (string) $spec['rate'],
-                ], $spec['codec_args'], [$outFile]);
-            } else {
-                // Hard join via the concat demuxer.
-                $list = tempnam(sys_get_temp_dir(), 'tts_list_');
-                file_put_contents($list, implode("\n", array_map(
-                    static fn ($file) => "file '".$file."'",
-                    $files
-                ))."\n");
 
-                $args = array_merge(
-                    [$this->ffmpegPath, '-y', '-hide_banner', '-loglevel', 'error',
-                        '-f', 'concat', '-safe', '0', '-i', $list,
-                        '-ac', '1', '-ar', (string) $spec['rate']],
-                    $spec['codec_args'],
-                    [$outFile]
-                );
+                if (! isset($silenceCache[$gapMs])) {
+                    $silenceFile = tempnam(sys_get_temp_dir(), 'tts_sil_');
+                    file_put_contents($silenceFile, $this->silenceWav($gapMs, $spec['rate']));
+                    $files[] = $silenceFile;
+                    $silenceCache[$gapMs] = $silenceFile;
+                }
+                $entries[] = "file '".$silenceCache[$gapMs]."'";
             }
+
+            file_put_contents($list, implode("\n", $entries)."\n");
+
+            // Every piece is mono pcm_s16le at $spec['rate'], so the concat
+            // demuxer joins them cleanly; encode straight to the output format.
+            $args = array_merge(
+                [$this->ffmpegPath, '-y', '-hide_banner', '-loglevel', 'error',
+                    '-f', 'concat', '-safe', '0', '-i', $list,
+                    '-ac', '1', '-ar', (string) $spec['rate']],
+                $spec['codec_args'],
+                [$outFile]
+            );
 
             $process = new Process($args);
             $process->setTimeout(300);
@@ -145,11 +156,119 @@ class AudioConverter
             foreach ($files as $file) {
                 @unlink($file);
             }
-            if ($list !== null) {
-                @unlink($list);
-            }
             @unlink($outFile);
         }
+    }
+
+    /**
+     * Trim leading/trailing silence and Chatterbox's trailing noise tail from a
+     * chunk, fade its edges, and return mono pcm_s16le WAV at $rate. Falls back
+     * to a straight transcode (never empty) when trimming would remove
+     * everything — e.g. a fully-silent chunk — so the seam keeps its content and
+     * the concat demuxer still sees uniform inputs.
+     */
+    private function trimChunk(string $bytes, int $rate, string $threshold, int $fadeMs): string
+    {
+        $fade = $this->seconds($fadeMs);
+        $silenceRemove = "silenceremove=start_periods=1:start_threshold={$threshold}:start_silence=0.03:detection=peak";
+
+        // Trim the head; reverse and trim the (former) tail; fade both edges via
+        // the same reverse trick so no clip duration is needed.
+        $parts = [$silenceRemove, 'areverse', $silenceRemove];
+        if ($fadeMs > 0) {
+            $parts[] = "afade=t=in:d={$fade}";
+        }
+        $parts[] = 'areverse';
+        if ($fadeMs > 0) {
+            $parts[] = "afade=t=in:d={$fade}";
+        }
+
+        $trimmed = $this->runFilterToWav($bytes, $rate, implode(',', $parts));
+
+        // A header-only / vanishingly short result means trimming ate the whole
+        // chunk; canonicalize the original instead so it isn't dropped.
+        if ($trimmed === null || strlen($trimmed) < 1000) {
+            $canon = $this->runFilterToWav($bytes, $rate, null);
+
+            return ($canon === null || $canon === '') ? $bytes : $canon;
+        }
+
+        return $trimmed;
+    }
+
+    /**
+     * Run an ffmpeg audio filter (or none) over input bytes, returning mono
+     * pcm_s16le WAV at $rate, or null on failure.
+     */
+    private function runFilterToWav(string $bytes, int $rate, ?string $filter): ?string
+    {
+        $in = tempnam(sys_get_temp_dir(), 'tts_trim_in_');
+        $out = tempnam(sys_get_temp_dir(), 'tts_trim_out_');
+
+        try {
+            file_put_contents($in, $bytes);
+
+            $args = [$this->ffmpegPath, '-y', '-hide_banner', '-loglevel', 'error', '-i', $in];
+            if ($filter !== null && $filter !== '') {
+                $args[] = '-af';
+                $args[] = $filter;
+            }
+            $args = array_merge($args, ['-ac', '1', '-ar', (string) $rate, '-c:a', 'pcm_s16le', '-f', 'wav', $out]);
+
+            $process = new Process($args);
+            $process->setTimeout(120);
+            $process->run();
+
+            if (! $process->isSuccessful()) {
+                return null;
+            }
+
+            $result = file_get_contents($out);
+
+            return $result === false ? null : $result;
+        } finally {
+            @unlink($in);
+            @unlink($out);
+        }
+    }
+
+    /**
+     * Generate $ms of true digital silence as mono pcm_s16le WAV at $rate.
+     */
+    private function silenceWav(int $ms, int $rate): string
+    {
+        $out = tempnam(sys_get_temp_dir(), 'tts_silsrc_');
+
+        try {
+            $process = new Process([
+                $this->ffmpegPath, '-y', '-hide_banner', '-loglevel', 'error',
+                '-f', 'lavfi', '-t', $this->seconds($ms), '-i', "anullsrc=r={$rate}:cl=mono",
+                '-c:a', 'pcm_s16le', '-f', 'wav', $out,
+            ]);
+            $process->setTimeout(60);
+            $process->run();
+
+            if (! $process->isSuccessful()) {
+                throw new RuntimeException('ffmpeg silence generation failed: '.trim($process->getErrorOutput()));
+            }
+
+            $bytes = file_get_contents($out);
+            if ($bytes === false || $bytes === '') {
+                throw new RuntimeException('ffmpeg produced no silence.');
+            }
+
+            return $bytes;
+        } finally {
+            @unlink($out);
+        }
+    }
+
+    /**
+     * Format milliseconds as a trimmed seconds string for ffmpeg (e.g. 120 -> "0.12").
+     */
+    private function seconds(int $ms): string
+    {
+        return rtrim(rtrim(number_format(max(0, $ms) / 1000, 3, '.', ''), '0'), '.') ?: '0';
     }
 
     /**

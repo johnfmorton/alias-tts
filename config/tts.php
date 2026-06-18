@@ -63,9 +63,27 @@ return [
     // shorter calls.
     'chunk_chars' => (int) env('TTS_CHUNK_CHARS', 280),
 
-    // Crossfade (ms) applied between concatenated chunks to avoid clicks/gaps at
-    // the seams. Set 0 for a hard join.
-    'chunk_crossfade_ms' => (int) env('TTS_CHUNK_CROSSFADE_MS', 25),
+    // Runs of >= this many spaces are treated as a block (paragraph) boundary,
+    // in addition to blank lines. The Bespoken plugin currently flattens posts
+    // to a single line and marks every block with a run of (4) spaces, so this
+    // recovers paragraph pacing from real traffic; it's well clear of the
+    // legitimate "two spaces after a period". Raise it high to rely on newlines
+    // only once the client emits proper paragraph breaks.
+    'block_space_run' => (int) env('TTS_BLOCK_SPACE_RUN', 4),
+
+    // Each generated chunk is edge-trimmed before concatenation to remove
+    // Chatterbox's trailing "swoosh"/hiss artifact (the noisy pauses at seams).
+    // Threshold below which audio counts as silence to trim; raise toward -30dB
+    // to cut more of a louder tail (at the risk of clipping soft speech ends).
+    'chunk_trim_threshold' => env('TTS_CHUNK_TRIM_THRESHOLD', '-40dB'),
+
+    // Fade (ms) applied to each trimmed chunk's edges so seams stay click-free.
+    'chunk_fade_ms' => (int) env('TTS_CHUNK_FADE_MS', 8),
+
+    // True digital silence (ms) inserted between chunks at a sentence seam and
+    // at a block/paragraph seam respectively. Tune by ear for natural pacing.
+    'chunk_gap_ms' => (int) env('TTS_CHUNK_GAP_MS', 120),
+    'paragraph_gap_ms' => (int) env('TTS_PARAGRAPH_GAP_MS', 400),
 
     'ttl_hours' => (int) env('TTS_TTL_HOURS', 720), // cache generated audio for 30 days
 

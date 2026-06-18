@@ -104,21 +104,33 @@ class SpeechService
             }
 
             // Chatterbox is short-form, so split long text into chunks, generate
-            // each, and concatenate the audio into a single file.
-            $chunks = $this->chunker->split($speech->text, (int) config('tts.chunk_chars', 280));
-            if ($chunks === []) {
-                $chunks = [$speech->text];
+            // each, and concatenate the audio into a single file. Segments carry
+            // a pause tag so the audio layer can insert a longer silence at
+            // paragraph seams than at sentence seams.
+            $segments = $this->chunker->segment(
+                $speech->text,
+                (int) config('tts.chunk_chars', 280),
+                (int) config('tts.block_space_run', 4),
+            );
+            if ($segments === []) {
+                $segments = [['text' => $speech->text, 'breakAfter' => 'sentence']];
             }
 
+            $sentenceGap = (int) config('tts.chunk_gap_ms', 120);
+            $paragraphGap = (int) config('tts.paragraph_gap_ms', 400);
+
             $rawParts = [];
-            foreach ($chunks as $chunk) {
-                $rawParts[] = $this->provider->synthesize($chunk, $referencePath, $providerSettings);
+            $seamGapsMs = [];
+            foreach ($segments as $segment) {
+                $rawParts[] = $this->provider->synthesize($segment['text'], $referencePath, $providerSettings);
+                $seamGapsMs[] = $segment['breakAfter'] === 'paragraph' ? $paragraphGap : $sentenceGap;
             }
 
             [$bytes, $mime, $ext] = $this->converter->concatenate(
                 $rawParts,
                 $speech->output_format,
                 $this->provider->outputContainer(),
+                $seamGapsMs,
             );
 
             $disk = config('tts.storage_disk');

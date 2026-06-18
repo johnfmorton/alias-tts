@@ -38,4 +38,47 @@ class TextChunkerTest extends TestCase
     {
         $this->assertSame([], (new TextChunker)->split('   ', 280));
     }
+
+    public function test_segment_splits_blocks_on_space_runs_and_tags_breaks(): void
+    {
+        // The Bespoken plugin flattens posts to one line, marking blocks with
+        // 4-space runs. Sentences within a block keep a single space.
+        $text = 'First block sentence one. Second sentence here.    Next block starts here.';
+        $segments = (new TextChunker)->segment($text, 280);
+
+        $this->assertCount(2, $segments);
+        $this->assertSame('First block sentence one. Second sentence here.', $segments[0]['text']);
+        $this->assertSame('paragraph', $segments[0]['breakAfter']);
+        $this->assertSame('Next block starts here.', $segments[1]['text']);
+    }
+
+    public function test_segment_normalizes_stray_spacing_and_keeps_ellipsis(): void
+    {
+        // " ." and "word. ." are plugin artifacts; "..." is a real ellipsis.
+        $text = 'You will not miss it. .    I use the editor .    Done...';
+        $texts = array_map(
+            static fn ($s) => $s['text'],
+            (new TextChunker)->segment($text, 280)
+        );
+
+        $this->assertSame([
+            'You will not miss it.',
+            'I use the editor.',
+            'Done...',
+        ], $texts);
+    }
+
+    public function test_segment_tags_sentence_seams_within_a_block(): void
+    {
+        // A single block long enough to span multiple chunks: every seam is a
+        // sentence seam (no paragraph break inside one block).
+        $text = str_repeat('This is a sentence that is reasonably long and clear. ', 10);
+        $segments = (new TextChunker)->segment($text, 120);
+
+        $this->assertGreaterThan(1, count($segments));
+        foreach ($segments as $segment) {
+            $this->assertSame('sentence', $segment['breakAfter']);
+            $this->assertLessThanOrEqual(120, mb_strlen($segment['text']));
+        }
+    }
 }
