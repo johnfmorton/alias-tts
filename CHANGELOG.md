@@ -6,6 +6,20 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.4.1] - 2026-06-18
+
+### Fixed
+- The database queue's `retry_after` now defaults to `TTS_ASYNC_TIMEOUT + 60`
+  (1860s) instead of Laravel's 90s, so a long async job can no longer be released
+  back to the queue mid-generation and run twice. The health page's **Queue timing**
+  check now passes out of the box; set `DB_QUEUE_RETRY_AFTER` only to override.
+
+### Changed
+- Clarified that the queue worker's `--timeout` flag is **optional**:
+  `GenerateSpeechJob` pins its own timeout (`TTS_ASYNC_TIMEOUT`), which Laravel uses
+  in preference to the worker flag, so a long job is never killed early regardless.
+  Updated the deployment guide, `.env.example`, and config comments to match.
+
 ## [0.4.0] - 2026-06-18
 
 ### Added
@@ -148,7 +162,8 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   fixed seed; the response cache guarantees stable output for repeated identical
   requests.
 
-[Unreleased]: https://github.com/johnfmorton/bespoken-tts-service/compare/v0.4.0...HEAD
+[Unreleased]: https://github.com/johnfmorton/bespoken-tts-service/compare/v0.4.1...HEAD
+[0.4.1]: https://github.com/johnfmorton/bespoken-tts-service/compare/v0.4.0...v0.4.1
 [0.4.0]: https://github.com/johnfmorton/bespoken-tts-service/compare/v0.3.0...v0.4.0
 [0.3.0]: https://github.com/johnfmorton/bespoken-tts-service/compare/v0.2.0...v0.3.0
 [0.2.0]: https://github.com/johnfmorton/bespoken-tts-service/compare/v0.1.0...v0.2.0

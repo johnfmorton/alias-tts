@@ -145,15 +145,16 @@ Background processes → Add background process**, or `php artisan queue:work` u
 supervisor):
 
 ```
-php8.4 artisan queue:work --queue=default --sleep=3 --tries=1 --timeout=1830
+php8.4 artisan queue:work --queue=default --sleep=3 --tries=1
 ```
 
-- **`--timeout` ≥ `TTS_ASYNC_TIMEOUT`** (default 1800s) so long jobs aren't killed.
-- Set **`DB_QUEUE_RETRY_AFTER`** *greater than* `TTS_ASYNC_TIMEOUT` (e.g. `1860`).
-  It defaults to **90s**, which would release a long job back to the queue
-  mid-generation — harmless with a single worker, but a double-generation bug the
-  moment you run two. Keep `retry_after > worker --timeout > job timeout`.
-- Run **one** worker process unless you've raised `retry_after` as above.
+- **Worker `--timeout` is optional.** `GenerateSpeechJob` pins its own timeout
+  (`TTS_ASYNC_TIMEOUT`, default 1800s), and Laravel uses the job's timeout over the
+  worker flag — so a long job won't be killed regardless. Only add `--timeout=1830`
+  if you also run jobs that *don't* set their own timeout.
+- **`retry_after` must exceed the longest job**, or a long job is released and
+  **double-run**. Since 0.4.1 it defaults to `TTS_ASYNC_TIMEOUT + 60` (1860s), so
+  this is correct out of the box — set `DB_QUEUE_RETRY_AFTER` only to override.
 
 Without a worker, queued jobs sit unprocessed forever (the record stays
 `Processing` and clients poll indefinitely). To skip async entirely, set

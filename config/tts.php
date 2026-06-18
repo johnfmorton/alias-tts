@@ -110,8 +110,9 @@ return [
     |
     | When text is generated via the async job (POST .../jobs), this is the
     | queue job's timeout — the long ceiling the async path exists to provide,
-    | well beyond request_timeout. Your queue worker's --timeout must be at
-    | least this value. Also bounds the "in-flight" dedupe window.
+    | well beyond request_timeout. The job pins this itself (so the worker's
+    | --timeout flag is optional), and the database queue's retry_after defaults
+    | just above it. Also bounds the "in-flight" dedupe window.
     |
     */
     'async_timeout' => (int) env('TTS_ASYNC_TIMEOUT', 1800),

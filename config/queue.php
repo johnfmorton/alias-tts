@@ -40,7 +40,10 @@ return [
             'connection' => env('DB_QUEUE_CONNECTION'),
             'table' => env('DB_QUEUE_TABLE', 'jobs'),
             'queue' => env('DB_QUEUE', 'default'),
-            'retry_after' => (int) env('DB_QUEUE_RETRY_AFTER', 90),
+            // Must exceed the longest job, or a long job is released and double-run.
+            // Async generation pins its own timeout (TTS_ASYNC_TIMEOUT), so default
+            // just above it; override with DB_QUEUE_RETRY_AFTER if needed.
+            'retry_after' => (int) env('DB_QUEUE_RETRY_AFTER', (int) env('TTS_ASYNC_TIMEOUT', 1800) + 60),
             'after_commit' => false,
         ],
 

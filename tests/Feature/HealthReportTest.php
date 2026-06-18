@@ -123,8 +123,9 @@ class HealthReportTest extends TestCase
 
     public function test_queue_timing_warns_when_retry_after_is_too_short(): void
     {
-        // Default database retry_after (90s) is shorter than the async timeout.
-        config(['queue.default' => 'database']);
+        // The default now derives safely from TTS_ASYNC_TIMEOUT, so set a short
+        // retry_after explicitly to exercise the WARN path.
+        config(['queue.default' => 'database', 'queue.connections.database.retry_after' => 90]);
 
         $timing = $this->resultFor('queue_timing');
 
