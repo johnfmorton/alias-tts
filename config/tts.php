@@ -105,6 +105,19 @@ return [
 
     /*
     |--------------------------------------------------------------------------
+    | Async generation timeout (seconds)
+    |--------------------------------------------------------------------------
+    |
+    | When text is generated via the async job (POST .../jobs), this is the
+    | queue job's timeout — the long ceiling the async path exists to provide,
+    | well beyond request_timeout. Your queue worker's --timeout must be at
+    | least this value. Also bounds the "in-flight" dedupe window.
+    |
+    */
+    'async_timeout' => (int) env('TTS_ASYNC_TIMEOUT', 1800),
+
+    /*
+    |--------------------------------------------------------------------------
     | Provider configuration
     |--------------------------------------------------------------------------
     |

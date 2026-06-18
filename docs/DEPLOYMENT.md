@@ -130,7 +130,16 @@ Visit `https://your-domain.com/`, log in, then:
 - **Storage durability:** with `TTS_STORAGE_DISK=local`, voice references and
   generated audio live in `storage/app/private` on the server (persists across
   deploys). Use `s3` if you re-provision servers or run more than one instance.
-- **No queue or scheduler is required** in this release — generation is synchronous.
+- **Queue worker (only for async long-text generation):** the synchronous
+  endpoints need no worker. The Bespoken async endpoints
+  (`POST /v1/text-to-speech/{voice}/jobs` + poll) hand generation to a queued
+  `GenerateSpeechJob`, which lifts the ~300s synchronous ceiling for long text.
+  With the default `QUEUE_CONNECTION=database`, run a worker (Forge: **site →
+  Queue → New worker**, or `php artisan queue:work` under a supervisor) with
+  **Timeout ≥ `TTS_ASYNC_TIMEOUT`** (default 1800s) so long jobs aren't killed —
+  without a worker, queued jobs sit unprocessed. If you'd rather not run one, set
+  `QUEUE_CONNECTION=sync` and the async endpoints degrade to synchronous
+  generation (bound by the HTTP timeout — short text only).
 
 ---
 

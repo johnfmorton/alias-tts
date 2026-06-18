@@ -3,6 +3,7 @@
 namespace App\Services;
 
 use App\Enums\SpeechStatus;
+use App\Jobs\GenerateSpeechJob;
 use App\Models\ApiKey;
 use App\Models\Speech;
 use App\Models\Voice;
@@ -35,11 +36,7 @@ class SpeechService
         ?int $seed = null,
         bool $forceRefresh = false,
     ): Speech {
-        // Fall back to the voice's default seed when the request didn't pin one.
-        if ($seed === null && is_array($voice->settings) && isset($voice->settings['seed'])) {
-            $seed = (int) $voice->settings['seed'];
-        }
-
+        $seed = $this->resolveSeed($voice, $seed);
         $cacheHash = $this->cacheHash($voice, $text, $settings, $modelId, $outputFormat, $seed);
 
         if (! $forceRefresh) {
@@ -49,32 +46,68 @@ class SpeechService
             }
         }
 
-        $speech = Speech::create([
-            'api_key_id' => $apiKey->id,
-            'voice_id' => $voice->id,
-            'text' => $text,
-            'cache_hash' => $cacheHash,
-            'settings' => $settings,
-            'model_id' => $modelId,
-            'output_format' => $outputFormat,
-            'status' => SpeechStatus::Processing,
-            'characters' => mb_strlen($text),
-            'expires_at' => Carbon::now()->addHours((int) config('tts.ttl_hours')),
-        ]);
+        $speech = $this->createRecord($apiKey, $voice, $text, $settings, $modelId, $outputFormat, $cacheHash);
 
+        $this->process($speech, $seed);
+
+        return $speech;
+    }
+
+    /**
+     * Queue (or return a cached / in-flight) Speech. Returns immediately with a
+     * Processing record; a GenerateSpeechJob runs the generation in the
+     * background. This removes the synchronous ~300s ceiling for long text.
+     */
+    public function queueSynthesis(
+        ApiKey $apiKey,
+        Voice $voice,
+        string $text,
+        array $settings,
+        string $modelId,
+        string $outputFormat,
+        ?int $seed = null,
+        bool $forceRefresh = false,
+    ): Speech {
+        $seed = $this->resolveSeed($voice, $seed);
+        $cacheHash = $this->cacheHash($voice, $text, $settings, $modelId, $outputFormat, $seed);
+
+        if (! $forceRefresh) {
+            if ($cached = $this->findCached($voice, $cacheHash)) {
+                return $cached;
+            }
+            // Don't start a second job for an identical request already running.
+            if ($inFlight = $this->findInFlight($voice, $cacheHash)) {
+                return $inFlight;
+            }
+        }
+
+        $speech = $this->createRecord($apiKey, $voice, $text, $settings, $modelId, $outputFormat, $cacheHash);
+
+        GenerateSpeechJob::dispatch($speech->id, $seed);
+
+        return $speech;
+    }
+
+    /**
+     * Run generation for an existing Processing record: chunk, synthesize each
+     * part, concatenate, store, and mark the record Completed (or Failed). Shared
+     * by the synchronous path and the queued job.
+     */
+    public function process(Speech $speech, ?int $seed = null): Speech
+    {
         try {
-            $referencePath = $this->referencePath($voice);
+            $referencePath = $this->referencePath($speech->voice);
 
-            $providerSettings = $settings;
+            $providerSettings = $speech->settings ?? [];
             if ($seed !== null) {
                 $providerSettings['seed'] = $seed;
             }
 
             // Chatterbox is short-form, so split long text into chunks, generate
             // each, and concatenate the audio into a single file.
-            $chunks = $this->chunker->split($text, (int) config('tts.chunk_chars', 280));
+            $chunks = $this->chunker->split($speech->text, (int) config('tts.chunk_chars', 280));
             if ($chunks === []) {
-                $chunks = [$text];
+                $chunks = [$speech->text];
             }
 
             $rawParts = [];
@@ -84,7 +117,7 @@ class SpeechService
 
             [$bytes, $mime, $ext] = $this->converter->concatenate(
                 $rawParts,
-                $outputFormat,
+                $speech->output_format,
                 $this->provider->outputContainer(),
             );
 
@@ -107,6 +140,55 @@ class SpeechService
         }
 
         return $speech;
+    }
+
+    /**
+     * A still-running identical request, if one exists, so a re-submission joins
+     * the in-flight job instead of starting a duplicate. Bounded to the async
+     * job timeout so a crashed job's stale record isn't reused indefinitely.
+     */
+    public function findInFlight(Voice $voice, string $cacheHash): ?Speech
+    {
+        return Speech::query()
+            ->where('voice_id', $voice->id)
+            ->where('cache_hash', $cacheHash)
+            ->where('status', SpeechStatus::Processing)
+            ->where('created_at', '>', Carbon::now()->subSeconds((int) config('tts.async_timeout', 1800)))
+            ->latest()
+            ->first();
+    }
+
+    private function resolveSeed(Voice $voice, ?int $seed): ?int
+    {
+        // Fall back to the voice's default seed when the request didn't pin one.
+        if ($seed === null && is_array($voice->settings) && isset($voice->settings['seed'])) {
+            return (int) $voice->settings['seed'];
+        }
+
+        return $seed;
+    }
+
+    private function createRecord(
+        ApiKey $apiKey,
+        Voice $voice,
+        string $text,
+        array $settings,
+        string $modelId,
+        string $outputFormat,
+        string $cacheHash,
+    ): Speech {
+        return Speech::create([
+            'api_key_id' => $apiKey->id,
+            'voice_id' => $voice->id,
+            'text' => $text,
+            'cache_hash' => $cacheHash,
+            'settings' => $settings,
+            'model_id' => $modelId,
+            'output_format' => $outputFormat,
+            'status' => SpeechStatus::Processing,
+            'characters' => mb_strlen($text),
+            'expires_at' => Carbon::now()->addHours((int) config('tts.ttl_hours')),
+        ]);
     }
 
     public function findCached(Voice $voice, string $cacheHash): ?Speech

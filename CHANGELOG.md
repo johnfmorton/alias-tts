@@ -7,6 +7,19 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 ## [Unreleased]
 
 ### Added
+- **Async generation for long text.** A Bespoken extension that lifts the ~300s
+  synchronous ceiling: `POST /v1/text-to-speech/{voice_id}/jobs` returns **202**
+  with a job `id` + `status_url`/`audio_url` and runs generation in a queued
+  `GenerateSpeechJob`; `GET /v1/text-to-speech/jobs/{id}` polls status and
+  `GET /v1/text-to-speech/jobs/{id}/audio` streams the MP3 once complete. Poll
+  and audio reads are authenticated but **not** rate-limited (only the generating
+  POST is) and are scoped to the calling API key. Identical requests already
+  cached return **200** immediately; an identical request already in flight joins
+  the running job instead of starting a duplicate. Needs a running queue worker
+  (`queue:work`, timeout ≥ `TTS_ASYNC_TIMEOUT`, default 1800s); with
+  `QUEUE_CONNECTION=sync` it degrades to synchronous. The synchronous
+  `POST /v1/text-to-speech/{voice_id}` is unchanged. (Phase 4 of
+  `NEXT_STEPS_17JUN2026.md`.)
 - **Survive Replicate's burst rate limit.** Replicate throttles prediction
   creation (e.g. "6/min, burst 1") with an HTTP **429** + `retry_after` hint;
   previously a single throttled chunk failed the whole article with a 502. Every
