@@ -6,6 +6,23 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.6.1] - 2026-06-18
+
+### Fixed
+- Very short standalone chunks — a one-word paragraph like "Why?", or a short
+  heading like "The to-do list." — are no longer dropped from the generated
+  audio. Headings and short paragraphs each become their own block, and thus
+  their own Chatterbox generation; Chatterbox returns silence or garbage for
+  inputs under ~25 characters, so those words went missing (heard as an extra
+  pause). Such chunks are now merged into a neighbor before synthesis so nothing
+  too short is ever sent on its own.
+
+### Added
+- `TTS_MIN_CHUNK_CHARS` (default **30**) sets the length below which a chunk is
+  merged into an adjacent chunk — forward into the following chunk when it fits
+  (the short line leads its content and the pause before it is preserved),
+  otherwise back into the previous one. Set **0** to disable merging.
+
 ## [0.6.0] - 2026-06-18
 
 ### Added
@@ -214,7 +231,8 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   fixed seed; the response cache guarantees stable output for repeated identical
   requests.
 
-[Unreleased]: https://github.com/johnfmorton/bespoken-tts-service/compare/v0.6.0...HEAD
+[Unreleased]: https://github.com/johnfmorton/bespoken-tts-service/compare/v0.6.1...HEAD
+[0.6.1]: https://github.com/johnfmorton/bespoken-tts-service/compare/v0.6.0...v0.6.1
 [0.6.0]: https://github.com/johnfmorton/bespoken-tts-service/compare/v0.5.0...v0.6.0
 [0.5.0]: https://github.com/johnfmorton/bespoken-tts-service/compare/v0.4.1...v0.5.0
 [0.4.1]: https://github.com/johnfmorton/bespoken-tts-service/compare/v0.4.0...v0.4.1
