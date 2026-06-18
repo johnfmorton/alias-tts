@@ -63,6 +63,13 @@ return [
     // shorter calls.
     'chunk_chars' => (int) env('TTS_CHUNK_CHARS', 280),
 
+    // Chunks shorter than this are merged into a neighbor so they are never sent
+    // to the backend alone. Chatterbox is unreliable on very short inputs (a bare
+    // "Why?" or a "The to-do list." heading) — it tends to return silence/garbage
+    // and the words go missing. 0 disables merging. Raise it if longer short
+    // chunks still drop; lower it to keep more standalone short lines.
+    'min_chunk_chars' => (int) env('TTS_MIN_CHUNK_CHARS', 30),
+
     // Runs of >= this many spaces are treated as a block (paragraph) boundary,
     // in addition to blank lines. The Bespoken plugin currently flattens posts
     // to a single line and marks every block with a run of (4) spaces, so this

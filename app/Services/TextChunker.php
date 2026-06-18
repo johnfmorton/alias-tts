@@ -39,9 +39,15 @@ class TextChunker
      * 'paragraph' after the last chunk of a block (when another block follows),
      * 'sentence' otherwise. The tag after the final chunk is unused.
      *
+     * Chunks shorter than $minChars are merged into a neighbor so they are never
+     * synthesized alone: Chatterbox is unreliable on very short inputs (a bare
+     * "Why?" or a "The to-do list." heading) and tends to return silence or
+     * garbage, dropping the words. Pass 0 to disable merging. See {@see
+     * self::mergeShort()}.
+     *
      * @return array<int, array{text: string, breakAfter: 'sentence'|'paragraph'}>
      */
-    public function segment(string $text, int $targetChars = 280, int $blockSpaceRun = 4): array
+    public function segment(string $text, int $targetChars = 280, int $blockSpaceRun = 4, int $minChars = 0): array
     {
         $targetChars = max(1, $targetChars);
 
@@ -62,6 +68,62 @@ class TextChunker
                 // sentence seam within the block.
                 $breakAfter = ($ci === $lastChunk && $bi !== $lastBlock) ? 'paragraph' : 'sentence';
                 $segments[] = ['text' => $chunk, 'breakAfter' => $breakAfter];
+            }
+        }
+
+        return $this->mergeShort($segments, $targetChars, $minChars);
+    }
+
+    /**
+     * Merge chunks shorter than $minChars into a neighbor so nothing too short
+     * is sent to the backend on its own. A short chunk is folded forward into
+     * the following chunk when it fits (so a heading/short line leads into its
+     * content and the pause before it is preserved), otherwise back into the
+     * previous chunk, otherwise left alone (only when both neighbors are already
+     * near the length cap). Iterates to a fixed point so runs of tiny chunks
+     * settle.
+     *
+     * @param  array<int, array{text: string, breakAfter: 'sentence'|'paragraph'}>  $segments
+     * @return array<int, array{text: string, breakAfter: 'sentence'|'paragraph'}>
+     */
+    private function mergeShort(array $segments, int $targetChars, int $minChars): array
+    {
+        if ($minChars <= 0) {
+            return $segments;
+        }
+
+        $changed = true;
+        while ($changed) {
+            $changed = false;
+
+            for ($i = 0, $count = count($segments); $i < $count; $i++) {
+                if (count($segments) < 2 || mb_strlen($segments[$i]['text']) >= $minChars) {
+                    continue;
+                }
+
+                $short = $segments[$i]['text'];
+
+                // Prefer folding forward: the short line leads the next chunk and
+                // the next chunk keeps its own trailing seam; the pause *before*
+                // the short chunk (the previous chunk's seam) is preserved.
+                if (isset($segments[$i + 1])
+                    && mb_strlen($short) + 1 + mb_strlen($segments[$i + 1]['text']) <= $targetChars) {
+                    $segments[$i + 1]['text'] = $short.' '.$segments[$i + 1]['text'];
+                    array_splice($segments, $i, 1);
+                    $changed = true;
+                    break;
+                }
+
+                // Otherwise fold back into the previous chunk (e.g. a short tail);
+                // the merged chunk inherits the short chunk's trailing seam.
+                if (isset($segments[$i - 1])
+                    && mb_strlen($segments[$i - 1]['text']) + 1 + mb_strlen($short) <= $targetChars) {
+                    $segments[$i - 1]['text'] = $segments[$i - 1]['text'].' '.$short;
+                    $segments[$i - 1]['breakAfter'] = $segments[$i]['breakAfter'];
+                    array_splice($segments, $i, 1);
+                    $changed = true;
+                    break;
+                }
             }
         }
 

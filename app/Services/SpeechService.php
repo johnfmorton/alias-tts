@@ -111,6 +111,7 @@ class SpeechService
                 $speech->text,
                 (int) config('tts.chunk_chars', 280),
                 (int) config('tts.block_space_run', 4),
+                (int) config('tts.min_chunk_chars', 30),
             );
             if ($segments === []) {
                 $segments = [['text' => $speech->text, 'breakAfter' => 'sentence']];

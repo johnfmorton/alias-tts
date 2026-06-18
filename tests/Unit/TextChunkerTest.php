@@ -81,4 +81,42 @@ class TextChunkerTest extends TestCase
             $this->assertLessThanOrEqual(120, mb_strlen($segment['text']));
         }
     }
+
+    public function test_segment_merges_short_chunk_forward_into_following_block(): void
+    {
+        // A short heading block ("The to-do list.", 15 chars) would be dropped by
+        // Chatterbox if synthesized alone; it merges into the following block.
+        $text = "You will not miss Redactor here today.\n\nThe to-do list.\n\nI have a routine set of tasks each time I use the editor.";
+        $segments = (new TextChunker)->segment($text, 280, 4, 30);
+        $texts = array_map(static fn ($s) => $s['text'], $segments);
+
+        $this->assertSame([
+            'You will not miss Redactor here today.',
+            'The to-do list. I have a routine set of tasks each time I use the editor.',
+        ], $texts);
+        // The pause before the short line (previous block's seam) is preserved.
+        $this->assertSame('paragraph', $segments[0]['breakAfter']);
+    }
+
+    public function test_segment_merges_short_final_chunk_backward(): void
+    {
+        // A short final chunk has no following block, so it folds back.
+        $text = "This is a complete sentence that runs plenty long.\n\nOk.";
+        $segments = (new TextChunker)->segment($text, 280, 4, 30);
+
+        $this->assertSame(
+            ['This is a complete sentence that runs plenty long. Ok.'],
+            array_map(static fn ($s) => $s['text'], $segments)
+        );
+    }
+
+    public function test_segment_does_not_merge_when_min_chars_is_zero(): void
+    {
+        // Default (0) keeps short standalone blocks as-is.
+        $text = "You will not miss Redactor here today.\n\nThe to-do list.\n\nI have a routine set of tasks each time I use the editor.";
+        $segments = (new TextChunker)->segment($text, 280, 4, 0);
+
+        $this->assertCount(3, $segments);
+        $this->assertSame('The to-do list.', $segments[1]['text']);
+    }
 }
