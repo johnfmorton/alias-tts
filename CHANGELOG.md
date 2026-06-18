@@ -6,6 +6,8 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.3.0] - 2026-06-18
+
 ### Added
 - **`speech:cleanup` command + daily schedule** — deletes expired generated audio
   (database rows **and** the files on the configured disk, including **S3**) once
@@ -118,6 +120,7 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   fixed seed; the response cache guarantees stable output for repeated identical
   requests.
 
-[Unreleased]: https://github.com/johnfmorton/bespoken-tts-service/compare/v0.2.0...HEAD
+[Unreleased]: https://github.com/johnfmorton/bespoken-tts-service/compare/v0.3.0...HEAD
+[0.3.0]: https://github.com/johnfmorton/bespoken-tts-service/compare/v0.2.0...v0.3.0
 [0.2.0]: https://github.com/johnfmorton/bespoken-tts-service/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/johnfmorton/bespoken-tts-service/releases/tag/v0.1.0
