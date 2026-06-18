@@ -6,6 +6,8 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.2.0] - 2026-06-18
+
 ### Added
 - **Async generation for long text.** A Bespoken extension that lifts the ~300s
   synchronous ceiling: `POST /v1/text-to-speech/{voice_id}/jobs` returns **202**
@@ -30,11 +32,8 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   `REPLICATE_RETRY_BASE_MS`, and `REPLICATE_RETRY_MAX_MS`. An optional
   `REPLICATE_MIN_REQUEST_GAP_MS` spaces calls out proactively to avoid 429s
   up front. (Phase 1 of `NEXT_STEPS_17JUN2026.md`.)
-- `NEXT_STEPS_17JUN2026.md` — plan to let the service own all chunking so the
-  Bespoken plugin can send whole articles ("send-whole"), plus Replicate **429
-  retry/backoff** so generation survives the burst rate limit. The 429
-  retry/backoff piece (Phase 1) is now implemented (see above); the send-whole
-  and async phases remain.
+- `NEXT_STEPS_17JUN2026.md` — the implementation plan for the service-owned
+  chunking, 429 retry, and async generation work delivered in this release.
 - Deployment guide (`docs/DEPLOYMENT.md`) covering Laravel Forge (step by step)
   and generic hosts, including the ffmpeg requirement and the dashboard asset build.
 - Bespoken plugin integration guide (`docs/BESPOKEN.md`).
@@ -100,5 +99,6 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   fixed seed; the response cache guarantees stable output for repeated identical
   requests.
 
-[Unreleased]: https://github.com/johnfmorton/bespoken-tts-service/compare/v0.1.0...HEAD
+[Unreleased]: https://github.com/johnfmorton/bespoken-tts-service/compare/v0.2.0...HEAD
+[0.2.0]: https://github.com/johnfmorton/bespoken-tts-service/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/johnfmorton/bespoken-tts-service/releases/tag/v0.1.0
