@@ -2,7 +2,9 @@
 
 namespace App\Services\Tts;
 
+use Illuminate\Http\Client\Response;
 use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Sleep;
 use RuntimeException;
 
 /**
@@ -12,12 +14,22 @@ use RuntimeException;
  * and polls as a fallback if the prediction is still processing when the wait
  * window closes.
  *
+ * Replicate enforces a burst rate limit on prediction creation (e.g. "6/min,
+ * burst 1"), returning HTTP 429 with a `retry_after` hint. Because a long
+ * article fans out into many short Chatterbox calls in quick succession, every
+ * Replicate request is wrapped in {@see self::sendWithRetry()} so a throttled
+ * call slows generation down (honoring `retry_after`) instead of failing the
+ * whole article. Set `min_request_gap_ms` to space calls out proactively.
+ *
  * NOTE: confirm the exact model slug and input field names from the model's
  * schema page (config: tts.providers.replicate.text_field / reference_field).
  */
 class ReplicateChatterboxProvider implements TtsProvider
 {
     private const BASE = 'https://api.replicate.com/v1';
+
+    /** Wall-clock of the last prediction creation, for proactive spacing. */
+    private ?float $lastPredictionAt = null;
 
     public function __construct(
         private array $config,
@@ -73,36 +85,37 @@ class ReplicateChatterboxProvider implements TtsProvider
             throw new RuntimeException('Replicate returned no audio output.');
         }
 
-        $audio = Http::withToken($token)->timeout($this->timeout)->get($url);
-        if (! $audio->successful()) {
-            throw new RuntimeException('Failed to download generated audio from Replicate.');
-        }
+        $audio = $this->sendWithRetry(
+            fn () => Http::withToken($token)->timeout($this->timeout)->get($url),
+            'audio download',
+        );
 
         return $audio->body();
     }
 
     private function createPrediction(string $token, array $input): array
     {
-        $http = Http::withToken($token)
-            ->timeout($this->timeout)
-            ->withHeaders(['Prefer' => 'wait']);
+        $this->respectRequestGap();
 
-        // Pinned version -> /predictions with `version`; otherwise the model endpoint.
-        if (! empty($this->config['version'])) {
-            $response = $http->post(self::BASE.'/predictions', [
-                'version' => $this->config['version'],
-                'input' => $input,
-            ]);
-        } else {
+        $response = $this->sendWithRetry(function () use ($token, $input) {
+            $http = Http::withToken($token)
+                ->timeout($this->timeout)
+                ->withHeaders(['Prefer' => 'wait']);
+
+            // Pinned version -> /predictions with `version`; otherwise the model endpoint.
+            if (! empty($this->config['version'])) {
+                return $http->post(self::BASE.'/predictions', [
+                    'version' => $this->config['version'],
+                    'input' => $input,
+                ]);
+            }
+
             $model = $this->config['model'] ?? 'resemble-ai/chatterbox';
-            $response = $http->post(self::BASE."/models/{$model}/predictions", [
+
+            return $http->post(self::BASE."/models/{$model}/predictions", [
                 'input' => $input,
             ]);
-        }
-
-        if (! $response->successful()) {
-            throw new RuntimeException('Replicate request failed: '.$response->body());
-        }
+        }, 'prediction request');
 
         return $response->json();
     }
@@ -116,13 +129,13 @@ class ReplicateChatterboxProvider implements TtsProvider
                 throw new RuntimeException('Replicate prediction timed out.');
             }
 
-            usleep(750_000);
+            Sleep::for(750)->milliseconds();
 
             $get = $prediction['urls']['get'] ?? (self::BASE.'/predictions/'.($prediction['id'] ?? ''));
-            $response = Http::withToken($token)->timeout($this->timeout)->get($get);
-            if (! $response->successful()) {
-                throw new RuntimeException('Replicate polling failed: '.$response->body());
-            }
+            $response = $this->sendWithRetry(
+                fn () => Http::withToken($token)->timeout($this->timeout)->get($get),
+                'prediction polling',
+            );
             $prediction = $response->json();
         }
 
@@ -132,6 +145,106 @@ class ReplicateChatterboxProvider implements TtsProvider
         }
 
         return $prediction;
+    }
+
+    /**
+     * Send a Replicate request, retrying when it throttles us (HTTP 429).
+     *
+     * On 429 we honor Replicate's `retry_after` hint (JSON body, then the
+     * Retry-After header, both in seconds) and fall back to exponential
+     * backoff. Bounded by `max_retries` and the per-request timeout so a stuck
+     * call can't outlive the synchronous budget. Non-429 failures throw at once.
+     *
+     * @param  callable():Response  $send
+     */
+    private function sendWithRetry(callable $send, string $context): Response
+    {
+        $maxRetries = max(0, (int) ($this->config['max_retries'] ?? 5));
+        $baseMs = max(0, (int) ($this->config['retry_base_ms'] ?? 1000));
+        $capMs = max($baseMs, (int) ($this->config['retry_max_ms'] ?? 30000));
+        $deadline = time() + $this->timeout;
+
+        $attempt = 0;
+        while (true) {
+            $response = $send();
+
+            if ($response->successful()) {
+                return $response;
+            }
+
+            if ($response->status() !== 429 || $attempt >= $maxRetries) {
+                throw new RuntimeException(
+                    "Replicate {$context} failed (HTTP {$response->status()}): ".$response->body(),
+                );
+            }
+
+            $delayMs = $this->retryDelayMs($response, $attempt, $baseMs, $capMs);
+
+            // Never sleep past the deadline — give up cleanly instead of hanging.
+            if (time() + (int) ceil($delayMs / 1000) >= $deadline) {
+                throw new RuntimeException(
+                    "Replicate {$context} throttled (HTTP 429); retry budget exhausted: ".$response->body(),
+                );
+            }
+
+            Sleep::for($delayMs)->milliseconds();
+            $attempt++;
+        }
+    }
+
+    /**
+     * Backoff delay (ms) for a 429: prefer Replicate's `retry_after` hint, else
+     * exponential backoff (base, 2x, 4x, …). Capped so one wait can't dominate.
+     */
+    private function retryDelayMs(Response $response, int $attempt, int $baseMs, int $capMs): int
+    {
+        $hintSeconds = $this->retryAfterSeconds($response);
+        if ($hintSeconds !== null) {
+            return (int) min($capMs, max(0, (int) round($hintSeconds * 1000)));
+        }
+
+        return (int) min($capMs, $baseMs * (2 ** $attempt));
+    }
+
+    /**
+     * Replicate signals throttling with `retry_after` in the JSON body and may
+     * also set a Retry-After header; both are in seconds. Returns null if absent.
+     */
+    private function retryAfterSeconds(Response $response): ?float
+    {
+        $body = $response->json();
+        if (is_array($body) && isset($body['retry_after']) && is_numeric($body['retry_after'])) {
+            return (float) $body['retry_after'];
+        }
+
+        $header = $response->header('Retry-After');
+        if (is_numeric($header)) {
+            return (float) $header;
+        }
+
+        return null;
+    }
+
+    /**
+     * Proactively space out prediction creations to respect Replicate's burst
+     * limit. Disabled by default (min_request_gap_ms = 0, relying on reactive
+     * 429 retry); set it to ~10000 to stay under a 6/min limit up front.
+     */
+    private function respectRequestGap(): void
+    {
+        $gapMs = max(0, (int) ($this->config['min_request_gap_ms'] ?? 0));
+        if ($gapMs === 0) {
+            return;
+        }
+
+        if ($this->lastPredictionAt !== null) {
+            $remainingMs = $gapMs - ((microtime(true) - $this->lastPredictionAt) * 1000);
+            if ($remainingMs > 0) {
+                Sleep::for((int) ceil($remainingMs))->milliseconds();
+            }
+        }
+
+        $this->lastPredictionAt = microtime(true);
     }
 
     private function toDataUri(string $path): string

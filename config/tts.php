@@ -38,6 +38,15 @@ return [
     | Limits & caching
     |--------------------------------------------------------------------------
     */
+    // Hard cap on request text length; over it the endpoint returns an
+    // ElevenLabs-shaped 422. This is bounded by the SYNCHRONOUS budget, not just
+    // a number: generation is one Replicate prediction per ~chunk_chars, run
+    // sequentially, and the whole call must finish under request_timeout (and the
+    // client's curl timeout, ~300s). Under Replicate's burst throttle (≈one
+    // prediction per ~10s) ceil(chars / chunk_chars) predictions dominate, so the
+    // practical sync ceiling is only a few thousand chars. Raising this past that
+    // trades 422s for 300s timeouts — lift the Replicate rate limit or add the
+    // async path (see NEXT_STEPS) before raising it materially.
     'max_text_length' => (int) env('TTS_MAX_TEXT_LENGTH', 5000),
 
     // Long text is split into ~this many characters per backend call (Chatterbox
@@ -113,6 +122,20 @@ return [
             'text_field' => env('REPLICATE_TEXT_FIELD', 'prompt'),
             'reference_field' => env('REPLICATE_REFERENCE_FIELD', 'audio_prompt'),
             'output_container' => env('REPLICATE_OUTPUT_CONTAINER', 'wav'),
+
+            // Replicate throttles prediction creation with a burst limit (e.g.
+            // "6/min, burst 1"), returning 429 + a `retry_after` hint. We retry
+            // up to max_retries, honoring retry_after, else exponential backoff
+            // from retry_base_ms, with each wait capped at retry_max_ms. The
+            // total wait can never exceed request_timeout.
+            'max_retries' => (int) env('REPLICATE_MAX_RETRIES', 5),
+            'retry_base_ms' => (int) env('REPLICATE_RETRY_BASE_MS', 1000),
+            'retry_max_ms' => (int) env('REPLICATE_RETRY_MAX_MS', 30000),
+
+            // Minimum gap (ms) enforced between prediction creations to respect
+            // the burst limit proactively. 0 = disabled (rely on 429 retry);
+            // set to ~10000 to stay under a 6/min limit without 429s.
+            'min_request_gap_ms' => (int) env('REPLICATE_MIN_REQUEST_GAP_MS', 0),
         ],
     ],
 ];

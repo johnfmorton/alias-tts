@@ -7,10 +7,21 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 ## [Unreleased]
 
 ### Added
+- **Survive Replicate's burst rate limit.** Replicate throttles prediction
+  creation (e.g. "6/min, burst 1") with an HTTP **429** + `retry_after` hint;
+  previously a single throttled chunk failed the whole article with a 502. Every
+  Replicate request (create, poll, audio download) now retries on 429 — honoring
+  `retry_after` from the body or `Retry-After` header, falling back to
+  exponential backoff, and bounded by `request_timeout` so it can't outlive the
+  synchronous budget. Tunable via `REPLICATE_MAX_RETRIES`,
+  `REPLICATE_RETRY_BASE_MS`, and `REPLICATE_RETRY_MAX_MS`. An optional
+  `REPLICATE_MIN_REQUEST_GAP_MS` spaces calls out proactively to avoid 429s
+  up front. (Phase 1 of `NEXT_STEPS_17JUN2026.md`.)
 - `NEXT_STEPS_17JUN2026.md` — plan to let the service own all chunking so the
   Bespoken plugin can send whole articles ("send-whole"), plus Replicate **429
-  retry/backoff** so generation survives the burst rate limit. Planning only; no
-  behavior change yet.
+  retry/backoff** so generation survives the burst rate limit. The 429
+  retry/backoff piece (Phase 1) is now implemented (see above); the send-whole
+  and async phases remain.
 - Deployment guide (`docs/DEPLOYMENT.md`) covering Laravel Forge (step by step)
   and generic hosts, including the ffmpeg requirement and the dashboard asset build.
 - Bespoken plugin integration guide (`docs/BESPOKEN.md`).

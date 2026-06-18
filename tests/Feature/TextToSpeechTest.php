@@ -139,6 +139,21 @@ class TextToSpeechTest extends TestCase
         $response->assertStatus(422)->assertJsonStructure(['detail' => ['message']]);
     }
 
+    public function test_it_rejects_text_over_the_max_length(): void
+    {
+        config(['tts.max_text_length' => 10]);
+
+        $key = $this->makeKey();
+        $this->makeVoice();
+
+        $response = $this->withHeaders(['xi-api-key' => $key->key])
+            ->postJson('/v1/text-to-speech/my-voice', ['text' => str_repeat('a', 11)]);
+
+        $response->assertStatus(422)
+            ->assertJsonPath('detail.status', 422)
+            ->assertJsonPath('detail.message', fn ($m) => is_string($m) && $m !== '');
+    }
+
     public function test_seed_creates_distinct_cache_entries(): void
     {
         $key = $this->makeKey();
