@@ -17,6 +17,19 @@ return [
 
     /*
     |--------------------------------------------------------------------------
+    | Application Version
+    |--------------------------------------------------------------------------
+    |
+    | Read from composer.json's "version" field — bump it when cutting a release
+    | tag. Shown in the admin footer and available to any version surface (e.g.
+    | a status endpoint). Cached with the rest of config under `optimize`.
+    |
+    */
+
+    'version' => json_decode((string) @file_get_contents(base_path('composer.json')), true)['version'] ?? 'dev',
+
+    /*
+    |--------------------------------------------------------------------------
     | Application Environment
     |--------------------------------------------------------------------------
     |

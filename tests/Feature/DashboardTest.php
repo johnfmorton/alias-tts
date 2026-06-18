@@ -182,6 +182,21 @@ class DashboardTest extends TestCase
             ->assertStatus(401);
     }
 
+    public function test_footer_shows_the_app_version_for_authenticated_users(): void
+    {
+        $this->actingAs($this->admin())
+            ->get(route('admin.dashboard'))
+            ->assertOk()
+            ->assertSee('v'.config('app.version'));
+    }
+
+    public function test_footer_version_is_not_shown_to_guests(): void
+    {
+        $this->get(route('login'))
+            ->assertOk()
+            ->assertDontSee('v'.config('app.version'));
+    }
+
     private function silentWav(float $seconds): string
     {
         $sampleRate = 44100;

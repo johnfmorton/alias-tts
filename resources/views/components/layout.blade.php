@@ -17,7 +17,7 @@
     @vite(['resources/css/app.css', 'resources/js/app.js'])
 </head>
 <body class="h-full bg-zinc-950 text-zinc-100 antialiased">
-    <div class="min-h-full">
+    <div class="flex min-h-screen flex-col">
         <header class="border-b border-zinc-800 bg-zinc-900/60">
             <div class="mx-auto flex max-w-5xl items-center justify-between px-4 py-3">
                 <a href="{{ route('admin.dashboard') }}" class="flex items-center gap-2 font-semibold">
@@ -39,7 +39,7 @@
             </div>
         </header>
 
-        <main class="mx-auto max-w-5xl px-4 py-8">
+        <main class="mx-auto w-full max-w-5xl flex-1 px-4 py-8">
             <div class="mb-6">
                 <h1 class="text-2xl font-semibold tracking-tight">{{ $title }}</h1>
                 @if($description)
@@ -63,6 +63,15 @@
 
             {{ $slot }}
         </main>
+
+        @auth
+            <footer class="border-t border-zinc-800 bg-zinc-900/40">
+                <div class="mx-auto flex w-full max-w-5xl items-center justify-between px-4 py-4 text-xs text-zinc-500">
+                    <span>Bespoken TTS</span>
+                    <span class="font-mono">v{{ config('app.version') }}</span>
+                </div>
+            </footer>
+        @endauth
     </div>
 </body>
 </html>
