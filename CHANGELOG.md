@@ -6,6 +6,40 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.6.0] - 2026-06-18
+
+### Added
+- **Paragraph-aware pacing.** Long text is split into blocks on blank lines
+  **or** runs of `TTS_BLOCK_SPACE_RUN` (default **4**) spaces, and a longer
+  silence is inserted at block/paragraph seams (`TTS_PARAGRAPH_GAP_MS`, default
+  **400**ms) than at sentence seams (`TTS_CHUNK_GAP_MS`, default **120**ms). The
+  space-run rule recovers paragraph structure from clients that flatten a post to
+  a single line and mark blocks with runs of spaces.
+- **Configurable chunk edge-trimming.** `TTS_CHUNK_TRIM_THRESHOLD` (default
+  **-40dB**; raise toward -30dB to cut a louder tail) and `TTS_CHUNK_FADE_MS`
+  (default **8**ms) control the per-chunk trim + fade applied before joining.
+
+### Changed
+- Chunk concatenation now trims each chunk and rejoins the pieces with true
+  digital silence instead of a fixed crossfade, producing clean, click-free seams
+  and natural pacing.
+
+### Removed
+- `TTS_CHUNK_CROSSFADE_MS` / `chunk_crossfade_ms`, superseded by the trim +
+  silence-gap join above.
+
+### Fixed
+- Long-form articles no longer have noisy "swooshy" pauses at paragraph and
+  sentence breaks. Chatterbox appends a low-level noise/hiss tail to nearly every
+  generation; because long text is synthesized as many short chunks and the tail
+  was never trimmed, it landed at every concatenation seam — which fall exactly at
+  sentence and paragraph boundaries. Each chunk is now edge-trimmed before it is
+  joined, and the seams carry clean silence.
+- Messy upstream text is normalized before synthesis: a space before terminal
+  punctuation (`word .`) and spaced double-terminators (`word. .`) — which reach
+  Chatterbox as awkward pauses or near-empty fragments and amplify its noise
+  artifacts — are cleaned up, while real ellipses (`...`) are preserved.
+
 ## [0.5.0] - 2026-06-18
 
 ### Added
@@ -180,7 +214,8 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   fixed seed; the response cache guarantees stable output for repeated identical
   requests.
 
-[Unreleased]: https://github.com/johnfmorton/bespoken-tts-service/compare/v0.5.0...HEAD
+[Unreleased]: https://github.com/johnfmorton/bespoken-tts-service/compare/v0.6.0...HEAD
+[0.6.0]: https://github.com/johnfmorton/bespoken-tts-service/compare/v0.5.0...v0.6.0
 [0.5.0]: https://github.com/johnfmorton/bespoken-tts-service/compare/v0.4.1...v0.5.0
 [0.4.1]: https://github.com/johnfmorton/bespoken-tts-service/compare/v0.4.0...v0.4.1
 [0.4.0]: https://github.com/johnfmorton/bespoken-tts-service/compare/v0.3.0...v0.4.0
