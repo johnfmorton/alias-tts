@@ -130,27 +130,50 @@ it to fire, the OS must run Laravel's scheduler every minute:
 - **By hand (crontab):**
   `* * * * * cd /path/to/app && php artisan schedule:run >> /dev/null 2>&1`
 
-Confirm with `php artisan schedule:list` (you should see `speech:cleanup`); run it
-manually any time with `php artisan speech:cleanup` (add `--dry-run` to preview).
+Confirm with `php artisan schedule:list` (you should see `speech:cleanup` and a
+per-minute `tts:scheduler-heartbeat`); run cleanup manually any time with
+`php artisan speech:cleanup` (add `--dry-run` to preview). The heartbeat stamps the
+cache every minute so `tts:doctor` can tell the cron is *actually firing* — not
+just that the task is registered.
 
 **Queue worker (required only for async long-text generation).** The synchronous
 endpoints need no worker. The async endpoints
 (`POST /v1/text-to-speech/{voice}/jobs` + poll) hand generation to a queued
 `GenerateSpeechJob`, which lifts the ~300s synchronous ceiling for long articles.
-With the default `QUEUE_CONNECTION=database`, run a worker (Forge: **site → Queue
-→ New worker**, or `php artisan queue:work` under a supervisor) with **Timeout ≥
-`TTS_ASYNC_TIMEOUT`** (default 1800s) so long jobs aren't killed — without a
-worker, queued jobs sit unprocessed. To skip it entirely, set
+With the default `QUEUE_CONNECTION=database`, run a worker (Forge: **Processes →
+Background processes → Add background process**, or `php artisan queue:work` under a
+supervisor):
+
+```
+php8.4 artisan queue:work --queue=default --sleep=3 --tries=1 --timeout=1830
+```
+
+- **`--timeout` ≥ `TTS_ASYNC_TIMEOUT`** (default 1800s) so long jobs aren't killed.
+- Set **`DB_QUEUE_RETRY_AFTER`** *greater than* `TTS_ASYNC_TIMEOUT` (e.g. `1860`).
+  It defaults to **90s**, which would release a long job back to the queue
+  mid-generation — harmless with a single worker, but a double-generation bug the
+  moment you run two. Keep `retry_after > worker --timeout > job timeout`.
+- Run **one** worker process unless you've raised `retry_after` as above.
+
+Without a worker, queued jobs sit unprocessed forever (the record stays
+`Processing` and clients poll indefinitely). To skip async entirely, set
 `QUEUE_CONNECTION=sync` and the async endpoints degrade to synchronous (short text
 only).
+
+> The scheduler/queue liveness checks in `tts:doctor` read a shared cache, so
+> `CACHE_STORE` must be `file`, `redis`, or `database` (not `array`).
 
 ### 9. Verify the install
 ```bash
 php artisan tts:doctor          # PHP, db, ffmpeg, storage, provider, queue, scheduler
-php artisan tts:doctor --deep   # also validates your Replicate token live
+php artisan tts:doctor --deep   # also validates the Replicate token + dispatches a
+                                # real probe job to confirm a worker is draining the queue
 ```
-`tts:doctor` exits non-zero if anything is misconfigured, so it works in the
-deploy script and CI too.
+`tts:doctor` now verifies *liveness*, not just config: in production it FAILs if the
+scheduler heartbeat is missing/stale, flags any stale backlog in the `jobs` table,
+and (with `--deep`) FAILs if no worker drains its probe job within
+`TTS_DOCTOR_QUEUE_PROBE_TIMEOUT` (default 10s). It exits non-zero on any FAIL, so it
+works as a deploy-script / CI gate — run `--deep` *after* the worker is up.
 
 ---
 

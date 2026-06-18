@@ -118,6 +118,18 @@ return [
 
     /*
     |--------------------------------------------------------------------------
+    | Doctor queue probe timeout (seconds)
+    |--------------------------------------------------------------------------
+    |
+    | How long `tts:doctor --deep` waits for a queue worker to drain its probe
+    | job before concluding that no worker is running. A few seconds is plenty
+    | for a healthy worker (it polls every --sleep seconds).
+    |
+    */
+    'doctor_queue_probe_timeout' => (int) env('TTS_DOCTOR_QUEUE_PROBE_TIMEOUT', 10),
+
+    /*
+    |--------------------------------------------------------------------------
     | Provider configuration
     |--------------------------------------------------------------------------
     |

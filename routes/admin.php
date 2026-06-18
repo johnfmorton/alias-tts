@@ -2,6 +2,8 @@
 
 use App\Http\Controllers\Admin\ApiKeyController;
 use App\Http\Controllers\Admin\DashboardController;
+use App\Http\Controllers\Admin\HealthController;
+use App\Http\Controllers\Admin\HealthTestController;
 use App\Http\Controllers\Admin\VoiceController;
 use Illuminate\Support\Facades\Route;
 
@@ -11,6 +13,15 @@ use Illuminate\Support\Facades\Route;
 */
 
 Route::get('/', [DashboardController::class, 'index'])->name('dashboard');
+
+// Health — web view over the same checks as `php artisan tts:doctor`.
+Route::get('/health', [HealthController::class, 'index'])->name('health');
+
+// Live provider tests (real, billable generation calls).
+Route::post('/health/test/short', [HealthTestController::class, 'short'])->name('health.test.short');
+Route::post('/health/test/long', [HealthTestController::class, 'long'])->name('health.test.long');
+Route::get('/health/test/{id}/status', [HealthTestController::class, 'status'])->name('health.test.status');
+Route::get('/health/test/{id}/audio', [HealthTestController::class, 'audio'])->name('health.test.audio');
 
 // API keys
 Route::get('/api-keys', [ApiKeyController::class, 'index'])->name('api-keys.index');

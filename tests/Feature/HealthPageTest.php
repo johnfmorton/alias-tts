@@ -1,0 +1,61 @@
+<?php
+
+namespace Tests\Feature;
+
+use App\Models\User;
+use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Storage;
+use Tests\TestCase;
+
+class HealthPageTest extends TestCase
+{
+    use RefreshDatabase;
+
+    protected function setUp(): void
+    {
+        parent::setUp();
+
+        config(['tts.provider' => 'fake', 'tts.storage_disk' => 'local']);
+        Storage::fake('local');
+    }
+
+    private function admin(): User
+    {
+        return User::factory()->create(['is_super_admin' => true]);
+    }
+
+    public function test_health_page_requires_login(): void
+    {
+        $this->get(route('admin.health'))->assertRedirect(route('login'));
+    }
+
+    public function test_health_page_forbidden_for_non_admin(): void
+    {
+        $this->actingAs(User::factory()->create(['is_super_admin' => false]))
+            ->get(route('admin.health'))
+            ->assertForbidden();
+    }
+
+    public function test_admin_sees_the_per_check_results(): void
+    {
+        $this->actingAs($this->admin())
+            ->get(route('admin.health'))
+            ->assertOk()
+            ->assertSee('Health')
+            ->assertSee('PHP version')
+            ->assertSee('Database')
+            ->assertSee('Provider')
+            ->assertSee('Queue')
+            ->assertSee('Scheduler')
+            ->assertSee('Run checks')
+            ->assertSee('Run live checks');
+    }
+
+    public function test_deep_mode_renders_the_live_note(): void
+    {
+        $this->actingAs($this->admin())
+            ->get(route('admin.health', ['deep' => 1]))
+            ->assertOk()
+            ->assertSee('Live mode:');
+    }
+}
