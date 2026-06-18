@@ -156,6 +156,47 @@ class AsyncSpeechTest extends TestCase
         Queue::assertNothingPushed();
     }
 
+    public function test_jobs_endpoint_accepts_text_longer_than_the_sync_cap(): void
+    {
+        Queue::fake();
+
+        // Tiny sync cap, larger async cap. Text between the two must be accepted by
+        // the async endpoint (it generates in a background worker, unbounded by the
+        // ~300s synchronous budget) even though the sync endpoint would 422 it.
+        config(['tts.max_text_length' => 10, 'tts.max_async_text_length' => 100]);
+
+        $key = $this->makeKey();
+        $this->makeVoice();
+        $headers = ['xi-api-key' => $key->key];
+        $text = str_repeat('a', 50); // > sync cap (10), < async cap (100)
+
+        // Sync endpoint rejects it...
+        $this->withHeaders($headers)
+            ->postJson('/v1/text-to-speech/my-voice', ['text' => $text])
+            ->assertStatus(422);
+
+        // ...but the async jobs endpoint accepts it and queues generation.
+        $this->withHeaders($headers)
+            ->postJson('/v1/text-to-speech/my-voice/jobs', ['text' => $text])
+            ->assertStatus(202)
+            ->assertJsonPath('status', 'processing');
+
+        Queue::assertPushed(GenerateSpeechJob::class);
+    }
+
+    public function test_jobs_endpoint_still_enforces_its_own_max(): void
+    {
+        config(['tts.max_async_text_length' => 100]);
+
+        $key = $this->makeKey();
+        $this->makeVoice();
+
+        $this->withHeaders(['xi-api-key' => $key->key])
+            ->postJson('/v1/text-to-speech/my-voice/jobs', ['text' => str_repeat('a', 101)])
+            ->assertStatus(422)
+            ->assertJsonStructure(['detail' => ['message']]);
+    }
+
     public function test_polling_is_not_rate_limited(): void
     {
         Queue::fake();

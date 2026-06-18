@@ -49,6 +49,15 @@ return [
     // async path (see NEXT_STEPS) before raising it materially.
     'max_text_length' => (int) env('TTS_MAX_TEXT_LENGTH', 5000),
 
+    // Hard cap for the ASYNC jobs endpoint (POST .../jobs). Generation there runs
+    // in a background worker bounded by async_timeout (default 1800s), not the
+    // ~300s synchronous request budget, so it accepts far longer text than the
+    // synchronous max_text_length above — this is the whole point of the async
+    // path. Still finite: at ~one Replicate prediction per ~10s and chunk_chars
+    // per prediction, ceil(chars / chunk_chars) predictions must finish within
+    // async_timeout, so the default leaves headroom for concatenation + storage.
+    'max_async_text_length' => (int) env('TTS_MAX_ASYNC_TEXT_LENGTH', 40000),
+
     // Long text is split into ~this many characters per backend call (Chatterbox
     // is short-form), then the generated audio is concatenated. Lower = more,
     // shorter calls.

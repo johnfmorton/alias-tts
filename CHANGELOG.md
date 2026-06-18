@@ -6,6 +6,22 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Added
+- `TTS_MAX_ASYNC_TEXT_LENGTH` (default **40000**) caps text on the async jobs
+  endpoint independently of the synchronous `TTS_MAX_TEXT_LENGTH` (5000). ~40k
+  characters is roughly 6,000–7,000 words, or about 40–50 minutes of narration —
+  comfortably more than any single article. Raise it only alongside
+  `TTS_ASYNC_TIMEOUT` and provider throughput (see the README's async section).
+
+### Fixed
+- The async jobs endpoint (`POST .../jobs`) no longer rejects text longer than
+  the synchronous `max_text_length` (5000). That cap is bounded by the ~300s
+  synchronous request budget, but async generation runs in a background worker
+  (bounded instead by `TTS_ASYNC_TIMEOUT`) and chunks server-side — so long
+  articles, the whole reason the async path exists, were being rejected with
+  "The text field must not be greater than 5000 characters." before any chunking
+  ran. The endpoint now validates against `max_async_text_length`.
+
 ## [0.4.1] - 2026-06-18
 
 ### Fixed

@@ -16,7 +16,7 @@ class TextToSpeechRequest extends FormRequest
     public function rules(): array
     {
         return [
-            'text' => ['required', 'string', 'max:'.(int) config('tts.max_text_length')],
+            'text' => ['required', 'string', 'max:'.$this->maxTextLength()],
             'model_id' => ['sometimes', 'nullable', 'string', 'max:128'],
             'output_format' => ['sometimes', 'string', 'max:32'],
             'force_refresh' => ['sometimes', 'boolean'],
@@ -34,6 +34,18 @@ class TextToSpeechRequest extends FormRequest
             'previous_request_ids' => ['sometimes', 'array'],
             'voice_id' => ['sometimes', 'string'], // some clients echo it in the body
         ];
+    }
+
+    /**
+     * Text length cap for this request. The async jobs endpoint generates in a
+     * background worker (bounded by tts.async_timeout, not the ~300s synchronous
+     * request budget), so it permits far longer text than the sync endpoint.
+     */
+    private function maxTextLength(): int
+    {
+        return $this->routeIs('tts.jobs.queue')
+            ? (int) config('tts.max_async_text_length')
+            : (int) config('tts.max_text_length');
     }
 
     /**

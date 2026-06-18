@@ -144,6 +144,20 @@ poll. Requires a running queue worker.
 - `GET /v1/text-to-speech/jobs/{id}/audio` → the MP3 once `completed` (409 while
   still processing).
 
+**Text length.** The async endpoint accepts up to `TTS_MAX_ASYNC_TEXT_LENGTH`
+characters (default **40,000** — roughly 6,000–7,000 words, or about **40–50
+minutes of spoken audio**), independent of the synchronous `TTS_MAX_TEXT_LENGTH`
+(5,000). The async cap is higher because generation runs in a background worker
+bounded by `TTS_ASYNC_TIMEOUT` (default 1,800s), not the ~300s synchronous
+request budget. Text is split at `TTS_CHUNK_CHARS` and **each chunk is a separate,
+rate-limited provider call**, so ~40,000 characters is ~140 sequential
+predictions — which fits comfortably inside the 30-minute job timeout. You can
+raise the cap for longer single submissions (e.g. whole chapters), but only
+**together with `TTS_ASYNC_TIMEOUT`** (and your provider's throughput): push the
+character limit up without giving the job more time and long jobs will hit the
+worker timeout and fail. Lower it to fail fast and bound the cost of any one
+request. Over the limit, the endpoint returns an ElevenLabs-shaped 422.
+
 ## Dashboard
 
 A password-protected control panel (at `/`) lets you **generate API keys**,
