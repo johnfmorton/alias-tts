@@ -6,6 +6,34 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.4.0] - 2026-06-18
+
+### Added
+- **Admin health page (`/admin/health`)** — a web view over the same checks as
+  `tts:doctor`, rendering PASS/WARN/FAIL badges for PHP, database, migrations,
+  cache, ffmpeg, storage, disk space, provider, queue, queue timing, failed jobs,
+  scheduler, expired-audio cleanup, voices, API keys, app key/debug, and APP_URL.
+  Includes a **Run live checks** (`--deep`) action and **interactive live provider
+  tests** — short (synchronous) and long (async chunking + queue worker +
+  concatenation) — that generate real audio and play it inline; the long test
+  fails fast when no worker is running.
+- **Liveness checks, not just configuration.** `tts:doctor` and the health page now
+  detect whether the **scheduler cron** and a **`queue:work` worker** are actually
+  running — via heartbeats (a per-minute scheduled task, and a key the worker
+  stamps on each loop) — instead of only confirming they're configured. `--deep`
+  also validates the Replicate token live and dispatches a queue probe job.
+- **Additional checks**: pending migrations, a persistent (non-`array`) cache store,
+  disk free space, `failed_jobs` count, `DB_QUEUE_RETRY_AFTER` vs `TTS_ASYNC_TIMEOUT`,
+  expired-audio backlog, at least one active voice and API key, and production
+  `APP_URL` sanity.
+- **Version footer** in the admin panel showing the app name and version
+  (`config('app.version')`, read from `composer.json`).
+
+### Changed
+- Refactored `tts:doctor`'s checks into a shared `HealthReport` service, so the CLI,
+  the web page, and future surfaces (e.g. a status endpoint) render the same results
+  from one source instead of drifting.
+
 ## [0.3.0] - 2026-06-18
 
 ### Added
@@ -120,7 +148,8 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   fixed seed; the response cache guarantees stable output for repeated identical
   requests.
 
-[Unreleased]: https://github.com/johnfmorton/bespoken-tts-service/compare/v0.3.0...HEAD
+[Unreleased]: https://github.com/johnfmorton/bespoken-tts-service/compare/v0.4.0...HEAD
+[0.4.0]: https://github.com/johnfmorton/bespoken-tts-service/compare/v0.3.0...v0.4.0
 [0.3.0]: https://github.com/johnfmorton/bespoken-tts-service/compare/v0.2.0...v0.3.0
 [0.2.0]: https://github.com/johnfmorton/bespoken-tts-service/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/johnfmorton/bespoken-tts-service/releases/tag/v0.1.0
