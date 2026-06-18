@@ -118,6 +118,40 @@ Visit `https://your-domain.com/`, log in, then:
 - **Voices → Add voice** (upload a clean ~15–30s clip).
 - The **Dashboard** shows copy-paste connection details for the Bespoken plugin.
 
+### 8. Background processing — scheduler & queue worker
+
+**Scheduler (required for automatic cleanup).** Generated audio expires after
+`TTS_TTL_HOURS` (default 30 days); `speech:cleanup` deletes expired rows and their
+files (on the configured disk, local **or S3**) and is scheduled to run daily. For
+it to fire, the OS must run Laravel's scheduler every minute:
+
+- **Forge:** site → **Scheduler → New scheduled job**, command
+  `php artisan schedule:run`, frequency **Every Minute** (`* * * * *`).
+- **By hand (crontab):**
+  `* * * * * cd /path/to/app && php artisan schedule:run >> /dev/null 2>&1`
+
+Confirm with `php artisan schedule:list` (you should see `speech:cleanup`); run it
+manually any time with `php artisan speech:cleanup` (add `--dry-run` to preview).
+
+**Queue worker (required only for async long-text generation).** The synchronous
+endpoints need no worker. The async endpoints
+(`POST /v1/text-to-speech/{voice}/jobs` + poll) hand generation to a queued
+`GenerateSpeechJob`, which lifts the ~300s synchronous ceiling for long articles.
+With the default `QUEUE_CONNECTION=database`, run a worker (Forge: **site → Queue
+→ New worker**, or `php artisan queue:work` under a supervisor) with **Timeout ≥
+`TTS_ASYNC_TIMEOUT`** (default 1800s) so long jobs aren't killed — without a
+worker, queued jobs sit unprocessed. To skip it entirely, set
+`QUEUE_CONNECTION=sync` and the async endpoints degrade to synchronous (short text
+only).
+
+### 9. Verify the install
+```bash
+php artisan tts:doctor          # PHP, db, ffmpeg, storage, provider, queue, scheduler
+php artisan tts:doctor --deep   # also validates your Replicate token live
+```
+`tts:doctor` exits non-zero if anything is misconfigured, so it works in the
+deploy script and CI too.
+
 ---
 
 ## Notes
@@ -127,19 +161,43 @@ Visit `https://your-domain.com/`, log in, then:
   `AdminSeeder`) won't see values. Create the admin with `admin:create`
   (argument-based). The Replicate token is read into cached config at deploy time,
   so generation is unaffected.
-- **Storage durability:** with `TTS_STORAGE_DISK=local`, voice references and
-  generated audio live in `storage/app/private` on the server (persists across
-  deploys). Use `s3` if you re-provision servers or run more than one instance.
-- **Queue worker (only for async long-text generation):** the synchronous
-  endpoints need no worker. The Bespoken async endpoints
-  (`POST /v1/text-to-speech/{voice}/jobs` + poll) hand generation to a queued
-  `GenerateSpeechJob`, which lifts the ~300s synchronous ceiling for long text.
-  With the default `QUEUE_CONNECTION=database`, run a worker (Forge: **site →
-  Queue → New worker**, or `php artisan queue:work` under a supervisor) with
-  **Timeout ≥ `TTS_ASYNC_TIMEOUT`** (default 1800s) so long jobs aren't killed —
-  without a worker, queued jobs sit unprocessed. If you'd rather not run one, set
-  `QUEUE_CONNECTION=sync` and the async endpoints degrade to synchronous
-  generation (bound by the HTTP timeout — short text only).
+- **Storage & background jobs:** see **[Storage: local vs S3](#storage-local-vs-s3)**
+  below and step 8 (scheduler + queue worker) above.
+
+---
+
+## Storage: local vs S3
+
+By default (`TTS_STORAGE_DISK=local`) voice reference clips and generated audio
+live in `storage/app/private` on the app server. That's simplest and survives
+deploys (the `storage` dir is shared), but it ties audio to one server's disk.
+
+**Use S3** if you'd rather not keep audio on the app server, you re-provision
+servers, or you run more than one instance:
+
+```env
+TTS_STORAGE_DISK=s3
+TTS_STORAGE_PATH=speech            # key prefix for generated audio (optional)
+AWS_ACCESS_KEY_ID=...
+AWS_SECRET_ACCESS_KEY=...
+AWS_DEFAULT_REGION=us-east-1
+AWS_BUCKET=your-bucket
+```
+
+The IAM identity needs `s3:GetObject`, `s3:PutObject`, `s3:DeleteObject`, and
+`s3:ListBucket` on the bucket (or the configured prefix).
+
+**Cleanup works the same on S3.** All storage goes through Laravel's disk
+abstraction, so `speech:cleanup` (and the daily schedule) delete expired audio
+straight from the bucket — there are **no separate "temp" files on S3** to clean
+up. ffmpeg does its work in the server's local temp dir during a request; only the
+finished MP3 is written to the configured disk. (If you like, an S3 **lifecycle
+rule** expiring objects under the `speech/` prefix is a fine belt-and-suspenders
+backstop, but it isn't required.)
+
+Run `php artisan tts:doctor` after switching disks — its storage check writes,
+reads, and deletes a probe file, which confirms your S3 credentials and bucket are
+reachable.
 
 ---
 

@@ -6,6 +6,25 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Added
+- **`speech:cleanup` command + daily schedule** — deletes expired generated audio
+  (database rows **and** the files on the configured disk, including **S3**) once
+  past its `TTS_TTL_HOURS` TTL. Scheduled to run daily, so production only needs a
+  cron calling `php artisan schedule:run`. Supports `--dry-run` and `--before`.
+  (Previously, expired audio and rows accumulated forever.)
+- **`tts:doctor` command** — verifies the install (PHP/extensions, database,
+  ffmpeg, the storage disk, the provider + Replicate token, the queue, and the
+  cleanup schedule) with PASS/WARN/FAIL output; exits non-zero on any failure so
+  it's usable in CI / a deploy script. `--deep` validates the Replicate token live.
+
+### Changed
+- Rewrote the README to be value-first for Bespoken plugin users, made the
+  **Replicate account + credit** requirement explicit, documented every artisan
+  command, and corrected the stale roadmap (async shipped in 0.2.0).
+- Documented **S3 storage** and the **scheduler / queue-worker** requirements in
+  the deployment guide, and replaced the two `NEXT_STEPS_*.md` working notes with a
+  concise `ROADMAP.md`.
+
 ## [0.2.0] - 2026-06-18
 
 ### Added
