@@ -1,0 +1,27 @@
+#!/bin/sh
+#
+# Pre-push guard: run Laravel Pint exactly as CI does, so a code-style
+# violation is caught locally instead of failing the GitHub "test" workflow's
+# "Check code style (Pint)" step.
+#
+# Enabled via `git config core.hooksPath .githooks` (done by `composer setup`).
+# Bypass once with:  git push --no-verify
+#
+echo "▶ Pint (pre-push code-style check)…"
+
+if command -v ddev >/dev/null 2>&1 && ddev exec true >/dev/null 2>&1; then
+    # Preferred: same PHP/Pint as CI, inside the DDEV container.
+    ddev exec ./vendor/bin/pint --test
+elif [ -x ./vendor/bin/pint ] && command -v php >/dev/null 2>&1; then
+    ./vendor/bin/pint --test
+else
+    echo "⚠ Could not run Pint (start DDEV, or install PHP locally) — skipping the check."
+    exit 0
+fi
+
+status=$?
+if [ "$status" -ne 0 ]; then
+    echo "✗ Style issues found. Fix with:  ddev exec ./vendor/bin/pint"
+    echo "  (or push anyway with:  git push --no-verify)"
+fi
+exit $status

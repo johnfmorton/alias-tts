@@ -35,6 +35,7 @@
     "scripts": {
         "setup": [
             "composer install",
+            "git config core.hooksPath .githooks || true",
             "@php -r \"file_exists('.env') || copy('.env.example', '.env');\"",
             "@php artisan key:generate",
             "@php artisan migrate --force",
