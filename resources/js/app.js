@@ -540,7 +540,7 @@ function initStudioBench() {
 
     async function generateRow(state, btn, autoplay = true) {
         const body = rowBody(state);
-        if (!body) { setStatus(els.status, 'Paste some text above first.', 'error'); return; }
+        if (!body) { setStatus(els.status, 'Paste some text first.', 'error'); return; }
         const t0 = performance.now();
         startBusy(btn, '');
         try {
@@ -604,7 +604,7 @@ function initStudioBench() {
     }
 
     async function generateAll() {
-        if (!els.text.value.trim()) { setStatus(els.status, 'Paste some text above first.', 'error'); return; }
+        if (!els.text.value.trim()) { setStatus(els.status, 'Paste some text first.', 'error'); return; }
         startBusy(els.genBtn, 'Generating…');
         try {
             // Sequential — the provider is rate-limited; load each without autoplay
