@@ -7,6 +7,7 @@ use App\Models\TtsChunk;
 use App\Models\TtsProject;
 use App\Models\Voice;
 use App\Services\ProjectService;
+use App\Services\Tts\VoiceSettingsResolver;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -26,7 +27,10 @@ use Throwable;
  */
 class StudioProjectController extends Controller
 {
-    public function __construct(private readonly ProjectService $projects) {}
+    public function __construct(
+        private readonly ProjectService $projects,
+        private readonly VoiceSettingsResolver $settingsResolver,
+    ) {}
 
     public function create(): View
     {
@@ -257,26 +261,22 @@ class StudioProjectController extends Controller
     }
 
     /**
-     * Config defaults overlaid with the voice's defaults, then per-request debug
-     * overrides. Seed is tracked on the project column, not here.
+     * Resolve the project's stored settings snapshot through the shared
+     * {@see VoiceSettingsResolver} (config defaults -> voice defaults -> the
+     * stability/style chosen at creation). Seed is tracked on the project
+     * column, so the resolver deliberately leaves it out.
      *
      * @return array<string, mixed>
      */
     private function settings(Request $request, Voice $voice): array
     {
-        $settings = config('tts.default_voice_settings', []);
-
-        if (is_array($voice->settings)) {
-            $settings = array_merge($settings, $voice->settings);
-        }
-        unset($settings['seed']);
-
+        $overrides = [];
         foreach (['stability', 'style'] as $knob) {
             if ($request->filled($knob)) {
-                $settings[$knob] = (float) $request->input($knob);
+                $overrides[$knob] = (float) $request->input($knob);
             }
         }
 
-        return $settings;
+        return $this->settingsResolver->resolve($voice, $overrides);
     }
 }

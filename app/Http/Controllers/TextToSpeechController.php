@@ -8,6 +8,7 @@ use App\Models\ApiKey;
 use App\Models\Speech;
 use App\Models\Voice;
 use App\Services\SpeechService;
+use App\Services\Tts\VoiceSettingsResolver;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Storage;
 use Symfony\Component\HttpFoundation\Response;
@@ -34,6 +35,7 @@ class TextToSpeechController extends Controller
 {
     public function __construct(
         private SpeechService $speechService,
+        private VoiceSettingsResolver $settingsResolver,
     ) {}
 
     public function store(TextToSpeechRequest $request, string $voice_id): Response
@@ -50,7 +52,7 @@ class TextToSpeechController extends Controller
                 apiKey: $apiKey,
                 voice: $voice,
                 text: $request->input('text'),
-                settings: $request->voiceSettings(),
+                settings: $this->settingsResolver->resolve($voice, $request->voiceSettingOverrides()),
                 modelId: $request->modelId(),
                 outputFormat: $request->outputFormat(),
                 seed: $request->seed(),
@@ -83,7 +85,7 @@ class TextToSpeechController extends Controller
                 apiKey: $apiKey,
                 voice: $voice,
                 text: $request->input('text'),
-                settings: $request->voiceSettings(),
+                settings: $this->settingsResolver->resolve($voice, $request->voiceSettingOverrides()),
                 modelId: $request->modelId(),
                 outputFormat: $request->outputFormat(),
                 seed: $request->seed(),

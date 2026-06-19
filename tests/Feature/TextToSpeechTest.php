@@ -92,6 +92,47 @@ class TextToSpeechTest extends TestCase
         Storage::disk('local')->assertExists($speech->audio_path);
     }
 
+    public function test_voice_default_settings_reach_the_api(): void
+    {
+        $key = $this->makeKey();
+        Voice::create([
+            'slug' => 'my-voice',
+            'name' => 'My Voice',
+            'settings' => ['stability' => 0.8, 'style' => 0.3],
+        ]);
+
+        $response = $this->withHeaders(['xi-api-key' => $key->key])
+            ->postJson('/v1/text-to-speech/my-voice', ['text' => 'Hello.']);
+
+        $response->assertStatus(200);
+
+        // A request that sends no voice_settings inherits the voice's saved
+        // tuning — the resolution chain that makes "save to voice defaults" mean
+        // something for the plugin. (See docs/STUDIO-TUNING.md.)
+        $settings = Speech::first()->settings;
+        $this->assertSame(0.8, $settings['stability']);
+        $this->assertSame(0.3, $settings['style']);
+    }
+
+    public function test_request_voice_settings_override_voice_defaults(): void
+    {
+        $key = $this->makeKey();
+        Voice::create([
+            'slug' => 'my-voice',
+            'name' => 'My Voice',
+            'settings' => ['stability' => 0.8],
+        ]);
+
+        $response = $this->withHeaders(['xi-api-key' => $key->key])
+            ->postJson('/v1/text-to-speech/my-voice', [
+                'text' => 'Hello.',
+                'voice_settings' => ['stability' => 0.2],
+            ]);
+
+        $response->assertStatus(200);
+        $this->assertSame(0.2, Speech::first()->settings['stability']);
+    }
+
     public function test_identical_requests_are_cached(): void
     {
         $key = $this->makeKey();

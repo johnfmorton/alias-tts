@@ -1,9 +1,8 @@
 # Studio voice tuning — design plan
 
-> **Status:** Design only — not yet implemented. Drafted 2026-06-19.
-> No feature code has been written; this captures the plan so it survives the
-> conversation it came from. The four [Open decisions](#open-decisions) should be
-> answered before any phase begins.
+> **Status:** Drafted 2026-06-19. The four decisions below are resolved.
+> **Phase 0 (the shared resolver) is implemented and test-verified 2026-06-19**;
+> Phases 1–3 remain design-only.
 
 ## Why
 
@@ -81,8 +80,9 @@ automatically.
 - **Chunk** — one migration: nullable `settings` JSON on `tts_chunks`. `null`
   means inherit. Editing it marks the chunk `stale` and the final audio outdated
   (reuse `ProjectService::markFinalOutdated()`).
-- **Shared** — extract a `SettingsResolver` used by `SpeechService`,
-  `ProjectService`, and `StudioController`, deleting the three divergent copies.
+- **Shared** — `App\Services\Tts\VoiceSettingsResolver` is the one chain, called
+  by the public API, the project API, and both Studio controllers (done in
+  Phase 0), replacing the three divergent copies.
 
 ## UX: progressive disclosure, not a feature flag
 
@@ -136,9 +136,13 @@ PROJECT: "Episode 12 intro"
 
 ## Suggested build order
 
-- **Phase 0 — Unify resolution** *(no visible feature)*. One `SettingsResolver`;
-  voice defaults apply everywhere; precedence tests. The spine. Low risk (inert
-  for existing data).
+- **Phase 0 — Unify resolution** *(no visible feature)* — **DONE, test-verified
+  2026-06-19.** Added `App\Services\Tts\VoiceSettingsResolver` (config → voice →
+  overrides) and routed the public `/v1` API, the project API, the Studio
+  inspector, and Studio projects all through it, deleting three divergent copies.
+  Voice `stability`/`style` defaults now reach the API (previously only `seed`
+  did). Covered by `tests/Unit/VoiceSettingsResolverTest.php` and new
+  `TextToSpeechTest` cases.
 - **Phase 1 — Voice tuning + Inspector A/B bench** behind the Advanced toggle,
   with "save to voice defaults." Delivers the README promise and closes the loop
   to the plugin.
@@ -147,16 +151,24 @@ PROJECT: "Episode 12 intro"
 - **Phase 3 (optional)** — presets/named profiles; show the resolved
   `cfg_weight`/`exaggeration` in Studio's debug view.
 
-## Open decisions
+## Decisions — resolved 2026-06-19
 
-1. **Confirm the loop is intended**: saving voice defaults *should* change the
-   public API output for that voice (that's the whole point) — yes?
-2. **Per-chunk `seed`**: include it? It lets you re-roll one chunk's "take"
-   without touching the text — handy for fixing a single bad generation.
-3. **Toggle home**: per-user UI preference (lean) vs install-wide config flag.
-4. **`similarity_boost` / `use_speaker_boost`**: in Studio, hide/disable them with
-   a note (they're inert with Chatterbox) rather than showing knobs that do
-   nothing? Friendlier and more honest.
+1. **Voice defaults propagate to the public `/v1` API — YES.** Tuning a voice
+   changes what the plugin hears when a request omits `voice_settings`; an explicit
+   request value still overrides. This mirrors how `seed` already works. Implies
+   the Phase 0 refactor of `TextToSpeechRequest::voiceSettings()` so it reports
+   only the keys the client *explicitly* sent (today it coalesces all four from
+   request-or-config, which hides "omitted" from "sent the default").
+2. **No persisted per-chunk `seed`.** Projects rebuild from *stored* WAV bytes, so
+   a saved per-chunk seed buys little. Instead add a **"re-roll" action** —
+   regenerate one chunk with a fresh random seed to escape a bad take. Per-chunk
+   *overrides* stay `stability`/`style` only.
+3. **Toggle = per-user preference, default off.** Friendly default for casual use,
+   sticky for power users. (An ephemeral in-page disclosure is an acceptable
+   lighter v1 if we want to ship Phase 1 without a preference store.)
+4. **Hide `similarity_boost` / `use_speaker_boost` in Studio.** They're inert with
+   Chatterbox, and silent knobs are confusing in a tune-by-ear tool. Keep them in
+   the API for ElevenLabs drop-in compatibility; optionally show a one-line note.
 
 ## Reference: how a knob reaches the model
 

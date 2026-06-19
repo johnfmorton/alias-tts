@@ -5,7 +5,7 @@ voice backend for the [Bespoken Craft CMS plugin](https://github.com/johnfmorton
 
 ![CI](https://github.com/johnfmorton/bespoken-tts-service/actions/workflows/ci.yml/badge.svg)
 
-This is a small Laravel app that speaks the ElevenLabs HTTP API. Point the
+This is a Laravel app that speaks the ElevenLabs HTTP API. Point the
 Bespoken plugin (or any ElevenLabs client) at it by changing only the **base URL**
 and **API key**, and it returns MP3 audio in your own cloned voice. It handles
 auth, caching, chunking, storage, and an admin dashboard; the actual voice

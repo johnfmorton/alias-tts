@@ -9,6 +9,7 @@ use App\Models\TtsProject;
 use App\Models\User;
 use App\Models\Voice;
 use App\Services\ProjectService;
+use App\Services\Tts\VoiceSettingsResolver;
 use Illuminate\Support\Carbon;
 use Symfony\Component\HttpFoundation\Response;
 
@@ -27,6 +28,7 @@ class ProjectApiController extends Controller
 {
     public function __construct(
         private ProjectService $projects,
+        private VoiceSettingsResolver $settingsResolver,
     ) {}
 
     public function store(CreateProjectRequest $request): Response
@@ -48,7 +50,7 @@ class ProjectApiController extends Controller
             title: $this->resolveTitle($request->input('title')),
             voice: $voice,
             text: (string) $request->input('text'),
-            settings: $request->voiceSettings(),
+            settings: $this->settingsResolver->resolve($voice, $request->voiceSettingOverrides()),
             modelId: $request->modelId(),
             outputFormat: $request->outputFormat(),
             seed: $request->seed(),

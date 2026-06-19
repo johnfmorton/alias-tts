@@ -49,19 +49,16 @@ class TextToSpeechRequest extends FormRequest
     }
 
     /**
-     * Merge client-supplied voice_settings over the configured defaults.
+     * The voice_settings keys the client explicitly sent. Only these override
+     * the voice's saved defaults and the configured defaults — the layering
+     * itself is done by {@see \App\Services\Tts\VoiceSettingsResolver}. Empty
+     * when the client sent no voice_settings.
+     *
+     * @return array<string, mixed>
      */
-    public function voiceSettings(): array
+    public function voiceSettingOverrides(): array
     {
-        $defaults = (array) config('tts.default_voice_settings');
-        $provided = (array) $this->input('voice_settings', []);
-
-        return [
-            'stability' => (float) ($provided['stability'] ?? $defaults['stability']),
-            'similarity_boost' => (float) ($provided['similarity_boost'] ?? $defaults['similarity_boost']),
-            'style' => (float) ($provided['style'] ?? $defaults['style']),
-            'use_speaker_boost' => (bool) ($provided['use_speaker_boost'] ?? $defaults['use_speaker_boost']),
-        ];
+        return (array) $this->input('voice_settings', []);
     }
 
     public function modelId(): string

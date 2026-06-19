@@ -10,6 +10,7 @@ use App\Services\SpeechService;
 use App\Services\TextChunker;
 use App\Services\TextNormalizer;
 use App\Services\Tts\TtsProvider;
+use App\Services\Tts\VoiceSettingsResolver;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Storage;
@@ -40,6 +41,7 @@ class StudioController extends Controller
         private readonly AudioConverter $converter,
         private readonly TextChunker $chunker,
         private readonly TextNormalizer $normalizer,
+        private readonly VoiceSettingsResolver $settingsResolver,
     ) {}
 
     public function index(): View
@@ -262,24 +264,16 @@ class StudioController extends Controller
     }
 
     /**
-     * Build provider settings: config defaults, overlaid with the voice's own
-     * defaults, then any per-request debug overrides (stability / style / seed).
+     * Build provider settings through the shared {@see VoiceSettingsResolver}
+     * (config defaults -> voice defaults -> per-request debug overrides), then
+     * fold in the seed. The inspector calls the provider directly, so the seed
+     * travels inside the settings array here (request override -> voice default).
      *
      * @return array<string, mixed>
      */
     private function settings(Request $request, Voice $voice): array
     {
-        $settings = config('tts.default_voice_settings', []);
-
-        if (is_array($voice->settings)) {
-            $settings = array_merge($settings, $voice->settings);
-        }
-
-        foreach (['stability', 'style'] as $knob) {
-            if ($request->filled($knob)) {
-                $settings[$knob] = (float) $request->input($knob);
-            }
-        }
+        $settings = $this->settingsResolver->resolve($voice, $this->overrides($request));
 
         $seed = $request->filled('seed') ? (int) $request->input('seed') : ($voice->settings['seed'] ?? null);
         if ($seed !== null) {
@@ -287,6 +281,24 @@ class StudioController extends Controller
         }
 
         return $settings;
+    }
+
+    /**
+     * The tunable knobs the request explicitly set (Studio exposes stability and
+     * style — the only two Chatterbox actually responds to).
+     *
+     * @return array<string, float>
+     */
+    private function overrides(Request $request): array
+    {
+        $overrides = [];
+        foreach (['stability', 'style'] as $knob) {
+            if ($request->filled($knob)) {
+                $overrides[$knob] = (float) $request->input($knob);
+            }
+        }
+
+        return $overrides;
     }
 
     /** Providers read the reference clip from a local filesystem path. */
