@@ -4,6 +4,19 @@ All notable changes to this project are documented in this file. The format is
 based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this
 project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+- The version number in the admin footer now links to that version's GitHub
+  release (`{APP_SOURCE_URL}/releases/tag/v{version}`), opening in a new tab. The
+  base URL is configurable via `APP_SOURCE_URL`; set it empty to drop the link.
+
+### Security
+- Bumped `guzzlehttp/guzzle` (7.11.2 → 7.12.1) and `guzzlehttp/psr7`
+  (2.11.1 → 2.12.1) to patched releases, resolving three moderate Dependabot
+  advisories (HTTPS-proxy cleartext downgrade, dot-only cookie domain matching,
+  and CRLF injection in HTTP start-line serialization).
+
 ## [0.8.1] - 2026-06-19
 
 ### Added

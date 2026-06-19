@@ -72,7 +72,16 @@
             <footer class="border-t border-zinc-800 bg-zinc-900/40">
                 <div class="mx-auto flex w-full max-w-5xl items-center justify-between px-4 py-4 text-xs text-zinc-500">
                     <span>Bespoken TTS</span>
-                    <span class="font-mono">v{{ config('app.version') }}</span>
+                    @php
+                        $sourceUrl = config('app.source_url');
+                        $releaseUrl = $sourceUrl ? rtrim($sourceUrl, '/').'/releases/tag/v'.config('app.version') : null;
+                    @endphp
+                    @if($releaseUrl)
+                        <a href="{{ $releaseUrl }}" target="_blank" rel="noopener noreferrer"
+                           class="font-mono transition hover:text-zinc-300">v{{ config('app.version') }}</a>
+                    @else
+                        <span class="font-mono">v{{ config('app.version') }}</span>
+                    @endif
                 </div>
             </footer>
         @endauth

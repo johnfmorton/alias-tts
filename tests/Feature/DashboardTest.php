@@ -190,6 +190,27 @@ class DashboardTest extends TestCase
             ->assertSee('v'.config('app.version'));
     }
 
+    public function test_footer_version_links_to_its_github_release(): void
+    {
+        config(['app.source_url' => 'https://github.com/acme/repo']);
+
+        $this->actingAs($this->admin())
+            ->get(route('admin.dashboard'))
+            ->assertOk()
+            ->assertSee('https://github.com/acme/repo/releases/tag/v'.config('app.version'), escape: false);
+    }
+
+    public function test_footer_version_is_plain_text_when_source_url_is_empty(): void
+    {
+        config(['app.source_url' => '']);
+
+        $this->actingAs($this->admin())
+            ->get(route('admin.dashboard'))
+            ->assertOk()
+            ->assertSee('v'.config('app.version'))
+            ->assertDontSee('/releases/tag/', escape: false);
+    }
+
     public function test_footer_version_is_not_shown_to_guests(): void
     {
         $this->get(route('login'))

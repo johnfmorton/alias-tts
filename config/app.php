@@ -30,6 +30,19 @@ return [
 
     /*
     |--------------------------------------------------------------------------
+    | Source Repository URL
+    |--------------------------------------------------------------------------
+    |
+    | Base GitHub URL for this project. Used to turn the footer version into a
+    | link to that version's release (`{source_url}/releases/tag/v{version}`).
+    | Override per fork via APP_SOURCE_URL; set it empty to drop the link.
+    |
+    */
+
+    'source_url' => env('APP_SOURCE_URL', 'https://github.com/johnfmorton/bespoken-tts-service'),
+
+    /*
+    |--------------------------------------------------------------------------
     | Application Environment
     |--------------------------------------------------------------------------
     |
