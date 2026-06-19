@@ -125,6 +125,28 @@ class VoiceService
     }
 
     /**
+     * Persist just the stability/style tuning onto a voice's settings — the
+     * "save to voice defaults" action from the Studio tuning bench. A null value
+     * clears that key (falling back to the system default). Leaves the seed,
+     * reference clip, name and slug untouched.
+     */
+    public function saveTuning(Voice $voice, ?float $stability, ?float $style): Voice
+    {
+        $settings = is_array($voice->settings) ? $voice->settings : [];
+        foreach (['stability' => $stability, 'style' => $style] as $key => $value) {
+            if ($value !== null) {
+                $settings[$key] = $value;
+            } else {
+                unset($settings[$key]);
+            }
+        }
+
+        $voice->update(['settings' => $settings ?: null]);
+
+        return $voice;
+    }
+
+    /**
      * Export a voice to a portable .zip (a `voice.json` manifest + the reference
      * clip) that can be imported into another instance.
      */

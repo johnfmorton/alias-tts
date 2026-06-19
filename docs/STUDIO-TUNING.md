@@ -1,8 +1,8 @@
 # Studio voice tuning — design plan
 
 > **Status:** Drafted 2026-06-19. The four decisions below are resolved.
-> **Phase 0 (the shared resolver) is implemented and test-verified 2026-06-19**;
-> Phases 1–3 remain design-only.
+> **Phases 0 and 1 are implemented and test-verified 2026-06-19** (live UI
+> click-through still to be done by John); Phases 2–3 remain design-only.
 
 ## Why
 
@@ -143,9 +143,14 @@ PROJECT: "Episode 12 intro"
   Voice `stability`/`style` defaults now reach the API (previously only `seed`
   did). Covered by `tests/Unit/VoiceSettingsResolverTest.php` and new
   `TextToSpeechTest` cases.
-- **Phase 1 — Voice tuning + Inspector A/B bench** behind the Advanced toggle,
-  with "save to voice defaults." Delivers the README promise and closes the loop
-  to the plugin.
+- **Phase 1 — Voice tuning + Inspector A/B bench** — **DONE, test-verified
+  2026-06-19** (live UI walkthrough pending). stability/style are first-class
+  voice defaults (edit/create forms + `voice:create --stability/--style`); the
+  inspector gained a per-user **Advanced tuning** toggle (`users.studio_advanced`,
+  default off) that reveals the knobs and an **A/B bench** — generate a line at
+  several settings, pick the best, and **save to voice defaults**
+  (`StudioController::saveVoiceDefaults` → `VoiceService::saveTuning`). Tests:
+  `VoiceTuningTest`, new `StudioTest` cases.
 - **Phase 2 — Per-chunk overrides** (`tts_chunks.settings`, per-chunk tune UI,
   staleness/regenerate, chunk-scope preview).
 - **Phase 3 (optional)** — presets/named profiles; show the resolved

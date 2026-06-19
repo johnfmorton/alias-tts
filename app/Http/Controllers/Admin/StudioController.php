@@ -11,6 +11,7 @@ use App\Services\TextChunker;
 use App\Services\TextNormalizer;
 use App\Services\Tts\TtsProvider;
 use App\Services\Tts\VoiceSettingsResolver;
+use App\Services\VoiceService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Storage;
@@ -261,6 +262,48 @@ class StudioController extends Controller
         }
 
         return Voice::orderBy('name')->first();
+    }
+
+    /**
+     * Persist the per-user "Advanced tuning" toggle so Studio remembers whether
+     * to reveal the knobs + A/B bench on the next visit. Default off keeps the
+     * inspector friendly. See docs/STUDIO-TUNING.md.
+     */
+    public function setAdvanced(Request $request): JsonResponse
+    {
+        $request->user()->update(['studio_advanced' => $request->boolean('enabled')]);
+
+        return response()->json(['ok' => true]);
+    }
+
+    /**
+     * "Save to voice defaults" from the tuning bench: write the chosen
+     * stability/style onto the voice so every future request (including the
+     * plugin's) inherits them when it doesn't send its own. A blank knob clears
+     * that default.
+     */
+    public function saveVoiceDefaults(Request $request, VoiceService $voices): JsonResponse
+    {
+        if ($error = $this->validationError($request, [
+            'voice' => ['required', 'string'],
+            'stability' => ['nullable', 'numeric', 'between:0,1'],
+            'style' => ['nullable', 'numeric', 'between:0,1'],
+        ])) {
+            return $error;
+        }
+
+        $voice = Voice::resolve((string) $request->input('voice'));
+        if (! $voice) {
+            return response()->json(['message' => 'Unknown voice.'], 422);
+        }
+
+        $voices->saveTuning(
+            $voice,
+            $request->filled('stability') ? (float) $request->input('stability') : null,
+            $request->filled('style') ? (float) $request->input('style') : null,
+        );
+
+        return response()->json(['ok' => true, 'message' => "Saved as {$voice->name}'s defaults."]);
     }
 
     /**

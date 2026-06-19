@@ -38,7 +38,8 @@
          data-preview-url="{{ route('admin.studio.preview') }}"
          data-synthesize-url="{{ route('admin.studio.synthesize') }}"
          data-stitch-url="{{ route('admin.studio.stitch') }}"
-         data-concat-url="{{ route('admin.studio.concat') }}">
+         data-concat-url="{{ route('admin.studio.concat') }}"
+         data-advanced-url="{{ route('admin.studio.advanced') }}">
 
         {{-- Input --}}
         <div class="mb-6 rounded-xl border border-zinc-800 bg-zinc-900/50 p-5">
@@ -67,9 +68,17 @@
                 </button>
             </div>
 
-            <details class="mt-4 text-sm text-zinc-400">
-                <summary class="cursor-pointer select-none hover:text-zinc-200">Advanced (Chatterbox knobs)</summary>
-                <div class="mt-3 flex flex-wrap gap-4">
+            {{-- Advanced tuning: a per-user toggle (off by default) reveals the
+                 Chatterbox knobs and the A/B tuning bench. --}}
+            <label class="mt-4 inline-flex cursor-pointer items-center gap-2 text-sm text-zinc-300">
+                <input id="studio-advanced-toggle" type="checkbox" @checked(auth()->user()->studio_advanced)
+                       class="rounded border-zinc-700 bg-zinc-900 text-cyan-500 focus:ring-cyan-500/30">
+                Advanced tuning <span class="text-xs text-zinc-500">— knobs &amp; A/B bench</span>
+            </label>
+
+            <div id="studio-advanced" @unless(auth()->user()->studio_advanced) class="hidden" @endunless>
+                {{-- Single-shot knobs (used by Whole / Stitched / per-chunk Generate) --}}
+                <div class="mt-3 flex flex-wrap gap-4 rounded-lg border border-zinc-800 bg-zinc-950/40 p-3 text-sm text-zinc-400">
                     <label class="flex flex-col gap-1">
                         <span class="text-xs text-zinc-500">Seed (blank = random)</span>
                         <input id="studio-seed" type="number" inputmode="numeric"
@@ -86,7 +95,31 @@
                                class="w-28 rounded-lg border border-zinc-700 bg-zinc-950 px-3 py-1.5 text-sm">
                     </label>
                 </div>
-            </details>
+
+                {{-- A/B tuning bench: hear the text above at several settings, pick the
+                     best, save it as the selected voice's defaults. --}}
+                <div id="studio-bench" class="mt-3 rounded-xl border border-zinc-800 bg-zinc-900/50 p-4"
+                     data-voice-defaults-url="{{ route('admin.studio.voice-defaults') }}">
+                    <div class="flex flex-wrap items-start justify-between gap-3">
+                        <div>
+                            <h3 class="text-sm font-semibold text-zinc-200">Tuning bench</h3>
+                            <p class="mt-0.5 text-xs text-zinc-500">Hear the text above at different settings, then save the best to the voice. Higher stability = steadier pacing; higher style = more animated.</p>
+                        </div>
+                        <button type="button" id="studio-bench-add"
+                                class="rounded-lg border border-zinc-700 px-3 py-1.5 text-xs hover:bg-zinc-800">+ Add setting</button>
+                    </div>
+
+                    <ol id="studio-bench-rows" class="mt-3 space-y-2"></ol>
+
+                    <div class="mt-3 flex flex-wrap items-center gap-2">
+                        <button type="button" id="studio-bench-generate" @disabled($voices->isEmpty())
+                                class="rounded-lg border border-cyan-700/50 bg-cyan-500/10 px-3 py-2 text-sm text-cyan-300 hover:bg-cyan-500/20 disabled:opacity-40">▶ Generate all</button>
+                        <button type="button" id="studio-bench-save" @disabled($voices->isEmpty())
+                                class="rounded-lg border border-emerald-700/50 bg-emerald-500/10 px-3 py-2 text-sm text-emerald-300 hover:bg-emerald-500/20 disabled:opacity-40">Save pick to voice defaults</button>
+                    </div>
+                    <div id="studio-bench-status" class="mt-2 text-sm text-zinc-400" role="status" aria-live="polite"></div>
+                </div>
+            </div>
 
             <div id="studio-status" class="mt-3 text-sm text-zinc-400" role="status" aria-live="polite"></div>
         </div>

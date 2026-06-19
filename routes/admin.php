@@ -32,6 +32,8 @@ Route::prefix('studio')->name('studio.')->group(function () {
     Route::post('/synthesize', [StudioController::class, 'synthesize'])->name('synthesize');
     Route::post('/stitch', [StudioController::class, 'stitch'])->name('stitch');
     Route::post('/concat', [StudioController::class, 'concat'])->name('concat');
+    Route::post('/advanced', [StudioController::class, 'setAdvanced'])->name('advanced');
+    Route::post('/voice-defaults', [StudioController::class, 'saveVoiceDefaults'])->name('voice-defaults');
 
     // Editable projects: persist chunks, regenerate one at a time, rebuild the stitch.
     Route::prefix('projects')->name('projects.')->group(function () {

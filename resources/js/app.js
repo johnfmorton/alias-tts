@@ -467,6 +467,190 @@ function initStudio() {
 initStudio();
 
 // ---------------------------------------------------------------------------
+// Studio "Advanced tuning" toggle (per-user, persisted) + A/B tuning bench.
+// ---------------------------------------------------------------------------
+function initStudioAdvancedToggle() {
+    const root = document.getElementById('studio');
+    const toggle = document.getElementById('studio-advanced-toggle');
+    const panel = document.getElementById('studio-advanced');
+    if (!root || !toggle || !panel) return;
+
+    toggle.addEventListener('change', () => {
+        panel.classList.toggle('hidden', !toggle.checked);
+        // Persist the preference; a failure just means it isn't remembered.
+        fetch(root.dataset.advancedUrl, {
+            method: 'POST',
+            headers: { 'X-CSRF-TOKEN': csrfToken(), 'Accept': 'application/json' },
+            body: new URLSearchParams({ enabled: toggle.checked ? '1' : '0' }),
+        }).catch(() => {});
+    });
+}
+initStudioAdvancedToggle();
+
+function initStudioBench() {
+    const bench = document.getElementById('studio-bench');
+    const root = document.getElementById('studio');
+    if (!bench || !root) return;
+
+    const synthUrl = root.dataset.synthesizeUrl;
+    const saveUrl = bench.dataset.voiceDefaultsUrl;
+    const els = {
+        text: document.getElementById('studio-text'),
+        voice: document.getElementById('studio-voice'),
+        rows: document.getElementById('studio-bench-rows'),
+        addBtn: document.getElementById('studio-bench-add'),
+        genBtn: document.getElementById('studio-bench-generate'),
+        saveBtn: document.getElementById('studio-bench-save'),
+        status: document.getElementById('studio-bench-status'),
+    };
+
+    const rows = [];
+
+    const knob = (value, placeholder) => {
+        const input = document.createElement('input');
+        Object.assign(input, { type: 'number', step: '0.05', min: '0', max: '1', placeholder });
+        if (value !== null) input.value = value;
+        input.className = 'w-20 rounded-lg border border-zinc-700 bg-zinc-950 px-2 py-1 text-sm';
+        return input;
+    };
+
+    const field = (labelText, input) => {
+        const wrap = document.createElement('label');
+        wrap.className = 'flex items-center gap-1.5 text-xs text-zinc-500';
+        wrap.append(document.createTextNode(labelText), input);
+        return wrap;
+    };
+
+    // The bench body for one candidate row: the text above, the voice, and this
+    // row's stability/style. Returns null when there's no text to synthesize.
+    const rowBody = (state) => {
+        const text = els.text.value.trim();
+        if (!text) return null;
+        const body = new URLSearchParams({ text });
+        if (els.voice?.value) body.set('voice', els.voice.value);
+        if (state.stabIn.value !== '') body.set('stability', state.stabIn.value);
+        if (state.styleIn.value !== '') body.set('style', state.styleIn.value);
+        return body;
+    };
+
+    const loadAudio = (audio, blob) => {
+        audio.src = URL.createObjectURL(blob);
+        audio.classList.remove('hidden');
+    };
+
+    async function generateRow(state, btn, autoplay = true) {
+        const body = rowBody(state);
+        if (!body) { setStatus(els.status, 'Paste some text above first.', 'error'); return; }
+        const t0 = performance.now();
+        startBusy(btn, '');
+        try {
+            const res = await fetch(synthUrl, {
+                method: 'POST',
+                headers: { 'X-CSRF-TOKEN': csrfToken(), 'Accept': 'audio/*' },
+                body,
+            });
+            if (!res.ok) throw new Error(await errorMessage(res));
+            const blob = await res.blob();
+            autoplay ? playAudio(state.audio, blob) : loadAudio(state.audio, blob);
+            setStatus(els.status, `✓ Generated in ${elapsed(t0)}s.`, 'ok');
+        } catch (err) {
+            setStatus(els.status, `✗ ${err.message}`, 'error');
+        } finally {
+            endBusy(btn);
+        }
+    }
+
+    function addRow(stability, style) {
+        const li = document.createElement('li');
+        li.className = 'flex flex-wrap items-center gap-2 rounded-lg border border-zinc-800 bg-zinc-950/40 p-2';
+
+        const pick = document.createElement('input');
+        Object.assign(pick, { type: 'radio', name: 'studio-bench-pick', title: 'Pick this setting to save' });
+        pick.className = 'accent-emerald-500';
+
+        const stabIn = knob(stability, '0.5');
+        const styleIn = knob(style, '0.0');
+
+        const playBtn = document.createElement('button');
+        playBtn.type = 'button';
+        playBtn.className = 'rounded-lg border border-zinc-700 px-3 py-1.5 text-sm hover:bg-zinc-800';
+        playBtn.textContent = '▶';
+
+        const audio = document.createElement('audio');
+        audio.controls = true;
+        audio.className = 'hidden h-8 grow';
+
+        const remove = document.createElement('button');
+        remove.type = 'button';
+        remove.className = 'text-zinc-600 hover:text-zinc-300';
+        remove.title = 'Remove';
+        remove.textContent = '✕';
+
+        li.append(pick, field('Stability', stabIn), field('Style', styleIn), playBtn, audio, remove);
+
+        const state = { stabIn, styleIn, audio, pick };
+        rows.push(state);
+        if (rows.length === 1) pick.checked = true;
+
+        playBtn.addEventListener('click', () => generateRow(state, playBtn));
+        remove.addEventListener('click', () => {
+            const i = rows.indexOf(state);
+            if (i >= 0) rows.splice(i, 1);
+            li.remove();
+            if (pick.checked && rows[0]) rows[0].pick.checked = true;
+        });
+
+        els.rows.append(li);
+    }
+
+    async function generateAll() {
+        if (!els.text.value.trim()) { setStatus(els.status, 'Paste some text above first.', 'error'); return; }
+        startBusy(els.genBtn, 'Generating…');
+        try {
+            // Sequential — the provider is rate-limited; load each without autoplay
+            // so the user compares them deliberately, not all at once.
+            for (const state of rows) await generateRow(state, els.genBtn, false);
+            setStatus(els.status, '✓ Generated all settings — play each to compare.', 'ok');
+        } finally {
+            endBusy(els.genBtn);
+        }
+    }
+
+    async function savePick() {
+        const picked = rows.find((s) => s.pick.checked);
+        if (!picked) { setStatus(els.status, 'Pick a setting first.', 'error'); return; }
+        if (!els.voice?.value) { setStatus(els.status, 'Select a voice first.', 'error'); return; }
+        const body = new URLSearchParams({ voice: els.voice.value });
+        if (picked.stabIn.value !== '') body.set('stability', picked.stabIn.value);
+        if (picked.styleIn.value !== '') body.set('style', picked.styleIn.value);
+        startBusy(els.saveBtn, 'Saving…');
+        try {
+            const res = await fetch(saveUrl, {
+                method: 'POST',
+                headers: { 'X-CSRF-TOKEN': csrfToken(), 'Accept': 'application/json' },
+                body,
+            });
+            const data = await res.json().catch(() => ({}));
+            if (!res.ok) throw new Error(data.message || `HTTP ${res.status}`);
+            setStatus(els.status, `✓ ${data.message || 'Saved.'}`, 'ok');
+        } catch (err) {
+            setStatus(els.status, `✗ ${err.message}`, 'error');
+        } finally {
+            endBusy(els.saveBtn);
+        }
+    }
+
+    els.addBtn.addEventListener('click', () => addRow(null, null));
+    els.genBtn.addEventListener('click', generateAll);
+    els.saveBtn.addEventListener('click', savePick);
+
+    // Seed with the current default and the README's steadier/more-expressive example.
+    addRow(0.5, 0.0);
+    addRow(0.8, 0.3);
+}
+initStudioBench();
+
+// ---------------------------------------------------------------------------
 // Studio project editor: regenerate one chunk, rebuild the stitched final.
 // ---------------------------------------------------------------------------
 const STATUS_STYLES = {

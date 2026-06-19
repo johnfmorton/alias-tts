@@ -44,6 +44,51 @@ class StudioTest extends TestCase
             ->assertSee('Normalized text');
     }
 
+    public function test_advanced_tuning_toggle_persists_per_user(): void
+    {
+        $admin = $this->admin();
+        $this->assertFalse($admin->fresh()->studio_advanced); // DB default
+
+
+
+        $this->actingAs($admin)->post(route('admin.studio.advanced'), ['enabled' => '1'])
+            ->assertOk()->assertJson(['ok' => true]);
+        $this->assertTrue($admin->refresh()->studio_advanced);
+
+        $this->actingAs($admin)->post(route('admin.studio.advanced'), ['enabled' => '0']);
+        $this->assertFalse($admin->refresh()->studio_advanced);
+    }
+
+    public function test_save_voice_defaults_writes_tuning_to_the_voice(): void
+    {
+        $voice = Voice::create(['slug' => 'john', 'name' => 'John']);
+
+        $this->actingAs($this->admin())
+            ->post(route('admin.studio.voice-defaults'), [
+                'voice' => 'john',
+                'stability' => 0.8,
+                'style' => 0.3,
+            ])
+            ->assertOk()
+            ->assertJsonPath('ok', true);
+
+        $settings = $voice->refresh()->settings;
+        $this->assertSame(0.8, $settings['stability']);
+        $this->assertSame(0.3, $settings['style']);
+    }
+
+    public function test_save_voice_defaults_validates_range_and_voice(): void
+    {
+        $this->actingAs($this->admin())
+            ->postJson(route('admin.studio.voice-defaults'), ['voice' => 'nope', 'stability' => 0.5])
+            ->assertStatus(422);
+
+        Voice::create(['slug' => 'john', 'name' => 'John']);
+        $this->actingAs($this->admin())
+            ->postJson(route('admin.studio.voice-defaults'), ['voice' => 'john', 'stability' => 2])
+            ->assertStatus(422);
+    }
+
     public function test_preview_normalizes_and_makes_no_provider_call(): void
     {
         // Emoji stripped, "editor ." tidied to "editor." — and no audio is touched.
