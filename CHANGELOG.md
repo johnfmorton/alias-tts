@@ -4,7 +4,7 @@ All notable changes to this project are documented in this file. The format is
 based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this
 project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [0.8.1] - 2026-06-19
 
 ### Added
 - **Unsaved-edit safeguards in the Studio editor.** A chunk whose text has been
@@ -322,7 +322,8 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   fixed seed; the response cache guarantees stable output for repeated identical
   requests.
 
-[Unreleased]: https://github.com/johnfmorton/bespoken-tts-service/compare/v0.8.0...HEAD
+[Unreleased]: https://github.com/johnfmorton/bespoken-tts-service/compare/v0.8.1...HEAD
+[0.8.1]: https://github.com/johnfmorton/bespoken-tts-service/compare/v0.8.0...v0.8.1
 [0.8.0]: https://github.com/johnfmorton/bespoken-tts-service/compare/v0.7.0...v0.8.0
 [0.7.0]: https://github.com/johnfmorton/bespoken-tts-service/compare/v0.6.1...v0.7.0
 [0.6.1]: https://github.com/johnfmorton/bespoken-tts-service/compare/v0.6.0...v0.6.1
