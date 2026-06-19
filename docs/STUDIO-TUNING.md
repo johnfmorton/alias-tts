@@ -1,8 +1,8 @@
 # Studio voice tuning — design plan
 
 > **Status:** Drafted 2026-06-19. The four decisions below are resolved.
-> **Phases 0 and 1 are implemented and test-verified 2026-06-19** (live UI
-> click-through still to be done by John); Phases 2–3 remain design-only.
+> **Phases 0, 1 and 2 are implemented and test-verified 2026-06-19** (live UI
+> click-through still to be done by John); Phase 3 (optional) remains design-only.
 
 ## Why
 
@@ -151,8 +151,16 @@ PROJECT: "Episode 12 intro"
   several settings, pick the best, and **save to voice defaults**
   (`StudioController::saveVoiceDefaults` → `VoiceService::saveTuning`). Tests:
   `VoiceTuningTest`, new `StudioTest` cases.
-- **Phase 2 — Per-chunk overrides** (`tts_chunks.settings`, per-chunk tune UI,
-  staleness/regenerate, chunk-scope preview).
+- **Phase 2 — Per-chunk overrides** — **DONE, test-verified 2026-06-19** (live UI
+  walkthrough pending). Added `tts_chunks.settings` (nullable; null = inherit);
+  `ProjectService::providerSettings` overlays the chunk override on the project's
+  resolved settings, and `updateChunkTuning` marks a generated chunk stale + the
+  final outdated. Each chunk in the project editor gained a "Tune this chunk" panel
+  (stability/style + Save tuning) and a **Re-roll** action
+  (`generateChunk(reroll: true)` → fresh random seed, no persisted per-chunk seed).
+  Endpoints `chunks.tuning` / `chunks.reroll`; tests in `StudioProjectTest`. (A
+  dedicated per-chunk A/B preview was not built — tune → regenerate → listen, or
+  re-roll, covers it; could revisit in Phase 3.)
 - **Phase 3 (optional)** — presets/named profiles; show the resolved
   `cfg_weight`/`exaggeration` in Studio's debug view.
 

@@ -733,17 +733,19 @@ function initStudioProject() {
         return false;
     }
 
-    async function generateChunk(card) {
+    // Generate (or re-roll) one chunk: optionally persist a pending text edit
+    // first, POST to `url`, then refresh status + audio. Re-roll uses the same
+    // flow against the reroll endpoint (which drops the pinned seed).
+    async function runGeneration(card, url, btn, label) {
         const textarea = card.querySelector('.chunk-text');
-        const genBtn = card.querySelector('.chunk-generate');
-        startBusy(genBtn, 'Generating…');
+        startBusy(btn, label);
         try {
             if (textarea.value !== textarea.dataset.original) {
                 // Persist the edit first. If that split the chunk, the page is
                 // reloading — don't generate the now-orphaned original chunk.
                 if (await patchChunk(card)) return;
             }
-            const res = await fetch(card.dataset.generateUrl, {
+            const res = await fetch(url, {
                 method: 'POST',
                 headers: { 'X-CSRF-TOKEN': csrfToken(), 'Accept': 'application/json' },
             });
@@ -756,15 +758,18 @@ function initStudioProject() {
             audio.src = bust(card.dataset.audioUrl);
             audio.classList.remove('hidden');
             audio.play().catch(() => {});
-            endBusy(genBtn);
-            genBtn.textContent = '▶ Regenerate';
+            endBusy(btn);
+            card.querySelector('.chunk-generate').textContent = '▶ Regenerate';
             refreshSeams(); // may reveal an inline seam preview next to a generated neighbor
         } catch (err) {
             setChunkStatus(card, 'failed');
-            endBusy(genBtn);
+            endBusy(btn);
             throw err;
         }
     }
+
+    const generateChunk = (card) =>
+        runGeneration(card, card.dataset.generateUrl, card.querySelector('.chunk-generate'), 'Generating…');
 
     async function generateAll() {
         const cards = [...root.querySelectorAll('.studio-chunk')]
@@ -868,6 +873,38 @@ function initStudioProject() {
             }
         });
         card.querySelector('.chunk-generate').addEventListener('click', () => generateChunk(card).catch(() => {}));
+
+        // Re-roll: regenerate this chunk with a fresh random seed (a new take).
+        card.querySelector('.chunk-reroll')?.addEventListener('click', () =>
+            runGeneration(card, card.dataset.rerollUrl, card.querySelector('.chunk-reroll'), 'Re-rolling…').catch(() => {}));
+
+        // Save this chunk's stability/style override; the server marks it stale.
+        card.querySelector('.chunk-tune-save')?.addEventListener('click', async () => {
+            const btn = card.querySelector('.chunk-tune-save');
+            const stability = card.querySelector('.chunk-stability').value;
+            const style = card.querySelector('.chunk-style').value;
+            startBusy(btn, 'Saving…');
+            try {
+                const res = await fetch(card.dataset.tuningUrl, {
+                    method: 'PATCH',
+                    headers: { 'X-CSRF-TOKEN': csrfToken(), 'Accept': 'application/json', 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        stability: stability === '' ? null : Number(stability),
+                        style: style === '' ? null : Number(style),
+                    }),
+                });
+                if (!res.ok) throw new Error(await errorMessage(res));
+                const data = await res.json();
+                setChunkStatus(card, data.status);
+                setProjectStatus(data.project_status);
+                refreshSeams();
+                setStatus(finalStatus, '✓ Tuning saved — regenerate to hear it.', 'ok');
+            } catch (err) {
+                setStatus(finalStatus, `✗ ${err.message}`, 'error');
+            } finally {
+                endBusy(btn);
+            }
+        });
 
         // Track dirty state as the user types; Revert restores the saved text.
         card.querySelector('.chunk-text').addEventListener('input', () => setDirty(card, isDirty(card)));
