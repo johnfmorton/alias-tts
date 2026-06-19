@@ -4,6 +4,7 @@ namespace App\Services;
 
 use App\Enums\ChunkStatus;
 use App\Enums\ProjectStatus;
+use App\Models\ApiKey;
 use App\Models\TtsChunk;
 use App\Models\TtsProject;
 use App\Models\Voice;
@@ -50,6 +51,7 @@ class ProjectService
         string $modelId,
         string $outputFormat,
         ?int $seed,
+        ?ApiKey $apiKey = null,
     ): TtsProject {
         $normalized = $this->normalizer->normalize($text);
         $segments = $this->chunker->segment(
@@ -61,6 +63,7 @@ class ProjectService
         );
 
         $project = TtsProject::create([
+            'api_key_id' => $apiKey?->id,
             'title' => $title !== '' ? $title : 'Untitled project',
             'voice_id' => $voice->id,
             'settings' => $settings,

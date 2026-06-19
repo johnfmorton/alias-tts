@@ -1,5 +1,6 @@
 <?php
 
+use App\Http\Controllers\ProjectApiController;
 use App\Http\Controllers\TextToSpeechController;
 use App\Http\Middleware\RateLimitApiRequests;
 use App\Http\Middleware\ValidateApiKey;
@@ -34,4 +35,9 @@ Route::middleware([ValidateApiKey::class])->group(function () {
 
     Route::get('/v1/text-to-speech/jobs/{id}/audio', [TextToSpeechController::class, 'audio'])
         ->name('tts.jobs.audio');
+
+    // Create an editable project from text (no generation — just normalize +
+    // chunk + persist), so it stays off the generation rate limit above.
+    Route::post('/v1/projects', [ProjectApiController::class, 'store'])
+        ->name('api.projects.store');
 });

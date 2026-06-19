@@ -22,6 +22,7 @@ class TtsProject extends Model
     use HasUuids;
 
     protected $fillable = [
+        'api_key_id',
         'title',
         'voice_id',
         'settings',
@@ -44,6 +45,11 @@ class TtsProject extends Model
     public function voice(): BelongsTo
     {
         return $this->belongsTo(Voice::class, 'voice_id');
+    }
+
+    public function apiKey(): BelongsTo
+    {
+        return $this->belongsTo(ApiKey::class, 'api_key_id');
     }
 
     public function chunks(): HasMany

@@ -6,6 +6,23 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Added
+- **Create-project API.** `POST /v1/projects` creates an editable Studio project
+  from text instead of generating audio — the non-generating sibling of
+  `POST /v1/text-to-speech/{voice_id}`. It takes `voice_id` and `text` in the body
+  (plus optional `title`, `model_id`, `voice_settings`, `seed`, `output_format`),
+  normalizes and chunks the text into a project (no provider calls), and returns
+  the project's id, an auto-generated title when none is given (e.g.
+  `Audio project #47 - June 19, 2026`), and a single-use `edit_url` that logs the
+  user into the control panel and lands them on the project. Like the generation
+  endpoints, it requires a valid API key (`xi-api-key`); it is not counted against
+  the per-key generation rate limit, since it does no generation. Projects created
+  this way record the calling API key (new nullable `tts_projects.api_key_id`).
+- Single-use, expiring auto-login links (`GET /projects/open/{token}`), backed by
+  a new `magic_login_tokens` table. The raw token lives only in the link; its
+  sha256 hash is stored, redemption is atomic (single use), and the link expires
+  after `TTS_MAGIC_LOGIN_TTL_MINUTES` (default **60**).
+
 ## [0.7.0] - 2026-06-19
 
 ### Added

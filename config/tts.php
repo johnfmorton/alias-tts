@@ -112,6 +112,12 @@ return [
 
     'ttl_hours' => (int) env('TTS_TTL_HOURS', 720), // cache generated audio for 30 days
 
+    // How long (minutes) a project's single-use auto-login link stays valid. The
+    // link logs the user into the control panel and lands them on the project;
+    // it is consumed on first use, so this is just the grace window before the
+    // unused link goes stale.
+    'magic_login_ttl_minutes' => (int) env('TTS_MAGIC_LOGIN_TTL_MINUTES', 60),
+
     /*
     |--------------------------------------------------------------------------
     | Storage
