@@ -6,11 +6,48 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Added
+- **Studio** — a new admin area (under **Studio** in the nav) for inspecting and
+  editing text-to-speech output:
+  - **Inspector.** Paste a block of text to see it normalized and split into
+    chunks using the same normalization and chunking the generation pipeline
+    uses, then hear it three ways: the whole text as a single Chatterbox call,
+    each chunk on its own (raw provider output, so seam artifacts are audible),
+    or the full production stitch. A concatenation preview re-stitches chunks you
+    have already generated to audition a seam without re-synthesizing (Chatterbox
+    is non-deterministic, so re-synthesizing would not reproduce the same audio).
+  - **Editable projects.** Save a project, generate or regenerate individual
+    chunks, edit a single sentence and re-synthesize only that chunk, then
+    rebuild the stitched file — no full regeneration and no re-billing the whole
+    file. An inline "Preview stitch" control between two adjacent generated chunks
+    auditions their join, and the final file can be downloaded.
+- `TTS_CHUNK_TRIM_TAIL_WINDOW_MS` (default **300**) bounds the trailing-silence
+  trim to the last N ms of a chunk, so the trim removes Chatterbox's swoosh tail
+  without reaching back and swallowing a quiet final word (see Fixed).
+- `TTS_SHORT_TRAILER_WORDS` (default **3**) moves a sentence of this many words
+  or fewer off the end of a chunk and onto the start of the next one (see Fixed).
+  Set **0** to disable.
+
 ### Changed
 - Studio audio players now play one at a time — starting any player pauses the
   others — and the actively-playing player stays highlighted while the rest dim
   to gray, so it is clear which clip is sounding. The redundant "playing now"
   status text was removed in favor of this visual cue.
+
+### Fixed
+- A short word at the very end of a chunk — most visibly a one-word "Why?" — is
+  no longer dropped from the generated audio. Two independent causes were fixed:
+  - The per-chunk edge-trim that removes Chatterbox's trailing "swoosh" was far
+    more aggressive than its nominal threshold and could remove a quiet final
+    word along with the trailing silence. It is now bounded to the last
+    `TTS_CHUNK_TRIM_TAIL_WINDOW_MS` of each chunk — the swoosh sits after the
+    word, so a short end-window strips the noise while the word is preserved.
+  - Chatterbox itself tends to drop a short trailing utterance by ending
+    generation early, yet renders a short *leading* phrase reliably, so the
+    chunker now relocates a short sentence (≤ `TTS_SHORT_TRAILER_WORDS` words)
+    that would end a chunk to the start of the next chunk. This applies only
+    within a paragraph; a paragraph- or document-final short sentence is left in
+    place (regenerate it from the Studio editor if it drops).
 
 ## [0.6.1] - 2026-06-18
 
