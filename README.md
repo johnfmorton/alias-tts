@@ -26,7 +26,10 @@ alternative where:
   instead of a monthly character subscription. For low or bursty volumes that's
   often dramatically cheaper.
 - **You're in control.** Pin a seed for reproducible output, choose your storage,
-  set per-key rate limits, and tune the voice to taste.
+  set per-key rate limits, and tune the voice with stability and style — e.g.
+  `"voice_settings": { "stability": 0.8, "style": 0.3 }` for a steadier, slightly
+  more expressive read (higher `stability` = steadier pacing, higher `style` =
+  more animated delivery).
 
 ## How it works
 
@@ -38,9 +41,10 @@ client ──POST /v1/text-to-speech/{voice_id}──▶ Laravel (auth, cache, c
 ```
 
 Long text is split into short, sentence-aware chunks (Chatterbox is short-form),
-generated in sequence, and crossfade-concatenated into one clean MP3. For very
-long articles there's also an **async job** API so generation isn't bound by the
-HTTP request timeout (see [The API](#the-api)).
+generated in sequence, then joined with brief, controlled digital silence — each
+chunk edge-trimmed with a short fade so the seams stay click-free — into one clean
+MP3. For very long articles there's also an **async job** API so generation isn't
+bound by the HTTP request timeout (see [The API](#the-api)).
 
 ## Requirements
 
@@ -60,7 +64,10 @@ HTTP request timeout (see [The API](#the-api)).
   the scheduler (for automatic cleanup) — see [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md).
 
 Run **`php artisan tts:doctor`** at any time to verify all of the above are set up
-correctly.
+correctly — or, for the same checks without the command line, open the dashboard's
+**Health page** (`/admin/health`). It's a web view over the identical checks (with
+a deep mode matching `--deep` for live token and queue probes) plus one-click
+short/long test generations to confirm end-to-end audio works.
 
 ### A note on providers
 
@@ -128,8 +135,12 @@ served from cache; the response carries an `x-cache: HIT|MISS` header.
 
 - **Body:** `text` (required); `model_id` (accepted — the configured provider
   decides the actual model); `voice_settings { stability, similarity_boost, style,
-  use_speaker_boost }`; optional `output_format` (defaults to mono `mp3_44100_128`);
-  optional `seed` (pin an integer for reproducible output); optional `force_refresh`.
+  use_speaker_boost }` (the full ElevenLabs object is accepted for drop-in
+  compatibility, but with Chatterbox only `stability` and `style` currently affect
+  output — they map to Chatterbox's `cfg_weight` and `exaggeration`; the others are
+  accepted and cached but inert); optional `output_format` (defaults to mono
+  `mp3_44100_128`); optional `seed` (pin an integer for reproducible output);
+  optional `force_refresh`.
 - **Success:** raw `audio/mpeg` bytes + a `request-id` header.
 
 ### Asynchronous (long text)
@@ -160,11 +171,28 @@ request. Over the limit, the endpoint returns an ElevenLabs-shaped 422.
 
 ## Dashboard
 
-A password-protected control panel (at `/`) lets you **generate API keys**,
-**manage and "train" voices** (upload a reference clip — it's normalized and
-registered instantly; Chatterbox is zero-shot, so there's no training job), and
-**test a voice**. Its home page shows copy-paste connection details (base URL,
-key, voice IDs) for the Bespoken plugin.
+A password-protected control panel (at `/admin`; visiting `/` while signed in
+redirects you there) lets you **generate API keys**, **manage and "train" voices**
+(upload a reference clip — it's normalized and registered instantly; Chatterbox is
+zero-shot, so there's no training job), and **test a voice**. Its home page shows
+copy-paste connection details (base URL, key, voice IDs) for the Bespoken plugin.
+
+## Studio
+
+**Studio** (`/admin/studio`, admin only) is a workbench for inspecting and tuning
+the text-to-speech pipeline — useful for dialing in a voice, debugging chunk
+seams, or fixing one sentence in a long piece without regenerating the whole file.
+
+- **Inspector** — paste text and pick a voice to see exactly how it's normalized
+  and split into chunks (using the *same* normalizer and chunker as production, so
+  this preview costs nothing). Then hear it three ways for A/B comparison: as a
+  single whole-text call, chunk-by-chunk (raw, untrimmed provider audio so any seam
+  artifacts are audible), or stitched the way production concatenates it.
+- **Projects** — saved, editable jobs. Create a project from text, edit or insert
+  individual chunks, generate or regenerate a single chunk at a time, preview the
+  stitch across a seam, then rebuild and download the final MP3. Edited chunks are
+  marked stale so you can see what needs regenerating. (Chunk reordering isn't
+  supported yet.)
 
 ## Commands
 
