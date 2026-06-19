@@ -135,7 +135,7 @@ class ProjectService
      * generation and regeneration after an edit. Marks the project's final file
      * out of date. Throws on provider failure (after recording it on the chunk).
      */
-    public function generateChunk(TtsChunk $chunk): TtsChunk
+    public function generateChunk(TtsChunk $chunk, bool $reroll = false): TtsChunk
     {
         $project = $chunk->project;
 
@@ -143,7 +143,7 @@ class ProjectService
             $bytes = $this->provider->synthesize(
                 $chunk->text,
                 $this->referencePath($project->voice),
-                $this->providerSettings($project),
+                $this->providerSettings($project, $chunk, pinSeed: ! $reroll),
             );
 
             $path = $this->chunkPath($chunk);
@@ -163,6 +163,36 @@ class ProjectService
             ]);
 
             throw $e;
+        }
+
+        return $chunk;
+    }
+
+    /**
+     * Set a chunk's per-chunk tuning override (stability/style); a null value
+     * clears that key so it falls back to the project's setting. A generated
+     * chunk goes Stale (its audio no longer matches the tuning) and the final
+     * file is flagged out of date; an ungenerated chunk is left as-is.
+     */
+    public function updateChunkTuning(TtsChunk $chunk, ?float $stability, ?float $style): TtsChunk
+    {
+        $settings = is_array($chunk->settings) ? $chunk->settings : [];
+        foreach (['stability' => $stability, 'style' => $style] as $key => $value) {
+            if ($value !== null) {
+                $settings[$key] = $value;
+            } else {
+                unset($settings[$key]);
+            }
+        }
+
+        $attributes = ['settings' => $settings ?: null];
+        if ($chunk->status === ChunkStatus::Completed) {
+            $attributes['status'] = ChunkStatus::Stale;
+        }
+        $chunk->update($attributes);
+
+        if ($chunk->audio_path) {
+            $this->markFinalOutdated($chunk->project);
         }
 
         return $chunk;
@@ -395,12 +425,23 @@ class ProjectService
         }
     }
 
-    /** @return array<string, mixed> */
-    private function providerSettings(TtsProject $project): array
+    /**
+     * Provider settings for one chunk: the project's resolved settings overlaid
+     * with the chunk's own stability/style override (Phase 2), plus the pinned
+     * seed. A re-roll passes $pinSeed = false so the provider picks a fresh random
+     * seed — a new "take" to escape a bad generation without editing the text.
+     *
+     * @return array<string, mixed>
+     */
+    private function providerSettings(TtsProject $project, ?TtsChunk $chunk = null, bool $pinSeed = true): array
     {
         $settings = is_array($project->settings) ? $project->settings : [];
 
-        if ($project->seed !== null) {
+        if ($chunk && is_array($chunk->settings)) {
+            $settings = array_merge($settings, $chunk->settings);
+        }
+
+        if ($pinSeed && $project->seed !== null) {
             $settings['seed'] = $project->seed;
         }
 

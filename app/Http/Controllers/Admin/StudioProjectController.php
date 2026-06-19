@@ -190,6 +190,62 @@ class StudioProjectController extends Controller
         ]);
     }
 
+    /**
+     * Set a chunk's per-chunk stability/style override. A generated chunk goes
+     * Stale so the editor prompts a regenerate. See docs/STUDIO-TUNING.md Phase 2.
+     */
+    public function tuneChunk(Request $request, TtsProject $project, TtsChunk $chunk): JsonResponse
+    {
+        $this->assertChunkBelongs($project, $chunk);
+
+        $validator = Validator::make($request->all(), [
+            'stability' => ['nullable', 'numeric', 'between:0,1'],
+            'style' => ['nullable', 'numeric', 'between:0,1'],
+        ]);
+        if ($validator->fails()) {
+            return response()->json(['message' => $validator->errors()->first()], 422);
+        }
+
+        $chunk = $this->projects->updateChunkTuning(
+            $chunk,
+            $request->filled('stability') ? (float) $request->input('stability') : null,
+            $request->filled('style') ? (float) $request->input('style') : null,
+        );
+
+        return response()->json([
+            'ok' => true,
+            'status' => $chunk->status->value,
+            'project_status' => $project->refresh()->status->value,
+        ]);
+    }
+
+    /**
+     * Re-roll: regenerate one chunk with a fresh random seed (ignoring the
+     * project's pinned seed) to get a different "take" without editing the text.
+     */
+    public function rerollChunk(TtsProject $project, TtsChunk $chunk): JsonResponse
+    {
+        $this->assertChunkBelongs($project, $chunk);
+
+        if (trim((string) $chunk->text) === '') {
+            return response()->json(['message' => 'This chunk is empty — add text before generating.'], 422);
+        }
+
+        try {
+            $chunk = $this->projects->generateChunk($chunk, reroll: true);
+        } catch (Throwable $e) {
+            report($e);
+
+            return response()->json(['message' => 'Generation failed: '.$e->getMessage()], 502);
+        }
+
+        return response()->json([
+            'ok' => true,
+            'status' => $chunk->status->value,
+            'project_status' => $project->refresh()->status->value,
+        ]);
+    }
+
     public function chunkAudio(TtsProject $project, TtsChunk $chunk): Response
     {
         $this->assertChunkBelongs($project, $chunk);

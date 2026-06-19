@@ -22,6 +22,7 @@ class TtsChunk extends Model
         'position',
         'text',
         'break_after',
+        'settings',
         'status',
         'audio_path',
         'characters',
@@ -32,6 +33,7 @@ class TtsChunk extends Model
         'status' => ChunkStatus::class,
         'position' => 'integer',
         'characters' => 'integer',
+        'settings' => 'array',
     ];
 
     public function project(): BelongsTo

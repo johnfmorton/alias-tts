@@ -8,6 +8,7 @@ use App\Models\TtsProject;
 use App\Models\User;
 use App\Models\Voice;
 use App\Services\ProjectService;
+use App\Services\Tts\TtsProvider;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Storage;
 use Tests\TestCase;
@@ -399,5 +400,112 @@ class StudioProjectTest extends TestCase
 
         $this->assertNull(TtsProject::find($project->id));
         $this->assertFalse(Storage::disk('local')->exists($path));
+    }
+
+    // --- Phase 2: per-chunk tuning overrides + re-roll -------------------------
+
+    /** A provider that records the settings it's handed (and returns junk bytes,
+     *  which generateChunk just stores raw). */
+    private function capturingProvider(): TtsProvider
+    {
+        $provider = new class implements TtsProvider
+        {
+            /** @var array<string, mixed> */
+            public array $lastSettings = [];
+
+            public function synthesize(string $text, ?string $referenceAudio, array $settings): string
+            {
+                $this->lastSettings = $settings;
+
+                return 'RIFFfake';
+            }
+
+            public function outputContainer(): string
+            {
+                return 'wav';
+            }
+        };
+
+        $this->app->instance(TtsProvider::class, $provider);
+
+        return $provider;
+    }
+
+    public function test_tune_chunk_saves_override_and_marks_completed_chunk_stale(): void
+    {
+        $project = $this->project();
+        $chunk = $project->chunks()->orderBy('position')->first();
+        app(ProjectService::class)->generateChunk($chunk);
+        $this->assertSame(ChunkStatus::Completed, $chunk->refresh()->status);
+
+        $this->actingAs($this->admin())
+            ->patch(route('admin.studio.projects.chunks.tuning', [$project, $chunk]), [
+                'stability' => 0.9,
+                'style' => 0.4,
+            ])
+            ->assertOk()
+            ->assertJsonPath('status', 'stale');
+
+        $chunk->refresh();
+        $this->assertSame(0.9, $chunk->settings['stability']);
+        $this->assertSame(0.4, $chunk->settings['style']);
+        $this->assertSame(ChunkStatus::Stale, $chunk->status);
+    }
+
+    public function test_tune_chunk_rejects_out_of_range(): void
+    {
+        $project = $this->project();
+        $chunk = $project->chunks()->first();
+
+        $this->actingAs($this->admin())
+            ->patchJson(route('admin.studio.projects.chunks.tuning', [$project, $chunk]), ['stability' => 2])
+            ->assertStatus(422);
+    }
+
+    public function test_chunk_override_overlays_project_settings_at_generation(): void
+    {
+        $provider = $this->capturingProvider();
+        $project = $this->project();
+        $chunk = $project->chunks()->orderBy('position')->first();
+
+        app(ProjectService::class)->updateChunkTuning($chunk, 0.9, null);
+        app(ProjectService::class)->generateChunk($chunk->refresh());
+
+        $this->assertSame(0.9, $provider->lastSettings['stability']);       // chunk override wins
+        $this->assertSame(0.75, $provider->lastSettings['similarity_boost']); // project/config kept
+    }
+
+    public function test_reroll_drops_the_pinned_project_seed(): void
+    {
+        $provider = $this->capturingProvider();
+        $voice = Voice::create(['slug' => 'v', 'name' => 'V']);
+        $project = app(ProjectService::class)->createFromText(
+            title: 'P',
+            voice: $voice,
+            text: 'A single short line to speak.',
+            settings: config('tts.default_voice_settings'),
+            modelId: config('tts.default_model_id'),
+            outputFormat: config('tts.default_output_format'),
+            seed: 123,
+        );
+        $chunk = $project->chunks()->first();
+
+        app(ProjectService::class)->generateChunk($chunk);
+        $this->assertSame(123, $provider->lastSettings['seed']);
+
+        app(ProjectService::class)->generateChunk($chunk->refresh(), reroll: true);
+        $this->assertArrayNotHasKey('seed', $provider->lastSettings);
+    }
+
+    public function test_reroll_endpoint_regenerates_a_chunk(): void
+    {
+        $project = $this->project();
+        $chunk = $project->chunks()->orderBy('position')->first();
+        app(ProjectService::class)->generateChunk($chunk);
+
+        $this->actingAs($this->admin())
+            ->post(route('admin.studio.projects.chunks.reroll', [$project, $chunk]))
+            ->assertOk()
+            ->assertJsonPath('status', 'completed');
     }
 }
