@@ -671,6 +671,86 @@ function initStudioBench() {
     els.genBtn.addEventListener('click', generateAll);
     els.saveBtn.addEventListener('click', savePick);
 
+    // --- Named presets (3b): apply adds a pre-filled row; ✕ deletes; save the
+    // picked row's values as a new named preset. ---
+    const presetsBar = document.getElementById('studio-presets');
+    if (presetsBar) {
+        const storeUrl = presetsBar.dataset.storeUrl;
+        const emptyHint = document.getElementById('studio-preset-empty');
+        const presetSaveBtn = document.getElementById('studio-preset-save');
+
+        const refreshEmpty = () =>
+            emptyHint?.classList.toggle('hidden', presetsBar.querySelectorAll('.studio-preset').length > 0);
+
+        const wireChip = (chip) => {
+            chip.querySelector('.preset-apply').addEventListener('click', () =>
+                addRow(chip.dataset.stability || null, chip.dataset.style || null));
+            chip.querySelector('.preset-delete').addEventListener('click', async () => {
+                if (!confirm(`Delete preset "${chip.querySelector('.preset-apply').textContent}"?`)) return;
+                try {
+                    const res = await fetch(`${storeUrl}/${chip.dataset.id}`, {
+                        method: 'DELETE',
+                        headers: { 'X-CSRF-TOKEN': csrfToken(), 'Accept': 'application/json' },
+                    });
+                    if (!res.ok) throw new Error(await errorMessage(res));
+                    chip.remove();
+                    refreshEmpty();
+                } catch (err) {
+                    setStatus(els.status, `✗ ${err.message}`, 'error');
+                }
+            });
+        };
+
+        const addChip = (preset) => {
+            const chip = document.createElement('span');
+            chip.className = 'studio-preset inline-flex items-center gap-1 rounded-full border border-zinc-700 bg-zinc-800 py-0.5 pl-2.5 pr-1.5 text-xs';
+            chip.dataset.id = preset.id;
+            chip.dataset.stability = preset.stability ?? '';
+            chip.dataset.style = preset.style ?? '';
+            const apply = document.createElement('button');
+            apply.type = 'button';
+            apply.className = 'preset-apply text-zinc-200 hover:text-cyan-300';
+            apply.textContent = preset.name;
+            const del = document.createElement('button');
+            del.type = 'button';
+            del.className = 'preset-delete text-zinc-500 hover:text-red-300';
+            del.title = 'Delete preset';
+            del.textContent = '✕';
+            chip.append(apply, del);
+            presetsBar.insertBefore(chip, emptyHint);
+            wireChip(chip);
+            refreshEmpty();
+        };
+
+        presetsBar.querySelectorAll('.studio-preset').forEach(wireChip);
+
+        presetSaveBtn?.addEventListener('click', async () => {
+            const picked = rows.find((s) => s.pick.checked);
+            if (!picked) { setStatus(els.status, 'Pick a row to save as a preset.', 'error'); return; }
+            const name = (window.prompt('Preset name?') || '').trim();
+            if (!name) return;
+            const body = new URLSearchParams({ name });
+            if (picked.stabIn.value !== '') body.set('stability', picked.stabIn.value);
+            if (picked.styleIn.value !== '') body.set('style', picked.styleIn.value);
+            startBusy(presetSaveBtn, 'Saving…');
+            try {
+                const res = await fetch(storeUrl, {
+                    method: 'POST',
+                    headers: { 'X-CSRF-TOKEN': csrfToken(), 'Accept': 'application/json' },
+                    body,
+                });
+                const data = await res.json().catch(() => ({}));
+                if (!res.ok) throw new Error(data.message || `HTTP ${res.status}`);
+                addChip(data.preset);
+                setStatus(els.status, `✓ Saved preset "${data.preset.name}".`, 'ok');
+            } catch (err) {
+                setStatus(els.status, `✗ ${err.message}`, 'error');
+            } finally {
+                endBusy(presetSaveBtn);
+            }
+        });
+    }
+
     // Seed with the current default and the README's steadier/more-expressive example.
     addRow(0.5, 0.0);
     addRow(0.8, 0.3);

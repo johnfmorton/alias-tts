@@ -89,6 +89,47 @@ class StudioTest extends TestCase
             ->assertStatus(422);
     }
 
+    public function test_tuning_preset_can_be_created_and_deleted(): void
+    {
+        $this->actingAs($this->admin())
+            ->post(route('admin.studio.presets.store'), ['name' => 'Calm narration', 'stability' => 0.8, 'style' => 0.1])
+            ->assertOk()
+            ->assertJsonPath('preset.name', 'Calm narration')
+            ->assertJsonPath('preset.stability', 0.8);
+
+        $preset = \App\Models\TuningPreset::firstWhere('name', 'Calm narration');
+        $this->assertSame(0.8, $preset->stability);
+        $this->assertSame(0.1, $preset->style);
+
+        $this->actingAs($this->admin())
+            ->delete(route('admin.studio.presets.destroy', $preset))
+            ->assertOk();
+        $this->assertNull(\App\Models\TuningPreset::find($preset->id));
+    }
+
+    public function test_tuning_preset_rejects_duplicate_name_and_bad_range(): void
+    {
+        \App\Models\TuningPreset::create(['name' => 'Energetic', 'stability' => 0.3, 'style' => 0.7]);
+
+        $this->actingAs($this->admin())
+            ->postJson(route('admin.studio.presets.store'), ['name' => 'Energetic', 'stability' => 0.5])
+            ->assertStatus(422);
+
+        $this->actingAs($this->admin())
+            ->postJson(route('admin.studio.presets.store'), ['name' => 'Too loud', 'style' => 5])
+            ->assertStatus(422);
+    }
+
+    public function test_studio_page_renders_existing_presets(): void
+    {
+        \App\Models\TuningPreset::create(['name' => 'Calm narration', 'stability' => 0.8, 'style' => 0.1]);
+
+        $this->actingAs($this->admin())
+            ->get(route('admin.studio.index'))
+            ->assertOk()
+            ->assertSee('Calm narration');
+    }
+
     public function test_preview_normalizes_and_makes_no_provider_call(): void
     {
         // Emoji stripped, "editor ." tidied to "editor." — and no audio is touched.

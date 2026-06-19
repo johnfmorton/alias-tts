@@ -34,6 +34,8 @@ Route::prefix('studio')->name('studio.')->group(function () {
     Route::post('/concat', [StudioController::class, 'concat'])->name('concat');
     Route::post('/advanced', [StudioController::class, 'setAdvanced'])->name('advanced');
     Route::post('/voice-defaults', [StudioController::class, 'saveVoiceDefaults'])->name('voice-defaults');
+    Route::post('/presets', [StudioController::class, 'storePreset'])->name('presets.store');
+    Route::delete('/presets/{preset}', [StudioController::class, 'destroyPreset'])->name('presets.destroy');
 
     // Editable projects: persist chunks, regenerate one at a time, rebuild the stitch.
     Route::prefix('projects')->name('projects.')->group(function () {

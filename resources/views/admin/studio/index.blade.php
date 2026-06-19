@@ -111,6 +111,22 @@
                                 class="rounded-lg border border-zinc-700 px-3 py-1.5 text-xs hover:bg-zinc-800">+ Add setting</button>
                     </div>
 
+                    {{-- Named presets (3b): click a name to add a pre-filled row; ✕ deletes. --}}
+                    <div id="studio-presets" class="mt-3 flex flex-wrap items-center gap-2"
+                         data-store-url="{{ route('admin.studio.presets.store') }}">
+                        <span class="text-xs text-zinc-500">Presets:</span>
+                        @foreach($presets as $preset)
+                            <span class="studio-preset inline-flex items-center gap-1 rounded-full border border-zinc-700 bg-zinc-800 py-0.5 pl-2.5 pr-1.5 text-xs"
+                                  data-id="{{ $preset->id }}" data-stability="{{ $preset->stability }}" data-style="{{ $preset->style }}">
+                                <button type="button" class="preset-apply text-zinc-200 hover:text-cyan-300">{{ $preset->name }}</button>
+                                <button type="button" class="preset-delete text-zinc-500 hover:text-red-300" title="Delete preset" aria-label="Delete preset">✕</button>
+                            </span>
+                        @endforeach
+                        <span id="studio-preset-empty" class="text-xs text-zinc-600 @unless($presets->isEmpty()) hidden @endunless">none yet</span>
+                        <button type="button" id="studio-preset-save"
+                                class="rounded-full border border-zinc-700 px-2.5 py-0.5 text-xs text-zinc-400 hover:bg-zinc-800">＋ Save pick as preset</button>
+                    </div>
+
                     <ol id="studio-bench-rows" class="mt-3 space-y-2"></ol>
 
                     <div class="mt-3 flex flex-wrap items-center gap-2">

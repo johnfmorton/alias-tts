@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Admin;
 
 use App\Http\Controllers\Controller;
 use App\Models\TtsProject;
+use App\Models\TuningPreset;
 use App\Models\Voice;
 use App\Services\Audio\AudioConverter;
 use App\Services\SpeechService;
@@ -50,7 +51,45 @@ class StudioController extends Controller
         return view('admin.studio.index', [
             'voices' => Voice::orderBy('name')->get(),
             'projects' => TtsProject::withCount('chunks')->latest()->get(),
+            'presets' => TuningPreset::orderBy('name')->get(),
         ]);
+    }
+
+    /**
+     * Save a named stability/style preset for reuse in the tuning bench (3b).
+     */
+    public function storePreset(Request $request): JsonResponse
+    {
+        if ($error = $this->validationError($request, [
+            'name' => ['required', 'string', 'max:60', 'unique:tuning_presets,name'],
+            'stability' => ['nullable', 'numeric', 'between:0,1'],
+            'style' => ['nullable', 'numeric', 'between:0,1'],
+        ])) {
+            return $error;
+        }
+
+        $preset = TuningPreset::create([
+            'name' => trim((string) $request->input('name')),
+            'stability' => $request->filled('stability') ? (float) $request->input('stability') : null,
+            'style' => $request->filled('style') ? (float) $request->input('style') : null,
+        ]);
+
+        return response()->json([
+            'ok' => true,
+            'preset' => [
+                'id' => $preset->id,
+                'name' => $preset->name,
+                'stability' => $preset->stability,
+                'style' => $preset->style,
+            ],
+        ]);
+    }
+
+    public function destroyPreset(TuningPreset $preset): JsonResponse
+    {
+        $preset->delete();
+
+        return response()->json(['ok' => true]);
     }
 
     /**
