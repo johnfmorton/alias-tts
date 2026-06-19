@@ -45,9 +45,14 @@ class TextChunker
      * garbage, dropping the words. Pass 0 to disable merging. See {@see
      * self::mergeShort()}.
      *
+     * Separately, a short sentence (<= $shortTrailerWords words) that would END a
+     * chunk is lifted to the START of the next chunk: Chatterbox tends to drop a
+     * short TRAILING utterance (it ends generation early), but renders a short
+     * LEADING phrase reliably. Pass 0 to disable. See {@see self::liftShortTrailers()}.
+     *
      * @return array<int, array{text: string, breakAfter: 'sentence'|'paragraph'}>
      */
-    public function segment(string $text, int $targetChars = 280, int $blockSpaceRun = 4, int $minChars = 0): array
+    public function segment(string $text, int $targetChars = 280, int $blockSpaceRun = 4, int $minChars = 0, int $shortTrailerWords = 0): array
     {
         $targetChars = max(1, $targetChars);
 
@@ -71,7 +76,80 @@ class TextChunker
             }
         }
 
-        return $this->mergeShort($segments, $targetChars, $minChars);
+        $segments = $this->mergeShort($segments, $targetChars, $minChars);
+
+        return $this->liftShortTrailers($segments, $shortTrailerWords);
+    }
+
+    /**
+     * Move a short trailing sentence (<= $maxWords words) off the END of a chunk
+     * and onto the START of the next one, so it never ends a chunk on its own.
+     * Chatterbox frequently drops a short final utterance (a one-word "Why?")
+     * because it ends generation at the prior sentence boundary, but a short
+     * phrase that LEADS a chunk — with speech after it — comes out reliably.
+     *
+     * Guards: only moves across a 'sentence' seam (a 'paragraph' seam is a block
+     * boundary, and the short sentence genuinely ends that paragraph), and never
+     * strips a chunk of its last real sentence — a chunk made only of short
+     * sentences is left alone. Pass 0 to disable.
+     *
+     * @param  array<int, array{text: string, breakAfter: 'sentence'|'paragraph'}>  $segments
+     * @return array<int, array{text: string, breakAfter: 'sentence'|'paragraph'}>
+     */
+    private function liftShortTrailers(array $segments, int $maxWords): array
+    {
+        if ($maxWords <= 0) {
+            return $segments;
+        }
+
+        $lastIndex = count($segments) - 1;
+
+        for ($i = 0; $i < $lastIndex; $i++) {
+            if ($segments[$i]['breakAfter'] !== 'sentence') {
+                continue;
+            }
+
+            $sentences = $this->sentences($segments[$i]['text']);
+
+            // Peel trailing short sentences while a longer "anchor" sentence
+            // remains, preserving their order at the front of the next chunk.
+            $peeled = [];
+            while (count($sentences) >= 2
+                && $this->wordCount($sentences[count($sentences) - 1]) <= $maxWords
+                && $this->hasLongSentence(array_slice($sentences, 0, -1), $maxWords)) {
+                array_unshift($peeled, array_pop($sentences));
+            }
+
+            if ($peeled === []) {
+                continue;
+            }
+
+            $segments[$i]['text'] = implode(' ', $sentences);
+            $segments[$i + 1]['text'] = implode(' ', $peeled).' '.$segments[$i + 1]['text'];
+        }
+
+        return $segments;
+    }
+
+    /**
+     * @param  array<int, string>  $sentences
+     */
+    private function hasLongSentence(array $sentences, int $maxWords): bool
+    {
+        foreach ($sentences as $sentence) {
+            if ($this->wordCount($sentence) > $maxWords) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private function wordCount(string $sentence): int
+    {
+        $words = preg_split('/\s+/u', trim($sentence), -1, PREG_SPLIT_NO_EMPTY);
+
+        return $words === false ? 0 : count($words);
     }
 
     /**

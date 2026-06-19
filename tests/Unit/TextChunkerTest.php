@@ -119,4 +119,52 @@ class TextChunkerTest extends TestCase
         $this->assertCount(3, $segments);
         $this->assertSame('The to-do list.', $segments[1]['text']);
     }
+
+    public function test_short_trailing_sentence_is_lifted_to_next_chunk(): void
+    {
+        // "Why?" would end the first chunk; lift it to lead the second instead.
+        // Chunk budget forces a split before the final long sentence.
+        $text = 'This first sentence is comfortably long on its own. Why? '
+            .'This is the following long sentence that starts a new chunk.';
+        $segments = (new TextChunker)->segment($text, 60, 4, 0, 3);
+        $texts = array_map(static fn ($s) => $s['text'], $segments);
+
+        $this->assertCount(2, $segments);
+        $this->assertSame('This first sentence is comfortably long on its own.', $texts[0]);
+        $this->assertStringStartsWith('Why?', $texts[1]);
+    }
+
+    public function test_short_trailer_is_not_lifted_across_a_paragraph_break(): void
+    {
+        // A short sentence that ends a paragraph genuinely belongs to it; moving
+        // it would change meaning and cross a block seam, so it stays put.
+        $text = "This sentence comfortably ends the first paragraph. Why?\n\nThis sentence opens the second paragraph here.";
+        $segments = (new TextChunker)->segment($text, 280, 4, 0, 3);
+
+        $this->assertCount(2, $segments);
+        $this->assertSame('paragraph', $segments[0]['breakAfter']);
+        $this->assertStringEndsWith('Why?', $segments[0]['text']);
+    }
+
+    public function test_short_trailer_is_kept_when_it_is_the_final_chunk(): void
+    {
+        // Nothing follows the last chunk, so a trailing short sentence has nowhere
+        // to go and is left in place.
+        $text = 'This long opening sentence carries the chunk on its own. Why?';
+        $segments = (new TextChunker)->segment($text, 280, 4, 0, 3);
+
+        $this->assertCount(1, $segments);
+        $this->assertStringEndsWith('Why?', $segments[0]['text']);
+    }
+
+    public function test_lifting_is_disabled_by_default(): void
+    {
+        // Without the 5th arg the trailing short sentence stays where greedy
+        // packing put it (back-compat with existing callers/tests).
+        $text = 'This first sentence is comfortably long on its own. Why? '
+            .'This is the following long sentence that starts a new chunk.';
+        $segments = (new TextChunker)->segment($text, 60);
+
+        $this->assertStringEndsWith('Why?', $segments[0]['text']);
+    }
 }

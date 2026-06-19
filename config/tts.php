@@ -70,6 +70,13 @@ return [
     // chunks still drop; lower it to keep more standalone short lines.
     'min_chunk_chars' => (int) env('TTS_MIN_CHUNK_CHARS', 30),
 
+    // A sentence of <= this many words that would END a chunk is moved to the
+    // START of the next chunk instead. Chatterbox tends to drop a short trailing
+    // utterance (a one-word "Why?") by ending generation early, but renders a
+    // short LEADING phrase reliably. Only applies within a paragraph and never
+    // strips a chunk of its last real sentence. 0 disables it.
+    'short_trailer_words' => (int) env('TTS_SHORT_TRAILER_WORDS', 3),
+
     // Runs of >= this many spaces are treated as a block (paragraph) boundary,
     // in addition to blank lines. The Bespoken plugin currently flattens posts
     // to a single line and marks every block with a run of (4) spaces, so this
