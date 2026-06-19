@@ -7,3 +7,19 @@
     --font-sans: 'Instrument Sans', ui-sans-serif, system-ui, sans-serif, 'Apple Color Emoji', 'Segoe UI Emoji',
         'Segoe UI Symbol', 'Noto Color Emoji';
 }
+
+/*
+ * Studio audio players: only one plays at a time (see app.js), so dim every
+ * idle/paused player to gray and keep the actively-playing one full white, so
+ * it's obvious which clip is sounding. The `is-playing` class is toggled in JS.
+ */
+#studio audio,
+#studio-project audio {
+    filter: brightness(0.6);
+    transition: filter 0.15s ease;
+}
+
+#studio audio.is-playing,
+#studio-project audio.is-playing {
+    filter: none;
+}

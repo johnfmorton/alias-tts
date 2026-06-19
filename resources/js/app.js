@@ -89,7 +89,7 @@ async function runShortTest(btn) {
         });
         if (!res.ok) throw new Error(await errorMessage(res));
         playAudio(audio, await res.blob());
-        setStatus(status, `✓ Short text generated in ${elapsed(t0)}s — playing now.`, 'ok');
+        setStatus(status, `✓ Short text generated in ${elapsed(t0)}s.`, 'ok');
     } catch (err) {
         setStatus(status, `✗ ${err.message}`, 'error');
     } finally {
@@ -132,7 +132,7 @@ async function runLongTest(btn) {
         const audioRes = await fetch(job.audio_url, { headers: { 'Accept': 'audio/mpeg' } });
         if (!audioRes.ok) throw new Error(await errorMessage(audioRes));
         playAudio(audio, await audioRes.blob());
-        setStatus(status, `✓ Async generated & concatenated in ${elapsed(t0)}s — playing now.`, 'ok');
+        setStatus(status, `✓ Async generated & concatenated in ${elapsed(t0)}s.`, 'ok');
     } catch (err) {
         setStatus(status, `✗ ${err.message}`, 'error');
     } finally {
@@ -292,7 +292,7 @@ function initStudio() {
         try {
             const blob = await fetchBlob(url, text);
             playAudio(audio, blob);
-            setStatus(els.status, `✓ ${label.replace('…', '')} done in ${elapsed(t0)}s — playing now.`, 'ok');
+            setStatus(els.status, `✓ ${label.replace('…', '')} done in ${elapsed(t0)}s.`, 'ok');
             return blob;
         } catch (err) {
             setStatus(els.status, `✗ ${err.message}`, 'error');
@@ -404,7 +404,7 @@ function initStudio() {
             if (!res.ok) throw new Error(await errorMessage(res));
             playAudio(els.concatAudio, await res.blob());
             const span = chosen.map((s) => `#${s.index + 1}`).join(', ');
-            setStatus(els.concatStatus, `✓ Concatenated ${span} in ${elapsed(t0)}s — playing now.`, 'ok');
+            setStatus(els.concatStatus, `✓ Concatenated ${span} in ${elapsed(t0)}s.`, 'ok');
         } catch (err) {
             setStatus(els.concatStatus, `✗ ${err.message}`, 'error');
         } finally {
@@ -588,7 +588,7 @@ function initStudioProject() {
             finalAudio.play().catch(() => {});
             downloadLink.classList.remove('hidden');
             setProjectStatus('ready');
-            setStatus(finalStatus, '✓ Rebuilt — playing now.', 'ok');
+            setStatus(finalStatus, '✓ Rebuilt.', 'ok');
         } catch (err) {
             setStatus(finalStatus, `✗ ${err.message}`, 'error');
         } finally {
@@ -625,7 +625,7 @@ function initStudioProject() {
             });
             if (!res.ok) throw new Error(await errorMessage(res));
             playAudio(seam.querySelector('.seam-audio'), await res.blob());
-            setStatus(status, `✓ Stitched in ${elapsed(t0)}s — playing now.`, 'ok');
+            setStatus(status, `✓ Stitched in ${elapsed(t0)}s.`, 'ok');
         } catch (err) {
             setStatus(status, `✗ ${err.message}`, 'error');
         } finally {
@@ -659,6 +659,21 @@ function initStudioProject() {
 }
 
 initStudioProject();
+
+// Only one audio player at a time: when any <audio> starts, pause the others and
+// mark it `is-playing` (CSS keeps the active player bright and dims the rest, so
+// it's obvious which clip is sounding). Studio auto-plays each chunk/seam/final
+// as it finishes, which otherwise leads to several clips overlapping. Media
+// play/pause/ended events don't bubble, so listen in the capture phase to catch
+// them from any (including dynamically-added) player.
+document.addEventListener('play', (e) => {
+    document.querySelectorAll('audio').forEach((audio) => {
+        if (audio !== e.target) audio.pause();
+        audio.classList.toggle('is-playing', audio === e.target);
+    });
+}, true);
+document.addEventListener('pause', (e) => e.target.classList.remove('is-playing'), true);
+document.addEventListener('ended', (e) => e.target.classList.remove('is-playing'), true);
 
 // Back/forward bfcache can restore the frozen "running…" DOM. Reset it so the
 // buttons aren't stuck mid-spin when the user navigates back to the page.

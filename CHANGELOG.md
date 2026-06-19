@@ -6,6 +6,12 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Changed
+- Studio audio players now play one at a time — starting any player pauses the
+  others — and the actively-playing player stays highlighted while the rest dim
+  to gray, so it is clear which clip is sounding. The redundant "playing now"
+  status text was removed in favor of this visual cue.
+
 ## [0.6.1] - 2026-06-18
 
 ### Fixed
