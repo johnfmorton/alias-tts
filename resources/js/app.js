@@ -491,10 +491,6 @@ function initStudioProject() {
     const generateAllBtn = document.getElementById('project-generate-all');
     const rebuildBtn = document.getElementById('project-rebuild');
     const previewUrl = root.dataset.previewUrl;
-    const previewBar = document.getElementById('project-preview-bar');
-    const previewBtn = document.getElementById('project-preview');
-    const previewStatus = document.getElementById('project-preview-status');
-    const previewAudio = document.getElementById('project-preview-audio');
 
     // Cache-bust so a regenerated chunk / rebuilt final reloads in the player.
     const bust = (url) => url + (url.includes('?') ? '&' : '?') + 't=' + Date.now();
@@ -519,6 +515,7 @@ function initStudioProject() {
         card.querySelector('.chunk-chars').textContent = `${data.characters} chars`;
         setChunkStatus(card, data.status);
         setProjectStatus(data.project_status);
+        refreshSeams(); // a now-stale chunk hides its adjacent seam previews
     }
 
     async function generateChunk(card) {
@@ -542,13 +539,9 @@ function initStudioProject() {
             audio.src = bust(card.dataset.audioUrl);
             audio.classList.remove('hidden');
             audio.play().catch(() => {});
-            // Now selectable for a seam preview.
-            const include = card.querySelector('.chunk-include');
-            include.classList.remove('hidden');
-            include.classList.add('inline-flex');
-            previewBar.classList.remove('hidden');
             endBusy(genBtn);
             genBtn.textContent = '▶ Regenerate';
+            refreshSeams(); // may reveal an inline seam preview next to a generated neighbor
         } catch (err) {
             setChunkStatus(card, 'failed');
             endBusy(genBtn);
@@ -603,32 +596,46 @@ function initStudioProject() {
         }
     }
 
-    // Stitch the ticked (generated) chunks — e.g. two adjacent — to hear the seam.
-    async function previewSelected() {
-        const ids = [...root.querySelectorAll('.studio-chunk')]
-            .filter((c) => c.querySelector('.chunk-include-cb')?.checked)
-            .map((c) => c.dataset.chunkId);
-        if (!ids.length) {
-            setStatus(previewStatus, 'Tick at least one generated chunk first.', 'error');
-            return;
-        }
+    // A chunk's status badge is the source of truth for "is it generated?".
+    const isChunkCompleted = (card) =>
+        card && card.querySelector('.chunk-status')?.textContent.trim() === 'completed';
+
+    // Show the inline "Preview stitch" connector only between two generated chunks.
+    function refreshSeams() {
+        root.querySelectorAll('.chunk-seam').forEach((seam) => {
+            const prev = root.querySelector(`.studio-chunk[data-chunk-id="${seam.dataset.prev}"]`);
+            const next = root.querySelector(`.studio-chunk[data-chunk-id="${seam.dataset.next}"]`);
+            seam.classList.toggle('hidden', !(isChunkCompleted(prev) && isChunkCompleted(next)));
+        });
+    }
+
+    // Stitch the two adjacent chunks this connector sits between, playing inline.
+    async function previewSeam(seam) {
+        const btn = seam.querySelector('.seam-preview');
+        const player = seam.querySelector('.seam-player');
+        const status = seam.querySelector('.seam-status');
         const t0 = performance.now();
-        startBusy(previewBtn, 'Stitching…');
+        startBusy(btn, 'Stitching…');
+        player.classList.remove('hidden');
         try {
             const res = await fetch(previewUrl, {
                 method: 'POST',
                 headers: { 'X-CSRF-TOKEN': csrfToken(), 'Accept': 'audio/*', 'Content-Type': 'application/json' },
-                body: JSON.stringify({ chunks: ids }),
+                body: JSON.stringify({ chunks: [seam.dataset.prev, seam.dataset.next] }),
             });
             if (!res.ok) throw new Error(await errorMessage(res));
-            playAudio(previewAudio, await res.blob());
-            setStatus(previewStatus, `✓ Stitched ${ids.length} chunk(s) in ${elapsed(t0)}s — playing now.`, 'ok');
+            playAudio(seam.querySelector('.seam-audio'), await res.blob());
+            setStatus(status, `✓ Stitched in ${elapsed(t0)}s — playing now.`, 'ok');
         } catch (err) {
-            setStatus(previewStatus, `✗ ${err.message}`, 'error');
+            setStatus(status, `✗ ${err.message}`, 'error');
         } finally {
-            endBusy(previewBtn);
+            endBusy(btn);
         }
     }
+
+    root.querySelectorAll('.chunk-seam .seam-preview').forEach((btn) => {
+        btn.addEventListener('click', () => previewSeam(btn.closest('.chunk-seam')));
+    });
 
     root.querySelectorAll('.studio-chunk').forEach((card) => {
         card.querySelector('.chunk-save').addEventListener('click', async () => {
@@ -648,7 +655,7 @@ function initStudioProject() {
 
     generateAllBtn.addEventListener('click', generateAll);
     rebuildBtn.addEventListener('click', rebuild);
-    previewBtn.addEventListener('click', previewSelected);
+    refreshSeams();
 }
 
 initStudioProject();

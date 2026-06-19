@@ -7,7 +7,6 @@
             'pending'   => 'border-zinc-700 bg-zinc-800 text-zinc-400',
         ];
         $hasFinal = (bool) $project->final_audio_path;
-        $hasGenerated = $chunks->contains(fn ($c) => $c->isCompleted());
     @endphp
 
     <div id="studio-project"
@@ -47,34 +46,20 @@
             <audio id="project-final-audio" controls class="mt-3 w-full {{ $hasFinal ? '' : 'hidden' }}" @if($hasFinal) src="{{ route('admin.studio.projects.audio', $project) }}" @endif></audio>
         </div>
 
-        {{-- Seam preview: stitch a subset (e.g. two adjacent chunks) to hear the join --}}
-        <div id="project-preview-bar" class="mb-4 {{ $hasGenerated ? '' : 'hidden' }} space-y-3 rounded-xl border border-zinc-800 bg-zinc-900/50 p-4">
-            <div class="flex flex-wrap items-center gap-3">
-                <button type="button" id="project-preview"
-                        class="rounded-lg border border-cyan-700/50 bg-cyan-500/10 px-3 py-2 text-sm text-cyan-300 hover:bg-cyan-500/20">▶ Preview selected</button>
-                <span class="text-sm text-zinc-400">Tick generated chunks — e.g. two adjacent — to hear how they join (production trim + seam) without rebuilding everything.</span>
-            </div>
-            <div id="project-preview-status" class="text-sm text-zinc-400" role="status" aria-live="polite"></div>
-            <audio id="project-preview-audio" controls class="hidden w-full"></audio>
-        </div>
-
-        {{-- Chunks --}}
-        <ol class="space-y-3">
+        {{-- Chunks, with an inline "Preview stitch" connector between any two adjacent GENERATED chunks --}}
+        <div class="space-y-3">
             @foreach($chunks as $chunk)
-                <li class="studio-chunk rounded-xl border border-zinc-800 bg-zinc-900/50 p-4"
-                    data-chunk-id="{{ $chunk->id }}"
-                    data-generate-url="{{ route('admin.studio.projects.chunks.generate', [$project, $chunk]) }}"
-                    data-patch-url="{{ route('admin.studio.projects.chunks.update', [$project, $chunk]) }}"
-                    data-audio-url="{{ route('admin.studio.projects.chunks.audio', [$project, $chunk]) }}">
+                <div class="studio-chunk rounded-xl border border-zinc-800 bg-zinc-900/50 p-4"
+                     data-chunk-id="{{ $chunk->id }}"
+                     data-generate-url="{{ route('admin.studio.projects.chunks.generate', [$project, $chunk]) }}"
+                     data-patch-url="{{ route('admin.studio.projects.chunks.update', [$project, $chunk]) }}"
+                     data-audio-url="{{ route('admin.studio.projects.chunks.audio', [$project, $chunk]) }}">
                     <div class="flex flex-wrap items-center justify-between gap-2">
                         <div class="flex items-center gap-2 text-sm text-zinc-400">
                             <span class="font-mono text-zinc-300">#{{ $chunk->position + 1 }}</span>
                             <span class="chunk-chars">{{ $chunk->characters }} chars</span>
                             <span class="inline-flex rounded-md border px-2 py-0.5 text-xs {{ $chunk->break_after === 'paragraph' ? 'border-amber-500/30 bg-amber-500/10 text-amber-300' : 'border-zinc-700 bg-zinc-800 text-zinc-400' }}">{{ $chunk->break_after }} seam</span>
                             <span class="chunk-status inline-flex rounded-md border px-2 py-0.5 text-xs {{ $chunkStyles[$chunk->status->value] ?? $chunkStyles['pending'] }}">{{ $chunk->status->value }}</span>
-                            <label class="chunk-include {{ $chunk->isCompleted() ? 'inline-flex' : 'hidden' }} cursor-pointer items-center gap-1.5 text-xs text-zinc-400">
-                                <input type="checkbox" class="chunk-include-cb accent-cyan-500"> include
-                            </label>
                         </div>
                         <div class="flex items-center gap-2">
                             <button type="button" class="chunk-save rounded-lg border border-zinc-700 px-3 py-1.5 text-sm hover:bg-zinc-800">Save text</button>
@@ -87,8 +72,22 @@
 
                     <audio class="chunk-audio mt-3 w-full {{ $chunk->isCompleted() ? '' : 'hidden' }}" controls
                            @if($chunk->isCompleted()) src="{{ route('admin.studio.projects.chunks.audio', [$project, $chunk]) }}" @endif></audio>
-                </li>
+                </div>
+
+                @unless($loop->last)
+                    @php $next = $chunks->get($loop->index + 1); @endphp
+                    <div class="chunk-seam flex flex-col items-center {{ $chunk->isCompleted() && $next->isCompleted() ? '' : 'hidden' }}"
+                         data-prev="{{ $chunk->id }}" data-next="{{ $next->id }}">
+                        <span class="h-3 w-px bg-zinc-700"></span>
+                        <button type="button" class="seam-preview rounded-full border border-zinc-700 bg-zinc-800 px-4 py-1.5 text-xs font-semibold uppercase tracking-wide text-zinc-300 hover:bg-zinc-700">▶ Preview stitch</button>
+                        <span class="h-3 w-px bg-zinc-700"></span>
+                        <div class="seam-player mt-1 hidden w-full max-w-2xl">
+                            <audio class="seam-audio w-full" controls></audio>
+                            <div class="seam-status mt-1 text-center text-xs text-zinc-400" role="status" aria-live="polite"></div>
+                        </div>
+                    </div>
+                @endunless
             @endforeach
-        </ol>
+        </div>
     </div>
 </x-layout>
