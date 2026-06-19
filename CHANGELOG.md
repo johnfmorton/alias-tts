@@ -6,6 +6,8 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.7.0] - 2026-06-19
+
 ### Added
 - **Studio** — a new admin area (under **Studio** in the nav) for inspecting and
   editing text-to-speech output:
@@ -274,7 +276,8 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   fixed seed; the response cache guarantees stable output for repeated identical
   requests.
 
-[Unreleased]: https://github.com/johnfmorton/bespoken-tts-service/compare/v0.6.1...HEAD
+[Unreleased]: https://github.com/johnfmorton/bespoken-tts-service/compare/v0.7.0...HEAD
+[0.7.0]: https://github.com/johnfmorton/bespoken-tts-service/compare/v0.6.1...v0.7.0
 [0.6.1]: https://github.com/johnfmorton/bespoken-tts-service/compare/v0.6.0...v0.6.1
 [0.6.0]: https://github.com/johnfmorton/bespoken-tts-service/compare/v0.5.0...v0.6.0
 [0.5.0]: https://github.com/johnfmorton/bespoken-tts-service/compare/v0.4.1...v0.5.0
