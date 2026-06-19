@@ -42,7 +42,10 @@
 
         <main class="mx-auto w-full max-w-5xl flex-1 px-4 py-8">
             <div class="mb-6">
-                <h1 class="text-2xl font-semibold tracking-tight">{{ $title }}</h1>
+                <div class="flex flex-wrap items-center gap-3">
+                    <h1 class="text-2xl font-semibold tracking-tight">{{ $title }}</h1>
+                    {{ $titleActions ?? '' }}
+                </div>
                 @if($description)
                     <p class="mt-1 text-sm text-zinc-400">{{ $description }}</p>
                 @endif

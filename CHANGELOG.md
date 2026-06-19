@@ -7,6 +7,10 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 ## [Unreleased]
 
 ### Added
+- **Rename a Studio project.** A **Rename** control next to the project title in
+  the editor edits the title inline and saves it without a full page reload
+  (`PATCH /admin/studio/projects/{project}`). Useful for telling apart projects
+  that were created with the same default title.
 - **Create-project API.** `POST /v1/projects` creates an editable Studio project
   from text instead of generating audio — the non-generating sibling of
   `POST /v1/text-to-speech/{voice_id}`. It takes `voice_id` and `text` in the body

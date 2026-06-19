@@ -85,6 +85,30 @@ class StudioProjectTest extends TestCase
             ->assertSee($project->chunks()->first()->text);
     }
 
+    public function test_update_renames_project(): void
+    {
+        $project = $this->project();
+
+        $this->actingAs($this->admin())
+            ->patchJson(route('admin.studio.projects.update', $project), ['title' => '  Renamed project  '])
+            ->assertOk()
+            ->assertJsonPath('ok', true)
+            ->assertJsonPath('title', 'Renamed project'); // trimmed
+
+        $this->assertSame('Renamed project', $project->refresh()->title);
+    }
+
+    public function test_update_rejects_blank_title(): void
+    {
+        $project = $this->project();
+
+        $this->actingAs($this->admin())
+            ->patchJson(route('admin.studio.projects.update', $project), ['title' => '   '])
+            ->assertStatus(422);
+
+        $this->assertSame('My project', $project->refresh()->title);
+    }
+
     public function test_generate_chunk_persists_audio_and_is_selective(): void
     {
         $project = $this->project();

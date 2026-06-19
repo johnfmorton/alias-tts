@@ -73,6 +73,23 @@ class StudioProjectController extends Controller
         ]);
     }
 
+    public function update(Request $request, TtsProject $project): JsonResponse
+    {
+        $title = trim((string) $request->input('title'));
+
+        // Validate the trimmed value so a whitespace-only title fails `required`.
+        $validator = Validator::make(['title' => $title], [
+            'title' => ['required', 'string', 'max:200'],
+        ]);
+        if ($validator->fails()) {
+            return response()->json(['message' => $validator->errors()->first()], 422);
+        }
+
+        $project->update(['title' => $title]);
+
+        return response()->json(['ok' => true, 'title' => $project->title]);
+    }
+
     public function destroy(TtsProject $project): RedirectResponse
     {
         $this->projects->deleteProject($project);

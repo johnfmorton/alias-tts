@@ -1,4 +1,18 @@
 <x-layout :title="$project->title" description="Edit a sentence and regenerate only that chunk, then rebuild — no full re-generation.">
+    {{-- Inline rename, rendered next to the page title via the layout's titleActions slot. --}}
+    <x-slot:titleActions>
+        <button type="button" id="project-rename"
+                class="rounded-lg border border-zinc-700 px-2.5 py-1 text-xs text-zinc-400 hover:bg-zinc-800 hover:text-zinc-200">Rename</button>
+        <div id="project-rename-form" class="hidden w-full max-w-xl items-center gap-2">
+            <input type="text" id="project-title-input" value="{{ $project->title }}" maxlength="200"
+                   class="min-w-0 flex-1 rounded-lg border border-zinc-700 bg-zinc-950 px-3 py-1.5 text-base text-zinc-100 focus:border-cyan-500 focus:outline-none focus:ring-2 focus:ring-cyan-500/30">
+            <button type="button" id="project-rename-save"
+                    class="shrink-0 rounded-lg border border-cyan-700/50 bg-cyan-500/10 px-3 py-1.5 text-sm text-cyan-300 hover:bg-cyan-500/20">Save</button>
+            <button type="button" id="project-rename-cancel"
+                    class="shrink-0 rounded-lg border border-zinc-700 px-3 py-1.5 text-sm text-zinc-400 hover:bg-zinc-800">Cancel</button>
+        </div>
+    </x-slot:titleActions>
+
     @php
         $chunkStyles = [
             'completed' => 'border-emerald-500/30 bg-emerald-500/10 text-emerald-300',
@@ -12,7 +26,8 @@
     <div id="studio-project"
          data-rebuild-url="{{ route('admin.studio.projects.rebuild', $project) }}"
          data-final-url="{{ route('admin.studio.projects.audio', $project) }}"
-         data-preview-url="{{ route('admin.studio.projects.preview', $project) }}">
+         data-preview-url="{{ route('admin.studio.projects.preview', $project) }}"
+         data-rename-url="{{ route('admin.studio.projects.update', $project) }}">
 
         {{-- Toolbar --}}
         <div class="mb-6 flex flex-col gap-4 rounded-xl border border-zinc-800 bg-zinc-900/50 p-5 sm:flex-row sm:items-center sm:justify-between">

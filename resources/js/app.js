@@ -655,6 +655,68 @@ function initStudioProject() {
 
     generateAllBtn.addEventListener('click', generateAll);
     rebuildBtn.addEventListener('click', rebuild);
+
+    // Inline rename: swap the page heading for a title input, PATCH on save, then
+    // update the heading and tab title in place. The control lives next to the
+    // <h1> via the layout's titleActions slot, so these elements sit outside #studio-project.
+    const renameUrl = root.dataset.renameUrl;
+    const renameBtn = document.getElementById('project-rename');
+    const renameForm = document.getElementById('project-rename-form');
+    const titleInput = document.getElementById('project-title-input');
+    const renameSave = document.getElementById('project-rename-save');
+    const renameCancel = document.getElementById('project-rename-cancel');
+    const heading = document.querySelector('h1');
+
+    function openRename() {
+        titleInput.value = heading.textContent.trim();
+        heading.classList.add('hidden');
+        renameBtn.classList.add('hidden');
+        renameForm.classList.remove('hidden');
+        renameForm.classList.add('flex');
+        titleInput.focus();
+        titleInput.select();
+    }
+
+    function closeRename() {
+        renameForm.classList.add('hidden');
+        renameForm.classList.remove('flex');
+        heading.classList.remove('hidden');
+        renameBtn.classList.remove('hidden');
+    }
+
+    async function saveRename() {
+        const title = titleInput.value.trim();
+        if (!title) { titleInput.focus(); return; }
+        startBusy(renameSave, 'Saving…');
+        try {
+            const res = await fetch(renameUrl, {
+                method: 'PATCH',
+                headers: { 'X-CSRF-TOKEN': csrfToken(), 'Accept': 'application/json', 'Content-Type': 'application/json' },
+                body: JSON.stringify({ title }),
+            });
+            if (!res.ok) throw new Error(await errorMessage(res));
+            const data = await res.json();
+            heading.textContent = data.title;
+            document.title = `${data.title} — Bespoken TTS`;
+            closeRename();
+            setStatus(finalStatus, '✓ Renamed.', 'ok');
+        } catch (err) {
+            setStatus(finalStatus, `✗ ${err.message}`, 'error');
+        } finally {
+            endBusy(renameSave);
+        }
+    }
+
+    if (renameBtn) {
+        renameBtn.addEventListener('click', openRename);
+        renameSave.addEventListener('click', saveRename);
+        renameCancel.addEventListener('click', closeRename);
+        titleInput.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter') { e.preventDefault(); saveRename(); }
+            if (e.key === 'Escape') { e.preventDefault(); closeRename(); }
+        });
+    }
+
     refreshSeams();
 }
 

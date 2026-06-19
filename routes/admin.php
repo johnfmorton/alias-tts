@@ -38,6 +38,7 @@ Route::prefix('studio')->name('studio.')->group(function () {
         Route::get('/create', [StudioProjectController::class, 'create'])->name('create');
         Route::post('/', [StudioProjectController::class, 'store'])->name('store');
         Route::get('/{project}', [StudioProjectController::class, 'show'])->name('show');
+        Route::patch('/{project}', [StudioProjectController::class, 'update'])->name('update');
         Route::delete('/{project}', [StudioProjectController::class, 'destroy'])->name('destroy');
         Route::get('/{project}/audio', [StudioProjectController::class, 'finalAudio'])->name('audio');
         Route::post('/{project}/preview', [StudioProjectController::class, 'previewConcat'])->name('preview');
