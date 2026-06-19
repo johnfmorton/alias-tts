@@ -87,6 +87,17 @@ return [
     // Fade (ms) applied to each trimmed chunk's edges so seams stay click-free.
     'chunk_fade_ms' => (int) env('TTS_CHUNK_FADE_MS', 8),
 
+    // The trailing-swoosh trim is bounded to the LAST this-many ms of a chunk, so
+    // it can never reach back far enough to swallow a quiet final word. Chatterbox
+    // often renders a soft trailing word (e.g. "Why?") below the silence
+    // threshold; an unbounded trim treated it as part of the trailing silence and
+    // dropped the word entirely. The swoosh sits *after* the word, so a window a
+    // little longer than the swoosh removes the noise while keeping the word.
+    // Raise it if a longer swoosh tail survives; lower it if a soft final word is
+    // still clipped. The head (leading-silence) trim stays unbounded — that's just
+    // dead air to remove.
+    'chunk_trim_tail_window_ms' => (int) env('TTS_CHUNK_TRIM_TAIL_WINDOW_MS', 300),
+
     // True digital silence (ms) inserted between chunks at a sentence seam and
     // at a block/paragraph seam respectively. Tune by ear for natural pacing.
     'chunk_gap_ms' => (int) env('TTS_CHUNK_GAP_MS', 120),

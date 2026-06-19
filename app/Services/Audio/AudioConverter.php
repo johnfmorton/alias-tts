@@ -82,11 +82,12 @@ class AudioConverter
 
         $threshold = (string) config('tts.chunk_trim_threshold', '-40dB');
         $fadeMs = max(0, (int) config('tts.chunk_fade_ms', 8));
+        $tailWindowMs = max(0, (int) config('tts.chunk_trim_tail_window_ms', 300));
 
         if (count($inputChunks) === 1) {
             // Trim the single chunk's edges too (drops the trailing artifact),
             // then encode to the requested format.
-            $trimmed = $this->trimChunk($inputChunks[0], $spec['rate'], $threshold, $fadeMs);
+            $trimmed = $this->trimChunk($inputChunks[0], $spec['rate'], $threshold, $fadeMs, $tailWindowMs);
 
             return $this->convert($trimmed, $outputFormat, 'wav');
         }
@@ -104,7 +105,7 @@ class AudioConverter
 
             foreach ($inputChunks as $i => $bytes) {
                 $chunkFile = tempnam(sys_get_temp_dir(), 'tts_cat_');
-                file_put_contents($chunkFile, $this->trimChunk($bytes, $spec['rate'], $threshold, $fadeMs));
+                file_put_contents($chunkFile, $this->trimChunk($bytes, $spec['rate'], $threshold, $fadeMs, $tailWindowMs));
                 $files[] = $chunkFile;
                 $entries[] = "file '".$chunkFile."'";
 
@@ -166,27 +167,42 @@ class AudioConverter
      * to a straight transcode (never empty) when trimming would remove
      * everything — e.g. a fully-silent chunk — so the seam keeps its content and
      * the concat demuxer still sees uniform inputs.
+     *
+     * The head (leading-silence) trim is unbounded — that's dead air before
+     * speech, always safe to drop. The TAIL trim is bounded to the last
+     * $tailWindowMs: ffmpeg's silenceremove is far more aggressive than its
+     * nominal threshold and will treat a soft trailing word (a quiet "Why?") as
+     * part of the trailing silence and remove the whole word + the pause before
+     * it. Because Chatterbox's swoosh sits *after* the word, restricting the trim
+     * to a short end-window strips the swoosh while the word — which ends before
+     * the window — is provably untouched. No single threshold can separate a
+     * quiet word from a similar-level swoosh, so bounding the window (not tuning
+     * the threshold) is the fix. {@see \Tests\Feature\AudioConverterTest}.
      */
-    private function trimChunk(string $bytes, int $rate, string $threshold, int $fadeMs): string
+    private function trimChunk(string $bytes, int $rate, string $threshold, int $fadeMs, int $tailWindowMs): string
     {
         $fade = $this->seconds($fadeMs);
+        $window = $this->seconds($tailWindowMs);
         $silenceRemove = "silenceremove=start_periods=1:start_threshold={$threshold}:start_silence=0.03:detection=peak";
 
-        // Trim the head; reverse and trim the (former) tail; fade both edges via
-        // the same reverse trick so no clip duration is needed.
-        $parts = [$silenceRemove, 'areverse', $silenceRemove];
+        // Head trim, then split: keep everything before the last $window verbatim
+        // [body]; strip trailing silence only within the last $window [tail]
+        // (areverse + atrim addresses the end without needing the duration); then
+        // rejoin and fade both edges.
+        $tail = "[body][tail]concat=n=2:v=0:a=1";
         if ($fadeMs > 0) {
-            $parts[] = "afade=t=in:d={$fade}";
+            $tail .= ",afade=t=in:d={$fade},areverse,afade=t=in:d={$fade},areverse";
         }
-        $parts[] = 'areverse';
-        if ($fadeMs > 0) {
-            $parts[] = "afade=t=in:d={$fade}";
-        }
+        $graph = "[0:a]{$silenceRemove},asplit=2[a][b];"
+            ."[a]areverse,atrim=start={$window},areverse[body];"
+            ."[b]areverse,atrim=end={$window},{$silenceRemove},areverse[tail];"
+            .$tail.'[out]';
 
-        $trimmed = $this->runFilterToWav($bytes, $rate, implode(',', $parts));
+        $trimmed = $this->runGraphToWav($bytes, $rate, $graph);
 
         // A header-only / vanishingly short result means trimming ate the whole
-        // chunk; canonicalize the original instead so it isn't dropped.
+        // chunk (e.g. a fully-silent chunk); canonicalize the original instead so
+        // it isn't dropped.
         if ($trimmed === null || strlen($trimmed) < 1000) {
             $canon = $this->runFilterToWav($bytes, $rate, null);
 
@@ -216,6 +232,41 @@ class AudioConverter
             $args = array_merge($args, ['-ac', '1', '-ar', (string) $rate, '-c:a', 'pcm_s16le', '-f', 'wav', $out]);
 
             $process = new Process($args);
+            $process->setTimeout(120);
+            $process->run();
+
+            if (! $process->isSuccessful()) {
+                return null;
+            }
+
+            $result = file_get_contents($out);
+
+            return $result === false ? null : $result;
+        } finally {
+            @unlink($in);
+            @unlink($out);
+        }
+    }
+
+    /**
+     * Run a complex ffmpeg filtergraph (one that splits/joins, so it needs named
+     * pads and -filter_complex rather than -af) over input bytes, returning mono
+     * pcm_s16le WAV at $rate, or null on failure. The graph must read [0:a] and
+     * expose its result on [out].
+     */
+    private function runGraphToWav(string $bytes, int $rate, string $graph): ?string
+    {
+        $in = tempnam(sys_get_temp_dir(), 'tts_trim_in_');
+        $out = tempnam(sys_get_temp_dir(), 'tts_trim_out_');
+
+        try {
+            file_put_contents($in, $bytes);
+
+            $process = new Process([
+                $this->ffmpegPath, '-y', '-hide_banner', '-loglevel', 'error', '-i', $in,
+                '-filter_complex', $graph, '-map', '[out]',
+                '-ac', '1', '-ar', (string) $rate, '-c:a', 'pcm_s16le', '-f', 'wav', $out,
+            ]);
             $process->setTimeout(120);
             $process->run();
 
