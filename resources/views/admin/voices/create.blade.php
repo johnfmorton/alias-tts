@@ -24,6 +24,24 @@
                    class="w-full rounded-lg border border-zinc-700 bg-zinc-900 px-3 py-2 text-sm focus:border-cyan-500 focus:outline-none focus:ring-2 focus:ring-cyan-500/30">
             <p class="mt-1.5 text-xs text-zinc-500">Pins reproducible output. Leave blank for a random seed each call.</p>
         </div>
+        <div>
+            <span class="mb-1.5 block text-sm font-medium">Default tuning <span class="text-zinc-500">(optional)</span></span>
+            <div class="flex gap-3">
+                <label class="flex-1">
+                    <span class="mb-1 block text-xs text-zinc-500">Stability (0–1)</span>
+                    <input id="stability" name="stability" type="number" step="0.05" min="0" max="1"
+                           value="{{ old('stability') }}" placeholder="0.5"
+                           class="w-full rounded-lg border border-zinc-700 bg-zinc-900 px-3 py-2 text-sm focus:border-cyan-500 focus:outline-none focus:ring-2 focus:ring-cyan-500/30">
+                </label>
+                <label class="flex-1">
+                    <span class="mb-1 block text-xs text-zinc-500">Style (0–1)</span>
+                    <input id="style" name="style" type="number" step="0.05" min="0" max="1"
+                           value="{{ old('style') }}" placeholder="0.0"
+                           class="w-full rounded-lg border border-zinc-700 bg-zinc-900 px-3 py-2 text-sm focus:border-cyan-500 focus:outline-none focus:ring-2 focus:ring-cyan-500/30">
+                </label>
+            </div>
+            <p class="mt-1.5 text-xs text-zinc-500">Used when a request doesn't set its own. Higher stability = steadier pacing; higher style = more animated. Leave blank to use the system defaults.</p>
+        </div>
         <label class="flex items-center gap-2 text-sm text-zinc-400">
             <input type="checkbox" name="raw" value="1" {{ old('raw') ? 'checked' : '' }} class="rounded border-zinc-700 bg-zinc-900 text-cyan-500 focus:ring-cyan-500/30">
             Store raw (skip auto-normalization)

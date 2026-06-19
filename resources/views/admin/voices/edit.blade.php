@@ -1,4 +1,4 @@
-<x-layout title="Edit voice" description="Rename the voice_id, change the default seed, or replace the reference clip.">
+<x-layout title="Edit voice" description="Rename the voice_id, set default tuning or seed, or replace the reference clip.">
     <form method="POST" action="{{ route('admin.voices.update', $voice) }}" enctype="multipart/form-data" class="max-w-lg space-y-5 rounded-xl border border-zinc-800 bg-zinc-900/50 p-6">
         @csrf
         @method('PUT')
@@ -18,6 +18,24 @@
             <input id="seed" name="seed" type="number" value="{{ old('seed', $voice->settings['seed'] ?? '') }}" placeholder="random"
                    class="w-full rounded-lg border border-zinc-700 bg-zinc-900 px-3 py-2 text-sm focus:border-cyan-500 focus:outline-none focus:ring-2 focus:ring-cyan-500/30">
             <p class="mt-1.5 text-xs text-zinc-500">Leave blank for a random seed each call.</p>
+        </div>
+        <div>
+            <span class="mb-1.5 block text-sm font-medium">Default tuning <span class="text-zinc-500">(optional)</span></span>
+            <div class="flex gap-3">
+                <label class="flex-1">
+                    <span class="mb-1 block text-xs text-zinc-500">Stability (0–1)</span>
+                    <input id="stability" name="stability" type="number" step="0.05" min="0" max="1"
+                           value="{{ old('stability', $voice->settings['stability'] ?? '') }}" placeholder="0.5"
+                           class="w-full rounded-lg border border-zinc-700 bg-zinc-900 px-3 py-2 text-sm focus:border-cyan-500 focus:outline-none focus:ring-2 focus:ring-cyan-500/30">
+                </label>
+                <label class="flex-1">
+                    <span class="mb-1 block text-xs text-zinc-500">Style (0–1)</span>
+                    <input id="style" name="style" type="number" step="0.05" min="0" max="1"
+                           value="{{ old('style', $voice->settings['style'] ?? '') }}" placeholder="0.0"
+                           class="w-full rounded-lg border border-zinc-700 bg-zinc-900 px-3 py-2 text-sm focus:border-cyan-500 focus:outline-none focus:ring-2 focus:ring-cyan-500/30">
+                </label>
+            </div>
+            <p class="mt-1.5 text-xs text-zinc-500">Used when a request doesn't set its own. Higher stability = steadier pacing; higher style = more animated. Blank uses the system defaults — tune by ear in <a class="text-cyan-400 hover:underline" href="{{ route('admin.studio.index') }}">Studio</a>.</p>
         </div>
         <div>
             <label for="audio" class="mb-1.5 block text-sm font-medium">Replace reference clip <span class="text-zinc-500">(optional)</span></label>

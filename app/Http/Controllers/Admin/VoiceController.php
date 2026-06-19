@@ -45,6 +45,8 @@ class VoiceController extends Controller
             ext: $file->getClientOriginalExtension(),
             normalize: (bool) config('tts.normalize_reference') && ! $request->boolean('raw'),
             seed: $request->filled('seed') ? (int) $request->input('seed') : null,
+            stability: $request->filled('stability') ? (float) $request->input('stability') : null,
+            style: $request->filled('style') ? (float) $request->input('style') : null,
         );
 
         return redirect()->route('admin.voices.index')
@@ -68,6 +70,8 @@ class VoiceController extends Controller
             ext: $file?->getClientOriginalExtension(),
             normalize: (bool) config('tts.normalize_reference') && ! $request->boolean('raw'),
             seed: $request->filled('seed') ? (int) $request->input('seed') : null,
+            stability: $request->filled('stability') ? (float) $request->input('stability') : null,
+            style: $request->filled('style') ? (float) $request->input('style') : null,
         );
 
         return redirect()->route('admin.voices.index')

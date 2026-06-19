@@ -12,7 +12,9 @@ class VoiceCreate extends Command
                             {audio? : Path to a clean reference audio clip (~15-30s)}
                             {--slug= : Public voice_id used in the URL (defaults to a slug of the name)}
                             {--raw : Store the reference as-is, skipping auto-normalization}
-                            {--seed= : Default generation seed for this voice (pins reproducible output)}';
+                            {--seed= : Default generation seed for this voice (pins reproducible output)}
+                            {--stability= : Default stability 0-1 (higher = steadier pacing)}
+                            {--style= : Default style 0-1 (higher = more animated delivery)}';
 
     protected $description = 'Register a voice (and store its reference clip for zero-shot cloning)';
 
@@ -20,6 +22,8 @@ class VoiceCreate extends Command
     {
         $audio = $this->argument('audio');
         $seed = $this->option('seed') !== null ? (int) $this->option('seed') : null;
+        $stability = $this->option('stability') !== null ? (float) $this->option('stability') : null;
+        $style = $this->option('style') !== null ? (float) $this->option('style') : null;
 
         $bytes = null;
         $ext = null;
@@ -44,6 +48,8 @@ class VoiceCreate extends Command
             ext: $ext,
             normalize: $normalized,
             seed: $seed,
+            stability: $stability,
+            style: $style,
         );
 
         $this->info('Voice saved.');
@@ -55,6 +61,8 @@ class VoiceCreate extends Command
             ['Reference', $voice->reference_audio_path ?: '(none — set one for cloning)'],
             ['Normalized', $audio ? ($normalized ? 'Yes (mono, loudness-normalized, peak-limited)' : 'No (stored raw)') : 'n/a'],
             ['Default seed', $voice->settings['seed'] ?? '(random)'],
+            ['Default stability', $voice->settings['stability'] ?? '(system default)'],
+            ['Default style', $voice->settings['style'] ?? '(system default)'],
         ]);
         $this->newLine();
         $this->info("Set this voice_id ({$voice->slug}) in your client to use it.");

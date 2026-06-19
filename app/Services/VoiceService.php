@@ -31,6 +31,8 @@ class VoiceService
         ?string $ext,
         bool $normalize,
         ?int $seed,
+        ?float $stability = null,
+        ?float $style = null,
     ): Voice {
         $slug = $slug ?: Str::slug($name);
 
@@ -51,8 +53,12 @@ class VoiceService
             $attributes['reference_audio_path'] = $referencePath;
         }
 
-        if ($seed !== null) {
-            $attributes['settings'] = ['seed' => $seed];
+        $settings = array_filter(
+            ['seed' => $seed, 'stability' => $stability, 'style' => $style],
+            fn ($value) => $value !== null,
+        );
+        if ($settings !== []) {
+            $attributes['settings'] = $settings;
         }
 
         return Voice::updateOrCreate(['slug' => $slug], $attributes);
@@ -71,6 +77,8 @@ class VoiceService
         ?string $ext,
         bool $normalize,
         ?int $seed,
+        ?float $stability = null,
+        ?float $style = null,
     ): Voice {
         $disk = Storage::disk(config('tts.storage_disk'));
         $referencePath = $voice->reference_audio_path;
@@ -98,10 +106,12 @@ class VoiceService
         }
 
         $settings = is_array($voice->settings) ? $voice->settings : [];
-        if ($seed !== null) {
-            $settings['seed'] = $seed;
-        } else {
-            unset($settings['seed']);
+        foreach (['seed' => $seed, 'stability' => $stability, 'style' => $style] as $key => $value) {
+            if ($value !== null) {
+                $settings[$key] = $value;
+            } else {
+                unset($settings[$key]);
+            }
         }
 
         $voice->update([
