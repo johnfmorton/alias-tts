@@ -11,6 +11,7 @@ use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Validator;
+use Illuminate\Support\Str;
 use Illuminate\View\View;
 use RuntimeException;
 use Symfony\Component\HttpFoundation\Response;
@@ -131,6 +132,29 @@ class StudioProjectController extends Controller
         return response($bytes, 200)->header('Content-Type', 'audio/wav');
     }
 
+    public function previewConcat(Request $request, TtsProject $project): Response
+    {
+        $validator = Validator::make($request->all(), [
+            'chunks' => ['required', 'array', 'min:1'],
+            'chunks.*' => ['string'],
+        ]);
+        if ($validator->fails()) {
+            return response()->json(['message' => $validator->errors()->first()], 422);
+        }
+
+        try {
+            [$bytes, $mime] = $this->projects->previewConcat($project, (array) $request->input('chunks'));
+        } catch (RuntimeException $e) {
+            return response()->json(['message' => $e->getMessage()], 422);
+        } catch (Throwable $e) {
+            report($e);
+
+            return response()->json(['message' => 'Preview failed: '.$e->getMessage()], 502);
+        }
+
+        return response($bytes, 200)->header('Content-Type', $mime);
+    }
+
     public function rebuild(TtsProject $project): JsonResponse
     {
         try {
@@ -154,7 +178,7 @@ class StudioProjectController extends Controller
         }
 
         $ext = pathinfo((string) $project->final_audio_path, PATHINFO_EXTENSION) ?: 'mp3';
-        $filename = \Illuminate\Support\Str::slug($project->title ?: 'project').'.'.$ext;
+        $filename = Str::slug($project->title ?: 'project').'.'.$ext;
 
         return response($bytes, 200)
             ->header('Content-Type', $project->mime_type ?: 'audio/mpeg')

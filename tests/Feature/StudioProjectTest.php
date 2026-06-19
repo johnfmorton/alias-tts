@@ -154,6 +154,37 @@ class StudioProjectTest extends TestCase
         $this->assertStringStartsWith('audio/mpeg', (string) $audio->headers->get('content-type'));
     }
 
+    public function test_preview_stitches_selected_chunks_without_persisting(): void
+    {
+        $project = $this->project();
+        $chunks = $project->chunks()->get();
+        foreach ($chunks as $chunk) {
+            $this->actingAs($this->admin())->post(route('admin.studio.projects.chunks.generate', [$project, $chunk]));
+        }
+
+        $res = $this->actingAs($this->admin())->postJson(route('admin.studio.projects.preview', $project), [
+            'chunks' => $chunks->pluck('id')->all(),
+        ]);
+
+        $res->assertOk();
+        $this->assertStringStartsWith('audio/mpeg', (string) $res->headers->get('content-type'));
+        $this->assertNotEmpty($res->getContent());
+        // Preview must not write a final file.
+        $this->assertNull($project->refresh()->final_audio_path);
+    }
+
+    public function test_preview_rejects_ungenerated_selection(): void
+    {
+        $project = $this->project(); // chunks exist but none generated
+
+        $this->actingAs($this->admin())
+            ->postJson(route('admin.studio.projects.preview', $project), [
+                'chunks' => $project->chunks()->pluck('id')->all(),
+            ])
+            ->assertStatus(422)
+            ->assertJsonPath('message', 'Select at least one generated chunk to preview.');
+    }
+
     public function test_editing_a_chunk_marks_it_and_the_project_stale(): void
     {
         $project = $this->project();

@@ -40,6 +40,7 @@ Route::prefix('studio')->name('studio.')->group(function () {
         Route::get('/{project}', [StudioProjectController::class, 'show'])->name('show');
         Route::delete('/{project}', [StudioProjectController::class, 'destroy'])->name('destroy');
         Route::get('/{project}/audio', [StudioProjectController::class, 'finalAudio'])->name('audio');
+        Route::post('/{project}/preview', [StudioProjectController::class, 'previewConcat'])->name('preview');
         Route::post('/{project}/rebuild', [StudioProjectController::class, 'rebuild'])->name('rebuild');
         Route::patch('/{project}/chunks/{chunk}', [StudioProjectController::class, 'updateChunk'])->name('chunks.update');
         Route::post('/{project}/chunks/{chunk}/generate', [StudioProjectController::class, 'generateChunk'])->name('chunks.generate');

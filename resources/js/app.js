@@ -490,6 +490,11 @@ function initStudioProject() {
     const downloadLink = document.getElementById('project-download');
     const generateAllBtn = document.getElementById('project-generate-all');
     const rebuildBtn = document.getElementById('project-rebuild');
+    const previewUrl = root.dataset.previewUrl;
+    const previewBar = document.getElementById('project-preview-bar');
+    const previewBtn = document.getElementById('project-preview');
+    const previewStatus = document.getElementById('project-preview-status');
+    const previewAudio = document.getElementById('project-preview-audio');
 
     // Cache-bust so a regenerated chunk / rebuilt final reloads in the player.
     const bust = (url) => url + (url.includes('?') ? '&' : '?') + 't=' + Date.now();
@@ -537,6 +542,11 @@ function initStudioProject() {
             audio.src = bust(card.dataset.audioUrl);
             audio.classList.remove('hidden');
             audio.play().catch(() => {});
+            // Now selectable for a seam preview.
+            const include = card.querySelector('.chunk-include');
+            include.classList.remove('hidden');
+            include.classList.add('inline-flex');
+            previewBar.classList.remove('hidden');
             endBusy(genBtn);
             genBtn.textContent = '▶ Regenerate';
         } catch (err) {
@@ -593,6 +603,33 @@ function initStudioProject() {
         }
     }
 
+    // Stitch the ticked (generated) chunks — e.g. two adjacent — to hear the seam.
+    async function previewSelected() {
+        const ids = [...root.querySelectorAll('.studio-chunk')]
+            .filter((c) => c.querySelector('.chunk-include-cb')?.checked)
+            .map((c) => c.dataset.chunkId);
+        if (!ids.length) {
+            setStatus(previewStatus, 'Tick at least one generated chunk first.', 'error');
+            return;
+        }
+        const t0 = performance.now();
+        startBusy(previewBtn, 'Stitching…');
+        try {
+            const res = await fetch(previewUrl, {
+                method: 'POST',
+                headers: { 'X-CSRF-TOKEN': csrfToken(), 'Accept': 'audio/*', 'Content-Type': 'application/json' },
+                body: JSON.stringify({ chunks: ids }),
+            });
+            if (!res.ok) throw new Error(await errorMessage(res));
+            playAudio(previewAudio, await res.blob());
+            setStatus(previewStatus, `✓ Stitched ${ids.length} chunk(s) in ${elapsed(t0)}s — playing now.`, 'ok');
+        } catch (err) {
+            setStatus(previewStatus, `✗ ${err.message}`, 'error');
+        } finally {
+            endBusy(previewBtn);
+        }
+    }
+
     root.querySelectorAll('.studio-chunk').forEach((card) => {
         card.querySelector('.chunk-save').addEventListener('click', async () => {
             const btn = card.querySelector('.chunk-save');
@@ -611,6 +648,7 @@ function initStudioProject() {
 
     generateAllBtn.addEventListener('click', generateAll);
     rebuildBtn.addEventListener('click', rebuild);
+    previewBtn.addEventListener('click', previewSelected);
 }
 
 initStudioProject();

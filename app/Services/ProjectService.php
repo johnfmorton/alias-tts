@@ -9,6 +9,7 @@ use App\Models\TtsProject;
 use App\Models\Voice;
 use App\Services\Audio\AudioConverter;
 use App\Services\Tts\TtsProvider;
+use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Storage;
 use RuntimeException;
 use Throwable;
@@ -158,6 +159,54 @@ class ProjectService
             throw new RuntimeException("{$missing} chunk(s) still need to be generated before rebuilding.");
         }
 
+        [$bytes, $mime, $ext] = $this->concatenateChunks($chunks, $project->output_format);
+
+        $path = config('tts.storage_path').'/projects/'.$project->id.'/final.'.$ext;
+        Storage::disk($this->disk())->put($path, $bytes);
+
+        $project->update([
+            'final_audio_path' => $path,
+            'mime_type' => $mime,
+            'status' => ProjectStatus::Ready,
+        ]);
+
+        return $project;
+    }
+
+    /**
+     * Stitch a SUBSET of a project's chunks (in document order) the way rebuild
+     * does — same trim + seam — and return the bytes WITHOUT persisting. Lets the
+     * editor audition how two adjacent chunks join at their seam.
+     *
+     * @param  array<int, string>  $chunkIds
+     * @return array{0: string, 1: string} [bytes, mimeType]
+     */
+    public function previewConcat(TtsProject $project, array $chunkIds): array
+    {
+        $chunks = $project->chunks()
+            ->whereIn('id', $chunkIds)
+            ->whereNotNull('audio_path')
+            ->orderBy('position')
+            ->get();
+
+        if ($chunks->isEmpty()) {
+            throw new RuntimeException('Select at least one generated chunk to preview.');
+        }
+
+        [$bytes, $mime] = $this->concatenateChunks($chunks, $project->output_format);
+
+        return [$bytes, $mime];
+    }
+
+    /**
+     * Concatenate chunks' stored raw audio (in their given order) with the right
+     * seam silence per chunk. Shared by rebuild() and previewConcat().
+     *
+     * @param  Collection<int, TtsChunk>  $chunks
+     * @return array{0: string, 1: string, 2: string} [bytes, mimeType, extension]
+     */
+    private function concatenateChunks($chunks, string $outputFormat): array
+    {
         $sentenceGap = (int) config('tts.chunk_gap_ms', 120);
         $paragraphGap = (int) config('tts.paragraph_gap_ms', 400);
         $disk = Storage::disk($this->disk());
@@ -169,23 +218,12 @@ class ProjectService
             $seamGapsMs[] = $chunk->break_after === 'paragraph' ? $paragraphGap : $sentenceGap;
         }
 
-        [$bytes, $mime, $ext] = $this->converter->concatenate(
+        return $this->converter->concatenate(
             $rawParts,
-            $project->output_format,
+            $outputFormat,
             $this->provider->outputContainer(),
             $seamGapsMs,
         );
-
-        $path = config('tts.storage_path').'/projects/'.$project->id.'/final.'.$ext;
-        $disk->put($path, $bytes);
-
-        $project->update([
-            'final_audio_path' => $path,
-            'mime_type' => $mime,
-            'status' => ProjectStatus::Ready,
-        ]);
-
-        return $project;
     }
 
     public function chunkAudioBytes(TtsChunk $chunk): ?string
