@@ -19,7 +19,7 @@ namespace App\Services;
  * The plugin's pronunciation-rule step is intentionally omitted: those rules
  * live in Craft, not in this service.
  *
- * @see \App\Services\TextChunker
+ * @see TextChunker
  */
 class TextNormalizer
 {

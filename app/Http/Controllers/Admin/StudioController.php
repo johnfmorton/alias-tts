@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Models\TtsProject;
 use App\Models\Voice;
 use App\Services\Audio\AudioConverter;
+use App\Services\SpeechService;
 use App\Services\TextChunker;
 use App\Services\TextNormalizer;
 use App\Services\Tts\TtsProvider;
@@ -221,7 +222,7 @@ class StudioController extends Controller
 
     /**
      * Chunk with the production knobs so the displayed breakdown matches what the
-     * real generation pipeline ({@see \App\Services\SpeechService::process()})
+     * real generation pipeline ({@see SpeechService::process()})
      * produces.
      *
      * @return array<int, array{text: string, breakAfter: 'sentence'|'paragraph'}>

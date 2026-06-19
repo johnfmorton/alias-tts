@@ -4,6 +4,7 @@ namespace App\Services\Audio;
 
 use RuntimeException;
 use Symfony\Component\Process\Process;
+use Tests\Feature\AudioConverterTest;
 
 /**
  * Transcodes raw audio bytes to an ElevenLabs-style output_format using ffmpeg.
@@ -177,7 +178,7 @@ class AudioConverter
      * to a short end-window strips the swoosh while the word — which ends before
      * the window — is provably untouched. No single threshold can separate a
      * quiet word from a similar-level swoosh, so bounding the window (not tuning
-     * the threshold) is the fix. {@see \Tests\Feature\AudioConverterTest}.
+     * the threshold) is the fix. {@see AudioConverterTest}.
      */
     private function trimChunk(string $bytes, int $rate, string $threshold, int $fadeMs, int $tailWindowMs): string
     {
@@ -189,7 +190,7 @@ class AudioConverter
         // [body]; strip trailing silence only within the last $window [tail]
         // (areverse + atrim addresses the end without needing the duration); then
         // rejoin and fade both edges.
-        $tail = "[body][tail]concat=n=2:v=0:a=1";
+        $tail = '[body][tail]concat=n=2:v=0:a=1';
         if ($fadeMs > 0) {
             $tail .= ",afade=t=in:d={$fade},areverse,afade=t=in:d={$fade},areverse";
         }
