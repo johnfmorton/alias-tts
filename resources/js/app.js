@@ -491,6 +491,7 @@ function initStudioProject() {
     const generateAllBtn = document.getElementById('project-generate-all');
     const rebuildBtn = document.getElementById('project-rebuild');
     const previewUrl = root.dataset.previewUrl;
+    const insertUrl = root.dataset.insertUrl;
 
     // Cache-bust so a regenerated chunk / rebuilt final reloads in the player.
     const bust = (url) => url + (url.includes('?') ? '&' : '?') + 't=' + Date.now();
@@ -511,11 +512,18 @@ function initStudioProject() {
         });
         if (!res.ok) throw new Error(await errorMessage(res));
         const data = await res.json();
+        // An over-long edit was split into new chunks — the list changed
+        // structurally, so reload to re-render it. Returns true so callers stop.
+        if (data.rechunked) {
+            window.location.reload();
+            return true;
+        }
         textarea.dataset.original = textarea.value;
         card.querySelector('.chunk-chars').textContent = `${data.characters} chars`;
         setChunkStatus(card, data.status);
         setProjectStatus(data.project_status);
         refreshSeams(); // a now-stale chunk hides its adjacent seam previews
+        return false;
     }
 
     async function generateChunk(card) {
@@ -524,7 +532,9 @@ function initStudioProject() {
         startBusy(genBtn, 'Generating…');
         try {
             if (textarea.value !== textarea.dataset.original) {
-                await patchChunk(card); // persist the edit before synthesizing
+                // Persist the edit first. If that split the chunk, the page is
+                // reloading — don't generate the now-orphaned original chunk.
+                if (await patchChunk(card)) return;
             }
             const res = await fetch(card.dataset.generateUrl, {
                 method: 'POST',
@@ -655,6 +665,25 @@ function initStudioProject() {
 
     generateAllBtn.addEventListener('click', generateAll);
     rebuildBtn.addEventListener('click', rebuild);
+
+    // Insert an empty chunk at a gap, then reload to re-render the (renumbered) list.
+    root.querySelectorAll('.chunk-insert button').forEach((btn) => {
+        btn.addEventListener('click', async () => {
+            startBusy(btn, 'Inserting…');
+            try {
+                const res = await fetch(insertUrl, {
+                    method: 'POST',
+                    headers: { 'X-CSRF-TOKEN': csrfToken(), 'Accept': 'application/json', 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ position: Number(btn.closest('.chunk-insert').dataset.position) }),
+                });
+                if (!res.ok) throw new Error(await errorMessage(res));
+                window.location.reload();
+            } catch (err) {
+                setStatus(finalStatus, `✗ ${err.message}`, 'error');
+                endBusy(btn);
+            }
+        });
+    });
 
     // Inline rename: swap the page heading for a title input, PATCH on save, then
     // update the heading and tab title in place. The control lives next to the

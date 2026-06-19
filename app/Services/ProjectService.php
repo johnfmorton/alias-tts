@@ -11,6 +11,7 @@ use App\Models\Voice;
 use App\Services\Audio\AudioConverter;
 use App\Services\Tts\TtsProvider;
 use Illuminate\Support\Collection;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;
 use RuntimeException;
 use Throwable;
@@ -54,13 +55,7 @@ class ProjectService
         ?ApiKey $apiKey = null,
     ): TtsProject {
         $normalized = $this->normalizer->normalize($text);
-        $segments = $this->chunker->segment(
-            $normalized,
-            (int) config('tts.chunk_chars', 280),
-            (int) config('tts.block_space_run', 4),
-            (int) config('tts.min_chunk_chars', 30),
-            (int) config('tts.short_trailer_words', 3),
-        );
+        $segments = $this->segmentText($normalized);
 
         $project = TtsProject::create([
             'api_key_id' => $apiKey?->id,
@@ -75,17 +70,64 @@ class ProjectService
             'status' => ProjectStatus::Draft,
         ]);
 
-        foreach ($segments as $i => $segment) {
-            $project->chunks()->create([
-                'position' => $i,
-                'text' => $segment['text'],
-                'break_after' => $segment['breakAfter'],
-                'status' => ChunkStatus::Pending,
-                'characters' => mb_strlen($segment['text']),
-            ]);
-        }
+        $this->createChunks($project, $segments);
 
         return $project;
+    }
+
+    /**
+     * Re-chunk a (possibly edited) project's text from scratch: normalize +
+     * chunk the new text, delete every existing chunk and all stored audio,
+     * recreate fresh (ungenerated) chunk rows, and return the project to Draft.
+     * Destructive — all generated audio is discarded. Voice/settings/seed are
+     * left untouched.
+     */
+    public function resetFromText(TtsProject $project, string $text): TtsProject
+    {
+        $normalized = $this->normalizer->normalize($text);
+        $segments = $this->segmentText($normalized);
+
+        // Mutate the rows in a transaction; only wipe audio off disk once it
+        // commits, so a failed re-chunk can't leave rows pointing at deleted files.
+        DB::transaction(function () use ($project, $text, $normalized, $segments) {
+            $project->chunks()->delete();
+            $this->createChunks($project, $segments);
+            $project->update([
+                'source_text' => $text,
+                'normalized_text' => $normalized,
+                'final_audio_path' => null,
+                'mime_type' => null,
+                'status' => ProjectStatus::Draft,
+            ]);
+        });
+
+        Storage::disk($this->disk())->deleteDirectory(config('tts.storage_path').'/projects/'.$project->id);
+
+        return $project->refresh();
+    }
+
+    /**
+     * Insert a new (empty by default, ungenerated) chunk at $position, shifting
+     * every chunk at or after it down by one. Audio is keyed by chunk id, not
+     * position, so renumbering never moves files on disk.
+     */
+    public function insertChunk(TtsProject $project, int $position, string $text = ''): TtsChunk
+    {
+        $chunk = DB::transaction(function () use ($project, $position, $text) {
+            $project->chunks()->where('position', '>=', $position)->increment('position');
+
+            return $project->chunks()->create([
+                'position' => $position,
+                'text' => $text,
+                'break_after' => 'sentence',
+                'status' => ChunkStatus::Pending,
+                'characters' => mb_strlen($text),
+            ]);
+        });
+
+        $this->markFinalOutdated($project);
+
+        return $chunk;
     }
 
     /**
@@ -127,21 +169,72 @@ class ProjectService
     }
 
     /**
-     * Update a chunk's text. Its stored audio (if any) no longer matches, so it
-     * is marked Stale and the project's final file is flagged out of date.
+     * Update a chunk's text. The new text is re-chunked with the same budget
+     * used at creation: if it still fits one chunk, it is stored in place; if it
+     * grew beyond the budget, the chunk is split — it keeps the first segment and
+     * the remainder become new chunks inserted right after it (the surrounding
+     * chunks' audio is untouched, since audio is keyed by chunk id). Either way
+     * the edited chunk's stored audio (if any) no longer matches, so it is marked
+     * Stale and the project's final file is flagged out of date.
+     *
+     * @return array{chunk: TtsChunk, created: int} The (still position-0) edited
+     *                                              chunk and how many new chunks the split added.
      */
-    public function updateChunkText(TtsChunk $chunk, string $text): TtsChunk
+    public function updateChunkText(TtsChunk $chunk, string $text): array
     {
-        $chunk->update([
-            'text' => $text,
-            'characters' => mb_strlen($text),
-            // A never-generated chunk stays Pending; a generated one goes Stale.
-            'status' => $chunk->audio_path ? ChunkStatus::Stale : ChunkStatus::Pending,
-        ]);
+        $segments = $this->segmentText($text);
 
-        $this->markFinalOutdated($chunk->project);
+        // A never-generated chunk stays Pending; a generated one goes Stale.
+        $editedStatus = $chunk->audio_path ? ChunkStatus::Stale : ChunkStatus::Pending;
 
-        return $chunk;
+        // Common case: the edit still fits a single chunk — store it in place.
+        if (count($segments) <= 1) {
+            $chunk->update([
+                'text' => $text,
+                'characters' => mb_strlen($text),
+                'status' => $editedStatus,
+            ]);
+
+            $this->markFinalOutdated($chunk->project);
+
+            return ['chunk' => $chunk, 'created' => 0];
+        }
+
+        // Over-budget edit: split into segments. The edited chunk keeps the first
+        // segment; the rest are inserted as new pending chunks after it.
+        $project = $chunk->project;
+        $position = $chunk->position;
+        $extra = array_slice($segments, 1);
+        // The chunker runs on the edited text in isolation, so its last segment is
+        // always a 'sentence' seam — preserve the boundary to the FOLLOWING sibling
+        // by giving the final new chunk the edited chunk's original break_after.
+        $originalBreakAfter = $chunk->break_after;
+
+        DB::transaction(function () use ($project, $chunk, $segments, $extra, $position, $editedStatus, $originalBreakAfter) {
+            $project->chunks()->where('position', '>', $position)->increment('position', count($extra));
+
+            $chunk->update([
+                'text' => $segments[0]['text'],
+                'characters' => mb_strlen($segments[0]['text']),
+                'break_after' => $segments[0]['breakAfter'],
+                'status' => $editedStatus,
+            ]);
+
+            foreach (array_values($extra) as $i => $segment) {
+                $isLast = $i === count($extra) - 1;
+                $project->chunks()->create([
+                    'position' => $position + 1 + $i,
+                    'text' => $segment['text'],
+                    'break_after' => $isLast ? $originalBreakAfter : $segment['breakAfter'],
+                    'status' => ChunkStatus::Pending,
+                    'characters' => mb_strlen($segment['text']),
+                ]);
+            }
+        });
+
+        $this->markFinalOutdated($project);
+
+        return ['chunk' => $chunk, 'created' => count($extra)];
     }
 
     /**
@@ -253,6 +346,42 @@ class ProjectService
         Storage::disk($this->disk())->deleteDirectory(config('tts.storage_path').'/projects/'.$project->id);
 
         $project->delete();
+    }
+
+    /**
+     * Chunk already-normalized text with the project's standard budget.
+     *
+     * @return array<int, array{text: string, breakAfter: string}>
+     */
+    private function segmentText(string $normalized): array
+    {
+        return $this->chunker->segment(
+            $normalized,
+            (int) config('tts.chunk_chars', 280),
+            (int) config('tts.block_space_run', 4),
+            (int) config('tts.min_chunk_chars', 30),
+            (int) config('tts.short_trailer_words', 3),
+        );
+    }
+
+    /**
+     * Create ungenerated chunk rows for the given segments, numbering them from
+     * $startPosition. Does NOT shift existing chunks — callers that insert into
+     * the middle must open the slots themselves first.
+     *
+     * @param  array<int, array{text: string, breakAfter: string}>  $segments
+     */
+    private function createChunks(TtsProject $project, array $segments, int $startPosition = 0): void
+    {
+        foreach (array_values($segments) as $i => $segment) {
+            $project->chunks()->create([
+                'position' => $startPosition + $i,
+                'text' => $segment['text'],
+                'break_after' => $segment['breakAfter'],
+                'status' => ChunkStatus::Pending,
+                'characters' => mb_strlen($segment['text']),
+            ]);
+        }
     }
 
     /**

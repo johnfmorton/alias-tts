@@ -27,7 +27,8 @@
          data-rebuild-url="{{ route('admin.studio.projects.rebuild', $project) }}"
          data-final-url="{{ route('admin.studio.projects.audio', $project) }}"
          data-preview-url="{{ route('admin.studio.projects.preview', $project) }}"
-         data-rename-url="{{ route('admin.studio.projects.update', $project) }}">
+         data-rename-url="{{ route('admin.studio.projects.update', $project) }}"
+         data-insert-url="{{ route('admin.studio.projects.chunks.store', $project) }}">
 
         {{-- Toolbar --}}
         <div class="mb-6 flex flex-col gap-4 rounded-xl border border-zinc-800 bg-zinc-900/50 p-5 sm:flex-row sm:items-center sm:justify-between">
@@ -42,6 +43,8 @@
                         class="rounded-lg border border-cyan-700/50 bg-cyan-500/10 px-3 py-2 text-sm text-cyan-300 hover:bg-cyan-500/20">⟳ Rebuild final</button>
                 <a id="project-download" href="{{ route('admin.studio.projects.audio', $project) }}" download
                    class="rounded-lg border border-zinc-700 px-3 py-2 text-sm hover:bg-zinc-800 {{ $hasFinal ? '' : 'hidden' }}">⤓ Download</a>
+                <a href="{{ route('admin.studio.projects.edit', $project) }}"
+                   class="rounded-lg border border-zinc-700 px-3 py-2 text-sm hover:bg-zinc-800">↺ Start over</a>
                 <form method="POST" action="{{ route('admin.studio.projects.destroy', $project) }}"
                       onsubmit="return confirm('Delete this project and all its audio?')">
                     @csrf
@@ -63,6 +66,11 @@
 
         {{-- Chunks, with an inline "Preview stitch" connector between any two adjacent GENERATED chunks --}}
         <div class="space-y-3">
+            {{-- Insert a new (empty) chunk at this gap. Always available, unlike the seam. --}}
+            <div class="chunk-insert flex justify-center" data-position="0">
+                <button type="button" class="rounded-full border border-zinc-800 px-3 py-0.5 text-xs text-zinc-600 hover:border-zinc-600 hover:text-zinc-300">+ insert chunk</button>
+            </div>
+
             @foreach($chunks as $chunk)
                 <div class="studio-chunk rounded-xl border border-zinc-800 bg-zinc-900/50 p-4"
                      data-chunk-id="{{ $chunk->id }}"
@@ -102,6 +110,10 @@
                         </div>
                     </div>
                 @endunless
+
+                <div class="chunk-insert flex justify-center" data-position="{{ $loop->iteration }}">
+                    <button type="button" class="rounded-full border border-zinc-800 px-3 py-0.5 text-xs text-zinc-600 hover:border-zinc-600 hover:text-zinc-300">+ insert chunk</button>
+                </div>
             @endforeach
         </div>
     </div>

@@ -222,10 +222,168 @@ class StudioProjectTest extends TestCase
             ->patchJson(route('admin.studio.projects.chunks.update', [$project, $chunk]), ['text' => 'A rewritten sentence here.'])
             ->assertOk()
             ->assertJsonPath('status', 'stale')
-            ->assertJsonPath('project_status', 'stale');
+            ->assertJsonPath('project_status', 'stale')
+            ->assertJsonPath('rechunked', false); // short edit fits one chunk
 
         $this->assertSame(ChunkStatus::Stale, $chunk->refresh()->status);
         $this->assertSame('A rewritten sentence here.', $chunk->text);
+    }
+
+    public function test_inserting_a_chunk_shifts_positions_and_creates_empty_pending(): void
+    {
+        $project = $this->project(); // positions 0, 1
+
+        $this->actingAs($this->admin())
+            ->postJson(route('admin.studio.projects.chunks.store', $project), ['position' => 1])
+            ->assertOk()
+            ->assertJsonPath('ok', true);
+
+        $chunks = $project->chunks()->get();
+        $this->assertCount(3, $chunks);
+        $this->assertSame([0, 1, 2], $chunks->pluck('position')->all());
+
+        $inserted = $chunks[1];
+        $this->assertSame('', $inserted->text);
+        $this->assertSame(0, $inserted->characters);
+        $this->assertSame(ChunkStatus::Pending, $inserted->status);
+    }
+
+    public function test_inserting_at_boundaries_keeps_positions_contiguous(): void
+    {
+        $project = $this->project();
+
+        // Lead (0) then append (current count).
+        $this->actingAs($this->admin())
+            ->postJson(route('admin.studio.projects.chunks.store', $project), ['position' => 0])->assertOk();
+        $this->actingAs($this->admin())
+            ->postJson(route('admin.studio.projects.chunks.store', $project), ['position' => $project->chunks()->count()])->assertOk();
+
+        $this->assertSame([0, 1, 2, 3], $project->chunks()->pluck('position')->all());
+    }
+
+    public function test_insert_rejects_out_of_range_position(): void
+    {
+        $project = $this->project(); // 2 chunks → valid positions 0..2
+
+        $this->actingAs($this->admin())
+            ->postJson(route('admin.studio.projects.chunks.store', $project), ['position' => 99])
+            ->assertStatus(422);
+
+        $this->assertCount(2, $project->chunks()->get());
+    }
+
+    public function test_generate_rejects_empty_chunk(): void
+    {
+        $project = $this->project();
+        $this->actingAs($this->admin())
+            ->postJson(route('admin.studio.projects.chunks.store', $project), ['position' => 0])->assertOk();
+
+        $empty = $project->chunks()->where('position', 0)->first();
+
+        $this->actingAs($this->admin())
+            ->postJson(route('admin.studio.projects.chunks.generate', [$project, $empty]))
+            ->assertStatus(422)
+            ->assertJsonPath('message', 'This chunk is empty — add text before generating.');
+    }
+
+    public function test_long_edit_splits_chunk_and_preserves_sibling_audio(): void
+    {
+        $project = $this->project();
+        [$first, $second] = $project->chunks()->get()->all();
+
+        // Generate both; capture the SECOND (sibling) chunk's audio.
+        $this->actingAs($this->admin())->post(route('admin.studio.projects.chunks.generate', [$project, $first]))->assertOk();
+        $this->actingAs($this->admin())->post(route('admin.studio.projects.chunks.generate', [$project, $second]))->assertOk();
+        $siblingAudio = $second->refresh()->audio_path;
+        $this->assertNotNull($siblingAudio);
+        $this->assertTrue(Storage::disk('local')->exists($siblingAudio));
+
+        // Edit the first chunk with text far over the ~280-char budget.
+        $long = str_repeat('A reasonably long sentence that contributes plenty of characters here. ', 8);
+        $this->actingAs($this->admin())
+            ->patchJson(route('admin.studio.projects.chunks.update', [$project, $first]), ['text' => $long])
+            ->assertOk()
+            ->assertJsonPath('rechunked', true);
+
+        // The chunk list grew, positions stay contiguous.
+        $positions = $project->chunks()->pluck('position')->all();
+        $this->assertGreaterThan(2, count($positions));
+        $this->assertSame(range(0, count($positions) - 1), $positions);
+
+        // The edited chunk (had audio) is Stale; the untouched sibling keeps its audio.
+        $this->assertSame(ChunkStatus::Stale, $first->refresh()->status);
+        $second->refresh();
+        $this->assertSame($siblingAudio, $second->audio_path);
+        $this->assertTrue(Storage::disk('local')->exists($siblingAudio));
+        $this->assertTrue($second->position > $first->position); // sibling shifted down
+    }
+
+    public function test_split_preserves_paragraph_break_on_the_last_piece(): void
+    {
+        $project = $this->project();
+        $first = $project->chunks()->first();
+        $this->assertSame('paragraph', $first->break_after); // precondition: ends a paragraph
+
+        // A single long paragraph (no blank line) so internal seams are sentences.
+        $long = str_repeat('This sentence is fairly long and adds plenty of characters to exceed the budget. ', 6);
+        $this->actingAs($this->admin())
+            ->patchJson(route('admin.studio.projects.chunks.update', [$project, $first]), ['text' => $long])
+            ->assertOk()
+            ->assertJsonPath('rechunked', true);
+
+        $chunks = $project->chunks()->get();
+        // First piece is a within-block sentence seam...
+        $this->assertSame('sentence', $chunks->first()->break_after);
+        // ...and the last split piece (just before the original 2nd chunk) inherits paragraph.
+        $this->assertSame('paragraph', $chunks[$chunks->count() - 2]->break_after);
+    }
+
+    public function test_reset_rechunks_text_and_wipes_audio(): void
+    {
+        $project = $this->project();
+        foreach ($project->chunks()->get() as $chunk) {
+            $this->actingAs($this->admin())->post(route('admin.studio.projects.chunks.generate', [$project, $chunk]));
+        }
+        $this->actingAs($this->admin())->postJson(route('admin.studio.projects.rebuild', $project))->assertOk();
+
+        $project->refresh();
+        $oldAudio = $project->chunks()->whereNotNull('audio_path')->pluck('audio_path')->all();
+        $finalPath = $project->final_audio_path;
+        $voiceId = $project->voice_id;
+        $this->assertNotEmpty($oldAudio);
+        $this->assertNotNull($finalPath);
+
+        $newText = "Brand new first paragraph that stands comfortably on its own.\n\n".
+                   'Brand new second paragraph that is also long enough to be its own chunk.';
+
+        $this->actingAs($this->admin())
+            ->post(route('admin.studio.projects.reset', $project), ['text' => $newText])
+            ->assertRedirect(route('admin.studio.projects.show', $project));
+
+        $project->refresh();
+        $this->assertSame(ProjectStatus::Draft, $project->status);
+        $this->assertNull($project->final_audio_path);
+        $this->assertSame($voiceId, $project->voice_id); // voice preserved
+        $this->assertSame($newText, $project->source_text);
+        $this->assertStringContainsString('Brand new first paragraph', $project->chunks()->first()->text);
+        $this->assertFalse($project->chunks()->where('status', '!=', 'pending')->exists());
+
+        // All previous audio (chunks + final) is gone from disk.
+        foreach ($oldAudio as $path) {
+            $this->assertFalse(Storage::disk('local')->exists($path));
+        }
+        $this->assertFalse(Storage::disk('local')->exists($finalPath));
+    }
+
+    public function test_edit_page_renders_source_text(): void
+    {
+        $project = $this->project();
+
+        $this->actingAs($this->admin())
+            ->get(route('admin.studio.projects.edit', $project))
+            ->assertOk()
+            ->assertSee('Start over')
+            ->assertSee('This is the first paragraph');
     }
 
     public function test_destroy_removes_project_and_audio(): void

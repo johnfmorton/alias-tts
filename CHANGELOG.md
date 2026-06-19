@@ -7,6 +7,21 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 ## [Unreleased]
 
 ### Added
+- **Insert a chunk into a Studio project.** A subtle "+ insert chunk" control at
+  every gap (and at the top/bottom) inserts a new empty, ungenerated chunk at that
+  position, shifting the rest down (`POST /admin/studio/projects/{project}/chunks`).
+  Type into it, Save, and Generate like any other chunk.
+- **Auto re-chunk an over-long edit.** Saving a chunk whose text now exceeds the
+  standard chunk budget re-splits it the same way new projects are chunked: the
+  edited chunk keeps the first segment and the remainder become new pending chunks
+  inserted right after it. The surrounding chunks' generated audio is preserved
+  (audio is keyed by chunk id, not position); a trailing paragraph seam is kept on
+  the last new piece.
+- **Start over from the original text.** A **Start over** action opens an editable
+  editor pre-filled with the project's original text; on confirm it re-chunks the
+  (possibly edited) text and **permanently deletes all generated audio**, returning
+  the project to a fresh draft with the same voice/settings
+  (`GET/POST /admin/studio/projects/{project}/edit` + `/reset`).
 - **Rename a Studio project.** A **Rename** control next to the project title in
   the editor edits the title inline and saves it without a full page reload
   (`PATCH /admin/studio/projects/{project}`). Useful for telling apart projects

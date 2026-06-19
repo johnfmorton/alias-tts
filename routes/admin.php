@@ -40,9 +40,12 @@ Route::prefix('studio')->name('studio.')->group(function () {
         Route::get('/{project}', [StudioProjectController::class, 'show'])->name('show');
         Route::patch('/{project}', [StudioProjectController::class, 'update'])->name('update');
         Route::delete('/{project}', [StudioProjectController::class, 'destroy'])->name('destroy');
+        Route::get('/{project}/edit', [StudioProjectController::class, 'edit'])->name('edit');
+        Route::post('/{project}/reset', [StudioProjectController::class, 'reset'])->name('reset');
         Route::get('/{project}/audio', [StudioProjectController::class, 'finalAudio'])->name('audio');
         Route::post('/{project}/preview', [StudioProjectController::class, 'previewConcat'])->name('preview');
         Route::post('/{project}/rebuild', [StudioProjectController::class, 'rebuild'])->name('rebuild');
+        Route::post('/{project}/chunks', [StudioProjectController::class, 'storeChunk'])->name('chunks.store');
         Route::patch('/{project}/chunks/{chunk}', [StudioProjectController::class, 'updateChunk'])->name('chunks.update');
         Route::post('/{project}/chunks/{chunk}/generate', [StudioProjectController::class, 'generateChunk'])->name('chunks.generate');
         Route::get('/{project}/chunks/{chunk}/audio', [StudioProjectController::class, 'chunkAudio'])->name('chunks.audio');

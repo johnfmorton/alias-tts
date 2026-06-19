@@ -97,6 +97,48 @@ class StudioProjectController extends Controller
         return redirect()->route('admin.studio.index')->with('success', 'Project deleted.');
     }
 
+    /** Source-text editor for "Start over" (re-chunk from scratch). */
+    public function edit(TtsProject $project): View
+    {
+        return view('admin.studio.projects.edit', ['project' => $project]);
+    }
+
+    /**
+     * Destructive: re-chunk the (possibly edited) text from scratch, discarding
+     * all generated audio. A full-page form submit, so it redirects like store().
+     */
+    public function reset(Request $request, TtsProject $project): RedirectResponse
+    {
+        $data = $request->validate([
+            'text' => ['required', 'string', 'max:'.(int) config('tts.max_async_text_length', 40000)],
+        ]);
+
+        $this->projects->resetFromText($project, $data['text']);
+
+        return redirect()->route('admin.studio.projects.show', $project)
+            ->with('success', 'Project reset — generate the chunks below.');
+    }
+
+    /** Insert a new (empty) chunk at a position; the editor reloads to re-render. */
+    public function storeChunk(Request $request, TtsProject $project): JsonResponse
+    {
+        $validator = Validator::make($request->all(), [
+            'position' => ['required', 'integer', 'min:0', 'max:'.$project->chunks()->count()],
+            'text' => ['nullable', 'string', 'max:'.(int) config('tts.max_async_text_length', 40000)],
+        ]);
+        if ($validator->fails()) {
+            return response()->json(['message' => $validator->errors()->first()], 422);
+        }
+
+        $this->projects->insertChunk(
+            $project,
+            (int) $request->input('position'),
+            (string) $request->input('text', ''),
+        );
+
+        return response()->json(['ok' => true]);
+    }
+
     public function updateChunk(Request $request, TtsProject $project, TtsChunk $chunk): JsonResponse
     {
         $this->assertChunkBelongs($project, $chunk);
@@ -108,19 +150,26 @@ class StudioProjectController extends Controller
             return response()->json(['message' => $validator->errors()->first()], 422);
         }
 
-        $chunk = $this->projects->updateChunkText($chunk, (string) $request->input('text'));
+        $result = $this->projects->updateChunkText($chunk, (string) $request->input('text'));
+        $chunk = $result['chunk'];
 
         return response()->json([
             'ok' => true,
             'status' => $chunk->status->value,
             'characters' => $chunk->characters,
             'project_status' => $project->refresh()->status->value,
+            // A split changed the chunk list structurally — the editor reloads.
+            'rechunked' => $result['created'] > 0,
         ]);
     }
 
     public function generateChunk(TtsProject $project, TtsChunk $chunk): JsonResponse
     {
         $this->assertChunkBelongs($project, $chunk);
+
+        if (trim((string) $chunk->text) === '') {
+            return response()->json(['message' => 'This chunk is empty — add text before generating.'], 422);
+        }
 
         try {
             $chunk = $this->projects->generateChunk($chunk);
