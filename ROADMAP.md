@@ -14,15 +14,6 @@ by likely usefulness. See [CHANGELOG.md](CHANGELOG.md) for what's already shippe
 - **Real streaming** — `POST /v1/text-to-speech/{voice_id}/stream` is currently an
   alias that returns the full audio once it's ready, not a streamed response.
 
-## Studio
-
-- **Voice tuning (stability & style).** A three-scope tuning model — voice
-  defaults, per-project, and per-chunk — resolved through one shared chain, with an
-  opt-in Studio "tuning bench" for comparing settings by ear and saving the winner
-  back to a voice's defaults. See **[docs/STUDIO-TUNING.md](docs/STUDIO-TUNING.md)**
-  for the full design. (Includes a foundation step that unifies the three settings
-  paths the app currently resolves separately.)
-
 ## Providers
 
 - **Additional inference backends.** The backend is a pluggable driver, but
