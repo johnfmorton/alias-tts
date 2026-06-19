@@ -224,6 +224,17 @@ document.addEventListener('click', async (e) => {
 // ---------------------------------------------------------------------------
 // Studio: inspect normalization + chunking, then play whole / per-chunk / stitched.
 // ---------------------------------------------------------------------------
+// Mirrors App\Services\Tts\ReplicateChatterboxProvider's settings mapping — keep
+// in sync: cfg_weight = clamp(stability, 0.2, 1.0); exaggeration = clamp(0.5 +
+// style*1.5, 0.25, 2.0). Blank knobs fall back to the EL defaults (0.5 / 0.0).
+function chatterboxMapping(stability, style) {
+    const clamp = (v, lo, hi) => Math.min(hi, Math.max(lo, v));
+    const s = stability === '' || stability == null ? 0.5 : Number(stability);
+    const st = style === '' || style == null ? 0.0 : Number(style);
+    if (Number.isNaN(s) || Number.isNaN(st)) return '';
+    return `→ cfg_weight ${clamp(s, 0.2, 1).toFixed(2)} · exaggeration ${clamp(0.5 + st * 1.5, 0.25, 2).toFixed(2)}`;
+}
+
 function initStudio() {
     const root = document.getElementById('studio');
     if (!root) return;
@@ -458,6 +469,15 @@ function initStudio() {
     // Editing the text invalidates the breakdown — hide it until re-previewed.
     els.text.addEventListener('input', () => els.results.classList.add('hidden'));
 
+    // Live Chatterbox mapping readout for the single knobs (3a).
+    const mappingEl = document.getElementById('studio-mapping');
+    const renderMapping = () => {
+        if (mappingEl) mappingEl.textContent = chatterboxMapping(els.stability?.value, els.style?.value);
+    };
+    els.stability?.addEventListener('input', renderMapping);
+    els.style?.addEventListener('input', renderMapping);
+    renderMapping();
+
     els.wholeBtn?.addEventListener('click', () =>
         generate(urls.synthesize, normalizedText, els.wholeAudio, els.wholeBtn, 'Generating whole…'));
     els.stitchBtn?.addEventListener('click', () =>
@@ -586,7 +606,14 @@ function initStudioBench() {
         remove.title = 'Remove';
         remove.textContent = '✕';
 
-        li.append(pick, field('Stability', stabIn), field('Style', styleIn), playBtn, audio, remove);
+        const mapping = document.createElement('span');
+        mapping.className = 'font-mono text-xs text-zinc-500';
+        const renderMapping = () => { mapping.textContent = chatterboxMapping(stabIn.value, styleIn.value); };
+        stabIn.addEventListener('input', renderMapping);
+        styleIn.addEventListener('input', renderMapping);
+        renderMapping();
+
+        li.append(pick, field('Stability', stabIn), field('Style', styleIn), mapping, playBtn, audio, remove);
 
         const state = { stabIn, styleIn, audio, pick };
         rows.push(state);

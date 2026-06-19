@@ -94,6 +94,8 @@
                         <input id="studio-style" type="number" step="0.05" min="0" max="1" placeholder="0.0"
                                class="w-28 rounded-lg border border-zinc-700 bg-zinc-950 px-3 py-1.5 text-sm">
                     </label>
+                    {{-- Live Chatterbox mapping for the current knobs (3a). --}}
+                    <span id="studio-mapping" class="self-end pb-1.5 font-mono text-xs text-zinc-500"></span>
                 </div>
 
                 {{-- A/B tuning bench: hear the text above at several settings, pick the
