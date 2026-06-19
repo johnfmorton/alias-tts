@@ -4,6 +4,8 @@ use App\Http\Controllers\Admin\ApiKeyController;
 use App\Http\Controllers\Admin\DashboardController;
 use App\Http\Controllers\Admin\HealthController;
 use App\Http\Controllers\Admin\HealthTestController;
+use App\Http\Controllers\Admin\StudioController;
+use App\Http\Controllers\Admin\StudioProjectController;
 use App\Http\Controllers\Admin\VoiceController;
 use Illuminate\Support\Facades\Route;
 
@@ -22,6 +24,28 @@ Route::post('/health/test/short', [HealthTestController::class, 'short'])->name(
 Route::post('/health/test/long', [HealthTestController::class, 'long'])->name('health.test.long');
 Route::get('/health/test/{id}/status', [HealthTestController::class, 'status'])->name('health.test.status');
 Route::get('/health/test/{id}/audio', [HealthTestController::class, 'audio'])->name('health.test.audio');
+
+// Studio — inspect normalization/chunking and hear text whole, per-chunk, or stitched.
+Route::prefix('studio')->name('studio.')->group(function () {
+    Route::get('/', [StudioController::class, 'index'])->name('index');
+    Route::post('/preview', [StudioController::class, 'preview'])->name('preview');
+    Route::post('/synthesize', [StudioController::class, 'synthesize'])->name('synthesize');
+    Route::post('/stitch', [StudioController::class, 'stitch'])->name('stitch');
+    Route::post('/concat', [StudioController::class, 'concat'])->name('concat');
+
+    // Editable projects: persist chunks, regenerate one at a time, rebuild the stitch.
+    Route::prefix('projects')->name('projects.')->group(function () {
+        Route::get('/create', [StudioProjectController::class, 'create'])->name('create');
+        Route::post('/', [StudioProjectController::class, 'store'])->name('store');
+        Route::get('/{project}', [StudioProjectController::class, 'show'])->name('show');
+        Route::delete('/{project}', [StudioProjectController::class, 'destroy'])->name('destroy');
+        Route::get('/{project}/audio', [StudioProjectController::class, 'finalAudio'])->name('audio');
+        Route::post('/{project}/rebuild', [StudioProjectController::class, 'rebuild'])->name('rebuild');
+        Route::patch('/{project}/chunks/{chunk}', [StudioProjectController::class, 'updateChunk'])->name('chunks.update');
+        Route::post('/{project}/chunks/{chunk}/generate', [StudioProjectController::class, 'generateChunk'])->name('chunks.generate');
+        Route::get('/{project}/chunks/{chunk}/audio', [StudioProjectController::class, 'chunkAudio'])->name('chunks.audio');
+    });
+});
 
 // API keys
 Route::get('/api-keys', [ApiKeyController::class, 'index'])->name('api-keys.index');
