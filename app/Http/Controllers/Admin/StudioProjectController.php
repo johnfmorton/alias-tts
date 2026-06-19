@@ -246,6 +246,44 @@ class StudioProjectController extends Controller
         ]);
     }
 
+    /**
+     * A/B preview (3c): synthesize this chunk at a transient stability/style and
+     * return the raw audio WITHOUT persisting, so the user can audition a
+     * candidate tuning against the chunk's current audio before committing.
+     */
+    public function previewChunkTuning(Request $request, TtsProject $project, TtsChunk $chunk): Response
+    {
+        $this->assertChunkBelongs($project, $chunk);
+
+        if (trim((string) $chunk->text) === '') {
+            return response()->json(['message' => 'This chunk is empty — add text before previewing.'], 422);
+        }
+
+        $validator = Validator::make($request->all(), [
+            'stability' => ['nullable', 'numeric', 'between:0,1'],
+            'style' => ['nullable', 'numeric', 'between:0,1'],
+        ]);
+        if ($validator->fails()) {
+            return response()->json(['message' => $validator->errors()->first()], 422);
+        }
+
+        try {
+            $bytes = $this->projects->previewChunkTuning(
+                $chunk,
+                $request->filled('stability') ? (float) $request->input('stability') : null,
+                $request->filled('style') ? (float) $request->input('style') : null,
+            );
+        } catch (Throwable $e) {
+            report($e);
+
+            return response()->json(['message' => 'Preview failed: '.$e->getMessage()], 502);
+        }
+
+        $mime = $this->projects->providerContainer() === 'wav' ? 'audio/wav' : 'audio/mpeg';
+
+        return response($bytes, 200)->header('Content-Type', $mime);
+    }
+
     public function chunkAudio(TtsProject $project, TtsChunk $chunk): Response
     {
         $this->assertChunkBelongs($project, $chunk);

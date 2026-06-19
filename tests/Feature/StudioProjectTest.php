@@ -508,4 +508,46 @@ class StudioProjectTest extends TestCase
             ->assertOk()
             ->assertJsonPath('status', 'completed');
     }
+
+    public function test_preview_chunk_tuning_returns_audio_without_persisting(): void
+    {
+        $project = $this->project();
+        $chunk = $project->chunks()->orderBy('position')->first();
+        $originalStatus = $chunk->status;
+
+        $res = $this->actingAs($this->admin())
+            ->post(route('admin.studio.projects.chunks.preview-tuning', [$project, $chunk]), ['stability' => 0.9]);
+
+        $res->assertOk();
+        $this->assertStringStartsWith('audio/', (string) $res->headers->get('content-type'));
+        $this->assertNotEmpty($res->getContent());
+
+        // A preview persists nothing — no stored override, no audio, same status.
+        $chunk->refresh();
+        $this->assertNull($chunk->settings);
+        $this->assertNull($chunk->audio_path);
+        $this->assertSame($originalStatus, $chunk->status);
+    }
+
+    public function test_preview_chunk_tuning_uses_the_candidate_override(): void
+    {
+        $provider = $this->capturingProvider();
+        $project = $this->project();
+        $chunk = $project->chunks()->orderBy('position')->first();
+
+        app(ProjectService::class)->previewChunkTuning($chunk, 0.9, null);
+
+        $this->assertSame(0.9, $provider->lastSettings['stability']);        // candidate wins
+        $this->assertSame(0.75, $provider->lastSettings['similarity_boost']); // project base kept
+    }
+
+    public function test_preview_chunk_tuning_validates_range(): void
+    {
+        $project = $this->project();
+        $chunk = $project->chunks()->first();
+
+        $this->actingAs($this->admin())
+            ->postJson(route('admin.studio.projects.chunks.preview-tuning', [$project, $chunk]), ['stability' => 2])
+            ->assertStatus(422);
+    }
 }

@@ -1,8 +1,8 @@
 # Studio voice tuning — design plan
 
 > **Status:** Drafted 2026-06-19. The four decisions below are resolved.
-> **Phases 0, 1 and 2 are implemented and test-verified 2026-06-19** (live UI
-> click-through still to be done by John); Phase 3 (optional) remains design-only.
+> **Phases 0–3 are all implemented and test-verified 2026-06-19** (Phases 0–2
+> also had a live UI walkthrough). The plan is fully built.
 
 ## Why
 
@@ -161,8 +161,15 @@ PROJECT: "Episode 12 intro"
   Endpoints `chunks.tuning` / `chunks.reroll`; tests in `StudioProjectTest`. (A
   dedicated per-chunk A/B preview was not built — tune → regenerate → listen, or
   re-roll, covers it; could revisit in Phase 3.)
-- **Phase 3 (optional)** — presets/named profiles; show the resolved
-  `cfg_weight`/`exaggeration` in Studio's debug view.
+- **Phase 3 (optional)** — **DONE, test-verified 2026-06-19.** (3a) live
+  `cfg_weight`/`exaggeration` readout next to the knobs and each bench row;
+  (3b) global named tuning presets (`tuning_presets` table) — apply one to add a
+  pre-filled bench row, save the picked row as a preset, delete; (3c) per-chunk
+  **A/B preview** — a "Preview" button auditions the typed stability/style
+  transiently (no persist) so you can compare against the chunk's current audio
+  before committing. Tests in `StudioTest` / `StudioProjectTest`. (Preset *apply*
+  is bench-only for now; voice-edit / per-chunk preset dropdowns are an easy
+  follow-up.)
 
 ## Decisions — resolved 2026-06-19
 

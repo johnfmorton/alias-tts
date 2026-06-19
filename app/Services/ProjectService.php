@@ -199,6 +199,34 @@ class ProjectService
     }
 
     /**
+     * Synthesize one chunk at a transient stability/style override (A/B preview,
+     * Phase 3c) and return the raw audio bytes WITHOUT persisting — neither the
+     * chunk's stored override, audio, nor status is touched. Lets the user
+     * audition a candidate tuning before committing it with updateChunkTuning.
+     */
+    public function previewChunkTuning(TtsChunk $chunk, ?float $stability, ?float $style): string
+    {
+        $project = $chunk->project;
+        $settings = is_array($project->settings) ? $project->settings : [];
+        foreach (['stability' => $stability, 'style' => $style] as $key => $value) {
+            if ($value !== null) {
+                $settings[$key] = $value;
+            }
+        }
+        if ($project->seed !== null) {
+            $settings['seed'] = $project->seed;
+        }
+
+        return $this->provider->synthesize($chunk->text, $this->referencePath($project->voice), $settings);
+    }
+
+    /** The container/format of raw provider audio (e.g. "wav"). */
+    public function providerContainer(): string
+    {
+        return $this->provider->outputContainer();
+    }
+
+    /**
      * Update a chunk's text. The new text is re-chunked with the same budget
      * used at creation: if it still fits one chunk, it is stored in place; if it
      * grew beyond the budget, the chunk is split — it keeps the first segment and

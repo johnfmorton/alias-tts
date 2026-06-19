@@ -78,6 +78,7 @@
                      data-patch-url="{{ route('admin.studio.projects.chunks.update', [$project, $chunk]) }}"
                      data-tuning-url="{{ route('admin.studio.projects.chunks.tuning', [$project, $chunk]) }}"
                      data-reroll-url="{{ route('admin.studio.projects.chunks.reroll', [$project, $chunk]) }}"
+                     data-preview-tuning-url="{{ route('admin.studio.projects.chunks.preview-tuning', [$project, $chunk]) }}"
                      data-audio-url="{{ route('admin.studio.projects.chunks.audio', [$project, $chunk]) }}">
                     <div class="flex flex-wrap items-center justify-between gap-2">
                         <div class="flex items-center gap-2 text-sm text-zinc-400">
@@ -114,10 +115,12 @@
                                 <input class="chunk-style w-24 rounded-lg border border-zinc-700 bg-zinc-950 px-2 py-1 text-sm" type="number" step="0.05" min="0" max="1"
                                        value="{{ $chunk->settings['style'] ?? '' }}" placeholder="inherit">
                             </label>
+                            <button type="button" class="chunk-tune-preview rounded-lg border border-zinc-700 px-3 py-1.5 text-sm hover:bg-zinc-800">▶ Preview</button>
                             <button type="button" class="chunk-tune-save rounded-lg border border-zinc-700 px-3 py-1.5 text-sm hover:bg-zinc-800">Save tuning</button>
                             <button type="button" class="chunk-reroll rounded-lg border border-zinc-700 px-3 py-1.5 text-sm hover:bg-zinc-800">⟳ Re-roll</button>
                         </div>
-                        <p class="mt-1.5 text-xs text-zinc-500">Blank inherits the project's setting. Saving marks the chunk stale — regenerate to hear it. Re-roll regenerates with a new random seed for a different take.</p>
+                        <audio class="chunk-tune-audio mt-2 hidden w-full" controls></audio>
+                        <p class="mt-1.5 text-xs text-zinc-500">Blank inherits the project's setting. <span class="text-zinc-400">Preview</span> auditions the typed settings without saving (compare it to the chunk audio above). Saving marks the chunk stale — regenerate to apply. Re-roll regenerates with a new random seed for a different take.</p>
                     </details>
                 </div>
 

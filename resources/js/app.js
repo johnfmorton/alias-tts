@@ -985,6 +985,31 @@ function initStudioProject() {
         card.querySelector('.chunk-reroll')?.addEventListener('click', () =>
             runGeneration(card, card.dataset.rerollUrl, card.querySelector('.chunk-reroll'), 'Re-rolling…').catch(() => {}));
 
+        // A/B preview (3c): audition the typed settings without persisting.
+        card.querySelector('.chunk-tune-preview')?.addEventListener('click', async () => {
+            const btn = card.querySelector('.chunk-tune-preview');
+            const stability = card.querySelector('.chunk-stability').value;
+            const style = card.querySelector('.chunk-style').value;
+            const body = new URLSearchParams();
+            if (stability !== '') body.set('stability', stability);
+            if (style !== '') body.set('style', style);
+            startBusy(btn, 'Previewing…');
+            try {
+                const res = await fetch(card.dataset.previewTuningUrl, {
+                    method: 'POST',
+                    headers: { 'X-CSRF-TOKEN': csrfToken(), 'Accept': 'audio/*' },
+                    body,
+                });
+                if (!res.ok) throw new Error(await errorMessage(res));
+                playAudio(card.querySelector('.chunk-tune-audio'), await res.blob());
+                setStatus(finalStatus, '');
+            } catch (err) {
+                setStatus(finalStatus, `✗ ${err.message}`, 'error');
+            } finally {
+                endBusy(btn);
+            }
+        });
+
         // Save this chunk's stability/style override; the server marks it stale.
         card.querySelector('.chunk-tune-save')?.addEventListener('click', async () => {
             const btn = card.querySelector('.chunk-tune-save');
