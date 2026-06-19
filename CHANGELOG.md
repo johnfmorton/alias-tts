@@ -4,6 +4,16 @@ All notable changes to this project are documented in this file. The format is
 based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this
 project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+- **Unsaved-edit safeguards in the Studio editor.** A chunk whose text has been
+  edited but not saved now shows an amber "● unsaved" badge and an amber textarea
+  border, and reveals a **Revert** button that restores the last-saved text. The
+  editor also warns before you navigate away from (or reload) the page with any
+  unsaved chunk edits, so they can't be lost silently — and inserting a chunk
+  (which reloads the list) confirms first if there are unsaved edits.
+
 ## [0.8.0] - 2026-06-19
 
 ### Added

@@ -503,6 +503,27 @@ function initStudioProject() {
     const setChunkStatus = (card, status) => badge(card.querySelector('.chunk-status'), status, 'chunk-status ');
     const setProjectStatus = (status) => badge(projectStatus, status);
 
+    // A chunk is "dirty" while its textarea differs from the last-saved text
+    // (data-original). Show an amber badge + border and reveal Revert; warn before
+    // leaving the page with any dirty chunk. Set when an intended reload (insert /
+    // re-chunk) navigates away on purpose, so the guard doesn't fire for those.
+    let skipUnloadGuard = false;
+    const isDirty = (card) => {
+        const t = card.querySelector('.chunk-text');
+        return t.value !== t.dataset.original;
+    };
+    const setDirty = (card, dirty) => {
+        const textarea = card.querySelector('.chunk-text');
+        const dirtyBadge = card.querySelector('.chunk-dirty');
+        // Toggle hidden AND inline-flex together — leaving both on an element lets
+        // inline-flex win over hidden in the compiled CSS, so the badge would always show.
+        dirtyBadge.classList.toggle('hidden', !dirty);
+        dirtyBadge.classList.toggle('inline-flex', dirty);
+        card.querySelector('.chunk-revert').classList.toggle('hidden', !dirty);
+        textarea.classList.toggle('border-amber-500/50', dirty);
+        textarea.classList.toggle('border-zinc-800', !dirty);
+    };
+
     async function patchChunk(card) {
         const textarea = card.querySelector('.chunk-text');
         const res = await fetch(card.dataset.patchUrl, {
@@ -515,10 +536,12 @@ function initStudioProject() {
         // An over-long edit was split into new chunks — the list changed
         // structurally, so reload to re-render it. Returns true so callers stop.
         if (data.rechunked) {
+            skipUnloadGuard = true; // the edit is saved server-side; reload is intentional
             window.location.reload();
             return true;
         }
         textarea.dataset.original = textarea.value;
+        setDirty(card, false);
         card.querySelector('.chunk-chars').textContent = `${data.characters} chars`;
         setChunkStatus(card, data.status);
         setProjectStatus(data.project_status);
@@ -661,14 +684,37 @@ function initStudioProject() {
             }
         });
         card.querySelector('.chunk-generate').addEventListener('click', () => generateChunk(card).catch(() => {}));
+
+        // Track dirty state as the user types; Revert restores the saved text.
+        card.querySelector('.chunk-text').addEventListener('input', () => setDirty(card, isDirty(card)));
+        card.querySelector('.chunk-revert').addEventListener('click', () => {
+            const textarea = card.querySelector('.chunk-text');
+            textarea.value = textarea.dataset.original;
+            setDirty(card, false);
+        });
     });
 
     generateAllBtn.addEventListener('click', generateAll);
     rebuildBtn.addEventListener('click', rebuild);
 
+    // Don't let the user navigate away (or trigger a reload) with unsaved chunk
+    // edits without a heads-up. Intentional reloads set skipUnloadGuard first.
+    window.addEventListener('beforeunload', (e) => {
+        if (skipUnloadGuard) return;
+        if ([...root.querySelectorAll('.studio-chunk')].some(isDirty)) {
+            e.preventDefault();
+            e.returnValue = '';
+        }
+    });
+
     // Insert an empty chunk at a gap, then reload to re-render the (renumbered) list.
     root.querySelectorAll('.chunk-insert button').forEach((btn) => {
         btn.addEventListener('click', async () => {
+            // Inserting reloads the list, which would drop unsaved edits elsewhere.
+            if ([...root.querySelectorAll('.studio-chunk')].some(isDirty)
+                && !confirm('You have unsaved chunk edits that will be lost when the list reloads. Insert anyway?')) {
+                return;
+            }
             startBusy(btn, 'Inserting…');
             try {
                 const res = await fetch(insertUrl, {
@@ -677,6 +723,7 @@ function initStudioProject() {
                     body: JSON.stringify({ position: Number(btn.closest('.chunk-insert').dataset.position) }),
                 });
                 if (!res.ok) throw new Error(await errorMessage(res));
+                skipUnloadGuard = true; // reload is intentional
                 window.location.reload();
             } catch (err) {
                 setStatus(finalStatus, `✗ ${err.message}`, 'error');
