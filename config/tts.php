@@ -105,6 +105,24 @@ return [
     // dead air to remove.
     'chunk_trim_tail_window_ms' => (int) env('TTS_CHUNK_TRIM_TAIL_WINDOW_MS', 300),
 
+    // Long tail-artifact detector. Chatterbox occasionally appends a MULTI-SECOND
+    // low-frequency drone after the speech ends — too loud for the silence trim
+    // (it sits near speech level, well above chunk_trim_threshold) and far too
+    // long for chunk_trim_tail_window_ms. It is detected by zero-crossing rate
+    // (the drone is tonal/low-frequency, so its ZCR is much lower than speech)
+    // gated by an RMS floor (so a quiet gap isn't mistaken for speech): the last
+    // window that is both loud enough AND high-ZCR enough marks the speech end.
+    // Only LONG trailing non-speech (>= min_artifact_ms) is hard-cut here; shorter
+    // tails fall through to the bounded silence trim above, so normal clips and
+    // soft final words keep their existing behavior. ZCR is in crossings/second
+    // (rate-independent) because chunks are analyzed at the output sample rate.
+    'chunk_tail_artifact_enabled' => (bool) env('TTS_CHUNK_TAIL_ARTIFACT', true),
+    'chunk_tail_window_ms' => (int) env('TTS_CHUNK_TAIL_WINDOW_MS', 50),       // analysis window
+    'chunk_tail_rms_floor_db' => (float) env('TTS_CHUNK_TAIL_RMS_FLOOR_DB', -40), // quieter than this = not speech
+    'chunk_tail_zcr_min_hz' => (float) env('TTS_CHUNK_TAIL_ZCR_MIN_HZ', 700),  // crossings/sec; below = tonal/low-freq
+    'chunk_tail_min_artifact_ms' => (int) env('TTS_CHUNK_TAIL_MIN_ARTIFACT_MS', 400), // only hard-cut tails >= this
+    'chunk_tail_guard_ms' => (int) env('TTS_CHUNK_TAIL_GUARD_MS', 60),         // keep this much after last speech
+
     // True digital silence (ms) inserted between chunks at a sentence seam and
     // at a block/paragraph seam respectively. Tune by ear for natural pacing.
     'chunk_gap_ms' => (int) env('TTS_CHUNK_GAP_MS', 120),

@@ -179,6 +179,12 @@ class AudioConverter
      * the window — is provably untouched. No single threshold can separate a
      * quiet word from a similar-level swoosh, so bounding the window (not tuning
      * the threshold) is the fix. {@see AudioConverterTest}.
+     *
+     * Separately, Chatterbox sometimes appends a MULTI-SECOND low-frequency drone
+     * after speech that is both too loud for silenceremove and too long for the
+     * tail window. {@see detectLongTailArtifact}: when such a tail is found the
+     * chunk is hard-cut at the detected speech end (then head-trimmed and faded);
+     * otherwise the bounded body/tail graph above runs unchanged.
      */
     private function trimChunk(string $bytes, int $rate, string $threshold, int $fadeMs, int $tailWindowMs): string
     {
@@ -186,20 +192,39 @@ class AudioConverter
         $window = $this->seconds($tailWindowMs);
         $silenceRemove = "silenceremove=start_periods=1:start_threshold={$threshold}:start_silence=0.03:detection=peak";
 
-        // Head trim, then split: keep everything before the last $window verbatim
-        // [body]; strip trailing silence only within the last $window [tail]
-        // (areverse + atrim addresses the end without needing the duration); then
-        // rejoin and fade both edges.
-        $tail = '[body][tail]concat=n=2:v=0:a=1';
-        if ($fadeMs > 0) {
-            $tail .= ",afade=t=in:d={$fade},areverse,afade=t=in:d={$fade},areverse";
-        }
-        $graph = "[0:a]{$silenceRemove},asplit=2[a][b];"
-            ."[a]areverse,atrim=start={$window},areverse[body];"
-            ."[b]areverse,atrim=end={$window},{$silenceRemove},areverse[tail];"
-            .$tail.'[out]';
+        // Canonicalize to PCM first so the detector and the trim graph share one
+        // timeline (the detected cut time is measured on exactly these samples).
+        $pcm = $this->runFilterToWav($bytes, $rate, null) ?? $bytes;
 
-        $trimmed = $this->runGraphToWav($bytes, $rate, $graph);
+        $cut = (bool) config('tts.chunk_tail_artifact_enabled', true)
+            ? $this->detectLongTailArtifact($pcm, $rate)
+            : null;
+
+        if ($cut !== null) {
+            // Long tonal tail: hard-cut at the speech end, then the usual head
+            // (leading-silence) trim and click-free edge fades. atrim runs first,
+            // on the same buffer the cut was measured against, so it is exact.
+            $chain = 'atrim=end='.number_format($cut, 3, '.', '').','.$silenceRemove;
+            if ($fadeMs > 0) {
+                $chain .= ",afade=t=in:d={$fade},areverse,afade=t=in:d={$fade},areverse";
+            }
+            $trimmed = $this->runFilterToWav($pcm, $rate, $chain);
+        } else {
+            // Head trim, then split: keep everything before the last $window
+            // verbatim [body]; strip trailing silence only within the last
+            // $window [tail] (areverse + atrim addresses the end without needing
+            // the duration); then rejoin and fade both edges.
+            $tail = '[body][tail]concat=n=2:v=0:a=1';
+            if ($fadeMs > 0) {
+                $tail .= ",afade=t=in:d={$fade},areverse,afade=t=in:d={$fade},areverse";
+            }
+            $graph = "[0:a]{$silenceRemove},asplit=2[a][b];"
+                ."[a]areverse,atrim=start={$window},areverse[body];"
+                ."[b]areverse,atrim=end={$window},{$silenceRemove},areverse[tail];"
+                .$tail.'[out]';
+
+            $trimmed = $this->runGraphToWav($pcm, $rate, $graph);
+        }
 
         // A header-only / vanishingly short result means trimming ate the whole
         // chunk (e.g. a fully-silent chunk); canonicalize the original instead so
@@ -211,6 +236,110 @@ class AudioConverter
         }
 
         return $trimmed;
+    }
+
+    /**
+     * Find where speech ends in a mono 16-bit PCM WAV when a long, loud,
+     * low-frequency tail artifact follows it, returning the seconds-offset to cut
+     * at (last speech + guard), or null when there is no such tail.
+     *
+     * The artifact is a tonal drone: roughly speech-level in amplitude but
+     * concentrated near ~100 Hz, so its zero-crossing rate is far below speech.
+     * Each $windowMs window is classed as speech only when it is BOTH loud enough
+     * (RMS above the floor — rejects the silent gap before the drone) AND
+     * high-ZCR enough (rejects the drone itself). The end of the last speech
+     * window marks the speech end. We only return a cut when the trailing
+     * non-speech run is at least min_artifact_ms, so ordinary clips and quiet
+     * final words — which have no long tail — return null and keep the bounded
+     * trim in {@see trimChunk}. ZCR is compared in crossings/second so the
+     * threshold is independent of $rate.
+     */
+    private function detectLongTailArtifact(string $pcmWav, int $rate): ?float
+    {
+        $offset = $this->wavDataOffset($pcmWav);
+        if ($offset === null || $rate <= 0) {
+            return null;
+        }
+
+        $floorDb = (float) config('tts.chunk_tail_rms_floor_db', -40);
+        $zcrMinHz = (float) config('tts.chunk_tail_zcr_min_hz', 700);
+        $windowSec = max(1, (int) config('tts.chunk_tail_window_ms', 50)) / 1000;
+        $minArtifactSec = max(0, (int) config('tts.chunk_tail_min_artifact_ms', 400)) / 1000;
+        $guardSec = max(0, (int) config('tts.chunk_tail_guard_ms', 60)) / 1000;
+
+        $win = max(1, (int) round($rate * $windowSec));
+        $bytesPerWin = $win * 2; // 16-bit mono
+        $dataLen = strlen($pcmWav) - $offset;
+        $totalSamples = intdiv($dataLen, 2);
+        if ($totalSamples < $win) {
+            return null;
+        }
+        $totalSec = $totalSamples / $rate;
+
+        $lastSpeechEnd = null;
+        for ($i = 0; $i + $win <= $totalSamples; $i += $win) {
+            $samples = unpack('s*', substr($pcmWav, $offset + $i * 2, $bytesPerWin));
+            if ($samples === false) {
+                break;
+            }
+
+            $n = count($samples);
+            $sum = 0.0;
+            $sumSq = 0.0;
+            foreach ($samples as $s) {
+                $sum += $s;
+                $sumSq += $s * $s;
+            }
+            $mean = $sum / $n;
+            $rms = sqrt($sumSq / $n);
+            $db = $rms > 0 ? 20 * log10($rms / 32768) : -INF;
+
+            // Zero crossings of the DC-removed window.
+            $crossings = 0;
+            $prev = $samples[1] - $mean;
+            for ($k = 2; $k <= $n; $k++) {
+                $cur = $samples[$k] - $mean;
+                if (($cur < 0) !== ($prev < 0)) {
+                    $crossings++;
+                }
+                $prev = $cur;
+            }
+            $crossingsPerSec = $crossings / $windowSec;
+
+            if ($db > $floorDb && $crossingsPerSec > $zcrMinHz) {
+                $lastSpeechEnd = ($i + $win) / $rate;
+            }
+        }
+
+        if ($lastSpeechEnd === null) {
+            return null; // no speech found at all — leave it to trimChunk's fallback
+        }
+
+        if (($totalSec - $lastSpeechEnd) < $minArtifactSec) {
+            return null; // no long trailing artifact — keep the bounded trim
+        }
+
+        return min($totalSec, $lastSpeechEnd + $guardSec);
+    }
+
+    /**
+     * Byte offset of the first sample in a WAV's `data` chunk, or null if absent.
+     * Walks the chunk list so extra (LIST/INFO) chunks are tolerated.
+     */
+    private function wavDataOffset(string $wav): ?int
+    {
+        $pos = 12; // skip 'RIFF' <size> 'WAVE'
+        $len = strlen($wav);
+        while ($pos + 8 <= $len) {
+            $id = substr($wav, $pos, 4);
+            $size = unpack('V', substr($wav, $pos + 4, 4))[1];
+            if ($id === 'data') {
+                return $pos + 8;
+            }
+            $pos += 8 + $size + ($size & 1); // chunks are word-aligned
+        }
+
+        return null;
     }
 
     /**

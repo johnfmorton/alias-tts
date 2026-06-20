@@ -67,6 +67,90 @@ class AudioConverterTest extends TestCase
         $this->assertLessThan(1.75, $seconds, 'The trailing swoosh should still be trimmed.');
     }
 
+    public function test_long_low_frequency_tail_artifact_is_removed(): void
+    {
+        // Real Chatterbox output: ~14.85s of speech followed by a ~3s loud,
+        // low-frequency drone (total 17.8s) that the bounded silence trim cannot
+        // reach. The long-tail detector must cut it at the speech end.
+        $converter = new AudioConverter(config('tts.ffmpeg_path', 'ffmpeg'));
+        $artifact = file_get_contents(__DIR__.'/../Fixtures/tail-artifact.wav');
+
+        [$out] = $converter->concatenate([$artifact], 'wav', 'wav', []);
+        $seconds = $this->wavDataBytes($out) / (44100 * 2);
+
+        // Was 17.8s; speech ends ~14.85s. Allow margin around the ~14.9s cut.
+        $this->assertGreaterThan(14.0, $seconds, 'Speech must be preserved.');
+        $this->assertLessThan(15.8, $seconds, 'The multi-second drone must be removed.');
+    }
+
+    public function test_long_tail_detector_trims_synthetic_drone(): void
+    {
+        // Broadband "speech" (high zero-crossing rate) then a sustained loud
+        // ~90 Hz tone (low ZCR) — the artifact's defining shape. The detector
+        // keys on ZCR, so it cuts at the speech/tone boundary.
+        $converter = new AudioConverter(config('tts.ffmpeg_path', 'ffmpeg'));
+        $chunk = $this->noiseWav(1.0, 15000).$this->rawTone(1.0, 8000, 90.0);
+        $chunk = $this->wrapWav($chunk);
+
+        [$out] = $converter->concatenate([$chunk], 'wav', 'wav', []);
+        $seconds = $this->wavDataBytes($out) / (44100 * 2);
+
+        // ~1.0s speech + small guard; well under the 2.0s input (the bounded
+        // trim alone could only remove ~0.3s, so this proves the detector fired).
+        $this->assertGreaterThan(0.85, $seconds, 'The broadband speech must survive.');
+        $this->assertLessThan(1.4, $seconds, 'The long low-frequency tail must be cut.');
+    }
+
+    public function test_clean_clip_is_not_over_trimmed_by_detector(): void
+    {
+        // No trailing artifact: broadband speech only. The detector must return
+        // null (trailing non-speech < min_artifact_ms) so the clip is preserved.
+        $converter = new AudioConverter(config('tts.ffmpeg_path', 'ffmpeg'));
+        $chunk = $this->wrapWav($this->noiseWav(1.5, 15000));
+
+        [$out] = $converter->concatenate([$chunk], 'wav', 'wav', []);
+        $seconds = $this->wavDataBytes($out) / (44100 * 2);
+
+        $this->assertGreaterThan(1.3, $seconds, 'A clean clip must not be over-trimmed.');
+    }
+
+    /** Broadband noise PCM (high ZCR) — a stand-in for real speech. */
+    private function noiseWav(float $seconds, int $amp): string
+    {
+        mt_srand(1337);
+        $n = (int) (44100 * $seconds);
+        $samples = '';
+        for ($i = 0; $i < $n; $i++) {
+            $samples .= pack('v', mt_rand(-$amp, $amp) & 0xFFFF);
+        }
+
+        return $samples;
+    }
+
+    /** Raw tone PCM samples (no header) at 44.1 kHz. */
+    private function rawTone(float $seconds, int $amp, float $freq): string
+    {
+        $n = (int) (44100 * $seconds);
+        $samples = '';
+        for ($i = 0; $i < $n; $i++) {
+            $value = (int) ($amp * sin(2 * M_PI * $freq * $i / 44100));
+            $samples .= pack('v', $value & 0xFFFF);
+        }
+
+        return $samples;
+    }
+
+    /** Wrap raw mono 16-bit PCM samples in a 44.1 kHz WAV container. */
+    private function wrapWav(string $samples): string
+    {
+        $rate = 44100;
+
+        return 'RIFF'.pack('V', 36 + strlen($samples)).'WAVE'
+            .'fmt '.pack('V', 16).pack('v', 1).pack('v', 1)
+            .pack('V', $rate).pack('V', $rate * 2).pack('v', 2).pack('v', 16)
+            .'data'.pack('V', strlen($samples)).$samples;
+    }
+
     /**
      * loud speech | pause | quiet trailing word | low swoosh tail — the shape
      * that exposed the dropped-word bug. Mono 16-bit PCM WAV at 44.1 kHz.

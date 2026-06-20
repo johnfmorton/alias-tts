@@ -28,13 +28,14 @@ use Throwable;
  * then hear it three ways:
  *
  *   - whole text as ONE Chatterbox call ({@see self::synthesize()}),
- *   - each chunk on its own, raw provider output ({@see self::synthesize()}),
+ *   - each chunk on its own ({@see self::synthesize()}),
  *   - the full production stitch — chunk, synth each, concatenate with seam
  *     silence ({@see self::stitch()}).
  *
- * The per-chunk view returns the RAW provider audio (no trimming/fading) so the
- * Chatterbox seam artifacts we are debugging are audible. This is the read-only
- * foundation for the editable-project work (Phase 2).
+ * Every render path applies the same per-chunk cleanup production uses (edge
+ * trim, fades, and the long tail-artifact cut), so what an admin hears in Studio
+ * matches what users receive. This is the read-only foundation for the
+ * editable-project work (Phase 2).
  */
 class StudioController extends Controller
 {
@@ -150,13 +151,23 @@ class StudioController extends Controller
                 $this->referencePath($voice),
                 $this->settings($request, $voice),
             );
+
+            // Run the same per-chunk cleanup production uses (edge trim, fades,
+            // and the long tail-artifact cut) so the preview matches what users
+            // actually receive.
+            [$bytes, $mime] = $this->converter->concatenate(
+                [$bytes],
+                'wav',
+                $this->provider->outputContainer(),
+                [],
+            );
         } catch (Throwable $e) {
             report($e);
 
             return response()->json(['message' => 'Generation failed: '.$e->getMessage()], 502);
         }
 
-        return response($bytes, 200)->header('Content-Type', $this->containerMime());
+        return response($bytes, 200)->header('Content-Type', $mime);
     }
 
     /**
@@ -391,15 +402,5 @@ class StudioController extends Controller
         }
 
         return Storage::disk(config('tts.storage_disk'))->path($voice->reference_audio_path);
-    }
-
-    /** MIME for the provider's raw output container (wav by default). */
-    private function containerMime(): string
-    {
-        return match (strtolower($this->provider->outputContainer())) {
-            'mp3' => 'audio/mpeg',
-            'ulaw' => 'audio/basic',
-            default => 'audio/wav',
-        };
     }
 }
