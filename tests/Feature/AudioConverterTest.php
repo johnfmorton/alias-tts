@@ -114,6 +114,47 @@ class AudioConverterTest extends TestCase
         $this->assertGreaterThan(1.3, $seconds, 'A clean clip must not be over-trimmed.');
     }
 
+    public function test_detector_removes_decay_then_reswell_blip_tail(): void
+    {
+        // Regression for the tail that slipped past 0.9.0: speech | long quiet
+        // decay (~-50 dB, below the floor) | a brief loud, mid-band "re-swell"
+        // blip that clears both speech gates. The blip sits at EOF, so the old
+        // "last speech window" rule set the speech end to ~EOF and the whole
+        // 1.25s tail survived. The peel must drop the long-gap-isolated blip and
+        // cut at the real speech end (~1.0s).
+        $converter = new AudioConverter(config('tts.ffmpeg_path', 'ffmpeg'));
+        $chunk = $this->wrapWav(
+            $this->noiseWav(1.0, 15000)      // speech body (high ZCR)
+            .$this->rawTone(1.0, 150, 90.0)  // quiet decay tail (below the RMS floor)
+            .$this->noiseWav(0.25, 12000)    // loud re-swell blip (clears both gates)
+        );
+
+        [$out] = $converter->concatenate([$chunk], 'wav', 'wav', []);
+        $seconds = $this->wavDataBytes($out) / (44100 * 2);
+
+        // ~1.0s body + guard. Was 2.25s when the blip defeated the detector.
+        $this->assertGreaterThan(0.85, $seconds, 'The speech body must survive.');
+        $this->assertLessThan(1.4, $seconds, 'The decay tail and re-swell blip must be cut.');
+    }
+
+    public function test_detector_keeps_short_final_word_after_brief_pause(): void
+    {
+        // Guard against the peel over-reaching: a genuine short final word after a
+        // brief pause (gap < min_artifact_ms) is NOT an isolated artifact blip and
+        // must be preserved — only a LONG gap marks the prior speech as ended.
+        $converter = new AudioConverter(config('tts.ffmpeg_path', 'ffmpeg'));
+        $chunk = $this->wrapWav(
+            $this->noiseWav(1.0, 15000)     // speech body
+            .$this->rawTone(0.15, 0, 0.0)   // brief internal pause (digital silence)
+            .$this->noiseWav(0.3, 12000)    // genuine short final word
+        );
+
+        [$out] = $converter->concatenate([$chunk], 'wav', 'wav', []);
+        $seconds = $this->wavDataBytes($out) / (44100 * 2);
+
+        $this->assertGreaterThan(1.3, $seconds, 'A short final word after a brief pause must survive.');
+    }
+
     /** Broadband noise PCM (high ZCR) — a stand-in for real speech. */
     private function noiseWav(float $seconds, int $amp): string
     {

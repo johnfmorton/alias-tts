@@ -39,11 +39,21 @@ a window as *speech* only when it is **both**:
   the drone itself; ZCR is measured in crossings/second so the threshold is
   independent of the working sample rate).
 
-The end of the **last** speech window is the speech end. A cut is only made when
-the trailing non-speech run is at least `chunk_tail_min_artifact_ms` — so ordinary
-clips and soft final words (which have no long tail) are left to the case-1 trim
-above and are never over-trimmed. When a long tail is found the chunk is hard-cut
-at the speech end + `chunk_tail_guard_ms`, then head-trimmed and edge-faded.
+The end of the **last** speech window is the speech end — but first any isolated
+short trailing speech run is **peeled** off. Chatterbox sometimes follows the
+quiet decay tail with a brief **loud, mid-band "re-swell"** that clears both gates
+(it is neither quiet nor tonal); sitting at the very end, it would reset the
+speech end to ~EOF, collapsing the trailing non-speech run to ~0 so the whole tail
+survives. A run shorter than `chunk_tail_blip_max_ms` that a `chunk_tail_min_artifact_ms`
+non-speech gap isolates from *earlier* speech is treated as that artifact and
+dropped (leading silence before the first word does not count — the gap must
+follow speech). The peel repeats toward the body.
+
+A cut is only made when the (post-peel) trailing non-speech run is at least
+`chunk_tail_min_artifact_ms` — so ordinary clips and soft final words (which have
+no long tail) are left to the case-1 trim above and are never over-trimmed. When a
+long tail is found the chunk is hard-cut at the speech end + `chunk_tail_guard_ms`,
+then head-trimmed and edge-faded.
 
 ## Tuning knobs (`config/tts.php`, all env-overridable)
 
@@ -58,21 +68,30 @@ at the speech end + `chunk_tail_guard_ms`, then head-trimmed and edge-faded.
 | `chunk_tail_zcr_min_hz` | `TTS_CHUNK_TAIL_ZCR_MIN_HZ` | `700` | crossings/sec; below = tonal/low-freq drone |
 | `chunk_tail_min_artifact_ms` | `TTS_CHUNK_TAIL_MIN_ARTIFACT_MS` | `400` | only hard-cut trailing non-speech ≥ this |
 | `chunk_tail_guard_ms` | `TTS_CHUNK_TAIL_GUARD_MS` | `60` | keep this much after the last speech |
+| `chunk_tail_blip_max_ms` | `TTS_CHUNK_TAIL_BLIP_MAX_MS` | `400` | drop a trailing re-swell blip ≤ this isolated by a long gap (`0` disables) |
 
 **Tuning hints.** If a drone still survives, lower `chunk_tail_min_artifact_ms` or
 raise `chunk_tail_zcr_min_hz`. If a real, sustained trailing vowel gets clipped,
 *lower* `chunk_tail_zcr_min_hz` or *raise* `chunk_tail_min_artifact_ms`. The
 `min_artifact_ms` length gate is the main safety net — the detector only fires on
-long tails, so it cannot regress normal clips.
+long tails, so it cannot regress normal clips. If a re-swell blip still survives,
+*raise* `chunk_tail_blip_max_ms`; if a genuine short final word that follows a long
+in-chunk pause gets clipped, *lower* it (or set `0` to disable the peel).
 
 ## Scope / known limits
 
-The detector targets **low-ZCR (tonal/rumble)** tails — the observed Chatterbox
-failure mode. A hypothetical high-ZCR *hiss* artifact would pass the speech test;
-catching that would need a complementary spectral check (not built). Generation-
-side mitigations (more conservative Chatterbox params, multi-candidate selection)
-are possible future work but are not needed — post-processing removes the artifact
-reliably.
+The detector targets **low-ZCR (tonal/rumble)** tails and the **decay-then-blip**
+re-swell pattern (a long quiet decay followed by a brief loud, mid-band swell that
+the ZCR/RMS gates alone score as speech — observed in a v0.9.0 chunk that survived
+the original detector). A *sustained* high-ZCR hiss filling the whole tail would
+still pass the speech test; catching that would need a complementary spectral
+check (not built). The peel also has one residual blind spot by construction: a
+**genuine** short final word that follows a `>= min_artifact_ms` pause *within the
+same chunk* would be clipped — but chunks are split on sentence/paragraph
+boundaries with seam gaps inserted between them, so a single chunk rarely contains
+that much internal silence before a final word. Generation-side mitigations (more
+conservative Chatterbox params, multi-candidate selection) remain possible future
+work but are not needed — post-processing removes the artifact reliably.
 
 ## Tests
 
@@ -82,3 +101,7 @@ reliably.
 - `test_long_tail_detector_trims_synthetic_drone` — broadband noise + 90 Hz tone.
 - `test_clean_clip_is_not_over_trimmed_by_detector` — clean clip survives.
 - `test_quiet_trailing_word_survives_trim` — the soft-word regression guard.
+- `test_detector_removes_decay_then_reswell_blip_tail` — speech | quiet decay |
+  loud re-swell blip; the v0.9.0 slip-through, now cut.
+- `test_detector_keeps_short_final_word_after_brief_pause` — peel must not clip a
+  genuine short final word after a brief (sub-`min_artifact`) pause.

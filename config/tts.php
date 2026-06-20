@@ -129,6 +129,13 @@ return [
     'chunk_tail_zcr_min_hz' => (float) env('TTS_CHUNK_TAIL_ZCR_MIN_HZ', 700),  // crossings/sec; below = tonal/low-freq
     'chunk_tail_min_artifact_ms' => (int) env('TTS_CHUNK_TAIL_MIN_ARTIFACT_MS', 400), // only hard-cut tails >= this
     'chunk_tail_guard_ms' => (int) env('TTS_CHUNK_TAIL_GUARD_MS', 60),         // keep this much after last speech
+    // Chatterbox sometimes follows the quiet decay tail with a brief loud,
+    // mid-band "re-swell" that clears the speech gates and, sitting at the very
+    // end, resets the detected speech end to ~EOF — so the whole tail survives.
+    // A trailing speech run shorter than this, isolated from the body by a
+    // >= min_artifact_ms non-speech gap, is treated as that artifact (not resumed
+    // speech) and peeled off before the speech end is measured. Set 0 to disable.
+    'chunk_tail_blip_max_ms' => (int) env('TTS_CHUNK_TAIL_BLIP_MAX_MS', 400),   // max isolated trailing blip to drop
 
     // True digital silence (ms) inserted between chunks at a sentence seam and
     // at a block/paragraph seam respectively. Tune by ear for natural pacing.

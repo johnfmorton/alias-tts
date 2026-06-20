@@ -239,20 +239,31 @@ class AudioConverter
     }
 
     /**
-     * Find where speech ends in a mono 16-bit PCM WAV when a long, loud,
-     * low-frequency tail artifact follows it, returning the seconds-offset to cut
-     * at (last speech + guard), or null when there is no such tail.
+     * Find where speech ends in a mono 16-bit PCM WAV when a long, loud tail
+     * artifact follows it, returning the seconds-offset to cut at (last speech +
+     * guard), or null when there is no such tail.
      *
-     * The artifact is a tonal drone: roughly speech-level in amplitude but
-     * concentrated near ~100 Hz, so its zero-crossing rate is far below speech.
      * Each $windowMs window is classed as speech only when it is BOTH loud enough
-     * (RMS above the floor — rejects the silent gap before the drone) AND
-     * high-ZCR enough (rejects the drone itself). The end of the last speech
-     * window marks the speech end. We only return a cut when the trailing
-     * non-speech run is at least min_artifact_ms, so ordinary clips and quiet
-     * final words — which have no long tail — return null and keep the bounded
-     * trim in {@see trimChunk}. ZCR is compared in crossings/second so the
-     * threshold is independent of $rate.
+     * (RMS above the floor — rejects the silent gap / quiet decay before the
+     * artifact) AND high-ZCR enough (rejects a tonal ~100 Hz drone, whose
+     * zero-crossing rate is far below speech). ZCR is compared in crossings/second
+     * so the threshold is independent of $rate.
+     *
+     * The speech end is the end of the last speech window — but FIRST any isolated
+     * short speech run at the very end is peeled off when it sits behind a long
+     * (>= min_artifact) non-speech gap that itself follows earlier speech.
+     * Chatterbox sometimes follows the quiet decay tail with a brief loud,
+     * mid-band re-swell that clears both gates; left in, that blip resets the
+     * speech end to ~EOF, the trailing non-speech run collapses to ~0, and the
+     * whole tail survives the cut. A run that is both short AND long-gap-isolated
+     * from the body is not resumed speech, so it is dropped and peeling continues
+     * toward the real speech body. The leading-silence-before-first-word case is
+     * excluded (the gap must be preceded by speech), and blip_max_ms = 0 disables
+     * the peel entirely. {@see AudioConverterTest}.
+     *
+     * We only return a cut when the (post-peel) trailing non-speech run is at
+     * least min_artifact_ms, so ordinary clips and quiet final words — which have
+     * no long tail — return null and keep the bounded trim in {@see trimChunk}.
      */
     private function detectLongTailArtifact(string $pcmWav, int $rate): ?float
     {
@@ -266,6 +277,7 @@ class AudioConverter
         $windowSec = max(1, (int) config('tts.chunk_tail_window_ms', 50)) / 1000;
         $minArtifactSec = max(0, (int) config('tts.chunk_tail_min_artifact_ms', 400)) / 1000;
         $guardSec = max(0, (int) config('tts.chunk_tail_guard_ms', 60)) / 1000;
+        $blipMaxSec = max(0, (int) config('tts.chunk_tail_blip_max_ms', 400)) / 1000;
 
         $win = max(1, (int) round($rate * $windowSec));
         $bytesPerWin = $win * 2; // 16-bit mono
@@ -276,7 +288,8 @@ class AudioConverter
         }
         $totalSec = $totalSamples / $rate;
 
-        $lastSpeechEnd = null;
+        // Classify every window as speech (loud enough AND high-ZCR enough) or not.
+        $speech = [];
         for ($i = 0; $i + $win <= $totalSamples; $i += $win) {
             $samples = unpack('s*', substr($pcmWav, $offset + $i * 2, $bytesPerWin));
             if ($samples === false) {
@@ -306,14 +319,60 @@ class AudioConverter
             }
             $crossingsPerSec = $crossings / $windowSec;
 
-            if ($db > $floorDb && $crossingsPerSec > $zcrMinHz) {
-                $lastSpeechEnd = ($i + $win) / $rate;
-            }
+            $speech[] = ($db > $floorDb && $crossingsPerSec > $zcrMinHz);
         }
 
-        if ($lastSpeechEnd === null) {
+        // Walk back from EOF, peeling isolated trailing "re-swell" blips so the
+        // speech end lands on the real body, not on a blip after the decay tail.
+        $blipMaxWin = (int) round($blipMaxSec / $windowSec);
+        $gapMinWin = (int) ceil($minArtifactSec / $windowSec);
+        $end = count($speech); // windows [0, $end) are still in play
+        $lastSpeechWin = null;
+
+        while (true) {
+            $li = null; // last speech window strictly before $end
+            for ($j = $end - 1; $j >= 0; $j--) {
+                if ($speech[$j]) {
+                    $li = $j;
+                    break;
+                }
+            }
+            if ($li === null) {
+                break; // no speech left in range
+            }
+
+            // Contiguous speech run ending at $li, then the non-speech gap before it.
+            $rs = $li;
+            while ($rs - 1 >= 0 && $speech[$rs - 1]) {
+                $rs--;
+            }
+            $gapLen = 0;
+            for ($j = $rs - 1; $j >= 0 && ! $speech[$j]; $j--) {
+                $gapLen++;
+            }
+
+            // Peel only a short run that a long gap isolates from EARLIER speech;
+            // a leading gap before the first word (no speech below it) is not a blip.
+            $isBlip = $blipMaxWin > 0
+                && ($li - $rs + 1) <= $blipMaxWin
+                && $gapLen >= $gapMinWin
+                && ($rs - $gapLen - 1) >= 0;
+
+            if ($isBlip) {
+                $end = $rs; // drop the blip and keep peeling toward the body
+
+                continue;
+            }
+
+            $lastSpeechWin = $li;
+            break;
+        }
+
+        if ($lastSpeechWin === null) {
             return null; // no speech found at all — leave it to trimChunk's fallback
         }
+
+        $lastSpeechEnd = ($lastSpeechWin + 1) * $win / $rate;
 
         if (($totalSec - $lastSpeechEnd) < $minArtifactSec) {
             return null; // no long trailing artifact — keep the bounded trim
