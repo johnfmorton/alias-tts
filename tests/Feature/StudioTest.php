@@ -2,6 +2,7 @@
 
 namespace Tests\Feature;
 
+use App\Models\TuningPreset;
 use App\Models\User;
 use App\Models\Voice;
 use App\Services\Tts\TtsProvider;
@@ -49,8 +50,6 @@ class StudioTest extends TestCase
         $admin = $this->admin();
         $this->assertFalse($admin->fresh()->studio_advanced); // DB default
 
-
-
         $this->actingAs($admin)->post(route('admin.studio.advanced'), ['enabled' => '1'])
             ->assertOk()->assertJson(['ok' => true]);
         $this->assertTrue($admin->refresh()->studio_advanced);
@@ -97,19 +96,19 @@ class StudioTest extends TestCase
             ->assertJsonPath('preset.name', 'Calm narration')
             ->assertJsonPath('preset.stability', 0.8);
 
-        $preset = \App\Models\TuningPreset::firstWhere('name', 'Calm narration');
+        $preset = TuningPreset::firstWhere('name', 'Calm narration');
         $this->assertSame(0.8, $preset->stability);
         $this->assertSame(0.1, $preset->style);
 
         $this->actingAs($this->admin())
             ->delete(route('admin.studio.presets.destroy', $preset))
             ->assertOk();
-        $this->assertNull(\App\Models\TuningPreset::find($preset->id));
+        $this->assertNull(TuningPreset::find($preset->id));
     }
 
     public function test_tuning_preset_rejects_duplicate_name_and_bad_range(): void
     {
-        \App\Models\TuningPreset::create(['name' => 'Energetic', 'stability' => 0.3, 'style' => 0.7]);
+        TuningPreset::create(['name' => 'Energetic', 'stability' => 0.3, 'style' => 0.7]);
 
         $this->actingAs($this->admin())
             ->postJson(route('admin.studio.presets.store'), ['name' => 'Energetic', 'stability' => 0.5])
@@ -122,7 +121,7 @@ class StudioTest extends TestCase
 
     public function test_studio_page_renders_existing_presets(): void
     {
-        \App\Models\TuningPreset::create(['name' => 'Calm narration', 'stability' => 0.8, 'style' => 0.1]);
+        TuningPreset::create(['name' => 'Calm narration', 'stability' => 0.8, 'style' => 0.1]);
 
         $this->actingAs($this->admin())
             ->get(route('admin.studio.index'))

@@ -2,6 +2,7 @@
 
 namespace App\Http\Requests;
 
+use App\Services\Tts\VoiceSettingsResolver;
 use Illuminate\Contracts\Validation\Validator;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Http\Exceptions\HttpResponseException;
@@ -51,7 +52,7 @@ class TextToSpeechRequest extends FormRequest
     /**
      * The voice_settings keys the client explicitly sent. Only these override
      * the voice's saved defaults and the configured defaults — the layering
-     * itself is done by {@see \App\Services\Tts\VoiceSettingsResolver}. Empty
+     * itself is done by {@see VoiceSettingsResolver}. Empty
      * when the client sent no voice_settings.
      *
      * @return array<string, mixed>

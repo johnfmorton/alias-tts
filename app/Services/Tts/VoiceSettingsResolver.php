@@ -3,6 +3,7 @@
 namespace App\Services\Tts;
 
 use App\Models\Voice;
+use App\Services\SpeechService;
 
 /**
  * Resolves the effective voice-generation settings for one request by layering,
@@ -17,7 +18,7 @@ use App\Models\Voice;
  * everywhere. See docs/STUDIO-TUNING.md.
  *
  * `seed` is deliberately NOT handled here: it lives in its own slot (a column on
- * projects, a separate argument on {@see \App\Services\SpeechService}) and has
+ * projects, a separate argument on {@see SpeechService}) and has
  * its own voice-default fallback, so this resolver only owns the voice_settings
  * map and ignores any `seed` key it is handed.
  */
