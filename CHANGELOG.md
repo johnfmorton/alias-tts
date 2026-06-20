@@ -6,6 +6,15 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Added
+- **Retry transient Chatterbox prediction failures.** Replicate occasionally fails
+  a prediction with a transient GPU fault (observed: `CUDA error: device-side assert
+  triggered` while embedding the reference clip, and CUDA OOM) on a flaky/cold
+  worker — re-running the same request usually succeeds. The provider now re-rolls
+  such a failure up to `REPLICATE_PREDICT_MAX_RETRIES` times (default **2**, same
+  backoff as the 429 path, bounded by the request timeout). Deterministic failures
+  (bad input) still fail fast. Set `REPLICATE_PREDICT_MAX_RETRIES=0` to disable.
+
 ## [0.9.1] - 2026-06-20
 
 ### Added

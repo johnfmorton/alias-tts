@@ -248,6 +248,14 @@ return [
             'retry_base_ms' => (int) env('REPLICATE_RETRY_BASE_MS', 1000),
             'retry_max_ms' => (int) env('REPLICATE_RETRY_MAX_MS', 30000),
 
+            // Chatterbox occasionally fails a prediction with a TRANSIENT GPU
+            // fault (e.g. "CUDA error: device-side assert triggered", CUDA OOM) on
+            // a flaky worker — re-running the same request usually succeeds. Such
+            // a failure is recreated up to this many times (same backoff as above,
+            // bounded by request_timeout). Non-transient failures (bad input) fail
+            // fast and are never retried. 0 = disable transient-failure retry.
+            'predict_max_retries' => (int) env('REPLICATE_PREDICT_MAX_RETRIES', 2),
+
             // Minimum gap (ms) enforced between prediction creations to respect
             // the burst limit proactively. 0 = disabled (rely on 429 retry);
             // set to ~10000 to stay under a 6/min limit without 429s.

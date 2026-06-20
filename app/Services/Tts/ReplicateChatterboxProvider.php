@@ -21,6 +21,11 @@ use RuntimeException;
  * call slows generation down (honoring `retry_after`) instead of failing the
  * whole article. Set `min_request_gap_ms` to space calls out proactively.
  *
+ * Separately, a prediction can come back `failed` with a TRANSIENT GPU fault
+ * (e.g. "CUDA error: device-side assert triggered" on a flaky worker). Those are
+ * re-rolled up to `predict_max_retries` times via {@see self::predictWithFailureRetry()};
+ * deterministic failures (bad input) fail fast.
+ *
  * NOTE: confirm the exact model slug and input field names from the model's
  * schema page (config: tts.providers.replicate.text_field / reference_field).
  */
@@ -75,8 +80,7 @@ class ReplicateChatterboxProvider implements TtsProvider
             $input['seed'] = (int) $settings['seed'];
         }
 
-        $prediction = $this->createPrediction($token, $input);
-        $prediction = $this->awaitCompletion($token, $prediction);
+        $prediction = $this->predictWithFailureRetry($token, $input);
 
         $output = $prediction['output'] ?? null;
         $url = is_array($output) ? ($output[0] ?? null) : $output;
@@ -120,6 +124,65 @@ class ReplicateChatterboxProvider implements TtsProvider
         return $response->json();
     }
 
+    /**
+     * Create a prediction and wait for it; if it fails with a TRANSIENT GPU fault
+     * (a flaky worker — see {@see self::isTransientFailure()}), recreate it up to
+     * `predict_max_retries` times with the same backoff as the 429 path, bounded
+     * by the per-request timeout. Non-transient failures throw at once (fail fast,
+     * no wasted credit). Returns the succeeded prediction.
+     */
+    private function predictWithFailureRetry(string $token, array $input): array
+    {
+        $maxRetries = max(0, (int) ($this->config['predict_max_retries'] ?? 2));
+        $baseMs = max(0, (int) ($this->config['retry_base_ms'] ?? 1000));
+        $capMs = max($baseMs, (int) ($this->config['retry_max_ms'] ?? 30000));
+        $deadline = time() + $this->timeout;
+
+        $attempt = 0;
+        while (true) {
+            $prediction = $this->awaitCompletion($token, $this->createPrediction($token, $input));
+
+            if (($prediction['status'] ?? '') === 'succeeded') {
+                return $prediction;
+            }
+
+            $err = $prediction['error'] ?? 'unknown error';
+            $err = is_string($err) ? $err : json_encode($err);
+            $status = $prediction['status'] ?? 'failed';
+
+            if ($attempt >= $maxRetries || ! $this->isTransientFailure($err)) {
+                throw new RuntimeException("Replicate prediction {$status}: {$err}");
+            }
+
+            $delayMs = (int) min($capMs, $baseMs * (2 ** $attempt));
+            if (time() + (int) ceil($delayMs / 1000) >= $deadline) {
+                throw new RuntimeException("Replicate prediction {$status} (transient); retry budget exhausted: {$err}");
+            }
+
+            Sleep::for($delayMs)->milliseconds();
+            $attempt++;
+        }
+    }
+
+    /**
+     * Whether a failed prediction's error looks like a transient GPU/infra fault
+     * (worth re-rolling) rather than a deterministic input problem. Matches the
+     * Chatterbox failures observed on Replicate's shared GPUs — CUDA device-side
+     * asserts and out-of-memory chief among them.
+     */
+    private function isTransientFailure(string $error): bool
+    {
+        return (bool) preg_match(
+            '/cuda|device-side assert|out of memory|\boom\b|cudnn|nccl|gpu|internal error|please try again|service unavailable|\b50[234]\b/i',
+            $error,
+        );
+    }
+
+    /**
+     * Poll a prediction until it reaches a terminal state, returning it as-is
+     * (succeeded OR failed — the caller decides how to handle a failure). Throws
+     * only when polling outlives the per-request timeout.
+     */
     private function awaitCompletion(string $token, array $prediction): array
     {
         $deadline = time() + $this->timeout;
@@ -137,11 +200,6 @@ class ReplicateChatterboxProvider implements TtsProvider
                 'prediction polling',
             );
             $prediction = $response->json();
-        }
-
-        if (($prediction['status'] ?? '') !== 'succeeded') {
-            $err = $prediction['error'] ?? 'unknown error';
-            throw new RuntimeException('Replicate prediction '.($prediction['status'] ?? 'failed').': '.(is_string($err) ? $err : json_encode($err)));
         }
 
         return $prediction;

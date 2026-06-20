@@ -105,6 +105,64 @@ class ReplicateRetryTest extends TestCase
         Sleep::assertSlept(fn ($duration) => $duration->totalMilliseconds === 2000.0, 1);
     }
 
+    public function test_it_retries_a_transient_cuda_prediction_failure_then_succeeds(): void
+    {
+        // A prediction that comes back `failed` with a transient GPU fault (the
+        // observed "CUDA error: device-side assert triggered") is re-rolled.
+        Http::fake([
+            'api.replicate.com/v1/predictions' => Http::sequence()
+                ->push(['id' => 'p1', 'status' => 'failed', 'error' => 'CUDA error: device-side assert triggered'], 200)
+                ->push(['id' => 'p2', 'status' => 'succeeded', 'output' => 'https://replicate.delivery/out.wav'], 200),
+            'replicate.delivery/*' => Http::response('AUDIO-BYTES', 200),
+        ]);
+
+        $audio = $this->provider()->synthesize('Hello there.', null, []);
+
+        $this->assertSame('AUDIO-BYTES', $audio);
+        Http::assertSentCount(3); // failed create + retry create + audio download
+        Sleep::assertSleptTimes(1); // one backoff between the two creates
+    }
+
+    public function test_it_fails_fast_on_a_non_transient_prediction_failure(): void
+    {
+        // A deterministic input failure must NOT be retried (no wasted credit).
+        Http::fake([
+            'api.replicate.com/v1/predictions' => Http::response(
+                ['id' => 'p1', 'status' => 'failed', 'error' => 'ValueError: invalid prompt'],
+                200,
+            ),
+        ]);
+
+        try {
+            $this->provider()->synthesize('Hello there.', null, []);
+            $this->fail('Expected a RuntimeException for a failed prediction.');
+        } catch (RuntimeException $e) {
+            $this->assertStringContainsString('invalid prompt', $e->getMessage());
+        }
+
+        Http::assertSentCount(1); // single create, no retry
+        Sleep::assertNeverSlept();
+    }
+
+    public function test_it_gives_up_after_predict_max_retries_on_a_persistent_transient_failure(): void
+    {
+        Http::fake([
+            'api.replicate.com/v1/predictions' => Http::response(
+                ['id' => 'p', 'status' => 'failed', 'error' => 'CUDA out of memory'],
+                200,
+            ),
+        ]);
+
+        $this->expectException(RuntimeException::class);
+
+        try {
+            $this->provider(['predict_max_retries' => 2])->synthesize('Hello there.', null, []);
+        } finally {
+            Http::assertSentCount(3); // 1 + 2 retries
+            Sleep::assertSleptTimes(2);
+        }
+    }
+
     public function test_min_request_gap_spaces_out_predictions(): void
     {
         Http::fake([
