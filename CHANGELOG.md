@@ -14,6 +14,12 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   such a failure up to `REPLICATE_PREDICT_MAX_RETRIES` times (default **2**, same
   backoff as the 429 path, bounded by the request timeout). Deterministic failures
   (bad input) still fail fast. Set `REPLICATE_PREDICT_MAX_RETRIES=0` to disable.
+- **Pace Studio "Generate all remaining".** Generation was already sequential, but
+  gapless — a chunk that failed fast (~300 ms) fired the next prediction almost
+  immediately, and a burst of back-to-back predictions can spin up cold GPU replicas
+  on Replicate (which is what throws the transient CUDA asserts above). The loop now
+  waits a short gap between chunks (`TTS_STUDIO_GENERATE_PACE_MS`, default **800**;
+  0 = back-to-back).
 
 ## [0.9.1] - 2026-06-20
 

@@ -29,7 +29,8 @@
          data-preview-url="{{ route('admin.studio.projects.preview', $project) }}"
          data-rename-url="{{ route('admin.studio.projects.update', $project) }}"
          data-voice-url="{{ route('admin.studio.projects.voice', $project) }}"
-         data-insert-url="{{ route('admin.studio.projects.chunks.store', $project) }}">
+         data-insert-url="{{ route('admin.studio.projects.chunks.store', $project) }}"
+         data-generate-pace-ms="{{ (int) config('tts.studio_generate_pace_ms', 800) }}">
 
         {{-- Toolbar --}}
         <div class="mb-6 flex flex-col gap-4 rounded-xl border border-zinc-800 bg-zinc-900/50 p-5 sm:flex-row sm:items-center sm:justify-between">

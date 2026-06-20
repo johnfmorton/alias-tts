@@ -886,9 +886,13 @@ function initStudioProject() {
             return;
         }
         startBusy(generateAllBtn, 'Generating…');
+        // Space out the stream of predictions: generation is already sequential,
+        // but a small gap between chunks makes a burst less likely to spin up cold
+        // GPU replicas on Replicate (which can fail with transient CUDA asserts).
+        const paceMs = Math.max(0, Number(root.dataset.generatePaceMs) || 0);
         let done = 0;
         let failed = 0;
-        for (const card of cards) {
+        for (const [i, card] of cards.entries()) {
             try {
                 await generateChunk(card);
                 done++;
@@ -896,6 +900,9 @@ function initStudioProject() {
                 failed++;
             }
             setStatus(finalStatus, `Generated ${done}/${cards.length}${failed ? ` · ${failed} failed` : ''}…`);
+            if (paceMs && i < cards.length - 1) {
+                await sleep(paceMs);
+            }
         }
         endBusy(generateAllBtn);
         setStatus(finalStatus, failed

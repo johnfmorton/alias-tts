@@ -142,6 +142,12 @@ return [
     'chunk_gap_ms' => (int) env('TTS_CHUNK_GAP_MS', 120),
     'paragraph_gap_ms' => (int) env('TTS_PARAGRAPH_GAP_MS', 400),
 
+    // Delay (ms) the Studio "Generate all remaining" loop waits between chunks.
+    // Generation is already sequential, but a small gap spaces out the stream of
+    // Replicate predictions so a burst is less likely to spin up cold GPU replicas
+    // (which can fail with transient CUDA asserts). 0 = no delay (back-to-back).
+    'studio_generate_pace_ms' => (int) env('TTS_STUDIO_GENERATE_PACE_MS', 800),
+
     'ttl_hours' => (int) env('TTS_TTL_HOURS', 720), // cache generated audio for 30 days
 
     // How long (minutes) a project's single-use auto-login link stays valid. The

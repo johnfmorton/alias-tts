@@ -318,6 +318,17 @@ class StudioProjectTest extends TestCase
             ->assertSee('data-inherits="1"', false);
     }
 
+    public function test_show_page_exposes_the_generate_pace_config(): void
+    {
+        config(['tts.studio_generate_pace_ms' => 800]);
+        $project = $this->project();
+
+        $this->actingAs($this->admin())
+            ->get(route('admin.studio.projects.show', $project))
+            ->assertOk()
+            ->assertSee('data-generate-pace-ms="800"', false);
+    }
+
     public function test_show_page_renders_the_voice_picker(): void
     {
         $project = $this->project();
