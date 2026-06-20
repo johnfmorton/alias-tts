@@ -4,6 +4,29 @@ All notable changes to this project are documented in this file. The format is
 based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this
 project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.9.0] - 2026-06-20
+
+### Added
+- **Built-in default voice.** A "Default voice" (`voice_id` = `default`) is now
+  seeded on install and uses Chatterbox's native voice (no reference clip), so a
+  fresh install can generate audio without uploading a custom voice. It shows up in
+  Studio and the `/v1` API, is protected from deletion, and its `voice_id` is
+  configurable via `TTS_DEFAULT_VOICE_SLUG`. The **Add voice** form's reference clip
+  is now optional, so you can also create additional reference-less voices.
+- **Change a project's voice.** The Studio project editor has a voice picker in its
+  toolbar (`PATCH /admin/studio/projects/{project}/voice`). Switching the voice
+  marks already-generated chunks stale so you can regenerate them with the new
+  voice; tuning, seed, and per-chunk overrides are preserved.
+
+### Fixed
+- **Chatterbox's long tail-end distortion is now removed.** Some generations append
+  a multi-second, speech-level, low-frequency drone after the speech ends — too loud
+  for the silence trim and too long for the bounded tail window, so it survived into
+  production audio. A new detector flags it by zero-crossing rate (the drone is
+  tonal/low-frequency) gated by an RMS floor and hard-cuts at the speech end, while
+  normal clips and soft final words keep the existing bounded trim. All thresholds
+  are env-tunable (`TTS_CHUNK_TAIL_*`). See `docs/AUDIO-CLEANUP.md`.
+
 ## [0.8.2] - 2026-06-19
 
 ### Added
@@ -335,7 +358,8 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   fixed seed; the response cache guarantees stable output for repeated identical
   requests.
 
-[Unreleased]: https://github.com/johnfmorton/bespoken-tts-service/compare/v0.8.2...HEAD
+[Unreleased]: https://github.com/johnfmorton/bespoken-tts-service/compare/v0.9.0...HEAD
+[0.9.0]: https://github.com/johnfmorton/bespoken-tts-service/compare/v0.8.2...v0.9.0
 [0.8.2]: https://github.com/johnfmorton/bespoken-tts-service/compare/v0.8.1...v0.8.2
 [0.8.1]: https://github.com/johnfmorton/bespoken-tts-service/compare/v0.8.0...v0.8.1
 [0.8.0]: https://github.com/johnfmorton/bespoken-tts-service/compare/v0.7.0...v0.8.0
