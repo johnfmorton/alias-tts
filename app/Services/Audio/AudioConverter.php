@@ -251,15 +251,18 @@ class AudioConverter
      *
      * The speech end is the end of the last speech window — but FIRST any isolated
      * short speech run at the very end is peeled off when it sits behind a long
-     * (>= min_artifact) non-speech gap that itself follows earlier speech.
+     * (>= min_artifact) QUIET (sub-floor) gap that itself follows earlier audio.
      * Chatterbox sometimes follows the quiet decay tail with a brief loud,
      * mid-band re-swell that clears both gates; left in, that blip resets the
      * speech end to ~EOF, the trailing non-speech run collapses to ~0, and the
-     * whole tail survives the cut. A run that is both short AND long-gap-isolated
-     * from the body is not resumed speech, so it is dropped and peeling continues
-     * toward the real speech body. The leading-silence-before-first-word case is
-     * excluded (the gap must be preceded by speech), and blip_max_ms = 0 disables
-     * the peel entirely. {@see AudioConverterTest}.
+     * whole tail survives the cut. A run that is both short AND isolated by a long
+     * SILENT gap is not resumed speech, so it is dropped and peeling continues
+     * toward the real speech body. The gap is measured as truly quiet windows, NOT
+     * merely non-speech ones: a quiet final word ("will be") ends in low-ZCR voiced
+     * windows that fail the speech gate while still being loud, and counting those
+     * as a gap would wrongly peel the word. The leading-silence-before-first-word
+     * case is excluded (something must precede the gap), and blip_max_ms = 0
+     * disables the peel entirely. {@see AudioConverterTest}.
      *
      * We only return a cut when the (post-peel) trailing non-speech run is at
      * least min_artifact_ms, so ordinary clips and quiet final words — which have
@@ -288,8 +291,11 @@ class AudioConverter
         }
         $totalSec = $totalSamples / $rate;
 
-        // Classify every window as speech (loud enough AND high-ZCR enough) or not.
+        // Classify every window: speech (loud enough AND high-ZCR enough), and —
+        // separately — quiet (RMS at/below the floor, i.e. genuine silence/decay,
+        // NOT loud voiced speech, which is low-ZCR so it fails the speech gate too).
         $speech = [];
+        $quiet = [];
         for ($i = 0; $i + $win <= $totalSamples; $i += $win) {
             $samples = unpack('s*', substr($pcmWav, $offset + $i * 2, $bytesPerWin));
             if ($samples === false) {
@@ -320,6 +326,7 @@ class AudioConverter
             $crossingsPerSec = $crossings / $windowSec;
 
             $speech[] = ($db > $floorDb && $crossingsPerSec > $zcrMinHz);
+            $quiet[] = ($db <= $floorDb);
         }
 
         // Walk back from EOF, peeling isolated trailing "re-swell" blips so the
@@ -341,18 +348,24 @@ class AudioConverter
                 break; // no speech left in range
             }
 
-            // Contiguous speech run ending at $li, then the non-speech gap before it.
+            // Contiguous speech run ending at $li, then the QUIET (sub-floor) gap
+            // immediately before it. The gap must be genuine silence/decay — NOT
+            // merely "non-speech" — because a quiet final word (e.g. "will be")
+            // ends in low-ZCR voiced windows that fail the speech gate while still
+            // being LOUD; counting those as a gap would peel real words. The decay
+            // before a re-swell artifact, by contrast, is truly below the floor.
             $rs = $li;
             while ($rs - 1 >= 0 && $speech[$rs - 1]) {
                 $rs--;
             }
             $gapLen = 0;
-            for ($j = $rs - 1; $j >= 0 && ! $speech[$j]; $j--) {
+            for ($j = $rs - 1; $j >= 0 && $quiet[$j]; $j--) {
                 $gapLen++;
             }
 
-            // Peel only a short run that a long gap isolates from EARLIER speech;
-            // a leading gap before the first word (no speech below it) is not a blip.
+            // Peel only a short run that a long QUIET gap isolates from EARLIER
+            // audio; a leading gap before the first word (nothing below it) is not
+            // a blip.
             $isBlip = $blipMaxWin > 0
                 && ($li - $rs + 1) <= $blipMaxWin
                 && $gapLen >= $gapMinWin

@@ -29,9 +29,12 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   gates. Sitting at the very end of the chunk, it reset the detected speech end to
   ~EOF, the trailing-silence run collapsed to near zero, and the whole multi-second
   tail survived. The detector now peels an isolated short trailing run (shorter than
-  `TTS_CHUNK_TAIL_BLIP_MAX_MS`, default 400 ms) when a long non-speech gap isolates
-  it from the speech body, then measures the speech end and hard-cuts as before. Set
-  `TTS_CHUNK_TAIL_BLIP_MAX_MS=0` to disable. See `docs/AUDIO-CLEANUP.md`.
+  `TTS_CHUNK_TAIL_BLIP_MAX_MS`, default 400 ms) when a long **quiet** (sub-floor) gap
+  isolates it from earlier audio, then measures the speech end and hard-cuts as
+  before. The gap must be genuinely silent, not merely low-ZCR — so a quiet final
+  word like "will be" (loud but low-ZCR voiced sound) is never mistaken for an
+  artifact and trimmed. Set `TTS_CHUNK_TAIL_BLIP_MAX_MS=0` to disable. See
+  `docs/AUDIO-CLEANUP.md`.
 
 ## [0.9.0] - 2026-06-20
 

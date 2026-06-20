@@ -45,9 +45,13 @@ quiet decay tail with a brief **loud, mid-band "re-swell"** that clears both gat
 (it is neither quiet nor tonal); sitting at the very end, it would reset the
 speech end to ~EOF, collapsing the trailing non-speech run to ~0 so the whole tail
 survives. A run shorter than `chunk_tail_blip_max_ms` that a `chunk_tail_min_artifact_ms`
-non-speech gap isolates from *earlier* speech is treated as that artifact and
-dropped (leading silence before the first word does not count — the gap must
-follow speech). The peel repeats toward the body.
+**quiet** gap isolates from *earlier* audio is treated as that artifact and dropped
+(leading silence before the first word does not count — something must precede the
+gap). The gap is measured as genuinely **quiet** windows (RMS at/below the floor),
+**not** merely non-speech ones: a quiet final word like "will be" ends in low-ZCR
+voiced windows that fail the speech (high-ZCR) gate while still being *loud*, and
+counting those as a gap would wrongly peel the word. The decay before a true
+re-swell artifact, by contrast, sits below the floor. The peel repeats toward the body.
 
 A cut is only made when the (post-peel) trailing non-speech run is at least
 `chunk_tail_min_artifact_ms` — so ordinary clips and soft final words (which have
@@ -86,10 +90,12 @@ the ZCR/RMS gates alone score as speech — observed in a v0.9.0 chunk that surv
 the original detector). A *sustained* high-ZCR hiss filling the whole tail would
 still pass the speech test; catching that would need a complementary spectral
 check (not built). The peel also has one residual blind spot by construction: a
-**genuine** short final word that follows a `>= min_artifact_ms` pause *within the
-same chunk* would be clipped — but chunks are split on sentence/paragraph
-boundaries with seam gaps inserted between them, so a single chunk rarely contains
-that much internal silence before a final word. Generation-side mitigations (more
+**genuine** short final word that follows a `>= min_artifact_ms` stretch of true
+**silence** *within the same chunk* would be clipped — but chunks are split on
+sentence/paragraph boundaries with seam gaps inserted between them, so a single
+chunk rarely contains that much internal silence before a final word. (A loud
+final word preceded by ordinary low-ZCR voiced speech is safe — only sub-floor
+silence counts as the gap.) Generation-side mitigations (more
 conservative Chatterbox params, multi-candidate selection) remain possible future
 work but are not needed — post-processing removes the artifact reliably.
 
@@ -105,3 +111,6 @@ work but are not needed — post-processing removes the artifact reliably.
   loud re-swell blip; the v0.9.0 slip-through, now cut.
 - `test_detector_keeps_short_final_word_after_brief_pause` — peel must not clip a
   genuine short final word after a brief (sub-`min_artifact`) pause.
+- `test_loud_low_zcr_speech_is_not_mistaken_for_a_gap_before_the_final_word` — a
+  loud low-ZCR voiced region (e.g. the "will be" ending) is not a silent gap, so
+  the final word survives.

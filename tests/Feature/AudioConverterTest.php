@@ -137,6 +137,28 @@ class AudioConverterTest extends TestCase
         $this->assertLessThan(1.4, $seconds, 'The decay tail and re-swell blip must be cut.');
     }
 
+    public function test_loud_low_zcr_speech_is_not_mistaken_for_a_gap_before_the_final_word(): void
+    {
+        // Regression for over-trimming: a quiet/short final word ("will be") ends
+        // in LOUD low-ZCR voiced windows. Those fail the speech (high-ZCR) gate but
+        // are not silence, so they must NOT count as the "gap" the blip-peel keys
+        // on — otherwise the real word is hard-cut. Layout: broadband speech | a
+        // loud 120 Hz voiced region (loud, low ZCR) | a short broadband final word.
+        $converter = new AudioConverter(config('tts.ffmpeg_path', 'ffmpeg'));
+        $chunk = $this->wrapWav(
+            $this->noiseWav(0.8, 15000)        // speech body (high ZCR)
+            .$this->rawTone(0.5, 15000, 120.0) // loud voiced region (loud, low ZCR)
+            .$this->noiseWav(0.2, 12000)       // short final word (high ZCR)
+        );
+
+        [$out] = $converter->concatenate([$chunk], 'wav', 'wav', []);
+        $seconds = $this->wavDataBytes($out) / (44100 * 2);
+
+        // ~1.5s preserved. The bug counted the loud voiced region as a gap, peeled
+        // the final word, and cut to ~0.86s.
+        $this->assertGreaterThan(1.3, $seconds, 'A final word after loud voiced speech must not be cut.');
+    }
+
     public function test_detector_keeps_short_final_word_after_brief_pause(): void
     {
         // Guard against the peel over-reaching: a genuine short final word after a
