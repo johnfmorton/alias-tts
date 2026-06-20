@@ -137,6 +137,28 @@ class AudioConverterTest extends TestCase
         $this->assertLessThan(1.4, $seconds, 'The decay tail and re-swell blip must be cut.');
     }
 
+    public function test_detector_removes_a_long_tonal_swell_tail(): void
+    {
+        // Regression: a re-swell artifact can be LONGER than blip_max_ms — a
+        // sustained drone/swell behind a quiet gap (observed in a real chunk that
+        // ramped to a steady ~1.3 kHz tone for >1s after the speech ended). It is
+        // too long for the blip path but its ZCR is near-constant (a tone), so the
+        // tonal path peels it. Layout: speech | quiet gap | loud steady 1.3 kHz tone.
+        $converter = new AudioConverter(config('tts.ffmpeg_path', 'ffmpeg'));
+        $chunk = $this->wrapWav(
+            $this->noiseWav(0.8, 15000)        // speech body (high, variable ZCR)
+            .$this->rawTone(0.5, 0, 0.0)       // quiet gap (digital silence)
+            .$this->rawTone(1.0, 12000, 1300.0) // long tonal swell (loud, steady ZCR)
+        );
+
+        [$out] = $converter->concatenate([$chunk], 'wav', 'wav', []);
+        $seconds = $this->wavDataBytes($out) / (44100 * 2);
+
+        // ~0.8s body + guard. Was ~2.3s when the long tonal tail survived.
+        $this->assertGreaterThan(0.7, $seconds, 'The speech body must survive.');
+        $this->assertLessThan(1.4, $seconds, 'The long tonal swell must be cut.');
+    }
+
     public function test_loud_low_zcr_speech_is_not_mistaken_for_a_gap_before_the_final_word(): void
     {
         // Regression for over-trimming: a quiet/short final word ("will be") ends

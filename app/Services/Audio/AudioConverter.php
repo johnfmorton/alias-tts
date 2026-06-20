@@ -250,19 +250,20 @@ class AudioConverter
      * so the threshold is independent of $rate.
      *
      * The speech end is the end of the last speech window — but FIRST any isolated
-     * short speech run at the very end is peeled off when it sits behind a long
-     * (>= min_artifact) QUIET (sub-floor) gap that itself follows earlier audio.
-     * Chatterbox sometimes follows the quiet decay tail with a brief loud,
-     * mid-band re-swell that clears both gates; left in, that blip resets the
-     * speech end to ~EOF, the trailing non-speech run collapses to ~0, and the
-     * whole tail survives the cut. A run that is both short AND isolated by a long
-     * SILENT gap is not resumed speech, so it is dropped and peeling continues
-     * toward the real speech body. The gap is measured as truly quiet windows, NOT
-     * merely non-speech ones: a quiet final word ("will be") ends in low-ZCR voiced
-     * windows that fail the speech gate while still being loud, and counting those
-     * as a gap would wrongly peel the word. The leading-silence-before-first-word
-     * case is excluded (something must precede the gap), and blip_max_ms = 0
-     * disables the peel entirely. {@see AudioConverterTest}.
+     * trailing artifact run at the very end is peeled off when it sits behind a
+     * long (>= min_artifact) QUIET (sub-floor) gap that itself follows earlier
+     * audio. Chatterbox follows the quiet decay tail with a re-swell that clears
+     * both gates; left in, it resets the speech end to ~EOF, the trailing run
+     * collapses to ~0, and the whole tail survives. A run isolated by such a gap
+     * is peeled when it is EITHER short (a brief re-swell "blip", <= blip_max_ms)
+     * OR tonal (a longer drone/swell whose ZCR coefficient of variation is
+     * <= tonal_cv_max — real speech alternates voiced/unvoiced so its ZCR swings
+     * widely; a near-constant ZCR is never speech). The gap is measured as truly
+     * quiet windows, NOT merely non-speech ones: a quiet final word ("will be")
+     * ends in low-ZCR voiced windows that fail the speech gate while still being
+     * loud, and counting those as a gap would wrongly peel the word. The
+     * leading-silence-before-first-word case is excluded (something must precede
+     * the gap), and blip_max_ms = 0 disables the peel entirely. {@see AudioConverterTest}.
      *
      * We only return a cut when the (post-peel) trailing non-speech run is at
      * least min_artifact_ms, so ordinary clips and quiet final words — which have
@@ -281,6 +282,7 @@ class AudioConverter
         $minArtifactSec = max(0, (int) config('tts.chunk_tail_min_artifact_ms', 400)) / 1000;
         $guardSec = max(0, (int) config('tts.chunk_tail_guard_ms', 60)) / 1000;
         $blipMaxSec = max(0, (int) config('tts.chunk_tail_blip_max_ms', 400)) / 1000;
+        $tonalCvMax = max(0.0, (float) config('tts.chunk_tail_tonal_cv_max', 0.35));
 
         $win = max(1, (int) round($rate * $windowSec));
         $bytesPerWin = $win * 2; // 16-bit mono
@@ -291,11 +293,13 @@ class AudioConverter
         }
         $totalSec = $totalSamples / $rate;
 
-        // Classify every window: speech (loud enough AND high-ZCR enough), and —
-        // separately — quiet (RMS at/below the floor, i.e. genuine silence/decay,
-        // NOT loud voiced speech, which is low-ZCR so it fails the speech gate too).
+        // Classify every window: speech (loud enough AND high-ZCR enough); quiet
+        // (RMS at/below the floor, i.e. genuine silence/decay, NOT loud voiced
+        // speech, which is low-ZCR so it fails the speech gate too); and its raw
+        // ZCR (kept so a trailing run's ZCR variability can be measured below).
         $speech = [];
         $quiet = [];
+        $zcr = [];
         for ($i = 0; $i + $win <= $totalSamples; $i += $win) {
             $samples = unpack('s*', substr($pcmWav, $offset + $i * 2, $bytesPerWin));
             if ($samples === false) {
@@ -327,6 +331,7 @@ class AudioConverter
 
             $speech[] = ($db > $floorDb && $crossingsPerSec > $zcrMinHz);
             $quiet[] = ($db <= $floorDb);
+            $zcr[] = $crossingsPerSec;
         }
 
         // Walk back from EOF, peeling isolated trailing "re-swell" blips so the
@@ -363,16 +368,24 @@ class AudioConverter
                 $gapLen++;
             }
 
-            // Peel only a short run that a long QUIET gap isolates from EARLIER
-            // audio; a leading gap before the first word (nothing below it) is not
-            // a blip.
-            $isBlip = $blipMaxWin > 0
-                && ($li - $rs + 1) <= $blipMaxWin
+            // A run that a long QUIET gap isolates from EARLIER audio (a leading
+            // gap before the first word, with nothing below it, does not count) is
+            // an artifact when it is EITHER short (a brief re-swell "blip") OR
+            // tonal — a longer run whose ZCR barely varies, i.e. a sustained
+            // drone/swell. Real speech alternates voiced/unvoiced, so its ZCR
+            // swings widely; a near-constant ZCR is never speech. Either way the
+            // run is not resumed speech: drop it and keep peeling toward the body.
+            $runLen = $li - $rs + 1;
+            $quietGapIsolated = $blipMaxWin > 0
                 && $gapLen >= $gapMinWin
                 && ($rs - $gapLen - 1) >= 0;
+            $isShortBlip = $runLen <= $blipMaxWin;
+            $isTonalRun = $tonalCvMax > 0.0
+                && $runLen > $blipMaxWin
+                && $this->zcrCoeffOfVariation($zcr, $rs, $li) <= $tonalCvMax;
 
-            if ($isBlip) {
-                $end = $rs; // drop the blip and keep peeling toward the body
+            if ($quietGapIsolated && ($isShortBlip || $isTonalRun)) {
+                $end = $rs; // drop the artifact run and keep peeling toward the body
 
                 continue;
             }
@@ -392,6 +405,37 @@ class AudioConverter
         }
 
         return min($totalSec, $lastSpeechEnd + $guardSec);
+    }
+
+    /**
+     * Coefficient of variation (stddev / mean) of the per-window ZCR over windows
+     * [$start, $end]. Low for a sustained tone (steady ZCR), high for speech (its
+     * ZCR swings between voiced and unvoiced). Returns INF when it can't be
+     * measured (too few windows / zero mean) so the caller never treats it as tonal.
+     */
+    private function zcrCoeffOfVariation(array $zcr, int $start, int $end): float
+    {
+        $n = $end - $start + 1;
+        if ($n < 2) {
+            return INF;
+        }
+
+        $sum = 0.0;
+        for ($j = $start; $j <= $end; $j++) {
+            $sum += $zcr[$j];
+        }
+        $mean = $sum / $n;
+        if ($mean <= 0) {
+            return INF;
+        }
+
+        $var = 0.0;
+        for ($j = $start; $j <= $end; $j++) {
+            $d = $zcr[$j] - $mean;
+            $var += $d * $d;
+        }
+
+        return sqrt($var / $n) / $mean;
     }
 
     /**

@@ -44,14 +44,18 @@ short trailing speech run is **peeled** off. Chatterbox sometimes follows the
 quiet decay tail with a brief **loud, mid-band "re-swell"** that clears both gates
 (it is neither quiet nor tonal); sitting at the very end, it would reset the
 speech end to ~EOF, collapsing the trailing non-speech run to ~0 so the whole tail
-survives. A run shorter than `chunk_tail_blip_max_ms` that a `chunk_tail_min_artifact_ms`
-**quiet** gap isolates from *earlier* audio is treated as that artifact and dropped
-(leading silence before the first word does not count — something must precede the
-gap). The gap is measured as genuinely **quiet** windows (RMS at/below the floor),
-**not** merely non-speech ones: a quiet final word like "will be" ends in low-ZCR
-voiced windows that fail the speech (high-ZCR) gate while still being *loud*, and
-counting those as a gap would wrongly peel the word. The decay before a true
-re-swell artifact, by contrast, sits below the floor. The peel repeats toward the body.
+survives. A run that a `chunk_tail_min_artifact_ms` **quiet** gap isolates from
+*earlier* audio is treated as that artifact and dropped when it is **either** short
+(shorter than `chunk_tail_blip_max_ms` — a brief blip) **or tonal** (a longer
+drone/swell whose per-window ZCR coefficient of variation is ≤ `chunk_tail_tonal_cv_max`;
+real speech alternates voiced/unvoiced so its ZCR swings widely, whereas a sustained
+tone barely varies). Leading silence before the first word does not count — something
+must precede the gap. The gap is measured as genuinely **quiet** windows (RMS
+at/below the floor), **not** merely non-speech ones: a quiet final word like "will
+be" ends in low-ZCR voiced windows that fail the speech (high-ZCR) gate while still
+being *loud*, and counting those as a gap would wrongly peel the word. The decay
+before a true re-swell artifact, by contrast, sits below the floor. The peel repeats
+toward the body.
 
 A cut is only made when the (post-peel) trailing non-speech run is at least
 `chunk_tail_min_artifact_ms` — so ordinary clips and soft final words (which have
@@ -72,7 +76,8 @@ then head-trimmed and edge-faded.
 | `chunk_tail_zcr_min_hz` | `TTS_CHUNK_TAIL_ZCR_MIN_HZ` | `700` | crossings/sec; below = tonal/low-freq drone |
 | `chunk_tail_min_artifact_ms` | `TTS_CHUNK_TAIL_MIN_ARTIFACT_MS` | `400` | only hard-cut trailing non-speech ≥ this |
 | `chunk_tail_guard_ms` | `TTS_CHUNK_TAIL_GUARD_MS` | `60` | keep this much after the last speech |
-| `chunk_tail_blip_max_ms` | `TTS_CHUNK_TAIL_BLIP_MAX_MS` | `400` | drop a trailing re-swell blip ≤ this isolated by a long gap (`0` disables) |
+| `chunk_tail_blip_max_ms` | `TTS_CHUNK_TAIL_BLIP_MAX_MS` | `400` | drop a trailing re-swell blip ≤ this isolated by a long gap (`0` disables the whole peel) |
+| `chunk_tail_tonal_cv_max` | `TTS_CHUNK_TAIL_TONAL_CV_MAX` | `0.35` | also drop a LONGER isolated run whose ZCR coeff-of-variation ≤ this (a sustained tone, not speech); `0` disables the tonal path |
 
 **Tuning hints.** If a drone still survives, lower `chunk_tail_min_artifact_ms` or
 raise `chunk_tail_zcr_min_hz`. If a real, sustained trailing vowel gets clipped,
@@ -84,12 +89,12 @@ in-chunk pause gets clipped, *lower* it (or set `0` to disable the peel).
 
 ## Scope / known limits
 
-The detector targets **low-ZCR (tonal/rumble)** tails and the **decay-then-blip**
-re-swell pattern (a long quiet decay followed by a brief loud, mid-band swell that
-the ZCR/RMS gates alone score as speech — observed in a v0.9.0 chunk that survived
-the original detector). A *sustained* high-ZCR hiss filling the whole tail would
-still pass the speech test; catching that would need a complementary spectral
-check (not built). The peel also has one residual blind spot by construction: a
+The detector targets **low-ZCR (tonal/rumble)** tails, the **decay-then-blip**
+re-swell, and a **longer tonal swell** after the speech ends (all isolated by a
+quiet gap, all with a near-constant ZCR that the gates alone score as speech). A
+*broadband* high-ZCR hiss with speech-like ZCR variability filling the tail would
+still pass; catching that would need a spectral check (not built). The peel also
+has one residual blind spot by construction: a
 **genuine** short final word that follows a `>= min_artifact_ms` stretch of true
 **silence** *within the same chunk* would be clipped — but chunks are split on
 sentence/paragraph boundaries with seam gaps inserted between them, so a single
@@ -114,3 +119,5 @@ work but are not needed — post-processing removes the artifact reliably.
 - `test_loud_low_zcr_speech_is_not_mistaken_for_a_gap_before_the_final_word` — a
   loud low-ZCR voiced region (e.g. the "will be" ending) is not a silent gap, so
   the final word survives.
+- `test_detector_removes_a_long_tonal_swell_tail` — a >1s steady-ZCR tone behind a
+  quiet gap (too long for the blip path) is peeled by the tonal path.

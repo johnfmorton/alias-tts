@@ -6,6 +6,16 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Fixed
+- **Long tonal "swell" at the end of a chunk survived trimming.** Chatterbox
+  sometimes appends a sustained tone that ramps up for over a second after the
+  speech ends (separated by a brief quiet gap). It clears the speech gates (loud,
+  mid-ZCR) and is too long for the re-swell "blip" peel, so it remained in the
+  stitched audio. The tail detector now also peels a longer isolated run when its
+  per-window ZCR is near-constant (`chunk_tail_tonal_cv_max`, default **0.35**) —
+  real speech swings between voiced and unvoiced, a tone does not — so the swell is
+  cut at the speech end while genuine speech is untouched. `0` disables this path.
+
 ## [0.9.2] - 2026-06-20
 
 ### Added

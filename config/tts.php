@@ -136,6 +136,14 @@ return [
     // >= min_artifact_ms non-speech gap, is treated as that artifact (not resumed
     // speech) and peeled off before the speech end is measured. Set 0 to disable.
     'chunk_tail_blip_max_ms' => (int) env('TTS_CHUNK_TAIL_BLIP_MAX_MS', 400),   // max isolated trailing blip to drop
+    // The re-swell artifact is sometimes LONGER than blip_max_ms (a sustained
+    // drone/swell, not a brief blip). Such a run still differs from speech: its
+    // zero-crossing rate is nearly constant (a tone), whereas speech alternates
+    // voiced/unvoiced so its ZCR swings widely. A trailing run isolated by a quiet
+    // gap whose per-window ZCR coefficient of variation is at/below this is treated
+    // as a tonal artifact and peeled regardless of length. 0 = disable that path
+    // (only short blips are peeled). Raise toward speech's CV (~0.7+) cautiously.
+    'chunk_tail_tonal_cv_max' => (float) env('TTS_CHUNK_TAIL_TONAL_CV_MAX', 0.35),
 
     // True digital silence (ms) inserted between chunks at a sentence seam and
     // at a block/paragraph seam respectively. Tune by ear for natural pacing.
