@@ -1146,6 +1146,42 @@ function initStudioProject() {
         });
     }
 
+    // Voice switch: PATCH the project's voice. Existing audio was generated with
+    // the old voice, so the server marks every generated chunk stale — reflect
+    // that in place (and revert the picker if the request fails).
+    const voiceSelect = document.getElementById('project-voice');
+    if (voiceSelect) {
+        let lastVoice = voiceSelect.value;
+        voiceSelect.addEventListener('change', async () => {
+            const voice = voiceSelect.value;
+            if (voice === lastVoice) return;
+            voiceSelect.disabled = true;
+            try {
+                const res = await fetch(root.dataset.voiceUrl, {
+                    method: 'PATCH',
+                    headers: { 'X-CSRF-TOKEN': csrfToken(), 'Accept': 'application/json', 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ voice }),
+                });
+                if (!res.ok) throw new Error(await errorMessage(res));
+                const data = await res.json();
+                lastVoice = voice;
+                document.querySelectorAll('.studio-chunk').forEach((card) => {
+                    if (card.querySelector('.chunk-status').textContent.trim() === 'completed') {
+                        setChunkStatus(card, 'stale');
+                    }
+                });
+                setProjectStatus(data.project_status);
+                refreshSeams();
+                setStatus(finalStatus, `✓ Voice set to ${data.voice_name}. Regenerate chunks to apply.`, 'ok');
+            } catch (err) {
+                voiceSelect.value = lastVoice; // revert the picker on failure
+                setStatus(finalStatus, `✗ ${err.message}`, 'error');
+            } finally {
+                voiceSelect.disabled = false;
+            }
+        });
+    }
+
     refreshSeams();
 }
 

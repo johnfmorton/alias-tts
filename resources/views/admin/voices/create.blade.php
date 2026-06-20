@@ -13,10 +13,10 @@
             <p class="mt-1.5 text-xs text-zinc-500">Tip: set this to your existing ElevenLabs voice_id for a drop-in swap.</p>
         </div>
         <div>
-            <label for="audio" class="mb-1.5 block text-sm font-medium">Reference clip</label>
-            <input id="audio" name="audio" type="file" accept=".wav,.mp3,.m4a,.aac,.ogg,.flac" required
+            <label for="audio" class="mb-1.5 block text-sm font-medium">Reference clip <span class="text-zinc-500">(optional)</span></label>
+            <input id="audio" name="audio" type="file" accept=".wav,.mp3,.m4a,.aac,.ogg,.flac"
                    class="block w-full text-sm text-zinc-400 file:mr-3 file:rounded-lg file:border-0 file:bg-zinc-800 file:px-3 file:py-2 file:text-sm file:text-zinc-200 hover:file:bg-zinc-700">
-            <p class="mt-1.5 text-xs text-zinc-500">WAV/MP3/M4A/OGG/FLAC, up to 20 MB. A clean, quiet ~15–30s sample works best.</p>
+            <p class="mt-1.5 text-xs text-zinc-500">WAV/MP3/M4A/OGG/FLAC, up to 20 MB. A clean, quiet ~15–30s sample works best. Leave blank to use Chatterbox's built-in voice (no cloning).</p>
         </div>
         <div>
             <label for="seed" class="mb-1.5 block text-sm font-medium">Default seed <span class="text-zinc-500">(optional)</span></label>

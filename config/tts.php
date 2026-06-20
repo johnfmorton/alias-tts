@@ -33,6 +33,13 @@ return [
         'use_speaker_boost' => true,
     ],
 
+    // The always-present built-in voice. It has no reference clip, so generation
+    // falls back to Chatterbox's native voice — letting a fresh install produce
+    // audio immediately without uploading a custom voice. Seeded by migration,
+    // offered in Studio and the /v1 API (voice_id = this slug), and protected
+    // from deletion in the admin UI.
+    'default_voice_slug' => env('TTS_DEFAULT_VOICE_SLUG', 'default'),
+
     /*
     |--------------------------------------------------------------------------
     | Limits & caching

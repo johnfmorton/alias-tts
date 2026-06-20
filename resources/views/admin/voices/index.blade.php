@@ -27,7 +27,12 @@
                         <td class="px-4 py-3">
                             <button data-copy="{{ $voice->slug }}" class="font-mono text-zinc-200 hover:text-cyan-400" title="Click to copy">{{ $voice->slug }}</button>
                         </td>
-                        <td class="px-4 py-3 text-zinc-300">{{ $voice->name }}</td>
+                        <td class="px-4 py-3 text-zinc-300">
+                            {{ $voice->name }}
+                            @if($voice->isDefault())
+                                <span class="ml-1 rounded-md bg-cyan-500/10 px-2 py-0.5 text-xs text-cyan-300" title="Chatterbox's native voice — always available">built-in</span>
+                            @endif
+                        </td>
                         <td class="px-4 py-3">
                             @if($voice->reference_audio_path)
                                 <span class="rounded-md bg-emerald-500/10 px-2 py-1 text-xs text-emerald-400">Yes</span>
@@ -38,7 +43,6 @@
                         <td class="px-4 py-3 font-mono text-zinc-400">{{ $voice->settings['seed'] ?? '—' }}</td>
                         <td class="px-4 py-3">
                             <button data-test-voice="{{ route('admin.voices.test', $voice) }}" data-audio-target="#audio-{{ $voice->id }}"
-                                    @disabled(! $voice->reference_audio_path)
                                     class="rounded-md border border-zinc-700 px-2.5 py-1 text-xs hover:bg-zinc-800 disabled:cursor-not-allowed disabled:opacity-40">Test</button>
                             <audio id="audio-{{ $voice->id }}" controls class="mt-2 hidden w-44"></audio>
                         </td>
@@ -46,9 +50,11 @@
                             <div class="flex justify-end gap-1.5">
                                 <a href="{{ route('admin.voices.edit', $voice) }}" class="rounded-md border border-zinc-700 px-2.5 py-1 text-xs hover:bg-zinc-800">Edit</a>
                                 <a href="{{ route('admin.voices.export', $voice) }}" class="rounded-md border border-zinc-700 px-2.5 py-1 text-xs hover:bg-zinc-800">Export</a>
-                                <form method="POST" action="{{ route('admin.voices.destroy', $voice) }}" onsubmit="return confirm('Delete this voice and its reference clip?')">@csrf @method('DELETE')
-                                    <button class="rounded-md border border-red-500/30 px-2.5 py-1 text-xs text-red-400 hover:bg-red-500/10">Delete</button>
-                                </form>
+                                @unless($voice->isDefault())
+                                    <form method="POST" action="{{ route('admin.voices.destroy', $voice) }}" onsubmit="return confirm('Delete this voice and its reference clip?')">@csrf @method('DELETE')
+                                        <button class="rounded-md border border-red-500/30 px-2.5 py-1 text-xs text-red-400 hover:bg-red-500/10">Delete</button>
+                                    </form>
+                                @endunless
                             </div>
                         </td>
                     </tr>

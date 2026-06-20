@@ -47,6 +47,8 @@ class HealthProviderTestTest extends TestCase
 
     public function test_short_test_without_a_voice_is_unprocessable(): void
     {
+        Voice::query()->delete(); // drop the seeded default to hit the empty-state guard
+
         $this->actingAs($this->admin())
             ->post(route('admin.health.test.short'))
             ->assertStatus(422)

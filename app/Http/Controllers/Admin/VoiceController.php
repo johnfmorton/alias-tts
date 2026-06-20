@@ -41,8 +41,8 @@ class VoiceController extends Controller
         $voice = $this->voices->register(
             name: $request->input('name'),
             slug: $request->input('slug') ?: null,
-            audioBytes: (string) file_get_contents($file->getRealPath()),
-            ext: $file->getClientOriginalExtension(),
+            audioBytes: $file ? (string) file_get_contents($file->getRealPath()) : null,
+            ext: $file?->getClientOriginalExtension(),
             normalize: (bool) config('tts.normalize_reference') && ! $request->boolean('raw'),
             seed: $request->filled('seed') ? (int) $request->input('seed') : null,
             stability: $request->filled('stability') ? (float) $request->input('stability') : null,
@@ -132,6 +132,11 @@ class VoiceController extends Controller
 
     public function destroy(Voice $voice): RedirectResponse
     {
+        if ($voice->isDefault()) {
+            return redirect()->route('admin.voices.index')
+                ->with('error', 'The built-in default voice can’t be deleted.');
+        }
+
         $this->voices->delete($voice);
 
         return redirect()->route('admin.voices.index')

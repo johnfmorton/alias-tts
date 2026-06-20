@@ -28,13 +28,23 @@
          data-final-url="{{ route('admin.studio.projects.audio', $project) }}"
          data-preview-url="{{ route('admin.studio.projects.preview', $project) }}"
          data-rename-url="{{ route('admin.studio.projects.update', $project) }}"
+         data-voice-url="{{ route('admin.studio.projects.voice', $project) }}"
          data-insert-url="{{ route('admin.studio.projects.chunks.store', $project) }}">
 
         {{-- Toolbar --}}
         <div class="mb-6 flex flex-col gap-4 rounded-xl border border-zinc-800 bg-zinc-900/50 p-5 sm:flex-row sm:items-center sm:justify-between">
-            <div class="flex items-center gap-3">
+            <div class="flex flex-wrap items-center gap-3">
                 <a href="{{ route('admin.studio.index') }}" class="text-sm text-zinc-400 hover:text-zinc-200">← Projects</a>
-                <span class="text-sm text-zinc-500">{{ $project->voice?->name ?? 'no voice' }} · {{ $chunks->count() }} chunks</span>
+                <label class="flex items-center gap-2 text-sm text-zinc-500">
+                    <span class="text-zinc-400">Voice</span>
+                    <select id="project-voice" title="Changing the voice marks generated chunks for regeneration."
+                            class="rounded-lg border border-zinc-700 bg-zinc-950 px-2 py-1 text-sm text-zinc-200 focus:border-cyan-500 focus:outline-none focus:ring-2 focus:ring-cyan-500/30">
+                        @foreach($voices as $v)
+                            <option value="{{ $v->slug }}" @selected($project->voice && $project->voice->id === $v->id)>{{ $v->name }}</option>
+                        @endforeach
+                    </select>
+                </label>
+                <span class="text-sm text-zinc-500">· {{ $chunks->count() }} chunks</span>
             </div>
             <div class="flex flex-wrap items-center gap-2">
                 <button type="button" id="project-generate-all"

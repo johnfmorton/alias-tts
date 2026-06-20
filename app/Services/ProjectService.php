@@ -107,6 +107,28 @@ class ProjectService
     }
 
     /**
+     * Switch the project's voice. Existing chunk audio was generated with the old
+     * voice, so every Completed chunk is marked Stale (its audio no longer matches
+     * the chosen voice) and the final file is flagged out of date — the editor
+     * surfaces this so the user regenerates. The project's tuning snapshot, seed,
+     * and per-chunk overrides are left untouched (stability/style are
+     * voice-independent knobs).
+     */
+    public function changeVoice(TtsProject $project, Voice $voice): TtsProject
+    {
+        DB::transaction(function () use ($project, $voice) {
+            $project->update(['voice_id' => $voice->id]);
+            $project->chunks()
+                ->where('status', ChunkStatus::Completed)
+                ->update(['status' => ChunkStatus::Stale]);
+        });
+
+        $this->markFinalOutdated($project);
+
+        return $project->refresh()->load('voice');
+    }
+
+    /**
      * Insert a new (empty by default, ungenerated) chunk at $position, shifting
      * every chunk at or after it down by one. Audio is keyed by chunk id, not
      * position, so renumbering never moves files on disk.

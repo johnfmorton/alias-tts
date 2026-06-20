@@ -131,6 +131,52 @@ class StudioProjectTest extends TestCase
         $this->assertNull($second->audio_path);
     }
 
+    public function test_changing_project_voice_marks_generated_chunks_stale(): void
+    {
+        $project = $this->project();
+        $first = $project->chunks()->first();
+        $other = Voice::create(['slug' => 'other', 'name' => 'Other']);
+
+        // Generate one chunk so there is audio tied to the old voice.
+        $this->actingAs($this->admin())
+            ->post(route('admin.studio.projects.chunks.generate', [$project, $first]))
+            ->assertOk();
+
+        $this->actingAs($this->admin())
+            ->patchJson(route('admin.studio.projects.voice', $project), ['voice' => 'other'])
+            ->assertOk()
+            ->assertJsonPath('voice', 'other');
+
+        $project->refresh();
+        $this->assertSame($other->id, $project->voice_id);
+        // The generated chunk no longer matches the new voice -> Stale; the
+        // ungenerated one stays Pending.
+        $this->assertSame(ChunkStatus::Stale, $first->refresh()->status);
+        $this->assertSame(ChunkStatus::Pending, $project->chunks()->orderBy('position')->get()->last()->status);
+    }
+
+    public function test_show_page_renders_the_voice_picker(): void
+    {
+        $project = $this->project();
+        Voice::create(['slug' => 'other', 'name' => 'Other']);
+
+        $this->actingAs($this->admin())
+            ->get(route('admin.studio.projects.show', $project))
+            ->assertOk()
+            ->assertSee('id="project-voice"', false)
+            ->assertSee('Other');
+    }
+
+    public function test_changing_project_voice_rejects_unknown_voice(): void
+    {
+        $project = $this->project();
+
+        $this->actingAs($this->admin())
+            ->patchJson(route('admin.studio.projects.voice', $project), ['voice' => 'nope'])
+            ->assertStatus(422)
+            ->assertJsonPath('message', 'Unknown voice.');
+    }
+
     public function test_chunk_audio_is_served_after_generation(): void
     {
         $project = $this->project();

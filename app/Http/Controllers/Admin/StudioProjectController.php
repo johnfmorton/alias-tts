@@ -74,6 +74,35 @@ class StudioProjectController extends Controller
         return view('admin.studio.projects.show', [
             'project' => $project->load('voice'),
             'chunks' => $project->chunks()->get(),
+            'voices' => Voice::orderBy('name')->get(),
+        ]);
+    }
+
+    /**
+     * Switch the project's voice (AJAX). Marks generated chunks Stale so the
+     * editor prompts a regenerate; see {@see ProjectService::changeVoice()}.
+     */
+    public function updateVoice(Request $request, TtsProject $project): JsonResponse
+    {
+        $validator = Validator::make($request->all(), [
+            'voice' => ['required', 'string'],
+        ]);
+        if ($validator->fails()) {
+            return response()->json(['message' => $validator->errors()->first()], 422);
+        }
+
+        $voice = Voice::resolve((string) $request->input('voice'));
+        if (! $voice) {
+            return response()->json(['message' => 'Unknown voice.'], 422);
+        }
+
+        $this->projects->changeVoice($project, $voice);
+
+        return response()->json([
+            'ok' => true,
+            'voice' => $voice->slug,
+            'voice_name' => $voice->name,
+            'project_status' => $project->refresh()->status->value,
         ]);
     }
 

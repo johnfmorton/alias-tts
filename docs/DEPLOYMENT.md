@@ -115,7 +115,10 @@ lines after `composer install` and make sure `php artisan migrate --force` runs.
 ### 7. First use
 Visit `https://your-domain.com/`, log in, then:
 - **API Keys → New key** (copy it).
-- **Voices → Add voice** (upload a clean ~15–30s clip).
+- A built-in **Default voice** (`voice_id` = `default`) is seeded automatically and
+  uses Chatterbox's native voice, so you can generate audio immediately. To clone a
+  specific voice, **Voices → Add voice** (upload a clean ~15–30s clip) — the
+  reference clip is now optional. Rename the default's `voice_id` with `TTS_DEFAULT_VOICE_SLUG`.
 - The **Dashboard** shows copy-paste connection details for the Bespoken plugin.
 
 ### 8. Background processing — scheduler & queue worker

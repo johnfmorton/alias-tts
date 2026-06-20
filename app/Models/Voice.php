@@ -48,4 +48,20 @@ class Voice extends Model
         return self::where('slug', $voiceId)->first()
             ?? self::whereKey($voiceId)->first();
     }
+
+    /** Slug of the always-present built-in voice (Chatterbox's native voice). */
+    public static function defaultSlug(): string
+    {
+        return (string) config('tts.default_voice_slug', 'default');
+    }
+
+    /**
+     * Whether this is the built-in default voice — seeded at install, protected
+     * from deletion, and used (with no reference clip) when a user has not added
+     * a custom voice.
+     */
+    public function isDefault(): bool
+    {
+        return $this->slug === self::defaultSlug();
+    }
 }
