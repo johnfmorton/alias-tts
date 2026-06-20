@@ -6,7 +6,23 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Added
+- **Per-chunk voice override in Studio projects.** Each chunk now has its own voice
+  picker. By default a chunk inherits the project voice (the picker mirrors it, and
+  follows when you change the project voice), but you can pin an individual chunk to
+  a different voice and generate just that chunk with it. Changing the project voice
+  only stales chunks that inherit it; explicitly-voiced chunks keep their audio.
+  Backed by a nullable `tts_chunks.voice_id` (`PATCH …/chunks/{chunk}/voice`).
+
 ### Fixed
+- **New Studio project bound to the wrong voice.** The "New project" form only
+  marked a `<select>` option selected on validation-error repopulation, so a fresh
+  page let the browser auto-select the first voice by name — binding new projects to
+  an arbitrary cloning voice instead of the built-in default. The form now
+  pre-selects the configured default voice.
+- **Voices "Test" button replayed a stale preview.** The preview reused a cached
+  result, so a default-voice test could keep playing audio captured while the voice
+  briefly had a different reference. The Test button now always regenerates live.
 - **Tail-end "decay-then-blip" artifact that slipped past 0.9.0.** Chatterbox
   sometimes follows the quiet decay tail with a brief, loud, mid-band "re-swell"
   that is neither quiet nor tonal, so it cleared both of the long-tail detector's

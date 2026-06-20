@@ -36,6 +36,11 @@ class StudioProjectController extends Controller
     {
         return view('admin.studio.projects.create', [
             'voices' => Voice::orderBy('name')->get(),
+            // Pre-select the built-in default voice so a new project uses the
+            // native voice unless the user actively picks another — without this
+            // the <select> silently defaults to whichever voice sorts first by
+            // name, which bound new projects to an arbitrary cloning voice.
+            'defaultVoiceSlug' => Voice::defaultSlug(),
         ]);
     }
 
@@ -102,6 +107,42 @@ class StudioProjectController extends Controller
             'ok' => true,
             'voice' => $voice->slug,
             'voice_name' => $voice->name,
+            'project_status' => $project->refresh()->status->value,
+        ]);
+    }
+
+    /**
+     * Set (or clear) a single chunk's voice override (AJAX). An empty value
+     * restores inheritance of the project voice. See {@see ProjectService::setChunkVoice()}.
+     */
+    public function updateChunkVoice(Request $request, TtsProject $project, TtsChunk $chunk): JsonResponse
+    {
+        $this->assertChunkBelongs($project, $chunk);
+
+        $validator = Validator::make($request->all(), [
+            'voice' => ['nullable', 'string'],
+        ]);
+        if ($validator->fails()) {
+            return response()->json(['message' => $validator->errors()->first()], 422);
+        }
+
+        $slug = trim((string) $request->input('voice'));
+        $voice = null;
+        if ($slug !== '') {
+            $voice = Voice::resolve($slug);
+            if (! $voice) {
+                return response()->json(['message' => 'Unknown voice.'], 422);
+            }
+        }
+
+        $chunk = $this->projects->setChunkVoice($chunk, $voice);
+
+        return response()->json([
+            'ok' => true,
+            'status' => $chunk->status->value,
+            'voice' => $voice?->slug,
+            'voice_name' => $voice?->name,
+            'inherits' => $chunk->voice_id === null,
             'project_status' => $project->refresh()->status->value,
         ]);
     }

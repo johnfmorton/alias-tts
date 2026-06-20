@@ -52,6 +52,7 @@ Route::prefix('studio')->name('studio.')->group(function () {
         Route::post('/{project}/rebuild', [StudioProjectController::class, 'rebuild'])->name('rebuild');
         Route::post('/{project}/chunks', [StudioProjectController::class, 'storeChunk'])->name('chunks.store');
         Route::patch('/{project}/chunks/{chunk}', [StudioProjectController::class, 'updateChunk'])->name('chunks.update');
+        Route::patch('/{project}/chunks/{chunk}/voice', [StudioProjectController::class, 'updateChunkVoice'])->name('chunks.voice');
         Route::patch('/{project}/chunks/{chunk}/tuning', [StudioProjectController::class, 'tuneChunk'])->name('chunks.tuning');
         Route::post('/{project}/chunks/{chunk}/preview-tuning', [StudioProjectController::class, 'previewChunkTuning'])->name('chunks.preview-tuning');
         Route::post('/{project}/chunks/{chunk}/generate', [StudioProjectController::class, 'generateChunk'])->name('chunks.generate');

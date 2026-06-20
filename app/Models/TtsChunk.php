@@ -22,6 +22,7 @@ class TtsChunk extends Model
         'position',
         'text',
         'break_after',
+        'voice_id',
         'settings',
         'status',
         'audio_path',
@@ -39,6 +40,15 @@ class TtsChunk extends Model
     public function project(): BelongsTo
     {
         return $this->belongsTo(TtsProject::class, 'tts_project_id');
+    }
+
+    /**
+     * The chunk's explicit voice override, or null when it inherits the project
+     * voice. Generation uses {@see TtsChunk::voice} ?? the project voice.
+     */
+    public function voice(): BelongsTo
+    {
+        return $this->belongsTo(Voice::class, 'voice_id');
     }
 
     public function isCompleted(): bool

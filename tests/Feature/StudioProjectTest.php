@@ -8,6 +8,7 @@ use App\Models\TtsProject;
 use App\Models\User;
 use App\Models\Voice;
 use App\Services\ProjectService;
+use App\Services\Tts\FakeTtsProvider;
 use App\Services\Tts\TtsProvider;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Storage;
@@ -47,6 +48,41 @@ class StudioProjectTest extends TestCase
         );
     }
 
+    /** A TtsProvider spy that records the reference path passed to each call. */
+    private function spyProvider(): TtsProvider
+    {
+        $spy = new class extends FakeTtsProvider
+        {
+            /** @var list<?string> */
+            public array $refs = [];
+
+            public function synthesize(string $text, ?string $referenceAudio, array $settings): string
+            {
+                $this->refs[] = $referenceAudio;
+
+                return parent::synthesize($text, $referenceAudio, $settings);
+            }
+        };
+        $this->app->instance(TtsProvider::class, $spy);
+
+        return $spy;
+    }
+
+    /** A 2-chunk project bound to the given (or a fresh cloning) voice. */
+    private function projectWithVoice(Voice $voice): TtsProject
+    {
+        return app(ProjectService::class)->createFromText(
+            title: 'Testing voices',
+            voice: $voice,
+            text: "First paragraph long enough to stand alone as its own chunk here.\n\n".
+                  'Second paragraph also long enough to be its own separate chunk.',
+            settings: config('tts.default_voice_settings'),
+            modelId: config('tts.default_model_id'),
+            outputFormat: config('tts.default_output_format'),
+            seed: null,
+        );
+    }
+
     public function test_create_page_requires_admin(): void
     {
         $this->get(route('admin.studio.projects.create'))->assertRedirect(route('login'));
@@ -54,6 +90,21 @@ class StudioProjectTest extends TestCase
         $this->actingAs(User::factory()->create(['is_super_admin' => false]))
             ->get(route('admin.studio.projects.create'))
             ->assertForbidden();
+    }
+
+    public function test_create_page_preselects_the_built_in_default_voice(): void
+    {
+        // A cloning voice whose name sorts before "Default voice" would become the
+        // <select>'s silent first-option default; the form must still pre-select
+        // the built-in default voice (seeded by migration) so a new project uses
+        // the native voice.
+        Voice::create(['slug' => 'aaa', 'name' => 'Aardvark', 'reference_audio_path' => 'voices/aaa.wav']);
+
+        $this->actingAs($this->admin())
+            ->get(route('admin.studio.projects.create'))
+            ->assertOk()
+            ->assertSee('value="default" selected', false)
+            ->assertDontSee('value="aaa" selected', false);
     }
 
     public function test_store_creates_project_with_chunks(): void
@@ -153,6 +204,118 @@ class StudioProjectTest extends TestCase
         // ungenerated one stays Pending.
         $this->assertSame(ChunkStatus::Stale, $first->refresh()->status);
         $this->assertSame(ChunkStatus::Pending, $project->chunks()->orderBy('position')->get()->last()->status);
+    }
+
+    public function test_chunk_generated_after_voice_change_uses_the_new_voice_reference(): void
+    {
+        // Reproduces the reported bug: generate a chunk with a cloning voice,
+        // switch the project to the reference-less default voice, then generate
+        // another chunk — it must be synthesized with a NULL reference (native
+        // voice), not the previous voice's clip.
+        $spy = $this->spyProvider();
+
+        $john = Voice::create(['slug' => 'john', 'name' => 'John', 'reference_audio_path' => 'voices/john.wav']);
+        $project = $this->projectWithVoice($john);
+        [$first, $second] = $project->chunks()->orderBy('position')->get()->all();
+        $admin = $this->admin();
+
+        $this->actingAs($admin)
+            ->post(route('admin.studio.projects.chunks.generate', [$project, $first]))
+            ->assertOk();
+
+        $this->actingAs($admin)
+            ->patchJson(route('admin.studio.projects.voice', $project), ['voice' => Voice::defaultSlug()])
+            ->assertOk();
+
+        $this->actingAs($admin)
+            ->post(route('admin.studio.projects.chunks.generate', [$project, $second]))
+            ->assertOk();
+
+        $this->assertStringContainsString('john.wav', (string) $spy->refs[0], 'First chunk used the John reference.');
+        $this->assertNull($spy->refs[array_key_last($spy->refs)], 'After switching to the default voice, the chunk must be generated with a null (native) reference.');
+    }
+
+    public function test_per_chunk_voice_override_is_used_instead_of_the_project_voice(): void
+    {
+        // A chunk pinned to its own voice must generate with THAT voice's clip,
+        // even though the project voice is the reference-less default.
+        $spy = $this->spyProvider();
+        $john = Voice::create(['slug' => 'john', 'name' => 'John', 'reference_audio_path' => 'voices/john.wav']);
+        $project = $this->projectWithVoice(Voice::resolve(Voice::defaultSlug()));
+        $first = $project->chunks()->orderBy('position')->first();
+        $admin = $this->admin();
+
+        $this->actingAs($admin)
+            ->patchJson(route('admin.studio.projects.chunks.voice', [$project, $first]), ['voice' => 'john'])
+            ->assertOk()
+            ->assertJsonPath('inherits', false)
+            ->assertJsonPath('voice', 'john');
+
+        $this->actingAs($admin)
+            ->post(route('admin.studio.projects.chunks.generate', [$project, $first]))
+            ->assertOk();
+
+        $this->assertStringContainsString('john.wav', (string) $spy->refs[array_key_last($spy->refs)]);
+    }
+
+    public function test_changing_project_voice_leaves_explicitly_voiced_chunks_untouched(): void
+    {
+        $this->spyProvider();
+        $john = Voice::create(['slug' => 'john', 'name' => 'John', 'reference_audio_path' => 'voices/john.wav']);
+        $project = $this->projectWithVoice($john); // both chunks inherit John
+        [$inherited, $pinned] = $project->chunks()->orderBy('position')->get()->all();
+        $admin = $this->admin();
+
+        // Pin the second chunk explicitly to John, then generate both.
+        $this->actingAs($admin)
+            ->patchJson(route('admin.studio.projects.chunks.voice', [$project, $pinned]), ['voice' => 'john'])
+            ->assertOk();
+        foreach ([$inherited, $pinned] as $c) {
+            $this->actingAs($admin)->post(route('admin.studio.projects.chunks.generate', [$project, $c]))->assertOk();
+        }
+
+        // Switch the project to the default voice.
+        $this->actingAs($admin)
+            ->patchJson(route('admin.studio.projects.voice', $project), ['voice' => Voice::defaultSlug()])
+            ->assertOk();
+
+        // The inheriting chunk is now Stale; the explicitly-pinned one is untouched.
+        $this->assertSame(ChunkStatus::Stale, $inherited->refresh()->status);
+        $this->assertSame(ChunkStatus::Completed, $pinned->refresh()->status);
+        $this->assertSame($john->id, $pinned->voice_id);
+    }
+
+    public function test_clearing_a_chunk_voice_restores_project_inheritance(): void
+    {
+        $this->spyProvider();
+        $john = Voice::create(['slug' => 'john', 'name' => 'John', 'reference_audio_path' => 'voices/john.wav']);
+        $project = $this->projectWithVoice(Voice::resolve(Voice::defaultSlug()));
+        $first = $project->chunks()->orderBy('position')->first();
+        $admin = $this->admin();
+
+        $this->actingAs($admin)
+            ->patchJson(route('admin.studio.projects.chunks.voice', [$project, $first]), ['voice' => 'john'])
+            ->assertOk();
+        $this->assertSame($john->id, $first->refresh()->voice_id);
+
+        $this->actingAs($admin)
+            ->patchJson(route('admin.studio.projects.chunks.voice', [$project, $first]), ['voice' => ''])
+            ->assertOk()
+            ->assertJsonPath('inherits', true);
+        $this->assertNull($first->refresh()->voice_id);
+    }
+
+    public function test_show_page_renders_a_per_chunk_voice_picker_mirroring_the_project_voice(): void
+    {
+        $john = Voice::create(['slug' => 'john', 'name' => 'John', 'reference_audio_path' => 'voices/john.wav']);
+        $project = $this->projectWithVoice($john);
+
+        $this->actingAs($this->admin())
+            ->get(route('admin.studio.projects.show', $project))
+            ->assertOk()
+            ->assertSee('class="chunk-voice', false)
+            // An un-overridden chunk inherits, so its picker mirrors the project voice.
+            ->assertSee('data-inherits="1"', false);
     }
 
     public function test_show_page_renders_the_voice_picker(): void

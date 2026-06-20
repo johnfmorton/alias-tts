@@ -95,6 +95,11 @@ class VoiceController extends Controller
                 modelId: config('tts.default_model_id'),
                 outputFormat: config('tts.default_output_format'),
                 seed: null, // resolves to the voice's default seed if set
+                // Always generate live: a "Test" must reflect the voice's CURRENT
+                // reference/settings, never replay a cached preview. Without this a
+                // stale cached preview (e.g. one captured while the voice briefly
+                // had a different reference) would play back indefinitely.
+                forceRefresh: true,
             );
         } catch (Throwable $e) {
             report($e);

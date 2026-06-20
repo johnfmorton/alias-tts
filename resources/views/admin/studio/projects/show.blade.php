@@ -99,6 +99,17 @@
                             <span class="chunk-dirty hidden rounded-md border border-amber-500/30 bg-amber-500/10 px-2 py-0.5 text-xs text-amber-300">● unsaved</span>
                         </div>
                         <div class="flex items-center gap-2">
+                            <label class="flex items-center gap-1.5 text-xs text-zinc-500">
+                                <span class="text-zinc-400">Voice</span>
+                                <select class="chunk-voice rounded-lg border border-zinc-700 bg-zinc-950 px-2 py-1.5 text-sm text-zinc-200 focus:border-cyan-500 focus:outline-none focus:ring-2 focus:ring-cyan-500/30"
+                                        data-voice-url="{{ route('admin.studio.projects.chunks.voice', [$project, $chunk]) }}"
+                                        data-inherits="{{ $chunk->voice_id ? '0' : '1' }}"
+                                        title="Voice for this chunk. Follows the project voice until you pick one here.">
+                                    @foreach($voices as $v)
+                                        <option value="{{ $v->slug }}" @selected(($chunk->voice_id ?? $project->voice_id) === $v->id)>{{ $v->name }}</option>
+                                    @endforeach
+                                </select>
+                            </label>
                             <button type="button" class="chunk-revert hidden rounded-lg border border-zinc-700 px-3 py-1.5 text-sm text-zinc-400 hover:bg-zinc-800">Revert</button>
                             <button type="button" class="chunk-save rounded-lg border border-zinc-700 px-3 py-1.5 text-sm hover:bg-zinc-800">Save text</button>
                             <button type="button" class="chunk-generate rounded-lg border border-zinc-700 px-3 py-1.5 text-sm hover:bg-zinc-800">▶ {{ $chunk->isCompleted() ? 'Regenerate' : 'Generate' }}</button>

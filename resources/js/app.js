@@ -981,6 +981,40 @@ function initStudioProject() {
         });
         card.querySelector('.chunk-generate').addEventListener('click', () => generateChunk(card).catch(() => {}));
 
+        // Per-chunk voice override: PATCH the chosen voice. A generated chunk goes
+        // stale (its audio used the previous voice), and the chunk stops mirroring
+        // the project voice (data-inherits -> 0). Revert the picker on failure.
+        const chunkVoice = card.querySelector('.chunk-voice');
+        if (chunkVoice) {
+            chunkVoice.dataset.current = chunkVoice.value;
+            chunkVoice.addEventListener('change', async () => {
+                const voice = chunkVoice.value;
+                const previous = chunkVoice.dataset.current;
+                if (voice === previous) return;
+                chunkVoice.disabled = true;
+                try {
+                    const res = await fetch(chunkVoice.dataset.voiceUrl, {
+                        method: 'PATCH',
+                        headers: { 'X-CSRF-TOKEN': csrfToken(), 'Accept': 'application/json', 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ voice }),
+                    });
+                    if (!res.ok) throw new Error(await errorMessage(res));
+                    const data = await res.json();
+                    chunkVoice.dataset.current = voice;
+                    chunkVoice.dataset.inherits = data.inherits ? '1' : '0';
+                    setChunkStatus(card, data.status);
+                    setProjectStatus(data.project_status);
+                    refreshSeams();
+                    setStatus(finalStatus, `✓ Chunk voice set to ${data.voice_name}. Regenerate to apply.`, 'ok');
+                } catch (err) {
+                    chunkVoice.value = previous; // revert the picker on failure
+                    setStatus(finalStatus, `✗ ${err.message}`, 'error');
+                } finally {
+                    chunkVoice.disabled = false;
+                }
+            });
+        }
+
         // Re-roll: regenerate this chunk with a fresh random seed (a new take).
         card.querySelector('.chunk-reroll')?.addEventListener('click', () =>
             runGeneration(card, card.dataset.rerollUrl, card.querySelector('.chunk-reroll'), 'Re-rolling…').catch(() => {}));
@@ -1165,7 +1199,14 @@ function initStudioProject() {
                 if (!res.ok) throw new Error(await errorMessage(res));
                 const data = await res.json();
                 lastVoice = voice;
+                // Only chunks that INHERIT the project voice are affected: mirror
+                // the new voice into their pickers and stale their generated audio.
+                // Chunks with an explicit per-chunk voice are left untouched.
                 document.querySelectorAll('.studio-chunk').forEach((card) => {
+                    const cv = card.querySelector('.chunk-voice');
+                    if (!cv || cv.dataset.inherits !== '1') return;
+                    cv.value = voice;
+                    cv.dataset.current = voice;
                     if (card.querySelector('.chunk-status').textContent.trim() === 'completed') {
                         setChunkStatus(card, 'stale');
                     }

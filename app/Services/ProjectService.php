@@ -107,18 +107,19 @@ class ProjectService
     }
 
     /**
-     * Switch the project's voice. Existing chunk audio was generated with the old
-     * voice, so every Completed chunk is marked Stale (its audio no longer matches
-     * the chosen voice) and the final file is flagged out of date — the editor
-     * surfaces this so the user regenerates. The project's tuning snapshot, seed,
-     * and per-chunk overrides are left untouched (stability/style are
-     * voice-independent knobs).
+     * Switch the project's voice. Only chunks that INHERIT the project voice
+     * (voice_id is null) were generated with the old voice, so just those Completed
+     * chunks are marked Stale and the final file is flagged out of date — the
+     * editor surfaces this so the user regenerates. Chunks with an explicit
+     * per-chunk voice are independent of the project voice and keep their audio.
+     * The project's tuning snapshot, seed, and per-chunk overrides are untouched.
      */
     public function changeVoice(TtsProject $project, Voice $voice): TtsProject
     {
         DB::transaction(function () use ($project, $voice) {
             $project->update(['voice_id' => $voice->id]);
             $project->chunks()
+                ->whereNull('voice_id')
                 ->where('status', ChunkStatus::Completed)
                 ->update(['status' => ChunkStatus::Stale]);
         });
@@ -126,6 +127,32 @@ class ProjectService
         $this->markFinalOutdated($project);
 
         return $project->refresh()->load('voice');
+    }
+
+    /**
+     * Set (or clear) a chunk's per-chunk voice override. A null voice restores
+     * inheritance of the project voice. A generated chunk goes Stale — its audio
+     * was made with the previous voice — and the final file is flagged out of
+     * date; an ungenerated chunk is left as-is.
+     */
+    public function setChunkVoice(TtsChunk $chunk, ?Voice $voice): TtsChunk
+    {
+        $newVoiceId = $voice?->id;
+        if ($newVoiceId === $chunk->voice_id) {
+            return $chunk; // no change — don't needlessly stale the chunk
+        }
+
+        $attributes = ['voice_id' => $newVoiceId];
+        if ($chunk->status === ChunkStatus::Completed) {
+            $attributes['status'] = ChunkStatus::Stale;
+        }
+        $chunk->update($attributes);
+
+        if ($chunk->audio_path) {
+            $this->markFinalOutdated($chunk->project);
+        }
+
+        return $chunk;
     }
 
     /**
@@ -164,7 +191,7 @@ class ProjectService
         try {
             $bytes = $this->provider->synthesize(
                 $chunk->text,
-                $this->referencePath($project->voice),
+                $this->referencePath($chunk->voice ?? $project->voice),
                 $this->providerSettings($project, $chunk, pinSeed: ! $reroll),
             );
 
@@ -239,7 +266,7 @@ class ProjectService
             $settings['seed'] = $project->seed;
         }
 
-        return $this->provider->synthesize($chunk->text, $this->referencePath($project->voice), $settings);
+        return $this->provider->synthesize($chunk->text, $this->referencePath($chunk->voice ?? $project->voice), $settings);
     }
 
     /** The container/format of raw provider audio (e.g. "wav"). */

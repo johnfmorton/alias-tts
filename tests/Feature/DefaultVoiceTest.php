@@ -3,6 +3,7 @@
 namespace Tests\Feature;
 
 use App\Models\ApiKey;
+use App\Models\Speech;
 use App\Models\User;
 use App\Models\Voice;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -46,6 +47,22 @@ class DefaultVoiceTest extends TestCase
         $response->assertStatus(200);
         $this->assertStringStartsWith('audio/mpeg', (string) $response->headers->get('content-type'));
         $this->assertNotEmpty($response->getContent());
+    }
+
+    public function test_voice_test_button_always_regenerates_and_never_replays_cache(): void
+    {
+        // Regression: the Voices "Test" button must reflect the voice's CURRENT
+        // state on every click, not replay a cached preview. (On production a
+        // stale cached default-voice preview kept playing another voice's clip.)
+        // Two identical Test clicks must therefore create two Speech rows — with
+        // the old cache-reusing behavior the second click reused the first row.
+        $voice = Voice::resolve(Voice::defaultSlug());
+        $admin = $this->admin();
+
+        $this->actingAs($admin)->post(route('admin.voices.test', $voice))->assertOk();
+        $this->actingAs($admin)->post(route('admin.voices.test', $voice))->assertOk();
+
+        $this->assertSame(2, Speech::where('voice_id', $voice->id)->count());
     }
 
     public function test_default_voice_cannot_be_deleted(): void
