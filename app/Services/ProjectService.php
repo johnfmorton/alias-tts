@@ -8,10 +8,14 @@ use App\Models\ApiKey;
 use App\Models\TtsChunk;
 use App\Models\TtsProject;
 use App\Models\Voice;
+use App\Services\Asr\AsrClient;
+use App\Services\Asr\ChunkQualityVerdict;
+use App\Services\Asr\ChunkRemediator;
 use App\Services\Audio\AudioConverter;
 use App\Services\Tts\TtsProvider;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Storage;
 use RuntimeException;
 use Throwable;
@@ -36,6 +40,8 @@ class ProjectService
         private AudioConverter $converter,
         private TextChunker $chunker,
         private TextNormalizer $normalizer,
+        private AsrClient $asr,
+        private ChunkRemediator $remediator,
     ) {}
 
     /**
@@ -195,14 +201,30 @@ class ProjectService
                 $this->providerSettings($project, $chunk, pinSeed: ! $reroll),
             );
 
-            $path = $this->chunkPath($chunk);
-            Storage::disk($this->disk())->put($path, $bytes);
+            $this->putChunkAudio($chunk, $bytes);
 
-            $chunk->update([
-                'audio_path' => $path,
-                'status' => ChunkStatus::Completed,
-                'error_message' => null,
-            ]);
+            if ($this->asr->enabled()) {
+                $verdict = $this->remediator->score($chunk->text, $bytes, "chunk-{$chunk->id}");
+                if ($verdict !== null) {
+                    $this->persistVerdict($chunk, $verdict);
+
+                    if (! $verdict->ok) {
+                        Log::warning('ASR flagged a generated chunk', [
+                            'chunk' => $chunk->id,
+                            'problems' => $verdict->problems,
+                            'trail_s' => $verdict->trailS,
+                            'max_gap_s' => $verdict->maxGapS,
+                            'tail_cov' => $verdict->tailCov,
+                        ]);
+
+                        // action=auto remediates; a MANUAL reroll never auto-rerolls
+                        // again (the user asked for exactly one new take).
+                        if (! $reroll && $this->asr->action() === 'auto') {
+                            $this->autoRemediate($chunk, $bytes, $verdict);
+                        }
+                    }
+                }
+            }
 
             $this->markFinalOutdated($project);
         } catch (Throwable $e) {
@@ -215,6 +237,69 @@ class ProjectService
         }
 
         return $chunk;
+    }
+
+    /** Store a chunk's audio bytes and mark it completed. */
+    private function putChunkAudio(TtsChunk $chunk, string $bytes): void
+    {
+        $path = $this->chunkPath($chunk);
+        Storage::disk($this->disk())->put($path, $bytes);
+
+        $chunk->update([
+            'audio_path' => $path,
+            'status' => ChunkStatus::Completed,
+            'error_message' => null,
+        ]);
+    }
+
+    /**
+     * Persist a verdict onto the chunk. $extra is merged into asr_report to
+     * record what action was taken (e.g. action=rerolled / trimmed).
+     *
+     * @param  array<string, mixed>  $extra
+     */
+    private function persistVerdict(TtsChunk $chunk, ChunkQualityVerdict $verdict, array $extra = []): void
+    {
+        $chunk->update([
+            'asr_score' => $verdict->score,
+            'asr_report' => $extra === [] ? $verdict->toArray() : array_merge($verdict->toArray(), $extra),
+        ]);
+    }
+
+    /**
+     * Act on a flagged chunk under action=auto via the shared remediator
+     * (re-roll missing content keeping the best take, or precise-trim a junk
+     * tail), then persist the winning take + what was done.
+     */
+    private function autoRemediate(TtsChunk $chunk, string $bytes, ChunkQualityVerdict $verdict): void
+    {
+        $project = $chunk->project;
+
+        $outcome = $this->remediator->remediate(
+            $chunk->text,
+            $bytes,
+            $verdict,
+            fn (): string => $this->provider->synthesize(
+                $chunk->text,
+                $this->referencePath($chunk->voice ?? $project->voice),
+                $this->providerSettings($project, $chunk, pinSeed: false),
+            ),
+            "chunk-{$chunk->id}",
+        );
+
+        $this->putChunkAudio($chunk, $outcome->bytes);
+
+        // A null verdict means a re-roll couldn't be scored (sidecar dropped): keep
+        // the new audio but leave the original verdict on the chunk.
+        if ($outcome->verdict !== null) {
+            $this->persistVerdict($chunk, $outcome->verdict, $outcome->reportExtra());
+        }
+
+        Log::info('ASR auto-remediated a chunk', [
+            'chunk' => $chunk->id,
+            'action' => $outcome->action,
+            'attempts' => $outcome->rerollAttempts,
+        ]);
     }
 
     /**

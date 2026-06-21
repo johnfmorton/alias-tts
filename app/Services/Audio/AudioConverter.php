@@ -163,6 +163,50 @@ class AudioConverter
     }
 
     /**
+     * Hard-cut a WAV to its first $ms milliseconds, preserving the source sample
+     * rate and channel layout (re-encoded lossless pcm_s16le). Used to drop a
+     * trailing artifact at a known speech-end point — e.g. the ASR-derived cut
+     * for a speech-like / "ghostly singing" tail that the zero-crossing
+     * {@see detectLongTailArtifact} can't see — on the raw chunk before it is
+     * stored; the normal concat-time trim still runs on top. Returns null on
+     * failure (or a non-positive $ms) so callers can keep the untrimmed bytes.
+     */
+    public function truncateToMs(string $bytes, int $ms): ?string
+    {
+        if ($ms <= 0) {
+            return null;
+        }
+
+        $in = tempnam(sys_get_temp_dir(), 'tts_cut_in_');
+        $out = tempnam(sys_get_temp_dir(), 'tts_cut_out_');
+
+        try {
+            file_put_contents($in, $bytes);
+
+            // No -ar/-ac: keep the source rate + channels (this is a raw chunk;
+            // concatenate() resamples to the output spec later). -t bounds output.
+            $process = new Process([
+                $this->ffmpegPath, '-y', '-hide_banner', '-loglevel', 'error',
+                '-i', $in, '-t', $this->seconds($ms),
+                '-c:a', 'pcm_s16le', '-f', 'wav', $out,
+            ]);
+            $process->setTimeout(120);
+            $process->run();
+
+            if (! $process->isSuccessful()) {
+                return null;
+            }
+
+            $result = file_get_contents($out);
+
+            return ($result === false || $result === '') ? null : $result;
+        } finally {
+            @unlink($in);
+            @unlink($out);
+        }
+    }
+
+    /**
      * Trim leading/trailing silence and Chatterbox's trailing noise tail from a
      * chunk, fade its edges, and return mono pcm_s16le WAV at $rate. Falls back
      * to a straight transcode (never empty) when trimming would remove

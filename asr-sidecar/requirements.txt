@@ -1,0 +1,5 @@
+# tts-asr sidecar dependencies. See docs/ASR-SETUP.md for install steps.
+faster-whisper==1.2.1
+fastapi>=0.110,<1.0
+uvicorn[standard]>=0.27
+python-multipart>=0.0.9

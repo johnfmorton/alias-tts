@@ -256,6 +256,7 @@ class StudioProjectController extends Controller
         return response()->json([
             'ok' => true,
             'status' => $chunk->status->value,
+            'asr_badge' => $chunk->asrBadge(),
             'project_status' => $project->refresh()->status->value,
         ]);
     }
@@ -312,6 +313,7 @@ class StudioProjectController extends Controller
         return response()->json([
             'ok' => true,
             'status' => $chunk->status->value,
+            'asr_badge' => $chunk->asrBadge(),
             'project_status' => $project->refresh()->status->value,
         ]);
     }

@@ -7,9 +7,12 @@ use App\Jobs\GenerateSpeechJob;
 use App\Models\ApiKey;
 use App\Models\Speech;
 use App\Models\Voice;
+use App\Services\Asr\AsrClient;
+use App\Services\Asr\ChunkRemediator;
 use App\Services\Audio\AudioConverter;
 use App\Services\Tts\TtsProvider;
 use Carbon\Carbon;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Storage;
 use Throwable;
 
@@ -19,6 +22,8 @@ class SpeechService
         private TtsProvider $provider,
         private AudioConverter $converter,
         private TextChunker $chunker,
+        private AsrClient $asr,
+        private ChunkRemediator $remediator,
     ) {}
 
     /**
@@ -123,8 +128,14 @@ class SpeechService
 
             $rawParts = [];
             $seamGapsMs = [];
-            foreach ($segments as $segment) {
-                $rawParts[] = $this->provider->synthesize($segment['text'], $referencePath, $providerSettings);
+            foreach ($segments as $i => $segment) {
+                $part = $this->provider->synthesize($segment['text'], $referencePath, $providerSettings);
+
+                if ($this->asr->enabled()) {
+                    $part = $this->qualityCheck($speech, $i, $segment['text'], $part, $referencePath, $providerSettings);
+                }
+
+                $rawParts[] = $part;
                 $seamGapsMs[] = $segment['breakAfter'] === 'paragraph' ? $paragraphGap : $sentenceGap;
             }
 
@@ -154,6 +165,59 @@ class SpeechService
         }
 
         return $speech;
+    }
+
+    /**
+     * ASR transcript QA for one synthesized segment — the synchronous/queued
+     * path's analogue of {@see ProjectService::generateChunk()}'s per-chunk
+     * check. Logs a flagged segment and, under action=auto, returns a remediated
+     * take (re-roll missing content keeping the best, or precise-trim a junk
+     * tail). The sync path holds no per-segment record, so there is no verdict to
+     * persist — a flagged segment is logged. Degrades safely: a down sidecar
+     * returns the original bytes untouched.
+     *
+     * @param  array<string, mixed>  $providerSettings
+     */
+    private function qualityCheck(Speech $speech, int $index, string $text, string $bytes, ?string $referencePath, array $providerSettings): string
+    {
+        $verdict = $this->remediator->score($text, $bytes, "speech-{$speech->id}-{$index}");
+        if ($verdict === null || $verdict->ok) {
+            return $bytes;
+        }
+
+        Log::warning('ASR flagged a speech segment', [
+            'speech' => $speech->id,
+            'segment' => $index,
+            'problems' => $verdict->problems,
+            'trail_s' => $verdict->trailS,
+            'max_gap_s' => $verdict->maxGapS,
+            'tail_cov' => $verdict->tailCov,
+        ]);
+
+        if ($this->asr->action() !== 'auto') {
+            return $bytes;
+        }
+
+        // A re-roll uses a fresh random seed — drop any pinned seed for this take.
+        $rerollSettings = $providerSettings;
+        unset($rerollSettings['seed']);
+
+        $outcome = $this->remediator->remediate(
+            $text,
+            $bytes,
+            $verdict,
+            fn (): string => $this->provider->synthesize($text, $referencePath, $rerollSettings),
+            "speech-{$speech->id}-{$index}",
+        );
+
+        Log::info('ASR auto-remediated a speech segment', [
+            'speech' => $speech->id,
+            'segment' => $index,
+            'action' => $outcome->action,
+            'attempts' => $outcome->rerollAttempts,
+        ]);
+
+        return $outcome->bytes;
     }
 
     /**

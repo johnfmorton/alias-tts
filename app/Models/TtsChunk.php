@@ -28,6 +28,8 @@ class TtsChunk extends Model
         'audio_path',
         'characters',
         'error_message',
+        'asr_score',
+        'asr_report',
     ];
 
     protected $casts = [
@@ -35,6 +37,8 @@ class TtsChunk extends Model
         'position' => 'integer',
         'characters' => 'integer',
         'settings' => 'array',
+        'asr_score' => 'float',
+        'asr_report' => 'array',
     ];
 
     public function project(): BelongsTo
@@ -54,5 +58,57 @@ class TtsChunk extends Model
     public function isCompleted(): bool
     {
         return $this->status === ChunkStatus::Completed;
+    }
+
+    /**
+     * Presentation data for the Studio per-chunk ASR badge, or null when there's
+     * nothing to show. The verdict describes the chunk's CURRENT audio, so it is
+     * suppressed unless the chunk is completed (an edited/retuned/failed chunk's
+     * old verdict no longer applies; it returns on regenerate). Single source of
+     * truth shared by the Blade view and the generate/reroll JSON so the two
+     * never drift.
+     *
+     * @return array{tone: string, text: string, title: string}|null
+     */
+    public function asrBadge(): ?array
+    {
+        if ($this->status !== ChunkStatus::Completed) {
+            return null;
+        }
+
+        $report = $this->asr_report;
+        if (! is_array($report) || $report === []) {
+            return null;
+        }
+
+        $ok = (bool) ($report['ok'] ?? false);
+        $problems = is_array($report['problems'] ?? null) ? $report['problems'] : [];
+        $action = $report['action'] ?? null;
+
+        $text = $ok ? 'ASR ✓' : 'ASR: '.implode(', ', $problems);
+        // Note a take-changing action inline (e.g. a flagged chunk auto-recovered).
+        if (is_string($action) && in_array($action, ['rerolled', 'rerolled_unrecovered', 'trimmed', 'trim_failed'], true)) {
+            $text .= ' · '.$action;
+        }
+
+        $detail = [];
+        foreach (['score' => 'coverage', 'tail_cov' => 'tail_cov', 'trail_s' => 'trail', 'max_gap_s' => 'gap'] as $key => $label) {
+            if (isset($report[$key])) {
+                $unit = in_array($key, ['trail_s', 'max_gap_s'], true) ? 's' : '';
+                $detail[] = "{$label} {$report[$key]}{$unit}";
+            }
+        }
+        if (isset($report['reroll_attempts'])) {
+            $detail[] = $report['reroll_attempts'].' re-roll(s)';
+        }
+        if (isset($report['trimmed_to_ms'])) {
+            $detail[] = 'trimmed to '.$report['trimmed_to_ms'].'ms';
+        }
+
+        return [
+            'tone' => $ok ? 'ok' : 'bad',
+            'text' => $text,
+            'title' => implode(' · ', $detail),
+        ];
     }
 }

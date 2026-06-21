@@ -8,6 +8,7 @@ use App\Models\ApiKey;
 use App\Models\Speech;
 use App\Models\Voice;
 use App\Providers\AppServiceProvider;
+use App\Services\Asr\AsrClient;
 use Illuminate\Console\Scheduling\Event;
 use Illuminate\Console\Scheduling\Schedule;
 use Illuminate\Contracts\Console\Kernel as ConsoleKernel;
@@ -70,6 +71,7 @@ class HealthReport
         $this->checkDisk();
         // Inference + async
         $this->checkProvider();
+        $this->checkAsr();
         $this->checkQueue();
         $this->checkQueueTiming();
         $this->checkFailedJobs();
@@ -195,6 +197,46 @@ class HealthReport
         } catch (Throwable $e) {
             $this->add('provider', HealthStatus::Warn, 'Provider [replicate]', 'could not reach Replicate: '.$e->getMessage());
         }
+    }
+
+    /**
+     * The optional Whisper ASR sidecar (transcript QA of generated chunks). Off
+     * by default; when enabled, pings the sidecar's /health so the page and
+     * `tts:doctor` confirm the daemon is up and the model is loaded. The deeper
+     * transcription self-test lives in `php artisan tts:asr:health --deep`.
+     */
+    private function checkAsr(): void
+    {
+        if (! (bool) config('tts.asr.enabled', false)) {
+            $this->add('asr', HealthStatus::Pass, 'ASR transcript QA', 'disabled (set TTS_ASR_ENABLED=true to transcribe + check generated chunks; see docs/ASR-SETUP.md)');
+
+            return;
+        }
+
+        $url = (string) config('tts.asr.url');
+        $health = app(AsrClient::class)->health();
+
+        if (! $health['reachable']) {
+            $this->add('asr', HealthStatus::Fail, 'ASR transcript QA', "sidecar unreachable at {$url} (".($health['error'] ?? 'unknown').') — is the tts-asr daemon running? See docs/ASR-SETUP.md');
+
+            return;
+        }
+
+        $body = $health['body'];
+        if (($body['status'] ?? '') !== 'ok') {
+            $this->add('asr', HealthStatus::Fail, 'ASR transcript QA', 'sidecar up but model not loaded: '.($body['error'] ?? 'unknown'));
+
+            return;
+        }
+
+        $detail = sprintf(
+            'sidecar up at %s (model %s, faster-whisper %s, %dms) — verify transcription with `php artisan tts:asr:health --deep`',
+            $url,
+            $body['model'] ?? '?',
+            $body['faster_whisper_version'] ?? '?',
+            $health['latency_ms'] ?? 0,
+        );
+        $this->add('asr', HealthStatus::Pass, 'ASR transcript QA', $detail);
     }
 
     private function checkQueue(): void

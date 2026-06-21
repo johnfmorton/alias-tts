@@ -235,6 +235,48 @@ return [
 
     /*
     |--------------------------------------------------------------------------
+    | ASR transcript QA (Whisper sidecar)
+    |--------------------------------------------------------------------------
+    |
+    | Optional. When enabled, each generated chunk is transcribed by a local
+    | Whisper sidecar (see asr-sidecar/ and docs/ASR-SETUP.md) and the transcript
+    | is compared to the source text to catch failure modes the DSP tail-trim
+    | cannot: TRUNCATION (Chatterbox stops before finishing the script — no
+    | acoustic artifact to detect), speech-like / "ghostly singing" tails, and
+    | mid-stream pauses. Three signals (validated on labeled samples):
+    |
+    |   trail_s   seconds of audio AFTER the last recognized word  (> max ⇒ TAIL)
+    |   gap_s     largest gap between consecutive words             (> max ⇒ PAUSE)
+    |   tail_cov  how far into the script the transcript reached    (< min ⇒ TRUNC)
+    |
+    | `action` controls what happens on a bad verdict. Start at 'log' (record the
+    | score/verdict on the chunk, take NO action) to watch it against real
+    | traffic, then move to 'auto' to re-roll/trim. The sidecar is off-by-default
+    | and degrades safely: if it's disabled or unreachable, generation is
+    | unaffected. Defaults below match the validated thresholds.
+    |
+    */
+    'asr' => [
+        'enabled' => (bool) env('TTS_ASR_ENABLED', false),
+        'url' => rtrim((string) env('TTS_ASR_URL', 'http://127.0.0.1:8765'), '/'),
+        'timeout' => (int) env('TTS_ASR_TIMEOUT', 30),
+        'language' => env('TTS_ASR_LANGUAGE', 'en'),
+        // 'log' = score + record only (no action). 'auto' = also remediate a bad
+        // verdict: re-roll TRUNC/PAUSE/NOSPEECH (fresh seed, up to max_rerolls,
+        // keeping the best-coverage take) and precise-trim a TAIL-only chunk at
+        // the ASR speech end (no Replicate call). Any other value behaves as 'log'.
+        'action' => env('TTS_ASR_ACTION', 'log'),
+        'max_rerolls' => (int) env('TTS_ASR_MAX_REROLLS', 2),
+        // Detection thresholds.
+        'trail_s_max' => (float) env('TTS_ASR_TRAIL_S_MAX', 1.2),
+        'gap_s_max' => (float) env('TTS_ASR_GAP_S_MAX', 1.5),
+        'tail_cov_min' => (float) env('TTS_ASR_TAIL_COV_MIN', 0.93),
+        // Kept after the last recognized word when computing a TAIL trim point.
+        'trim_guard_ms' => (int) env('TTS_ASR_TRIM_GUARD_MS', 80),
+    ],
+
+    /*
+    |--------------------------------------------------------------------------
     | Provider configuration
     |--------------------------------------------------------------------------
     |

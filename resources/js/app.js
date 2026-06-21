@@ -769,6 +769,12 @@ const STATUS_STYLES = {
     draft: 'border-zinc-700 bg-zinc-800 text-zinc-400',
 };
 
+// ASR transcript-QA badge tones (server sends {tone, text, title} or null).
+const ASR_TONE = {
+    ok: 'border-emerald-500/30 bg-emerald-500/10 text-emerald-300',
+    bad: 'border-red-500/30 bg-red-500/10 text-red-300',
+};
+
 function initStudioProject() {
     const root = document.getElementById('studio-project');
     if (!root) return;
@@ -791,7 +797,28 @@ function initStudioProject() {
         el.textContent = status;
         el.className = prefix + 'inline-flex rounded-md border px-2 py-0.5 text-xs ' + (STATUS_STYLES[status] || STATUS_STYLES.pending);
     };
-    const setChunkStatus = (card, status) => badge(card.querySelector('.chunk-status'), status, 'chunk-status ');
+    // Show/hide the ASR verdict pill from the server's {tone, text, title} (or null).
+    // Toggle hidden vs inline-flex by rewriting the class entirely, never leaving
+    // both set (inline-flex would otherwise win over hidden in the compiled CSS).
+    const setChunkAsrBadge = (card, info) => {
+        const el = card.querySelector('.chunk-asr-badge');
+        if (!el) return;
+        if (!info) {
+            el.className = 'chunk-asr-badge hidden';
+            el.textContent = '';
+            el.removeAttribute('title');
+            return;
+        }
+        el.className = 'chunk-asr-badge inline-flex rounded-md border px-2 py-0.5 text-xs ' + (ASR_TONE[info.tone] || ASR_TONE.bad);
+        el.textContent = info.text;
+        if (info.title) el.title = info.title; else el.removeAttribute('title');
+    };
+    const setChunkStatus = (card, status) => {
+        badge(card.querySelector('.chunk-status'), status, 'chunk-status ');
+        // The verdict is for the current audio; clear it once the chunk is no
+        // longer completed (edited / retuned / failed). It returns on regenerate.
+        if (status !== 'completed') setChunkAsrBadge(card, null);
+    };
     const setProjectStatus = (status) => badge(projectStatus, status);
 
     // A chunk is "dirty" while its textarea differs from the last-saved text
@@ -860,6 +887,7 @@ function initStudioProject() {
             const data = await res.json();
 
             setChunkStatus(card, data.status);
+            setChunkAsrBadge(card, data.asr_badge ?? null);
             setProjectStatus(data.project_status);
             const audio = card.querySelector('.chunk-audio');
             audio.src = bust(card.dataset.audioUrl);

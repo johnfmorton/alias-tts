@@ -1,0 +1,5 @@
+# Python virtualenv created on the host/Forge box (see docs/ASR-SETUP.md)
+.venv/
+# Bytecode caches
+__pycache__/
+*.pyc
