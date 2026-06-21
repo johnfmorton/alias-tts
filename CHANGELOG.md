@@ -6,6 +6,40 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.10.0] - 2026-06-21
+
+### Added
+- **ASR transcript quality checking (opt-in).** A local Whisper sidecar transcribes
+  each generated chunk and compares the transcript to the source text to catch the
+  failure modes the DSP tail-trim cannot: **truncation** (Chatterbox stops before
+  finishing the line — no acoustic artifact to detect), **speech-like / "ghostly
+  singing" tails**, and **mid-stream pauses**. Off by default (`TTS_ASR_ENABLED`).
+  The sidecar (`asr-sidecar/`, FastAPI + faster-whisper, run as a Forge Daemon)
+  exposes `/health` + `/transcribe`; the app talks to it over localhost and never
+  blocks generation if it's down. Two modes via `TTS_ASR_ACTION`: **`log`** records
+  a per-chunk verdict (surfaced as a badge in Studio), **`auto`** also remediates —
+  re-rolling truncated/paused/empty takes with a fresh seed (best-of-N, up to
+  `TTS_ASR_MAX_REROLLS`, default **2**) and precise-trimming junk tails at the ASR
+  speech end. Runs on both the Studio/project path and the synchronous + queued
+  `/v1` path. Verify with `php artisan tts:asr:health [--deep]`, or the ASR row on
+  the admin Health page. Setup: `docs/ASR-SETUP.md`.
+- **Pure-PHP voicing gate for the tail detector.** Closes a known blind spot — a
+  loud, high-ZCR but *aperiodic* tail (broadband hiss/noise with no fundamental)
+  cleared the speech gate and was not a low-ZCR/tonal artifact either. A peak
+  normalized autocorrelation in 75–600 Hz now finds the last loud **voiced** window
+  and, when a trailing unvoiced run of ≥ `chunk_tail_unvoiced_min_ms` (default
+  **400**) follows, cuts back to it plus `chunk_tail_fricative_allowance_ms`
+  (default **250**, so a genuine word-final fricative survives). It combines with
+  the existing ZCR/tonal cut (takes the earlier), so it only ever trims more and
+  never clips a voiced word. No Python/Praat dependency. `chunk_tail_voicing_*`,
+  default on.
+
+### Changed
+- **Clearer ASR health diagnostics.** Health-check results can now carry a help
+  link. The ASR sidecar's "unreachable" message drops the raw cURL noise for an
+  actionable one-liner and links the setup guide (`TTS_ASR_DOCS_URL`) — rendered as
+  a clickable "Setup guide" on the admin Health page and shown in `tts:doctor`.
+
 ## [0.9.3] - 2026-06-20
 
 ### Fixed
@@ -421,7 +455,8 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   fixed seed; the response cache guarantees stable output for repeated identical
   requests.
 
-[Unreleased]: https://github.com/johnfmorton/bespoken-tts-service/compare/v0.9.3...HEAD
+[Unreleased]: https://github.com/johnfmorton/bespoken-tts-service/compare/v0.10.0...HEAD
+[0.10.0]: https://github.com/johnfmorton/bespoken-tts-service/compare/v0.9.3...v0.10.0
 [0.9.3]: https://github.com/johnfmorton/bespoken-tts-service/compare/v0.9.2...v0.9.3
 [0.9.2]: https://github.com/johnfmorton/bespoken-tts-service/compare/v0.9.1...v0.9.2
 [0.9.1]: https://github.com/johnfmorton/bespoken-tts-service/compare/v0.9.0...v0.9.1
