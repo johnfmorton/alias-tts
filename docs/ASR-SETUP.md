@@ -31,54 +31,111 @@ few seconds on a typical Forge VPS. `base` is more accurate for ~2× the cost.
 
 ## Prerequisites
 
-- Python 3.10+ with `venv` (`sudo apt install python3-venv` if missing)
-- The repo deployed on the server (the sidecar lives in `asr-sidecar/`)
+- Python 3.10+ with `venv` (`sudo apt-get install -y python3-venv` if missing)
+- The repo deployed on the server (the sidecar source ships in `asr-sidecar/`)
 
-## Install (run as the `forge` user, on the server)
+## Where the sidecar lives (read this first — Forge zero-downtime)
 
-Paths below assume the site is at `/home/forge/tts.example.com` — adjust to yours.
+Forge zero-downtime deploys check the repo out into `releases/<id>/` and repoint
+a `current` symlink at the newest one, **pruning old releases**. So the repo's
+`asr-sidecar/` only ever exists inside an ephemeral release dir — and `.venv/` is
+git-ignored, so a fresh release never contains it. **Do not build the venv inside
+the release tree; it would be wiped on the next deploy.**
+
+Instead, install into a **stable directory that sits beside `current`/`releases`/
+`storage`** — i.e. directly under the site root. That level persists across
+deploys (it's where Forge keeps `.env` and `storage/`), it's scoped to this site
+(removed if you delete the site), and it's never web-served (the web root is
+`current/public`). A typical Forge site root looks like:
+
+```
+/home/forge/<your-site>/
+├── current -> releases/<id>/   # symlink, repointed each deploy
+├── releases/                   # per-deploy checkouts, PRUNED
+├── storage/                    # shared
+├── .env
+└── asr-sidecar/                # ← the STABLE runtime dir you create below
+```
+
+> Throughout, replace `<your-site>` with your real site directory, e.g.
+> `bespoken-tts-service-xxxx.on-forge.com`.
+
+## Install (run as the `forge` user, over SSH)
+
+A fresh SSH session starts in `/home/forge`, so set `SITE` and use absolute paths
+(every command below is self-contained):
 
 ```bash
-cd /home/forge/tts.example.com/asr-sidecar
+SITE=/home/forge/<your-site>
+mkdir -p "$SITE/asr-sidecar"
+cd "$SITE/asr-sidecar"
+```
 
-# 1. Create an isolated virtualenv and install dependencies.
+Copy the sidecar code out of the current release into this stable dir (one file
+per line — long combined `cp` commands can wrap and break when pasted):
+
+```bash
+cp "$SITE/current/asr-sidecar/app.py" .
+```
+```bash
+cp "$SITE/current/asr-sidecar/requirements.txt" .
+```
+
+Create the virtualenv, install dependencies, and pre-download the model so the
+daemon comes up warm (downloads to `~/.cache/huggingface`, which is outside the
+release tree and persists):
+
+```bash
 python3 -m venv .venv
 .venv/bin/pip install --upgrade pip
 .venv/bin/pip install -r requirements.txt
-
-# 2. Pre-download the model so the daemon comes up warm (and the first request
-#    isn't slow). Downloads to ~/.cache/huggingface by default.
 .venv/bin/python -c "from faster_whisper import WhisperModel; WhisperModel('tiny', device='cpu', compute_type='int8')"
-
-# 3. Smoke-test it by hand (Ctrl-C to stop once you see "Application startup complete").
-.venv/bin/uvicorn app:app --host 127.0.0.1 --port 8765
 ```
 
-In another shell, confirm it answers:
+Confirm the dir now has `app.py`, `requirements.txt`, and `.venv/`:
 
 ```bash
-curl -s http://127.0.0.1:8765/health
-# {"status":"ok","model":"tiny","device":"cpu","compute_type":"int8",...}
+ls -l "$SITE/asr-sidecar"
 ```
+
+Optional smoke test (self-cleaning — `timeout` stops uvicorn after 6s):
+
+```bash
+cd "$SITE/asr-sidecar"
+timeout 6 .venv/bin/uvicorn app:app --host 127.0.0.1 --port 8765 &
+sleep 4
+curl -s http://127.0.0.1:8765/health; echo
+```
+Expect `{"status":"ok","model":"tiny",...}`.
 
 ## Run it as a Forge Daemon
 
-In the Forge panel → your server → **Daemons** → New Daemon:
+Forge panel → your server → **Daemons** (a.k.a. background processes) → New:
 
-- **Command:** `/home/forge/tts.example.com/asr-sidecar/.venv/bin/uvicorn app:app --host 127.0.0.1 --port 8765`
-- **Directory:** `/home/forge/tts.example.com/asr-sidecar`
+- **Command** — must be the **ABSOLUTE** path to the venv's uvicorn (see the note below):
+  ```
+  /home/forge/<your-site>/asr-sidecar/.venv/bin/uvicorn app:app --host 127.0.0.1 --port 8765
+  ```
+- **Directory / Working Directory:** `/home/forge/<your-site>/asr-sidecar`
 - **User:** `forge`
 - **Processes:** `1` (one warm model is enough; raise only if transcription becomes a bottleneck)
 
-The defaults (`tiny` / `cpu` / `int8` / English) need no environment variables. To
-override, prepend them to the command, e.g. to use the more accurate model:
+Leave the stop signal/seconds at their defaults.
+
+> **The command MUST be absolute.** Supervisor resolves the program against the
+> system `PATH` (effectively from `/`) *before* it `chdir`s into the working
+> directory, so a relative `.venv/bin/uvicorn` fails with
+> `FATAL can't find command '.venv/bin/uvicorn'`. The working directory is still
+> required separately — `app:app` tells uvicorn to import `app.py` from the
+> current directory, so you need **both** the absolute binary path **and** the
+> working directory set.
+
+The defaults (`tiny` / `cpu` / `int8` / English) need no environment variables.
+To use the more accurate `base` model, wrap the command so the env var is set:
 
 ```
-sh -c "ASR_MODEL=base exec /home/forge/tts.example.com/asr-sidecar/.venv/bin/uvicorn app:app --host 127.0.0.1 --port 8765"
+sh -c 'ASR_MODEL=base exec /home/forge/<your-site>/asr-sidecar/.venv/bin/uvicorn app:app --host 127.0.0.1 --port 8765'
 ```
-
-> After each deploy that changes `asr-sidecar/`, restart the daemon (Forge → Daemons → Restart)
-> so it picks up new code or dependencies.
 
 ## Enable it in the Laravel app
 
@@ -92,9 +149,20 @@ TTS_ASR_URL=http://127.0.0.1:8765
 TTS_ASR_ACTION=log
 ```
 
+Confirm the migration that adds `tts_chunks.asr_score` / `asr_report` has run
+(the admin Studio path persists verdicts to these columns; the `/v1` API path
+only logs, so it's safe regardless):
+
+```bash
+cd /home/forge/<your-site>/current
+php artisan migrate:status   # 2026_06_20_000003_add_asr_to_tts_chunks_table → Ran
+php artisan migrate --force  # only if it shows Pending
+```
+
 ## Verify the installation
 
 ```bash
+cd /home/forge/<your-site>/current
 php artisan tts:asr:health --deep
 ```
 
@@ -102,6 +170,20 @@ A healthy install prints the loaded model + version, transcribes the bundled
 fixture, and reports `Self-test PASSED`. It exits non-zero on failure, so you can
 gate a deploy on it. The same status (without the transcription self-test) also
 appears on the admin **Health** page and in `php artisan tts:doctor`.
+
+## Updating the sidecar after a deploy
+
+The stable dir is decoupled from deploys, so normal deploys don't touch it — and
+don't need to. Only when `asr-sidecar/app.py` or `requirements.txt` actually
+changes in a release, refresh the runtime copy and restart the daemon:
+
+```bash
+SITE=/home/forge/<your-site>
+cp "$SITE/current/asr-sidecar/app.py" "$SITE/asr-sidecar/"
+cp "$SITE/current/asr-sidecar/requirements.txt" "$SITE/asr-sidecar/"
+"$SITE/asr-sidecar/.venv/bin/pip" install -r "$SITE/asr-sidecar/requirements.txt"  # only if deps changed
+```
+Then restart the daemon in Forge → Daemons.
 
 ## Automatic remediation (`TTS_ASR_ACTION=auto`)
 
@@ -112,7 +194,7 @@ flagged chunk/segment during generation — on **both** the editable-project pat
 - **TRUNC / PAUSE / NOSPEECH** (missing content) → **re-roll** the chunk with a fresh
   random seed, up to `TTS_ASR_MAX_REROLLS` times, keeping the take with the best
   transcript coverage and stopping early on the first clean one. Each re-roll is a
-  real Replicate call. Chatterbox is non-deterministic, so a re-roll usually recovers it.
+  real Replicate call.
 - **TAIL only** (junk/"singing" tail, full coverage) → **precise-trim** at the ASR
   speech end. No Replicate call, and it catches the speech-like tails the DSP trim
   can't. (If a re-rolled take ends up TAIL-only, it's trimmed too.)
@@ -137,7 +219,8 @@ latest take is kept and generation continues.
 | `TTS_ASR_URL` | `http://127.0.0.1:8765` | Sidecar base URL |
 | `TTS_ASR_TIMEOUT` | `30` | Per-call timeout (seconds) |
 | `TTS_ASR_LANGUAGE` | `en` | Forced language, or `auto` |
-| `TTS_ASR_ACTION` | `log` | `log` = record verdict only; `auto` = also remediate (see below) |
+| `TTS_ASR_DOCS_URL` | *(this guide on GitHub)* | "Setup guide" link shown by the health page / `tts:doctor` |
+| `TTS_ASR_ACTION` | `log` | `log` = record verdict only; `auto` = also remediate (see above) |
 | `TTS_ASR_MAX_REROLLS` | `2` | Max re-rolls per chunk when `action=auto` |
 | `TTS_ASR_TRAIL_S_MAX` | `1.2` | Audio after the last word above this ⇒ **TAIL** |
 | `TTS_ASR_GAP_S_MAX` | `1.5` | Largest inter-word gap above this ⇒ **PAUSE** |
@@ -150,14 +233,20 @@ Sidecar-side env vars (set on the daemon command, not in `.env`):
 
 ## Troubleshooting
 
-- **`tts:asr:health` says UNREACHABLE** — the daemon isn't running or the port
-  differs. Check Forge → Daemons (status + log), and that `TTS_ASR_URL`'s port
-  matches the daemon command.
-- **"sidecar up but model not loaded"** — the model download failed or the box is
-  out of RAM. Re-run the pre-download step (step 2) as `forge` and check free
-  memory; try `tiny` if you tried `base`.
-- **Slow transcription** — expected on a small VPS for `base`; use `tiny`. ASR
-  runs after a chunk is generated and never blocks the API response.
+- **Daemon log shows `FATAL can't find command '.venv/bin/uvicorn'`** — the daemon
+  Command is a relative path. Set it to the **absolute** uvicorn path
+  (`/home/forge/<your-site>/asr-sidecar/.venv/bin/uvicorn …`). See the daemon note above.
+- **`.venv/bin/uvicorn: No such file or directory` in an interactive shell** — a
+  fresh SSH session starts in `/home/forge`; `cd /home/forge/<your-site>/asr-sidecar`
+  first (or use absolute paths).
+- **`tts:asr:health` says UNREACHABLE / `curl` returns nothing** — the daemon isn't
+  running or the port differs. Check Forge → Daemons (status + log), and that
+  `TTS_ASR_URL`'s port matches the daemon command.
+- **"sidecar up but model did not load"** — the model download failed or the box is
+  out of RAM. Re-run the pre-download step as `forge` and check free memory; try
+  `tiny` if you tried `base`.
+- **A long command broke when pasted** — your terminal wrapped it and ran a fragment
+  as its own command. Run the boxed commands one line at a time.
 - **Verdicts look wrong** — tune the thresholds above. They were validated on
   labeled samples but your voice/pacing may differ; watch `asr_report` on chunks
   (Studio / DB) with `TTS_ASR_ACTION=log` before enabling any automatic action.
