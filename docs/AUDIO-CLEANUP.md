@@ -63,6 +63,27 @@ no long tail) are left to the case-1 trim above and are never over-trimmed. When
 long tail is found the chunk is hard-cut at the speech end + `chunk_tail_guard_ms`,
 then head-trimmed and edge-faded.
 
+### Voicing refinement (broadband hiss the ZCR gate keeps)
+
+ZCR has a blind spot: a trailing run that is **loud and high-ZCR but aperiodic**
+— broadband hiss/noise with no fundamental — clears the speech gate and is *not*
+a low-ZCR tonal artifact either, so neither path above removes it. A **pitch-voicing**
+check closes it. Real speech vowels have a clear fundamental (75–600 Hz); most tail
+noise does not. Using a peak normalized **autocorrelation** in that lag range (pure
+PHP — no Praat/Python dependency), the detector finds the last loud **voiced**
+window; if a trailing run of ≥ `chunk_tail_unvoiced_min_ms` follows it, the chunk
+is cut back to that window plus `chunk_tail_fricative_allowance_ms` — the allowance
+keeps a genuine word-final fricative (also unvoiced, but short), and the duration
+floor is what separates that fricative from a sustained tail.
+
+This **combines** with the ZCR/tonal cut above (the detector takes the *earlier* of
+the two), so it can only ever trim *more*, and only when sure — a quiet voiced final
+word is never clipped. The inverse blind spot is deliberate: a low-frequency drone is
+periodic, so voicing reads it as **voiced** and leaves it to the ZCR/tonal path,
+while that path leaves the aperiodic hiss to voicing. (Voiced *singing* tails are
+periodic too, so neither path catches them — that's what the ASR round-trip in
+`docs/ASR-SETUP.md` is for.)
+
 ## Tuning knobs (`config/tts.php`, all env-overridable)
 
 | Key | Env | Default | Role |
@@ -78,6 +99,12 @@ then head-trimmed and edge-faded.
 | `chunk_tail_guard_ms` | `TTS_CHUNK_TAIL_GUARD_MS` | `60` | keep this much after the last speech |
 | `chunk_tail_blip_max_ms` | `TTS_CHUNK_TAIL_BLIP_MAX_MS` | `400` | drop a trailing re-swell blip ≤ this isolated by a long gap (`0` disables the whole peel) |
 | `chunk_tail_tonal_cv_max` | `TTS_CHUNK_TAIL_TONAL_CV_MAX` | `0.35` | also drop a LONGER isolated run whose ZCR coeff-of-variation ≤ this (a sustained tone, not speech); `0` disables the tonal path |
+| `chunk_tail_voicing_enabled` | `TTS_CHUNK_TAIL_VOICING` | `true` | enable the voicing refinement (catches loud, aperiodic hiss tails) |
+| `chunk_tail_voicing_acf_min` | `TTS_CHUNK_TAIL_VOICING_ACF_MIN` | `0.5` | min peak normalized autocorrelation to call a window voiced |
+| `chunk_tail_voicing_f0_min_hz` | `TTS_CHUNK_TAIL_VOICING_F0_MIN_HZ` | `75` | low end of the pitch search |
+| `chunk_tail_voicing_f0_max_hz` | `TTS_CHUNK_TAIL_VOICING_F0_MAX_HZ` | `600` | high end of the pitch search |
+| `chunk_tail_unvoiced_min_ms` | `TTS_CHUNK_TAIL_UNVOICED_MIN_MS` | `400` | only cut when the trailing unvoiced run is ≥ this (`0` disables the voicing path) |
+| `chunk_tail_fricative_allowance_ms` | `TTS_CHUNK_TAIL_FRICATIVE_ALLOWANCE_MS` | `250` | keep this much unvoiced audio after the last voiced window (protects word-final fricatives) |
 
 **Tuning hints.** If a drone still survives, lower `chunk_tail_min_artifact_ms` or
 raise `chunk_tail_zcr_min_hz`. If a real, sustained trailing vowel gets clipped,

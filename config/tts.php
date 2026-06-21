@@ -145,6 +145,25 @@ return [
     // (only short blips are peeled). Raise toward speech's CV (~0.7+) cautiously.
     'chunk_tail_tonal_cv_max' => (float) env('TTS_CHUNK_TAIL_TONAL_CV_MAX', 0.35),
 
+    // Voicing refinement of the tail detector. A trailing run that clears the
+    // loud + high-ZCR speech gate but has NO fundamental (broadband hiss/noise
+    // with speech-like zero-crossings) is not speech — the ZCR/tonal-CV gates
+    // above miss it. A pitch-voicing check (peak normalized autocorrelation in
+    // f0_min..f0_max Hz) finds the last loud VOICED window; if a trailing
+    // UNVOICED run of >= unvoiced_min_ms follows it, the chunk is cut back to that
+    // window plus fricative_allowance_ms (so a genuine word-final fricative — also
+    // unvoiced, but short — is never clipped; the duration floor separates the
+    // two). It COMBINES with the cut above (takes the earlier), so it can only
+    // trim MORE and never clips a quiet voiced final word. A low-freq drone is
+    // periodic (reads VOICED), so it's intentionally left to the ZCR/tonal path.
+    // Pure PHP (no Python/Praat dependency). 0 unvoiced_min_ms / false disables.
+    'chunk_tail_voicing_enabled' => (bool) env('TTS_CHUNK_TAIL_VOICING', true),
+    'chunk_tail_voicing_acf_min' => (float) env('TTS_CHUNK_TAIL_VOICING_ACF_MIN', 0.5),
+    'chunk_tail_voicing_f0_min_hz' => (float) env('TTS_CHUNK_TAIL_VOICING_F0_MIN_HZ', 75),
+    'chunk_tail_voicing_f0_max_hz' => (float) env('TTS_CHUNK_TAIL_VOICING_F0_MAX_HZ', 600),
+    'chunk_tail_unvoiced_min_ms' => (int) env('TTS_CHUNK_TAIL_UNVOICED_MIN_MS', 400),
+    'chunk_tail_fricative_allowance_ms' => (int) env('TTS_CHUNK_TAIL_FRICATIVE_ALLOWANCE_MS', 250),
+
     // True digital silence (ms) inserted between chunks at a sentence seam and
     // at a block/paragraph seam respectively. Tune by ear for natural pacing.
     'chunk_gap_ms' => (int) env('TTS_CHUNK_GAP_MS', 120),

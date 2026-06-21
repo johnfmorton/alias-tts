@@ -199,6 +199,45 @@ class AudioConverterTest extends TestCase
         $this->assertGreaterThan(1.3, $seconds, 'A short final word after a brief pause must survive.');
     }
 
+    public function test_voicing_detector_removes_a_loud_unvoiced_noise_tail(): void
+    {
+        // The blind spot the voicing path closes: a loud, broadband NOISE tail.
+        // It is loud + high-ZCR (clears the speech gate) AND aperiodic (not a
+        // low-ZCR/tonal artifact either), so only the pitch-voicing check — no
+        // fundamental — can tell it from speech. Layout: a loud VOICED body
+        // (150 Hz fundamental, like a vowel) then a loud unvoiced noise tail.
+        $converter = new AudioConverter(config('tts.ffmpeg_path', 'ffmpeg'));
+        $chunk = $this->wrapWav(
+            $this->rawTone(1.0, 15000, 150.0)  // loud voiced body (clear F0)
+            .$this->noiseWav(1.2, 14000)        // loud unvoiced noise tail
+        );
+
+        [$out] = $converter->concatenate([$chunk], 'wav', 'wav', []);
+        $seconds = $this->wavDataBytes($out) / (44100 * 2);
+
+        // ~1.0s body + fricative allowance + guard. Was 2.2s when the noise tail
+        // (loud + high-ZCR but unvoiced) survived the ZCR/tonal gates.
+        $this->assertGreaterThan(0.9, $seconds, 'The voiced body must survive.');
+        $this->assertLessThan(1.6, $seconds, 'The loud unvoiced noise tail must be cut.');
+    }
+
+    public function test_voicing_disabled_leaves_the_unvoiced_tail_in_place(): void
+    {
+        // Turning the voicing refinement off proves it is what removes the tail:
+        // the ZCR/tonal gates alone keep the loud high-ZCR noise.
+        config(['tts.chunk_tail_voicing_enabled' => false]);
+        $converter = new AudioConverter(config('tts.ffmpeg_path', 'ffmpeg'));
+        $chunk = $this->wrapWav(
+            $this->rawTone(1.0, 15000, 150.0)
+            .$this->noiseWav(1.2, 14000)
+        );
+
+        [$out] = $converter->concatenate([$chunk], 'wav', 'wav', []);
+        $seconds = $this->wavDataBytes($out) / (44100 * 2);
+
+        $this->assertGreaterThan(2.0, $seconds, 'Without voicing, the loud noise tail survives.');
+    }
+
     /** Broadband noise PCM (high ZCR) — a stand-in for real speech. */
     private function noiseWav(float $seconds, int $amp): string
     {

@@ -344,6 +344,7 @@ class AudioConverter
         $speech = [];
         $quiet = [];
         $zcr = [];
+        $dbWindows = [];
         for ($i = 0; $i + $win <= $totalSamples; $i += $win) {
             $samples = unpack('s*', substr($pcmWav, $offset + $i * 2, $bytesPerWin));
             if ($samples === false) {
@@ -376,6 +377,7 @@ class AudioConverter
             $speech[] = ($db > $floorDb && $crossingsPerSec > $zcrMinHz);
             $quiet[] = ($db <= $floorDb);
             $zcr[] = $crossingsPerSec;
+            $dbWindows[] = $db;
         }
 
         // Walk back from EOF, peeling isolated trailing "re-swell" blips so the
@@ -438,17 +440,134 @@ class AudioConverter
             break;
         }
 
-        if ($lastSpeechWin === null) {
-            return null; // no speech found at all — leave it to trimChunk's fallback
+        // Cut from the ZCR/tonal path (drone / blip / tonal-swell), if any.
+        $zcrCut = null;
+        if ($lastSpeechWin !== null) {
+            $lastSpeechEnd = ($lastSpeechWin + 1) * $win / $rate;
+            if (($totalSec - $lastSpeechEnd) >= $minArtifactSec) {
+                $zcrCut = min($totalSec, $lastSpeechEnd + $guardSec);
+            }
         }
 
-        $lastSpeechEnd = ($lastSpeechWin + 1) * $win / $rate;
+        // Cut from the voicing path: a long trailing UNVOICED run (broadband hiss
+        // with speech-like ZCR) that the gates above keep, but which has no
+        // fundamental, is not speech.
+        $voicingCut = $this->voicingTailCut($pcmWav, $offset, $dbWindows, $win, $rate, $totalSec);
 
-        if (($totalSec - $lastSpeechEnd) < $minArtifactSec) {
-            return null; // no long trailing artifact — keep the bounded trim
+        // Combine, never override: take the EARLIER confident cut so the voicing
+        // path can only trim MORE (and only when sure). A periodic ~100 Hz drone
+        // reads VOICED, so voicing leaves it to the ZCR/tonal path above.
+        $cut = null;
+        foreach ([$zcrCut, $voicingCut] as $candidate) {
+            if ($candidate !== null && ($cut === null || $candidate < $cut)) {
+                $cut = $candidate;
+            }
         }
 
-        return min($totalSec, $lastSpeechEnd + $guardSec);
+        return $cut; // null keeps trimChunk's bounded trim
+    }
+
+    /**
+     * Voicing-based tail cut. The speech/ZCR gates above keep a trailing run that
+     * is loud + high-ZCR even when it is broadband hiss / noise with no pitch — a
+     * blind spot ({@see detectLongTailArtifact}). A pitch-voicing check closes it:
+     * real speech vowels have a clear fundamental (75–600 Hz), most tail noise
+     * does not. Scan back for the last loud VOICED window; if a trailing run of
+     * >= unvoiced_min_ms follows it, cut back to it plus fricative_allowance_ms so
+     * a genuine word-final fricative (unvoiced, but short) is never clipped — the
+     * duration floor is what separates that fricative from a sustained tail.
+     * Returns null (no voiced window, no long unvoiced tail, or disabled) to defer
+     * to the other paths. Low-freq drones are periodic, so they read VOICED and
+     * are intentionally left to the ZCR/tonal path.
+     */
+    private function voicingTailCut(string $pcmWav, int $offset, array $dbWindows, int $win, int $rate, float $totalSec): ?float
+    {
+        if (! (bool) config('tts.chunk_tail_voicing_enabled', true)) {
+            return null;
+        }
+
+        $floorDb = (float) config('tts.chunk_tail_rms_floor_db', -40);
+        $guardSec = max(0, (int) config('tts.chunk_tail_guard_ms', 60)) / 1000;
+        $allowanceSec = max(0, (int) config('tts.chunk_tail_fricative_allowance_ms', 250)) / 1000;
+        $unvoicedMinSec = max(0, (int) config('tts.chunk_tail_unvoiced_min_ms', 400)) / 1000;
+        if ($unvoicedMinSec <= 0) {
+            return null;
+        }
+
+        // Last loud + voiced window. Everything after it is, by construction,
+        // unvoiced (loud hiss and/or quiet decay) — the run we may peel.
+        $lastVoiced = null;
+        for ($w = count($dbWindows) - 1; $w >= 0; $w--) {
+            if ($dbWindows[$w] <= $floorDb) {
+                continue; // quiet — not a speech window
+            }
+            if ($this->windowIsVoiced($pcmWav, $offset, $w * $win, $win, $rate)) {
+                $lastVoiced = $w;
+                break;
+            }
+        }
+        if ($lastVoiced === null) {
+            return null;
+        }
+
+        $voicedEnd = ($lastVoiced + 1) * $win / $rate;
+        if (($totalSec - $voicedEnd) < $unvoicedMinSec) {
+            return null; // no long unvoiced tail — nothing to peel
+        }
+
+        return min($totalSec, $voicedEnd + $allowanceSec + $guardSec);
+    }
+
+    /**
+     * Whether a window is voiced: the peak normalized autocorrelation at a lag in
+     * the plausible-pitch range (rate/f0_max .. rate/f0_min) is at/above acf_min.
+     * Voiced speech has a clear fundamental so it peaks high; broadband noise /
+     * hiss stays low. A lightweight pure-PHP stand-in for a Praat pitch track.
+     */
+    private function windowIsVoiced(string $pcmWav, int $offset, int $startSample, int $win, int $rate): bool
+    {
+        $f0Min = max(1.0, (float) config('tts.chunk_tail_voicing_f0_min_hz', 75));
+        $f0Max = max($f0Min + 1.0, (float) config('tts.chunk_tail_voicing_f0_max_hz', 600));
+        $acfMin = (float) config('tts.chunk_tail_voicing_acf_min', 0.5);
+
+        $minLag = max(1, (int) floor($rate / $f0Max));
+        $maxLag = (int) ceil($rate / $f0Min);
+
+        $samples = unpack('s*', substr($pcmWav, $offset + $startSample * 2, $win * 2));
+        if ($samples === false) {
+            return false;
+        }
+        $samples = array_values($samples);
+        $n = count($samples);
+        if ($n <= $maxLag + 1) {
+            return false; // window too short to measure the lowest F0
+        }
+
+        // DC-remove, then total energy (the autocorrelation at lag 0).
+        $mean = array_sum($samples) / $n;
+        $x = [];
+        $energy = 0.0;
+        for ($i = 0; $i < $n; $i++) {
+            $v = $samples[$i] - $mean;
+            $x[$i] = $v;
+            $energy += $v * $v;
+        }
+        if ($energy <= 0.0) {
+            return false;
+        }
+
+        for ($lag = $minLag; $lag <= $maxLag; $lag++) {
+            $sum = 0.0;
+            $lim = $n - $lag;
+            for ($i = 0; $i < $lim; $i++) {
+                $sum += $x[$i] * $x[$i + $lag];
+            }
+            if ($sum / $energy >= $acfMin) {
+                return true; // a clear fundamental — voiced
+            }
+        }
+
+        return false;
     }
 
     /**
