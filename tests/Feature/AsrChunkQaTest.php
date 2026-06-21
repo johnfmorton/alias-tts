@@ -6,6 +6,7 @@ use App\Enums\ChunkStatus;
 use App\Models\TtsChunk;
 use App\Models\User;
 use App\Models\Voice;
+use App\Services\Health\HealthReport;
 use App\Services\ProjectService;
 use App\Services\Tts\FakeTtsProvider;
 use App\Services\Tts\TtsProvider;
@@ -319,6 +320,20 @@ class AsrChunkQaTest extends TestCase
             ->assertOk()
             ->assertJsonPath('asr_badge.tone', 'bad')
             ->assertJsonPath('asr_badge.text', fn ($t) => str_contains((string) $t, 'TRUNC'));
+    }
+
+    public function test_health_report_asr_failure_is_clean_and_links_the_setup_guide(): void
+    {
+        config(['tts.asr.url' => 'http://asr.test', 'tts.asr.docs_url' => 'https://example.test/asr-setup']);
+        Http::fake(['asr.test/health' => Http::response('', 500)]);
+
+        $asr = collect(app(HealthReport::class)->run())->firstWhere('key', 'asr');
+
+        $this->assertSame('FAIL', $asr->status->value);
+        $this->assertSame('https://example.test/asr-setup', $asr->helpUrl);
+        // The noisy raw cURL/libcurl text is gone; the message is actionable.
+        $this->assertStringNotContainsString('cURL', $asr->detail);
+        $this->assertStringContainsString("isn't responding", $asr->detail);
     }
 
     public function test_health_command_reports_ok(): void

@@ -62,6 +62,7 @@ class HealthReportTest extends TestCase
             'status' => 'WARN',
             'label' => 'Provider',
             'detail' => 'fake — returns silent placeholder audio (set TTS_PROVIDER=replicate for real voices)',
+            'help_url' => null,
         ], $provider->toArray());
     }
 

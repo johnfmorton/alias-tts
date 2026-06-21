@@ -46,6 +46,10 @@ class TtsDoctor extends Command
             };
 
             $this->line("{$badge} <options=bold>{$result->label}</> — {$result->detail}");
+
+            if ($result->helpUrl) {
+                $this->line("       <fg=blue>↳ {$result->helpUrl}</>");
+            }
         }
 
         $count = fn (HealthStatus $s) => count(array_filter($results, fn (HealthCheckResult $r) => $r->status === $s));

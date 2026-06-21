@@ -87,9 +87,9 @@ class HealthReport
         return $this->results;
     }
 
-    private function add(string $key, HealthStatus $status, string $label, string $detail): void
+    private function add(string $key, HealthStatus $status, string $label, string $detail, ?string $helpUrl = null): void
     {
-        $this->results[] = new HealthCheckResult($key, $status, $label, $detail);
+        $this->results[] = new HealthCheckResult($key, $status, $label, $detail, $helpUrl);
     }
 
     private function checkPhp(): void
@@ -207,8 +207,10 @@ class HealthReport
      */
     private function checkAsr(): void
     {
+        $docs = (string) config('tts.asr.docs_url') ?: null;
+
         if (! (bool) config('tts.asr.enabled', false)) {
-            $this->add('asr', HealthStatus::Pass, 'ASR transcript QA', 'disabled (set TTS_ASR_ENABLED=true to transcribe + check generated chunks; see docs/ASR-SETUP.md)');
+            $this->add('asr', HealthStatus::Pass, 'ASR transcript QA', 'disabled — set TTS_ASR_ENABLED=true to transcribe and quality-check generated chunks.', $docs);
 
             return;
         }
@@ -217,14 +219,17 @@ class HealthReport
         $health = app(AsrClient::class)->health();
 
         if (! $health['reachable']) {
-            $this->add('asr', HealthStatus::Fail, 'ASR transcript QA', "sidecar unreachable at {$url} (".($health['error'] ?? 'unknown').') — is the tts-asr daemon running? See docs/ASR-SETUP.md');
+            // Keep this actionable: the raw cURL error is noise here (almost always
+            // "connection refused" = the daemon isn't running). The setup guide is
+            // linked below; `tts:asr:health` shows the underlying connection error.
+            $this->add('asr', HealthStatus::Fail, 'ASR transcript QA', "The tts-asr sidecar at {$url} isn't responding — install and start the daemon (or fix TTS_ASR_URL). Run `php artisan tts:asr:health` for the connection error.", $docs);
 
             return;
         }
 
         $body = $health['body'];
         if (($body['status'] ?? '') !== 'ok') {
-            $this->add('asr', HealthStatus::Fail, 'ASR transcript QA', 'sidecar up but model not loaded: '.($body['error'] ?? 'unknown'));
+            $this->add('asr', HealthStatus::Fail, 'ASR transcript QA', 'The sidecar is running but its model did not load ('.($body['error'] ?? 'unknown').') — check the daemon log and available memory.', $docs);
 
             return;
         }

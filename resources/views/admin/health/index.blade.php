@@ -84,6 +84,10 @@
                     <div class="min-w-0">
                         <div class="font-medium">{{ $result->label }}</div>
                         <div class="mt-0.5 break-words text-sm text-zinc-400">{{ $result->detail }}</div>
+                        @if($result->helpUrl)
+                            <a href="{{ $result->helpUrl }}" target="_blank" rel="noopener noreferrer"
+                               class="mt-1 inline-block text-sm text-cyan-400 hover:underline">Setup guide ↗</a>
+                        @endif
                     </div>
                 </li>
             @endforeach

@@ -15,6 +15,8 @@ final class HealthCheckResult
         public readonly HealthStatus $status,
         public readonly string $label,
         public readonly string $detail,
+        /** Optional "where to learn more / fix this" URL, rendered as a link. */
+        public readonly ?string $helpUrl = null,
     ) {}
 
     public function isFailure(): bool
@@ -22,7 +24,7 @@ final class HealthCheckResult
         return $this->status === HealthStatus::Fail;
     }
 
-    /** @return array{key: string, status: string, label: string, detail: string} */
+    /** @return array{key: string, status: string, label: string, detail: string, help_url: string|null} */
     public function toArray(): array
     {
         return [
@@ -30,6 +32,7 @@ final class HealthCheckResult
             'status' => $this->status->value,
             'label' => $this->label,
             'detail' => $this->detail,
+            'help_url' => $this->helpUrl,
         ];
     }
 }
