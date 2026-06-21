@@ -6,6 +6,12 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Removed
+- **"Sentence seam" / "paragraph seam" chunk badges in Studio.** These per-chunk
+  markers exposed an internal chunking detail that wasn't actionable to the user.
+  Removed from both the project editor and the chunk inspector. The "Preview
+  stitch" feature (which actually tests the trim + seam join) is unchanged.
+
 ## [0.10.0] - 2026-06-21
 
 ### Added

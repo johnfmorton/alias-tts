@@ -95,7 +95,6 @@
                         <div class="flex items-center gap-2 text-sm text-zinc-400">
                             <span class="font-mono text-zinc-300">#{{ $chunk->position + 1 }}</span>
                             <span class="chunk-chars">{{ $chunk->characters }} chars</span>
-                            <span class="inline-flex rounded-md border px-2 py-0.5 text-xs {{ $chunk->break_after === 'paragraph' ? 'border-amber-500/30 bg-amber-500/10 text-amber-300' : 'border-zinc-700 bg-zinc-800 text-zinc-400' }}">{{ $chunk->break_after }} seam</span>
                             <span class="chunk-status inline-flex rounded-md border px-2 py-0.5 text-xs {{ $chunkStyles[$chunk->status->value] ?? $chunkStyles['pending'] }}">{{ $chunk->status->value }}</span>
                             @php $asrBadge = $chunk->asrBadge(); @endphp
                             {{-- ASR transcript-QA verdict; only when the chunk's current audio was scored. --}}

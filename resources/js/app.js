@@ -313,16 +313,6 @@ function initStudio() {
         }
     }
 
-    function seamBadge(breakAfter) {
-        const badge = document.createElement('span');
-        const para = breakAfter === 'paragraph';
-        badge.className = 'inline-flex rounded-md border px-2 py-0.5 text-xs ' +
-            (para ? 'border-amber-500/30 bg-amber-500/10 text-amber-300'
-                  : 'border-zinc-700 bg-zinc-800 text-zinc-400');
-        badge.textContent = para ? 'paragraph seam' : 'sentence seam';
-        return badge;
-    }
-
     // Reveal the concat bar once at least one chunk has audio.
     function refreshConcatBar() {
         if (chunkStates.some((s) => s.blob)) els.concatBar.classList.remove('hidden');
@@ -342,7 +332,7 @@ function initStudio() {
         num.textContent = `#${chunk.index + 1}`;
         const count = document.createElement('span');
         count.textContent = `${chunk.chars} chars`;
-        meta.append(num, count, seamBadge(chunk.breakAfter));
+        meta.append(num, count);
 
         // "include" checkbox — hidden until this chunk has been generated.
         const include = document.createElement('label');
