@@ -50,9 +50,8 @@ $keys = [
         'env' => 'TTS_ASR_API_ACTION',
         'type' => 'enum',
         'options' => ['log', 'auto'],
-        'inherits' => 'tts.asr.action',
         'label' => 'API remediation',
-        'help' => 'What the unattended API / full-MP3 path does with a flagged segment. "auto" self-heals (no human to read a badge); "log" ships the take as-is.',
+        'help' => 'What the unattended API / full-MP3 path does with a flagged segment. Defaults to "auto" — it self-heals because no human sees a badge. Set "log" to ship the take as-is.',
     ],
     [
         'group' => 'asr',

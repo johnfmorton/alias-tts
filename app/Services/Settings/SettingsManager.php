@@ -3,6 +3,7 @@
 namespace App\Services\Settings;
 
 use App\Models\Setting;
+use App\Services\Asr\AsrAutoEnabler;
 use Illuminate\Support\Facades\Schema;
 use Throwable;
 
@@ -35,6 +36,17 @@ class SettingsManager
     public function isLocked(string $configPath): bool
     {
         return (bool) ($this->managed()[$configPath]['locked'] ?? false);
+    }
+
+    /**
+     * Has someone made a deliberate choice for this key — pinned it in .env
+     * (locked) or saved a DB override — as opposed to it still riding the config
+     * default? Lets a feature auto-default itself exactly once without ever
+     * overriding an admin's explicit decision (see {@see AsrAutoEnabler}).
+     */
+    public function isExplicitlySet(string $configPath): bool
+    {
+        return $this->isLocked($configPath) || array_key_exists($configPath, $this->overrides());
     }
 
     /**

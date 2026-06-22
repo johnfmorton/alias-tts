@@ -88,7 +88,8 @@ class AsrSpeechServiceTest extends TestCase
 
     public function test_log_mode_flags_a_segment_without_rerolling(): void
     {
-        config(['tts.asr.action' => 'log']);
+        // The API path defaults to 'auto'; opt it into log-only for this case.
+        config(['tts.asr.api_action' => 'log']);
         $provider = $this->countingProvider();
         $speech = $this->speech();
 

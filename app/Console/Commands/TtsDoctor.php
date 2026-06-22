@@ -3,6 +3,7 @@
 namespace App\Console\Commands;
 
 use App\Enums\HealthStatus;
+use App\Services\Asr\AsrAutoEnabler;
 use App\Services\Health\HealthCheckResult;
 use App\Services\Health\HealthReport;
 use Illuminate\Console\Command;
@@ -20,8 +21,14 @@ class TtsDoctor extends Command
 
     protected $description = 'Check that the TTS service is configured correctly (ffmpeg, storage, provider, queue, scheduler)';
 
-    public function handle(HealthReport $report): int
+    public function handle(HealthReport $report, AsrAutoEnabler $asrAutoEnabler): int
     {
+        // "ASR defaults on if available": flip transcript QA on if the sidecar is
+        // reachable and the admin hasn't chosen, so the report below reflects it.
+        if ($asrAutoEnabler->attempt()) {
+            $this->info('ASR transcript QA enabled automatically — the Whisper sidecar is reachable.');
+        }
+
         $results = $report->run((bool) $this->option('deep'));
 
         $this->renderResults($results);

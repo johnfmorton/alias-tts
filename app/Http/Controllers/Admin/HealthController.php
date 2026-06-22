@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Admin;
 use App\Enums\HealthStatus;
 use App\Http\Controllers\Controller;
 use App\Models\Voice;
+use App\Services\Asr\AsrAutoEnabler;
 use App\Services\Health\HealthCheckResult;
 use App\Services\Health\HealthReport;
 use Illuminate\Http\Request;
@@ -12,8 +13,14 @@ use Illuminate\View\View;
 
 class HealthController extends Controller
 {
-    public function index(Request $request, HealthReport $report): View
+    public function index(Request $request, HealthReport $report, AsrAutoEnabler $asrAutoEnabler): View
     {
+        // "ASR defaults on if available": if the Whisper sidecar is reachable and
+        // the admin hasn't chosen, turn QA on now (before the report runs, so it
+        // shows as enabled). Probing only happens on this admin page, never during
+        // generation.
+        $asrAutoEnabled = $asrAutoEnabler->attempt();
+
         // ?deep=1 also makes live calls (validate the Replicate token, probe the
         // queue) — same as `php artisan tts:doctor --deep`.
         $deep = $request->boolean('deep');
@@ -29,6 +36,7 @@ class HealthController extends Controller
             'results' => $results,
             'summary' => $summary,
             'deep' => $deep,
+            'asrAutoEnabled' => $asrAutoEnabled,
             'voices' => Voice::orderBy('name')->get(),
         ]);
     }

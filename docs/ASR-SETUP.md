@@ -148,14 +148,23 @@ sh -c 'ASR_MODEL=base exec /home/forge/<your-site>/asr-sidecar/.venv/bin/uvicorn
 
 ## Enable it in the Laravel app
 
-Add to the site's `.env` (port must match the daemon), then `php artisan config:cache`:
+You usually don't have to: the admin **health page** (and `php artisan tts:doctor`)
+turn transcript QA on automatically the first time they find the sidecar reachable,
+saving it as an editable setting. So once the daemon is up, open **Admin → Health**
+once and ASR flips on. Pin or save a choice yourself and the auto-enable steps aside.
+
+To pin it explicitly instead (port must match the daemon), add to the site's `.env`
+and `php artisan config:cache`:
 
 ```dotenv
 TTS_ASR_ENABLED=true
 TTS_ASR_URL=http://127.0.0.1:8765
 # Start by only recording verdicts (no auto re-roll/trim) so you can watch it
-# against real traffic before it spends Replicate credits regenerating chunks:
+# against real traffic before it spends Replicate credits regenerating chunks.
+# (The unattended /v1 path defaults to auto; set it back to log here too if you
+# want to watch first — see "Per-path policy" below.)
 TTS_ASR_ACTION=log
+TTS_ASR_API_ACTION=log
 ```
 
 Confirm the migration that adds `tts_chunks.asr_score` / `asr_report` has run
@@ -219,17 +228,18 @@ latest take is kept and generation continues.
 
 ### Per-path policy: manual in the Studio, automatic on the API
 
-`TTS_ASR_ACTION` is the shared default, but the two paths can be set independently
-with `TTS_ASR_STUDIO_ACTION` (editable-project / Studio) and `TTS_ASR_API_ACTION`
-(synchronous + queued `/v1`). Either one left unset inherits `TTS_ASR_ACTION`, so
-existing single-value setups are unaffected. The usual production split is **manual
-triage in the Studio, self-healing on the API** — the Studio is interactive (an admin
-watches the per-chunk ASR badge and re-rolls by hand), while the API / full-MP3 path
-is unattended and can't prompt anyone:
+The two paths can be set independently with `TTS_ASR_STUDIO_ACTION` (editable-project
+/ Studio) and `TTS_ASR_API_ACTION` (synchronous + queued `/v1`), and they **default
+differently** to match who is watching. The Studio is interactive — an admin sees the
+per-chunk ASR badge and re-rolls by hand — so it defaults to `log` (it inherits the
+shared `TTS_ASR_ACTION`, which itself defaults to `log`). The unattended API / full-MP3
+path can't prompt anyone, so it defaults to `auto` and self-heals. The block below just
+spells out that out-of-the-box split; set `TTS_ASR_API_ACTION=log` to make the API ship
+flagged takes as-is instead.
 
 ```dotenv
-TTS_ASR_STUDIO_ACTION=log
-TTS_ASR_API_ACTION=auto
+TTS_ASR_STUDIO_ACTION=log   # default (inherits TTS_ASR_ACTION)
+TTS_ASR_API_ACTION=auto     # default
 ```
 
 > **Latency on the synchronous endpoint.** On `POST /v1/text-to-speech/{voice}` the
@@ -241,15 +251,15 @@ TTS_ASR_API_ACTION=auto
 
 | Env var | Default | Meaning |
 |---|---|---|
-| `TTS_ASR_ENABLED` | `false` | Master switch for the whole feature |
+| `TTS_ASR_ENABLED` | `false` | Master switch. Ships off, but the health page / `tts:doctor` flip it on automatically the first time they find the sidecar reachable — unless you pin it in `.env` or save a choice in Settings |
 | `TTS_ASR_URL` | `http://127.0.0.1:8765` | Sidecar base URL |
 | `TTS_ASR_TIMEOUT` | `30` | Per-call timeout (seconds) |
 | `TTS_ASR_LANGUAGE` | `en` | Forced language, or `auto` |
 | `TTS_ASR_DOCS_URL` | *(this guide on GitHub)* | "Setup guide" link shown by the health page / `tts:doctor` |
 | `TTS_ASR_ACTION` | `log` | Shared default: `log` = record verdict only; `auto` = also remediate (see above) |
-| `TTS_ASR_STUDIO_ACTION` | *(inherits `TTS_ASR_ACTION`)* | Per-path override for the Studio / editable-project path |
-| `TTS_ASR_API_ACTION` | *(inherits `TTS_ASR_ACTION`)* | Per-path override for the `/v1` API + queued path |
-| `TTS_ASR_MAX_REROLLS` | `2` | Max re-rolls per chunk when the effective action is `auto` |
+| `TTS_ASR_STUDIO_ACTION` | *(inherits `TTS_ASR_ACTION` ⇒ `log`)* | Per-path override for the Studio / editable-project path |
+| `TTS_ASR_API_ACTION` | `auto` | Per-path override for the `/v1` API + queued path; unattended, so it self-heals by default |
+| `TTS_ASR_MAX_REROLLS` | `3` | Max re-rolls per chunk when the effective action is `auto` |
 | `TTS_ASR_TRAIL_S_MAX` | `1.2` | Audio after the last word above this ⇒ **TAIL** |
 | `TTS_ASR_GAP_S_MAX` | `1.5` | Largest inter-word gap above this ⇒ **PAUSE** |
 | `TTS_ASR_TAIL_COV_MIN` | `0.93` | Transcript must reach this far into the script, else **TRUNC** |

@@ -43,8 +43,9 @@ class AsrClient
 
     /**
      * Remediation policy for the unattended API / synchronous-and-queued path
-     * ({@see SpeechService}). Inherits {@see action()} when
-     * `tts.asr.api_action` is unset (null).
+     * ({@see SpeechService}). Defaults to 'auto' (config/tts.php) so the path with
+     * no human watching a badge self-heals; falls back to {@see action()} only if
+     * the key is explicitly nulled.
      */
     public function apiAction(): string
     {
@@ -54,7 +55,7 @@ class AsrClient
     /** Max automatic re-rolls of a flagged chunk under action=auto. */
     public function maxRerolls(): int
     {
-        return max(0, (int) config('tts.asr.max_rerolls', 2));
+        return max(0, (int) config('tts.asr.max_rerolls', 3));
     }
 
     private function baseUrl(): string
