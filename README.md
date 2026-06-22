@@ -194,6 +194,29 @@ seams, or fixing one sentence in a long piece without regenerating the whole fil
   marked stale so you can see what needs regenerating. (Chunk reordering isn't
   supported yet.)
 
+## Audio quality checks (ASR)
+
+Chatterbox occasionally produces a flawed take — it stops short of the script,
+trails off into a junk/"singing" tail, or hums at a sentence boundary. The DSP
+edge-trim handles obvious tails; for the rest there's an **opt-in ASR (Automatic
+Speech Recognition) quality check** that transcribes each generated chunk with a
+local Whisper sidecar and compares it to the source text, flagging:
+
+- **TRUNC** — the take didn't reach the end of the script (missing content).
+- **TAIL** / **TAILNOISE** — audio after the last word: a long junk/"singing" tail,
+  or a short-but-**loud** "swoosh" that's louder than the speech itself (the energy
+  gate ignores a soft word-ending so it won't clip the last word).
+- **PAUSE** / **BNDNOISE** — a gap mid-stream: a long silent pause, or a tonal
+  **hum** filling a sentence/comma boundary that's too short to read as a pause.
+
+`TAILNOISE` and `BNDNOISE` are **energy-aware** signals: they measure the actual
+loudness (and, for the hum, the low-frequency character) in those zones, catching
+*short-but-loud* defects the duration-based checks miss. Flagged chunks are either
+**logged** (shown as a badge in Studio) or **auto-remediated** — re-rolled with a
+fresh seed for missing content / boundary hums, or precisely trimmed for a junk
+tail. It's **off by default** and degrades safely: if the sidecar is unreachable,
+generation is unaffected. See **[docs/ASR-SETUP.md](docs/ASR-SETUP.md)** to set it up.
+
 ## Commands
 
 ```bash
