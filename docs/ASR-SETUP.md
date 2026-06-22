@@ -9,7 +9,7 @@ Chatterbox failure modes the DSP tail-trim **cannot**:
 | **Truncation** | model stops before finishing the sentence | there is no artifact — the audio just ends short | `tail_cov` (transcript never reaches the end of the script) |
 | **Speech-like / "ghostly singing" tail** | a sung/babbled tail after the words end | it looks like speech (loud, high/variable ZCR) | `trail_s` (audio continues past the last recognized word) |
 | **Mid-stream pause** | a long silent gap mid-chunk | not at the tail | `max_gap_s` (large gap between two words) |
-| **Loud short tail** (`TAILNOISE`) | a brief but loud "swoosh" right after the last word | too **short** to trip `trail_s`, too loud/aperiodic for the DSP tail detector | tail **energy** — peak dBFS past the word's natural release |
+| **Loud short tail** (`TAILNOISE`) | a brief but loud "swoosh" right after the last word | too **short** to trip `trail_s`, too loud/aperiodic for the DSP tail detector | tail **energy** — peak dBFS past the word's natural release, **and louder than the chunk's own speech** |
 | **Boundary hum** (`BNDNOISE`) | a tonal low-frequency hum filling a sentence/comma gap | too **short** to trip `max_gap_s`; genuinely quiet, so energy alone can't see it | boundary-gap **energy + ZCR** — a punctuation-boundary gap that is not-silent **and** low-frequency |
 
 The last two are **energy-aware** signals (added 2026-06-22): the duration-based
@@ -254,7 +254,8 @@ TTS_ASR_API_ACTION=auto
 | `TTS_ASR_GAP_S_MAX` | `1.5` | Largest inter-word gap above this ⇒ **PAUSE** |
 | `TTS_ASR_TAIL_COV_MIN` | `0.93` | Transcript must reach this far into the script, else **TRUNC** |
 | `TTS_ASR_TRIM_GUARD_MS` | `80` | Audio kept after the last word when computing a TAIL/TAILNOISE trim point |
-| `TTS_ASR_TAIL_ENERGY_DBFS_MAX` | `-38` | Tail peak energy (dBFS) above this ⇒ **TAILNOISE** (short-but-loud swoosh) |
+| `TTS_ASR_TAIL_ENERGY_DBFS_MAX` | `-38` | Tail peak energy (dBFS) above this — **and** louder than speech (below) — ⇒ **TAILNOISE** (short-but-loud swoosh) |
+| `TTS_ASR_TAIL_OVER_SPEECH_DB` | `6` | TAILNOISE also requires the tail to be this many dB louder than the chunk's own speech, so a Whisper-under-timed soft word-coda (e.g. the "n" in "2019") isn't clipped. Higher = stricter |
 | `TTS_ASR_TAIL_RELEASE_MS` | `200` | Tail audio skipped before measuring loudness, so a normal word-release isn't flagged |
 | `TTS_ASR_BOUNDARY_GAP_MIN_MS` | `500` | Only inter-word gaps at a sentence/comma boundary at least this long are scrutinized for a hum |
 | `TTS_ASR_BOUNDARY_ENERGY_DBFS_MAX` | `-55` | A boundary gap whose mean energy (dBFS) exceeds this — i.e. not clean silence — is a **BNDNOISE** candidate |
@@ -285,3 +286,10 @@ Sidecar-side env vars (set on the daemon command, not in `.env`):
 - **Verdicts look wrong** — tune the thresholds above. They were validated on
   labeled samples but your voice/pacing may differ; watch `asr_report` on chunks
   (Studio / DB) with `TTS_ASR_ACTION=log` before enabling any automatic action.
+- **A chunk's last word sounds clipped / `TAILNOISE · trimmed` on a clean take** —
+  Whisper-tiny under-times soft final codas (a voiced nasal like the "n" in
+  "2019"→"nineteen" can even return a zero-duration word), so the still-sounding word
+  reads as a loud tail. The fix is the `TTS_ASR_TAIL_OVER_SPEECH_DB` gate (TAILNOISE
+  only fires when the tail is *louder than the chunk's own speech*); if you still see
+  it, **raise** that margin. The `asr_report` records `tail_peak_dbfs` and `speech_dbfs`
+  so you can read the actual gap. (The badge also shows `tail_peak … vs speech …`.)

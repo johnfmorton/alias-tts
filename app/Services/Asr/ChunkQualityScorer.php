@@ -103,8 +103,9 @@ class ChunkQualityScorer
         // Energy-aware signals (only when audio features were supplied). They add
         // scrutiny at the tail and at punctuation boundaries — catching short,
         // loud junk the duration thresholds above sail past.
+        $speechDbfs = $audio !== null && ($audio['speech_dbfs'] ?? null) !== null ? (float) $audio['speech_dbfs'] : null;
         $tailPeakDbfs = $audio !== null ? ($audio['tail_peak_dbfs'] ?? null) : null;
-        if ($tailPeakDbfs !== null && (float) $tailPeakDbfs > (float) config('tts.asr.tail_energy_dbfs_max', -38)) {
+        if ($tailPeakDbfs !== null && $this->isTailNoise((float) $tailPeakDbfs, $speechDbfs)) {
             $problems[] = 'TAILNOISE';
         }
 
@@ -130,7 +131,34 @@ class ChunkQualityScorer
             trimAtMs: $trimAtMs,
             tailPeakDbfs: $tailPeakDbfs !== null ? round((float) $tailPeakDbfs, 1) : null,
             boundaryNoise: $boundaryNoise,
+            speechDbfs: $speechDbfs !== null ? round($speechDbfs, 1) : null,
         );
+    }
+
+    /**
+     * A loud tail is junk (TAILNOISE) only when it is BOTH above an absolute floor
+     * AND louder than the chunk's OWN speech by a margin.
+     *
+     * The relative gate is the guard against a false positive that would DESTROY
+     * content. Whisper systematically UNDER-times a soft final coda — a voiced
+     * nasal like the "n" in "2019"→"nineteen" can even come back as a zero-duration
+     * word — so the real, still-sounding word extends past the release window and
+     * looks like a loud tail; trimming it then clips the word. But a word's own
+     * coda is never louder than the word body, whereas a genuine swoosh artifact is
+     * (the canonical bad take peaked ~9 dB ABOVE speech). Requiring the tail to
+     * exceed the speech level spares the coda while still catching the swoosh.
+     */
+    private function isTailNoise(float $tailPeak, ?float $speech): bool
+    {
+        if ($tailPeak <= (float) config('tts.asr.tail_energy_dbfs_max', -38)) {
+            return false; // absolutely quiet — never act (don't trim quiet chunks)
+        }
+
+        if ($speech === null) {
+            return true; // no speech reference: fall back to the absolute floor
+        }
+
+        return $tailPeak > $speech + (float) config('tts.asr.tail_over_speech_db', 6);
     }
 
     /**

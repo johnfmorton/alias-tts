@@ -44,6 +44,7 @@ class SettingsPageTest extends TestCase
             'tts_asr_trim_guard_ms' => 80,
             'tts_asr_tail_energy_dbfs_max' => -38,
             'tts_asr_tail_release_ms' => 200,
+            'tts_asr_tail_over_speech_db' => 6,
             'tts_asr_boundary_gap_min_ms' => 500,
             'tts_asr_boundary_energy_dbfs_max' => -55,
             'tts_asr_boundary_zcr_max_hz' => 1500,

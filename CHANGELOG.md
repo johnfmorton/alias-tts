@@ -15,7 +15,10 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   QA in 0.11.0 when it shouldn't have.) Two new signals measure the actual energy
   in those zones, aligned to the Whisper word timings: **TAILNOISE** flags a tail
   whose peak loudness — measured past the final word's natural release — exceeds
-  `TTS_ASR_TAIL_ENERGY_DBFS_MAX`, and lossless-trims it; **BNDNOISE** flags a
+  `TTS_ASR_TAIL_ENERGY_DBFS_MAX` **and is louder than the chunk's own speech by
+  `TTS_ASR_TAIL_OVER_SPEECH_DB`** (the relative gate keeps a soft final word-coda
+  that Whisper under-times — e.g. the "n" in "2019"→"nineteen" — from being clipped),
+  and lossless-trims it; **BNDNOISE** flags a
   punctuation-boundary gap that is both not-silent (`TTS_ASR_BOUNDARY_ENERGY_DBFS_MAX`)
   and tonal/low-frequency (`TTS_ASR_BOUNDARY_ZCR_MAX_HZ`) — a hum, distinct from a
   clean breath or normal speech residue — and re-rolls it (the defect is mid-speech,

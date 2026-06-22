@@ -36,6 +36,7 @@ final class ChunkQualityVerdict
         public readonly ?int $trimAtMs,
         public readonly ?float $tailPeakDbfs = null,
         public readonly ?array $boundaryNoise = null,
+        public readonly ?float $speechDbfs = null,
     ) {}
 
     /** @return array<string, mixed> */
@@ -56,6 +57,9 @@ final class ChunkQualityVerdict
         // so existing reports/badges are unaffected.
         if ($this->tailPeakDbfs !== null) {
             $out['tail_peak_dbfs'] = $this->tailPeakDbfs;
+        }
+        if ($this->speechDbfs !== null) {
+            $out['speech_dbfs'] = $this->speechDbfs;
         }
         if ($this->boundaryNoise !== null) {
             $out['boundary_noise'] = $this->boundaryNoise;

@@ -139,6 +139,18 @@ $keys = [
     ],
     [
         'group' => 'asr',
+        'key' => 'tail_over_speech_db',
+        'config' => 'tts.asr.tail_over_speech_db',
+        'env' => 'TTS_ASR_TAIL_OVER_SPEECH_DB',
+        'type' => 'float',
+        'min' => 0,
+        'max' => 40,
+        'advanced' => true,
+        'label' => 'TAILNOISE over-speech margin (dB)',
+        'help' => 'A loud tail is flagged only if it is also this many dB louder than the chunk\'s own speech. Guards against clipping a soft word-ending (e.g. the "n" in "2019") that Whisper under-times. Higher = stricter (fewer trims).',
+    ],
+    [
+        'group' => 'asr',
         'key' => 'boundary_gap_min_ms',
         'config' => 'tts.asr.boundary_gap_min_ms',
         'env' => 'TTS_ASR_BOUNDARY_GAP_MIN_MS',

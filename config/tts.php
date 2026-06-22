@@ -274,7 +274,9 @@ return [
     |
     |   TAILNOISE  a loud "swoosh" right after the last word, too short to trip
     |              trail_s. Peak dBFS in the tail (past the word's natural release)
-    |              above tail_energy_dbfs_max. Lossless-trimmed, never re-rolled.
+    |              above tail_energy_dbfs_max AND louder than the chunk's own speech
+    |              (so a Whisper-under-timed soft word-coda isn't clipped).
+    |              Lossless-trimmed, never re-rolled.
     |   BNDNOISE   a tonal "hum" filling a punctuation-boundary gap that is too
     |              short to trip gap_s. A boundary gap that is both not-silent
     |              (mean dBFS above boundary_energy_dbfs_max) AND low-frequency
@@ -324,11 +326,17 @@ return [
         // and should be re-checked against the prod sidecar (see docs/ASR-SETUP.md).
         'energy_window_ms' => (int) env('TTS_ASR_ENERGY_WINDOW_MS', 50), // analysis window for the tail peak
         // TAILNOISE — a loud tail too short for trail_s. Peak energy in
-        // [last word end + tail_release_ms .. EOF] above tail_energy_dbfs_max is
-        // flagged. The release window skips the natural decay of the final word
-        // so a normal word-release is never mistaken for a swoosh.
+        // [last word end + tail_release_ms .. EOF] is flagged when it is BOTH above
+        // tail_energy_dbfs_max (absolute floor) AND louder than the chunk's own
+        // speech by tail_over_speech_db. The release window skips the natural decay
+        // of the final word; the relative gate is the critical guard against
+        // DESTROYING content — Whisper under-times soft final codas (e.g. the voiced
+        // "n" in "2019"→"nineteen", sometimes a zero-duration word), so the still-
+        // sounding word can read as a loud tail. A word's coda is never louder than
+        // its body, but a real swoosh is (~+9 dB), so the margin separates them.
         'tail_release_ms' => (int) env('TTS_ASR_TAIL_RELEASE_MS', 200),
         'tail_energy_dbfs_max' => (float) env('TTS_ASR_TAIL_ENERGY_DBFS_MAX', -38),
+        'tail_over_speech_db' => (float) env('TTS_ASR_TAIL_OVER_SPEECH_DB', 6),
         // BNDNOISE — a tonal hum filling a punctuation-boundary gap too short for
         // gap_s. A gap that follows sentence/clause punctuation and is at least
         // boundary_gap_min_ms long is flagged when its inset core is BOTH not

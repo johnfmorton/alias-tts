@@ -142,13 +142,14 @@ class ChunkQualityScorerTest extends TestCase
 
     public function test_loud_short_tail_is_flagged_as_tailnoise_and_trimmable(): void
     {
-        // Tail is only 0.6s (under the 1.2s TAIL threshold) but LOUD — a swoosh
-        // the duration signal misses. Energy catches it; it is lossless-trimmable.
+        // Tail is only 0.6s (under the 1.2s TAIL threshold) but LOUD and louder than
+        // the speech — a swoosh the duration signal misses. Lossless-trimmable.
         $words = $this->fluentWords(['hello', 'there', 'friend']); // last word ends 1.2
         $transcript = $this->transcript($words, duration: 1.8);    // trail 0.6 < 1.2
 
         $v = $this->scorer()->score('hello there friend', $transcript, [
-            'tail_peak_dbfs' => -10.0,
+            'speech_dbfs' => -19.0,
+            'tail_peak_dbfs' => -10.0, // +9 dB over speech
             'gaps' => [],
         ]);
 
@@ -157,6 +158,7 @@ class ChunkQualityScorerTest extends TestCase
         $this->assertNotContains('TAIL', $v->problems); // trail_s under threshold
         $this->assertSame(1280, $v->trimAtMs);          // (1.2 + 0.08 guard) * 1000
         $this->assertSame(-10.0, $v->tailPeakDbfs);
+        $this->assertSame(-19.0, $v->speechDbfs);
     }
 
     public function test_quiet_tail_is_not_flagged_as_tailnoise(): void
@@ -165,13 +167,32 @@ class ChunkQualityScorerTest extends TestCase
         $transcript = $this->transcript($words, duration: 1.8);
 
         $v = $this->scorer()->score('hello there friend', $transcript, [
-            'tail_peak_dbfs' => -45.0, // below -38 threshold
+            'speech_dbfs' => -19.0,
+            'tail_peak_dbfs' => -45.0, // below the -38 absolute floor
             'gaps' => [],
         ]);
 
         $this->assertTrue($v->ok);
         $this->assertNotContains('TAILNOISE', $v->problems);
         $this->assertSame(-45.0, $v->tailPeakDbfs);
+    }
+
+    public function test_loud_tail_at_speech_level_is_not_clipped(): void
+    {
+        // Regression: a soft final coda (e.g. the voiced "n" in "2019"→"nineteen")
+        // that Whisper under-times reads as a loud tail ABOVE the absolute floor —
+        // but it is NOT louder than the speech, so it must not be flagged/trimmed.
+        $words = $this->fluentWords(['leave', 'it', 'until', 'twenty', 'nineteen']);
+        $transcript = $this->transcript($words, duration: 2.4); // last word ends 2.0
+
+        $v = $this->scorer()->score('leave it until twenty nineteen', $transcript, [
+            'speech_dbfs' => -17.0,
+            'tail_peak_dbfs' => -18.0, // loud (> -38) but at/under speech level
+            'gaps' => [],
+        ]);
+
+        $this->assertTrue($v->ok, 'a coda at speech level must not be trimmed');
+        $this->assertNotContains('TAILNOISE', $v->problems);
     }
 
     /** A take whose only gap (after a period) is a tonal hum, not silence. */

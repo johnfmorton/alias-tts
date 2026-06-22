@@ -99,7 +99,8 @@ class TtsChunk extends Model
             }
         }
         if (isset($report['tail_peak_dbfs'])) {
-            $detail[] = "tail_peak {$report['tail_peak_dbfs']}dBFS";
+            $speech = isset($report['speech_dbfs']) ? " vs speech {$report['speech_dbfs']}" : '';
+            $detail[] = "tail_peak {$report['tail_peak_dbfs']}dBFS{$speech}";
         }
         if (is_array($report['boundary_noise'] ?? null)) {
             $bn = $report['boundary_noise'];
