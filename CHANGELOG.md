@@ -6,6 +6,27 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.12.2] - 2026-06-22
+
+### Added
+- **ASR transcript QA enables itself when the sidecar is available.** The master
+  switch still ships off, but the admin **Health** page and `php artisan tts:doctor`
+  now turn it on automatically the first time they find the Whisper sidecar
+  reachable, persisting the choice as an editable setting (the Health page shows a
+  notice; `tts:doctor` prints a line). It is a one-shot that never overrides a switch
+  pinned in `.env` or a choice saved in **Settings**, and it probes only on those
+  admin surfaces — never on the generation path.
+
+### Changed
+- **The unattended API path now self-heals by default.** `TTS_ASR_API_ACTION`
+  defaults to `auto` (previously it inherited the shared `TTS_ASR_ACTION`), so a
+  flagged segment on the `/v1` + queued path is re-rolled/trimmed with no human in
+  the loop. The interactive Studio still defaults to `log` — it inherits the shared
+  action — so an admin triages flagged chunks by hand from the per-chunk ASR badge.
+  Set `TTS_ASR_API_ACTION=log` to opt the API back into ship-as-is.
+- **Default maximum automatic re-rolls raised from 2 to 3** (`TTS_ASR_MAX_REROLLS`),
+  biasing toward re-rolling a suspect take rather than shipping it.
+
 ## [0.12.1] - 2026-06-22
 
 ### Added
@@ -529,7 +550,10 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   fixed seed; the response cache guarantees stable output for repeated identical
   requests.
 
-[Unreleased]: https://github.com/johnfmorton/bespoken-tts-service/compare/v0.11.0...HEAD
+[Unreleased]: https://github.com/johnfmorton/bespoken-tts-service/compare/v0.12.2...HEAD
+[0.12.2]: https://github.com/johnfmorton/bespoken-tts-service/compare/v0.12.1...v0.12.2
+[0.12.1]: https://github.com/johnfmorton/bespoken-tts-service/compare/v0.12.0...v0.12.1
+[0.12.0]: https://github.com/johnfmorton/bespoken-tts-service/compare/v0.11.0...v0.12.0
 [0.11.0]: https://github.com/johnfmorton/bespoken-tts-service/compare/v0.10.0...v0.11.0
 [0.10.0]: https://github.com/johnfmorton/bespoken-tts-service/compare/v0.9.3...v0.10.0
 [0.9.3]: https://github.com/johnfmorton/bespoken-tts-service/compare/v0.9.2...v0.9.3
