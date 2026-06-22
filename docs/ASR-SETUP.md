@@ -206,6 +206,21 @@ instead. A **manual** re-roll (the Studio re-roll button) is never auto-remediat
 it always produces exactly one new take. If the sidecar goes down mid-loop, the
 latest take is kept and generation continues.
 
+### Per-path policy: manual in the Studio, automatic on the API
+
+`TTS_ASR_ACTION` is the shared default, but the two paths can be set independently
+with `TTS_ASR_STUDIO_ACTION` (editable-project / Studio) and `TTS_ASR_API_ACTION`
+(synchronous + queued `/v1`). Either one left unset inherits `TTS_ASR_ACTION`, so
+existing single-value setups are unaffected. The usual production split is **manual
+triage in the Studio, self-healing on the API** — the Studio is interactive (an admin
+watches the per-chunk ASR badge and re-rolls by hand), while the API / full-MP3 path
+is unattended and can't prompt anyone:
+
+```dotenv
+TTS_ASR_STUDIO_ACTION=log
+TTS_ASR_API_ACTION=auto
+```
+
 > **Latency on the synchronous endpoint.** On `POST /v1/text-to-speech/{voice}` the
 > QA + any re-rolls run inline before the response, so they add to the request time
 > (bounded by `max_text_length`). For long text prefer the async jobs endpoint
@@ -220,8 +235,10 @@ latest take is kept and generation continues.
 | `TTS_ASR_TIMEOUT` | `30` | Per-call timeout (seconds) |
 | `TTS_ASR_LANGUAGE` | `en` | Forced language, or `auto` |
 | `TTS_ASR_DOCS_URL` | *(this guide on GitHub)* | "Setup guide" link shown by the health page / `tts:doctor` |
-| `TTS_ASR_ACTION` | `log` | `log` = record verdict only; `auto` = also remediate (see above) |
-| `TTS_ASR_MAX_REROLLS` | `2` | Max re-rolls per chunk when `action=auto` |
+| `TTS_ASR_ACTION` | `log` | Shared default: `log` = record verdict only; `auto` = also remediate (see above) |
+| `TTS_ASR_STUDIO_ACTION` | *(inherits `TTS_ASR_ACTION`)* | Per-path override for the Studio / editable-project path |
+| `TTS_ASR_API_ACTION` | *(inherits `TTS_ASR_ACTION`)* | Per-path override for the `/v1` API + queued path |
+| `TTS_ASR_MAX_REROLLS` | `2` | Max re-rolls per chunk when the effective action is `auto` |
 | `TTS_ASR_TRAIL_S_MAX` | `1.2` | Audio after the last word above this ⇒ **TAIL** |
 | `TTS_ASR_GAP_S_MAX` | `1.5` | Largest inter-word gap above this ⇒ **PAUSE** |
 | `TTS_ASR_TAIL_COV_MIN` | `0.93` | Transcript must reach this far into the script, else **TRUNC** |

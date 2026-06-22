@@ -261,6 +261,46 @@ class AsrChunkQaTest extends TestCase
         $this->assertArrayNotHasKey('action', $chunk->asr_report); // scored + logged, not remediated
     }
 
+    public function test_studio_action_log_does_not_remediate_even_when_api_action_is_auto(): void
+    {
+        // The split: the interactive Studio stays manual (badge only) while the API self-heals.
+        config(['tts.asr.studio_action' => 'log', 'tts.asr.api_action' => 'auto', 'tts.asr.max_rerolls' => 2]);
+        $provider = $this->countingProvider();
+        $chunk = $this->firstChunk();
+
+        $partial = implode(' ', array_slice(preg_split('/\s+/', $chunk->text), 0, 3));
+        Http::fake(['asr.test/transcribe' => Http::response($this->fakeTranscript($partial, 8.0))]);
+
+        app(ProjectService::class)->generateChunk($chunk);  // normal generate, not a manual reroll
+        $chunk->refresh();
+
+        $this->assertSame(1, $provider->calls);                     // single take, no auto re-roll
+        $this->assertFalse($chunk->asr_report['ok']);
+        $this->assertArrayNotHasKey('action', $chunk->asr_report);  // scored + logged only
+    }
+
+    public function test_studio_action_auto_overrides_a_global_log(): void
+    {
+        // A scoped studio_action beats the shared `action` default.
+        config(['tts.asr.action' => 'log', 'tts.asr.studio_action' => 'auto', 'tts.asr.max_rerolls' => 2]);
+        $provider = $this->countingProvider();
+        $chunk = $this->firstChunk();
+
+        $partial = implode(' ', array_slice(preg_split('/\s+/', $chunk->text), 0, 3));
+        $endAt = str_word_count($chunk->text) * 0.4;
+        Http::fake([
+            'asr.test/transcribe' => Http::sequence()
+                ->push($this->fakeTranscript($partial, 8.0))
+                ->push($this->fakeTranscript($chunk->text, $endAt + 0.3)),
+        ]);
+
+        app(ProjectService::class)->generateChunk($chunk);
+        $chunk->refresh();
+
+        $this->assertSame(2, $provider->calls);                     // re-rolled despite action=log
+        $this->assertSame('rerolled', $chunk->asr_report['action']);
+    }
+
     public function test_asr_badge_reflects_verdict_and_is_suppressed_when_not_completed(): void
     {
         $chunk = $this->firstChunk();

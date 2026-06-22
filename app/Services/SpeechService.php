@@ -170,11 +170,12 @@ class SpeechService
     /**
      * ASR transcript QA for one synthesized segment — the synchronous/queued
      * path's analogue of {@see ProjectService::generateChunk()}'s per-chunk
-     * check. Logs a flagged segment and, under action=auto, returns a remediated
-     * take (re-roll missing content keeping the best, or precise-trim a junk
-     * tail). The sync path holds no per-segment record, so there is no verdict to
-     * persist — a flagged segment is logged. Degrades safely: a down sidecar
-     * returns the original bytes untouched.
+     * check. Logs a flagged segment and, under api_action=auto, returns a
+     * remediated take (re-roll missing content keeping the best, or precise-trim a
+     * junk tail). This path is unattended (no human to read a badge), so it is the
+     * one you typically set to 'auto'. The sync path holds no per-segment record,
+     * so there is no verdict to persist — a flagged segment is logged. Degrades
+     * safely: a down sidecar returns the original bytes untouched.
      *
      * @param  array<string, mixed>  $providerSettings
      */
@@ -194,7 +195,7 @@ class SpeechService
             'tail_cov' => $verdict->tailCov,
         ]);
 
-        if ($this->asr->action() !== 'auto') {
+        if ($this->asr->apiAction() !== 'auto') {
             return $bytes;
         }
 

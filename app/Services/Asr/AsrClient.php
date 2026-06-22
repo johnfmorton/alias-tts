@@ -2,6 +2,8 @@
 
 namespace App\Services\Asr;
 
+use App\Services\ProjectService;
+use App\Services\SpeechService;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
 use Throwable;
@@ -19,10 +21,34 @@ class AsrClient
         return (bool) config('tts.asr.enabled', false);
     }
 
-    /** Remediation policy when a chunk is flagged: 'log' (record only) or 'auto'. */
+    /**
+     * Shared remediation policy when a chunk is flagged: 'log' (record only) or
+     * 'auto'. The default for both generation paths; each can override it via
+     * {@see studioAction()} / {@see apiAction()}.
+     */
     public function action(): string
     {
         return (string) config('tts.asr.action', 'log');
+    }
+
+    /**
+     * Remediation policy for the interactive Studio / editable-project path
+     * ({@see ProjectService}). Inherits {@see action()} when
+     * `tts.asr.studio_action` is unset (null).
+     */
+    public function studioAction(): string
+    {
+        return (string) (config('tts.asr.studio_action') ?? $this->action());
+    }
+
+    /**
+     * Remediation policy for the unattended API / synchronous-and-queued path
+     * ({@see SpeechService}). Inherits {@see action()} when
+     * `tts.asr.api_action` is unset (null).
+     */
+    public function apiAction(): string
+    {
+        return (string) (config('tts.asr.api_action') ?? $this->action());
     }
 
     /** Max automatic re-rolls of a flagged chunk under action=auto. */

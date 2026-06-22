@@ -217,9 +217,11 @@ class ProjectService
                             'tail_cov' => $verdict->tailCov,
                         ]);
 
-                        // action=auto remediates; a MANUAL reroll never auto-rerolls
-                        // again (the user asked for exactly one new take).
-                        if (! $reroll && $this->asr->action() === 'auto') {
+                        // studio_action=auto remediates; a MANUAL reroll never
+                        // auto-rerolls again (the user asked for exactly one new
+                        // take). The Studio path is interactive, so this usually
+                        // stays 'log' — the admin re-rolls from the per-chunk badge.
+                        if (! $reroll && $this->asr->studioAction() === 'auto') {
                             $this->autoRemediate($chunk, $bytes, $verdict);
                         }
                     }

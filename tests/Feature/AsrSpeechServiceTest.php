@@ -138,6 +138,44 @@ class AsrSpeechServiceTest extends TestCase
         $this->assertSame(SpeechStatus::Completed, $speech->refresh()->status);
     }
 
+    public function test_api_action_auto_rerolls_even_when_studio_action_is_log(): void
+    {
+        // The split: the unattended API self-heals even while the Studio stays manual.
+        config(['tts.asr.studio_action' => 'log', 'tts.asr.api_action' => 'auto', 'tts.asr.max_rerolls' => 2]);
+        $provider = $this->countingProvider();
+        $speech = $this->speech();
+
+        $partial = implode(' ', array_slice(preg_split('/\s+/', $speech->text), 0, 3));
+        $endAt = str_word_count($speech->text) * 0.4;
+
+        Http::fake([
+            'asr.test/transcribe' => Http::sequence()
+                ->push($this->transcript($partial, 8.0))                // first take truncates
+                ->push($this->transcript($speech->text, $endAt + 0.3)), // re-roll is clean
+        ]);
+
+        app(SpeechService::class)->process($speech);
+
+        $this->assertSame(2, $provider->calls);  // API re-rolled despite studio_action=log
+        $this->assertSame(SpeechStatus::Completed, $speech->refresh()->status);
+    }
+
+    public function test_api_action_log_overrides_a_global_auto(): void
+    {
+        // A scoped api_action beats the shared `action` default.
+        config(['tts.asr.action' => 'auto', 'tts.asr.api_action' => 'log']);
+        $provider = $this->countingProvider();
+        $speech = $this->speech();
+
+        $partial = implode(' ', array_slice(preg_split('/\s+/', $speech->text), 0, 3));
+        Http::fake(['asr.test/transcribe' => Http::response($this->transcript($partial, 8.0))]);
+
+        app(SpeechService::class)->process($speech);
+
+        $this->assertSame(1, $provider->calls);  // not re-rolled — api_action=log wins
+        $this->assertSame(SpeechStatus::Completed, $speech->refresh()->status);
+    }
+
     public function test_unreachable_sidecar_does_not_break_generation(): void
     {
         config(['tts.asr.action' => 'auto']);

@@ -287,7 +287,16 @@ return [
         // verdict: re-roll TRUNC/PAUSE/NOSPEECH (fresh seed, up to max_rerolls,
         // keeping the best-coverage take) and precise-trim a TAIL-only chunk at
         // the ASR speech end (no Replicate call). Any other value behaves as 'log'.
+        //
+        // `action` is the shared default. The two generation paths can override it
+        // independently: the Studio (editable projects) is interactive — an admin
+        // sees the per-chunk ASR badge and decides when to re-roll — so it usually
+        // wants 'log'; the API / full-MP3 path is unattended and cannot prompt a
+        // human, so it usually wants 'auto' to self-heal. Leave studio_action /
+        // api_action unset (null) to inherit `action` — fully backward compatible.
         'action' => env('TTS_ASR_ACTION', 'log'),
+        'studio_action' => env('TTS_ASR_STUDIO_ACTION'), // null ⇒ inherit `action`
+        'api_action' => env('TTS_ASR_API_ACTION'),       // null ⇒ inherit `action`
         'max_rerolls' => (int) env('TTS_ASR_MAX_REROLLS', 2),
         // Detection thresholds.
         'trail_s_max' => (float) env('TTS_ASR_TRAIL_S_MAX', 1.2),
