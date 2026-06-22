@@ -6,6 +6,8 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.12.0] - 2026-06-22
+
 ### Added
 - **Energy-aware ASR scrutiny at the tail and at sentence/comma boundaries
   (`TAILNOISE` / `BNDNOISE`).** The existing ASR signals are duration-based
@@ -26,6 +28,18 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   thresholds are configurable in `.env` and the admin Settings page. Validated on the
   labeled corpus; the boundary thresholds are conservative and should be re-checked
   against the production sidecar. See docs/ASR-SETUP.md.
+
+  The tail trim is verified not to clip soft word-endings: validated end-to-end against
+  recovered untrimmed Replicate originals (takes ending in "2019"→"nineteen", whose
+  voiced nasal Whisper under-times), the relative gate spares the real word while still
+  catching a genuine swoosh.
+
+### Changed
+- **Clearer `AdminSeeder` guidance when `ADMIN_EMAIL` / `ADMIN_PASSWORD` aren't
+  readable.** On production the config is usually cached (e.g. `artisan optimize` on
+  deploy), so `env()` returns null outside config files and the seeder silently
+  skipped. The skip message now explains this and points to `php artisan admin:create`,
+  which doesn't depend on `env()` / cached config and works on production.
 
 ## [0.11.0] - 2026-06-21
 
