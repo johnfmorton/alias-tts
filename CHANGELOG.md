@@ -6,6 +6,19 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.12.1] - 2026-06-22
+
+### Added
+- **In-Studio explanation of the ASR badges.** The Studio project page now explains
+  the per-chunk ASR badges — expanding "ASR (Automatic Speech Recognition)" and
+  describing each state (`TRUNC` / `TAIL` / `TAILNOISE` / `PAUSE` / `BNDNOISE`) — so the
+  feature isn't unexplained on the page. Shown only when ASR is enabled.
+
+### Changed
+- **README + package metadata.** Documented the opt-in ASR quality check and the
+  energy-aware `TAILNOISE` / `BNDNOISE` signals in the README, and replaced the
+  Laravel-skeleton `composer.json` name/description/keywords with this project's own.
+
 ## [0.12.0] - 2026-06-22
 
 ### Added
