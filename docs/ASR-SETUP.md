@@ -9,6 +9,15 @@ Chatterbox failure modes the DSP tail-trim **cannot**:
 | **Truncation** | model stops before finishing the sentence | there is no artifact — the audio just ends short | `tail_cov` (transcript never reaches the end of the script) |
 | **Speech-like / "ghostly singing" tail** | a sung/babbled tail after the words end | it looks like speech (loud, high/variable ZCR) | `trail_s` (audio continues past the last recognized word) |
 | **Mid-stream pause** | a long silent gap mid-chunk | not at the tail | `max_gap_s` (large gap between two words) |
+| **Loud short tail** (`TAILNOISE`) | a brief but loud "swoosh" right after the last word | too **short** to trip `trail_s`, too loud/aperiodic for the DSP tail detector | tail **energy** — peak dBFS past the word's natural release |
+| **Boundary hum** (`BNDNOISE`) | a tonal low-frequency hum filling a sentence/comma gap | too **short** to trip `max_gap_s`; genuinely quiet, so energy alone can't see it | boundary-gap **energy + ZCR** — a punctuation-boundary gap that is not-silent **and** low-frequency |
+
+The last two are **energy-aware** signals (added 2026-06-22): the duration-based
+signals above measure *how long* the dead zones are, but Chatterbox anomalies
+cluster at the **tail** and at **sentence/comma boundaries** as *short-but-loud*
+junk that sails through a time threshold. These measure the actual dBFS in those
+zones, aligned to the Whisper word timings. Validated on a labeled corpus; the
+boundary thresholds are deliberately conservative (re-check on the prod sidecar).
 
 The feature is **off by default** and degrades safely: if the sidecar is
 disabled or unreachable, generation is completely unaffected.
@@ -191,13 +200,15 @@ Once you trust the verdicts, switch from `log` to `auto` and the service acts on
 flagged chunk/segment during generation — on **both** the editable-project path
 (Studio) and the synchronous / queued `/v1` path (the API + Bespoken plugin):
 
-- **TRUNC / PAUSE / NOSPEECH** (missing content) → **re-roll** the chunk with a fresh
-  random seed, up to `TTS_ASR_MAX_REROLLS` times, keeping the take with the best
-  transcript coverage and stopping early on the first clean one. Each re-roll is a
-  real Replicate call.
-- **TAIL only** (junk/"singing" tail, full coverage) → **precise-trim** at the ASR
-  speech end. No Replicate call, and it catches the speech-like tails the DSP trim
-  can't. (If a re-rolled take ends up TAIL-only, it's trimmed too.)
+- **TRUNC / PAUSE / NOSPEECH / BNDNOISE** (missing/garbled content, or a mid-stream
+  boundary hum) → **re-roll** the chunk with a fresh random seed, up to
+  `TTS_ASR_MAX_REROLLS` times, keeping the take with the best transcript coverage and
+  stopping early on the first clean one. Each re-roll is a real Replicate call.
+  `BNDNOISE` is re-rolled (not trimmed) because the hum sits *inside* the speech.
+- **TAIL / TAILNOISE only** (junk/"singing"/loud tail, full coverage) → **precise-trim**
+  at the ASR speech end. No Replicate call, and it catches the speech-like and
+  short-but-loud tails the DSP trim can't. (If a re-rolled take ends up tail-only,
+  it's trimmed too.)
 
 On the project path the action taken is recorded in the chunk's `asr_report`
 (`action` = `rerolled` / `rerolled_unrecovered` / `trimmed` / `trim_failed`); the
@@ -242,7 +253,14 @@ TTS_ASR_API_ACTION=auto
 | `TTS_ASR_TRAIL_S_MAX` | `1.2` | Audio after the last word above this ⇒ **TAIL** |
 | `TTS_ASR_GAP_S_MAX` | `1.5` | Largest inter-word gap above this ⇒ **PAUSE** |
 | `TTS_ASR_TAIL_COV_MIN` | `0.93` | Transcript must reach this far into the script, else **TRUNC** |
-| `TTS_ASR_TRIM_GUARD_MS` | `80` | Audio kept after the last word when computing a TAIL trim point |
+| `TTS_ASR_TRIM_GUARD_MS` | `80` | Audio kept after the last word when computing a TAIL/TAILNOISE trim point |
+| `TTS_ASR_TAIL_ENERGY_DBFS_MAX` | `-38` | Tail peak energy (dBFS) above this ⇒ **TAILNOISE** (short-but-loud swoosh) |
+| `TTS_ASR_TAIL_RELEASE_MS` | `200` | Tail audio skipped before measuring loudness, so a normal word-release isn't flagged |
+| `TTS_ASR_BOUNDARY_GAP_MIN_MS` | `500` | Only inter-word gaps at a sentence/comma boundary at least this long are scrutinized for a hum |
+| `TTS_ASR_BOUNDARY_ENERGY_DBFS_MAX` | `-55` | A boundary gap whose mean energy (dBFS) exceeds this — i.e. not clean silence — is a **BNDNOISE** candidate |
+| `TTS_ASR_BOUNDARY_ZCR_MAX_HZ` | `1500` | …and whose ZCR is below this (tonal/low-frequency, a hum, not broadband speech) ⇒ **BNDNOISE** |
+| `TTS_ASR_BOUNDARY_GAP_INSET_MS` | `100` | Trim each gap end before measuring (drops the adjacent words' onset/decay) |
+| `TTS_ASR_ENERGY_WINDOW_MS` | `50` | Analysis window for the tail-peak measurement |
 
 Sidecar-side env vars (set on the daemon command, not in `.env`):
 `ASR_MODEL` (`tiny`), `ASR_DEVICE` (`cpu`), `ASR_COMPUTE_TYPE` (`int8`),

@@ -6,6 +6,24 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Added
+- **Energy-aware ASR scrutiny at the tail and at sentence/comma boundaries
+  (`TAILNOISE` / `BNDNOISE`).** The existing ASR signals are duration-based
+  (`trail_s` / `max_gap_s`), so a *short but loud* defect sails through — a brief
+  tail "swoosh" under the TAIL time threshold, or a tonal hum filling a
+  punctuation-boundary gap under the PAUSE threshold. (A bad take with both passed
+  QA in 0.11.0 when it shouldn't have.) Two new signals measure the actual energy
+  in those zones, aligned to the Whisper word timings: **TAILNOISE** flags a tail
+  whose peak loudness — measured past the final word's natural release — exceeds
+  `TTS_ASR_TAIL_ENERGY_DBFS_MAX`, and lossless-trims it; **BNDNOISE** flags a
+  punctuation-boundary gap that is both not-silent (`TTS_ASR_BOUNDARY_ENERGY_DBFS_MAX`)
+  and tonal/low-frequency (`TTS_ASR_BOUNDARY_ZCR_MAX_HZ`) — a hum, distinct from a
+  clean breath or normal speech residue — and re-rolls it (the defect is mid-speech,
+  so it can't be trimmed). Both are off unless ASR QA is enabled and degrade safely;
+  thresholds are configurable in `.env` and the admin Settings page. Validated on the
+  labeled corpus; the boundary thresholds are conservative and should be re-checked
+  against the production sidecar. See docs/ASR-SETUP.md.
+
 ## [0.11.0] - 2026-06-21
 
 ### Added

@@ -238,6 +238,92 @@ class AudioConverterTest extends TestCase
         $this->assertGreaterThan(2.0, $seconds, 'Without voicing, the loud noise tail survives.');
     }
 
+    public function test_analyze_chunk_energy_measures_loud_tail_and_tonal_boundary_gap(): void
+    {
+        config([
+            'tts.asr.energy_window_ms' => 50,
+            'tts.asr.tail_release_ms' => 150,
+            'tts.asr.boundary_gap_min_ms' => 500,
+            'tts.asr.boundary_gap_inset_ms' => 100,
+        ]);
+
+        $rate = 44100;
+        $samples = '';
+        $tone = function (float $secs, int $amp, float $freq) use (&$samples, $rate): void {
+            $n = (int) ($rate * $secs);
+            for ($i = 0; $i < $n; $i++) {
+                $samples .= pack('v', ((int) ($amp * sin(2 * M_PI * $freq * $i / $rate))) & 0xFFFF);
+            }
+        };
+
+        // word "alpha." | tonal hum gap | word "beta" | loud swoosh tail
+        $tone(0.60, 8000, 220.0);   // speech 1            (~ -12 dBFS)
+        $tone(0.90, 280, 110.0);    // low-freq hum gap    (~ -42 dBFS, ZCR ~220 Hz)
+        $tone(0.60, 8000, 220.0);   // speech 2
+        $tone(0.30, 9000, 300.0);   // loud tail "swoosh"  (~ -11 dBFS)
+
+        $wav = 'RIFF'.pack('V', 36 + strlen($samples)).'WAVE'
+            .'fmt '.pack('V', 16).pack('v', 1).pack('v', 1)
+            .pack('V', $rate).pack('V', $rate * 2).pack('v', 2).pack('v', 16)
+            .'data'.pack('V', strlen($samples)).$samples;
+
+        $words = [
+            ['word' => 'alpha.', 'start' => 0.0, 'end' => 0.6],
+            ['word' => 'beta', 'start' => 1.5, 'end' => 2.1],
+        ];
+
+        $features = (new AudioConverter)->analyzeChunkEnergy($wav, $words, duration: 2.4);
+
+        // Tail: loud, well above the -38 dBFS TAILNOISE threshold.
+        $this->assertNotNull($features['tail_peak_dbfs']);
+        $this->assertGreaterThan(-20.0, $features['tail_peak_dbfs']);
+
+        // The 0.9s gap after "alpha." is measured: elevated energy + low ZCR (a hum).
+        $this->assertArrayHasKey(0, $features['gaps']);
+        $gap = $features['gaps'][0];
+        $this->assertEqualsWithDelta(0.9, $gap['dur_s'], 0.01);
+        $this->assertGreaterThan(-55.0, $gap['mean_dbfs']);   // not silent
+        $this->assertLessThan(-30.0, $gap['mean_dbfs']);      // but well below speech
+        $this->assertLessThan(1500.0, $gap['zcr_hz']);        // tonal / low-frequency
+    }
+
+    public function test_analyze_chunk_energy_ignores_short_gaps_and_a_clean_tail(): void
+    {
+        config([
+            'tts.asr.tail_release_ms' => 150,
+            'tts.asr.boundary_gap_min_ms' => 500,
+        ]);
+
+        $rate = 44100;
+        $samples = '';
+        $tone = function (float $secs, int $amp, float $freq) use (&$samples, $rate): void {
+            $n = (int) ($rate * $secs);
+            for ($i = 0; $i < $n; $i++) {
+                $samples .= pack('v', ((int) ($amp * sin(2 * M_PI * $freq * $i / $rate))) & 0xFFFF);
+            }
+        };
+
+        $tone(0.60, 8000, 220.0);  // speech 1
+        $tone(0.20, 0, 0.0);       // short 0.2s gap (< 500ms ⇒ not measured)
+        $tone(0.60, 8000, 220.0);  // speech 2 — last word ends here
+        $tone(0.40, 0, 0.0);       // silent tail
+
+        $wav = 'RIFF'.pack('V', 36 + strlen($samples)).'WAVE'
+            .'fmt '.pack('V', 16).pack('v', 1).pack('v', 1)
+            .pack('V', $rate).pack('V', $rate * 2).pack('v', 2).pack('v', 16)
+            .'data'.pack('V', strlen($samples)).$samples;
+
+        $words = [
+            ['word' => 'alpha.', 'start' => 0.0, 'end' => 0.6],
+            ['word' => 'beta', 'start' => 0.8, 'end' => 1.4],
+        ];
+
+        $features = (new AudioConverter)->analyzeChunkEnergy($wav, $words, duration: 1.8);
+
+        $this->assertSame([], $features['gaps']);                 // gap too short to inspect
+        $this->assertLessThan(-38.0, $features['tail_peak_dbfs']); // silent tail, below threshold
+    }
+
     /** Broadband noise PCM (high ZCR) — a stand-in for real speech. */
     private function noiseWav(float $seconds, int $amp): string
     {

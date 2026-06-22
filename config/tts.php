@@ -268,6 +268,18 @@ return [
     |   gap_s     largest gap between consecutive words             (> max ⇒ PAUSE)
     |   tail_cov  how far into the script the transcript reached    (< min ⇒ TRUNC)
     |
+    | Two further ENERGY-aware signals add extra scrutiny at the two zones where
+    | Chatterbox anomalies cluster — the tail and sentence/comma boundaries —
+    | catching SHORT-but-LOUD junk the duration signals above miss:
+    |
+    |   TAILNOISE  a loud "swoosh" right after the last word, too short to trip
+    |              trail_s. Peak dBFS in the tail (past the word's natural release)
+    |              above tail_energy_dbfs_max. Lossless-trimmed, never re-rolled.
+    |   BNDNOISE   a tonal "hum" filling a punctuation-boundary gap that is too
+    |              short to trip gap_s. A boundary gap that is both not-silent
+    |              (mean dBFS above boundary_energy_dbfs_max) AND low-frequency
+    |              (ZCR below boundary_zcr_max_hz). Mid-stream ⇒ re-rolled.
+    |
     | `action` controls what happens on a bad verdict. Start at 'log' (record the
     | score/verdict on the chunk, take NO action) to watch it against real
     | traffic, then move to 'auto' to re-roll/trim. The sidecar is off-by-default
@@ -302,8 +314,31 @@ return [
         'trail_s_max' => (float) env('TTS_ASR_TRAIL_S_MAX', 1.2),
         'gap_s_max' => (float) env('TTS_ASR_GAP_S_MAX', 1.5),
         'tail_cov_min' => (float) env('TTS_ASR_TAIL_COV_MIN', 0.93),
-        // Kept after the last recognized word when computing a TAIL trim point.
+        // Kept after the last recognized word when computing a TAIL/TAILNOISE
+        // trim point.
         'trim_guard_ms' => (int) env('TTS_ASR_TRIM_GUARD_MS', 80),
+
+        // ── Energy-aware scrutiny (TAILNOISE / BNDNOISE). Measured in dBFS from
+        // the chunk WAV, aligned to the Whisper word timings. Validated on a
+        // labeled corpus; the boundary thresholds are deliberately conservative
+        // and should be re-checked against the prod sidecar (see docs/ASR-SETUP.md).
+        'energy_window_ms' => (int) env('TTS_ASR_ENERGY_WINDOW_MS', 50), // analysis window for the tail peak
+        // TAILNOISE — a loud tail too short for trail_s. Peak energy in
+        // [last word end + tail_release_ms .. EOF] above tail_energy_dbfs_max is
+        // flagged. The release window skips the natural decay of the final word
+        // so a normal word-release is never mistaken for a swoosh.
+        'tail_release_ms' => (int) env('TTS_ASR_TAIL_RELEASE_MS', 200),
+        'tail_energy_dbfs_max' => (float) env('TTS_ASR_TAIL_ENERGY_DBFS_MAX', -38),
+        // BNDNOISE — a tonal hum filling a punctuation-boundary gap too short for
+        // gap_s. A gap that follows sentence/clause punctuation and is at least
+        // boundary_gap_min_ms long is flagged when its inset core is BOTH not
+        // silent (mean dBFS above boundary_energy_dbfs_max) AND tonal/low-freq
+        // (ZCR below boundary_zcr_max_hz) — distinguishing a hum from a clean
+        // breath (silent) or speech residue (broadband, high ZCR).
+        'boundary_gap_min_ms' => (int) env('TTS_ASR_BOUNDARY_GAP_MIN_MS', 500),
+        'boundary_gap_inset_ms' => (int) env('TTS_ASR_BOUNDARY_GAP_INSET_MS', 100), // trim each gap end before measuring
+        'boundary_energy_dbfs_max' => (float) env('TTS_ASR_BOUNDARY_ENERGY_DBFS_MAX', -55),
+        'boundary_zcr_max_hz' => (float) env('TTS_ASR_BOUNDARY_ZCR_MAX_HZ', 1500),
     ],
 
     /*

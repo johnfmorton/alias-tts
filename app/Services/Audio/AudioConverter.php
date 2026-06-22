@@ -207,6 +207,90 @@ class AudioConverter
     }
 
     /**
+     * Energy profile of a generated chunk, aligned to the Whisper word timings,
+     * for the ASR scorer's energy-aware signals (TAILNOISE / BNDNOISE). Pure
+     * measurement — reads the WAV's PCM directly, no ffmpeg. All levels are dBFS
+     * (full scale = 32768), so they are directly comparable to the labeled-corpus
+     * thresholds in config (see docs/ASR-SETUP.md):
+     *
+     *   speech_dbfs     RMS across [first word start .. last word end] — the
+     *                   chunk's own speech reference level.
+     *   tail_peak_dbfs  loudest energy_window in [last word end + tail_release ..
+     *                   EOF], or null when there is no measurable tail. A SHORT
+     *                   but loud value is a swoosh the trail_s duration signal misses.
+     *   gaps            for every inter-word gap i (between words[i] and words[i+1])
+     *                   at least boundary_gap_min_ms long: its duration, the mean
+     *                   dBFS of its inset core, and that core's zero-crossing rate
+     *                   (Hz). The scorer decides which gaps sit at a punctuation
+     *                   boundary and whether the core reads as a tonal hum.
+     *
+     * Assumes mono 16-bit PCM (the raw provider chunk). Returns empty features for
+     * an unsupported/missing container so the scorer simply skips the energy
+     * signals (the duration signals still apply).
+     *
+     * @param  array<int, array{word?: string, start?: float, end?: float}>  $words  Whisper words, in order
+     * @return array{speech_dbfs: float|null, tail_peak_dbfs: float|null, gaps: array<int, array{dur_s: float, mean_dbfs: float, zcr_hz: float}>}
+     */
+    public function analyzeChunkEnergy(string $wav, array $words, float $duration): array
+    {
+        $empty = ['speech_dbfs' => null, 'tail_peak_dbfs' => null, 'gaps' => []];
+
+        $offset = $this->wavDataOffset($wav);
+        $rate = $this->wavSampleRate($wav);
+        $words = array_values($words);
+        if ($offset === null || $rate === null || $rate <= 0 || $words === []) {
+            return $empty;
+        }
+
+        $totalSamples = intdiv(strlen($wav) - $offset, 2);
+        if ($totalSamples <= 0) {
+            return $empty;
+        }
+
+        $windowSec = max(1, (int) config('tts.asr.energy_window_ms', 50)) / 1000;
+        $releaseSec = max(0, (int) config('tts.asr.tail_release_ms', 200)) / 1000;
+        $gapMinSec = max(0, (int) config('tts.asr.boundary_gap_min_ms', 500)) / 1000;
+        $gapInsetSec = max(0, (int) config('tts.asr.boundary_gap_inset_ms', 100)) / 1000;
+
+        $firstStart = (float) ($words[0]['start'] ?? 0.0);
+        $lastEnd = (float) ($words[count($words) - 1]['end'] ?? 0.0);
+
+        // Speech reference: RMS across the recognized span.
+        $speechDb = $this->spanRmsDbfs($wav, $offset, $rate, $totalSamples, $firstStart, $lastEnd);
+
+        // Tail: loudest window past the final word's natural release.
+        $tailPeak = $this->windowPeakDbfs($wav, $offset, $rate, $totalSamples, $lastEnd + $releaseSec, $duration, $windowSec);
+
+        // Per-gap energy + ZCR for gaps long enough to hold a real boundary pause.
+        $gaps = [];
+        for ($i = 0, $n = count($words) - 1; $i < $n; $i++) {
+            $gapStart = (float) ($words[$i]['end'] ?? 0.0);
+            $gapEnd = (float) ($words[$i + 1]['start'] ?? 0.0);
+            $gapLen = $gapEnd - $gapStart;
+            if ($gapLen < $gapMinSec) {
+                continue;
+            }
+
+            $core = $this->coreRmsAndZcr($wav, $offset, $rate, $totalSamples, $gapStart + $gapInsetSec, $gapEnd - $gapInsetSec);
+            if ($core === null) {
+                continue;
+            }
+
+            $gaps[$i] = [
+                'dur_s' => round($gapLen, 3),
+                'mean_dbfs' => round($core['dbfs'], 1),
+                'zcr_hz' => round($core['zcr_hz'], 0),
+            ];
+        }
+
+        return [
+            'speech_dbfs' => $speechDb,
+            'tail_peak_dbfs' => $tailPeak,
+            'gaps' => $gaps,
+        ];
+    }
+
+    /**
      * Trim leading/trailing silence and Chatterbox's trailing noise tail from a
      * chunk, fade its edges, and return mono pcm_s16le WAV at $rate. Falls back
      * to a straight transcode (never empty) when trimming would remove
@@ -599,6 +683,144 @@ class AudioConverter
         }
 
         return sqrt($var / $n) / $mean;
+    }
+
+    /**
+     * Sample rate from a WAV's `fmt ` chunk, or null if absent. Walks the chunk
+     * list (like {@see wavDataOffset}) so extra chunks are tolerated.
+     */
+    private function wavSampleRate(string $wav): ?int
+    {
+        $pos = 12; // skip 'RIFF' <size> 'WAVE'
+        $len = strlen($wav);
+        while ($pos + 8 <= $len) {
+            $id = substr($wav, $pos, 4);
+            $size = unpack('V', substr($wav, $pos + 4, 4))[1];
+            // fmt body: audioFormat(2) channels(2) sampleRate(4) ...
+            if ($id === 'fmt ' && $pos + 8 + 8 <= $len) {
+                return (int) unpack('V', substr($wav, $pos + 8 + 4, 4))[1];
+            }
+            $pos += 8 + $size + ($size & 1); // chunks are word-aligned
+        }
+
+        return null;
+    }
+
+    /**
+     * Read mono 16-bit samples in [$t0, $t1) seconds, clamped to the data chunk.
+     * Returns null when the span is empty/out of range.
+     *
+     * @return list<int>|null
+     */
+    private function readSamples(string $wav, int $offset, int $rate, int $totalSamples, float $t0, float $t1): ?array
+    {
+        $i0 = max(0, (int) floor($t0 * $rate));
+        $i1 = min($totalSamples, (int) ceil($t1 * $rate));
+        if ($i1 - $i0 < 1) {
+            return null;
+        }
+
+        $samples = unpack('s*', substr($wav, $offset + $i0 * 2, ($i1 - $i0) * 2));
+
+        return $samples === false ? null : array_values($samples);
+    }
+
+    /** RMS of a sample buffer as dBFS (full scale 32768); -120 for digital silence. */
+    private function samplesDbfs(array $samples): float
+    {
+        $n = count($samples);
+        if ($n === 0) {
+            return -120.0;
+        }
+
+        $sumSq = 0.0;
+        foreach ($samples as $s) {
+            $sumSq += $s * $s;
+        }
+        $rms = sqrt($sumSq / $n);
+
+        return $rms > 0 ? 20 * log10($rms / 32768) : -120.0;
+    }
+
+    /** RMS dBFS across [$t0, $t1), or null when the span is empty. */
+    private function spanRmsDbfs(string $wav, int $offset, int $rate, int $totalSamples, float $t0, float $t1): ?float
+    {
+        $samples = $this->readSamples($wav, $offset, $rate, $totalSamples, $t0, $t1);
+
+        return $samples === null ? null : round($this->samplesDbfs($samples), 1);
+    }
+
+    /**
+     * Loudest $windowSec window (dBFS) in [$t0, $t1), hopping by half a window, or
+     * null when the span is empty. Spans shorter than one window are measured whole.
+     */
+    private function windowPeakDbfs(string $wav, int $offset, int $rate, int $totalSamples, float $t0, float $t1, float $windowSec): ?float
+    {
+        $samples = $this->readSamples($wav, $offset, $rate, $totalSamples, $t0, $t1);
+        if ($samples === null) {
+            return null;
+        }
+
+        $win = max(1, (int) round($rate * $windowSec));
+        $n = count($samples);
+        if ($n < $win) {
+            return round($this->samplesDbfs($samples), 1);
+        }
+
+        $hop = max(1, intdiv($win, 2));
+        $peak = -INF;
+        for ($i = 0; $i + $win <= $n; $i += $hop) {
+            $sumSq = 0.0;
+            for ($k = $i, $end = $i + $win; $k < $end; $k++) {
+                $sumSq += $samples[$k] * $samples[$k];
+            }
+            $rms = sqrt($sumSq / $win);
+            $db = $rms > 0 ? 20 * log10($rms / 32768) : -120.0;
+            if ($db > $peak) {
+                $peak = $db;
+            }
+        }
+
+        return round($peak, 1);
+    }
+
+    /**
+     * Mean dBFS and zero-crossing rate (crossings/sec, on the DC-removed signal)
+     * of [$t0, $t1). ZCR separates a tonal/low-frequency hum (low ZCR) from
+     * broadband speech residue (high ZCR). Returns null when the span is too short.
+     *
+     * @return array{dbfs: float, zcr_hz: float}|null
+     */
+    private function coreRmsAndZcr(string $wav, int $offset, int $rate, int $totalSamples, float $t0, float $t1): ?array
+    {
+        $samples = $this->readSamples($wav, $offset, $rate, $totalSamples, $t0, $t1);
+        if ($samples === null || count($samples) < 2) {
+            return null;
+        }
+
+        $n = count($samples);
+        $mean = array_sum($samples) / $n;
+
+        $sumSq = 0.0;
+        $crossings = 0;
+        $prev = $samples[0] - $mean;
+        for ($k = 0; $k < $n; $k++) {
+            $sumSq += $samples[$k] * $samples[$k];
+            if ($k > 0) {
+                $cur = $samples[$k] - $mean;
+                if (($cur < 0) !== ($prev < 0)) {
+                    $crossings++;
+                }
+                $prev = $cur;
+            }
+        }
+
+        $rms = sqrt($sumSq / $n);
+
+        return [
+            'dbfs' => $rms > 0 ? 20 * log10($rms / 32768) : -120.0,
+            'zcr_hz' => $crossings / ($n / $rate),
+        ];
     }
 
     /**

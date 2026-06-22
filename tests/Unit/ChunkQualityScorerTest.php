@@ -21,6 +21,9 @@ class ChunkQualityScorerTest extends TestCase
             'tts.asr.gap_s_max' => 1.5,
             'tts.asr.tail_cov_min' => 0.93,
             'tts.asr.trim_guard_ms' => 80,
+            'tts.asr.tail_energy_dbfs_max' => -38,
+            'tts.asr.boundary_energy_dbfs_max' => -55,
+            'tts.asr.boundary_zcr_max_hz' => 1500,
         ]);
     }
 
@@ -135,5 +138,120 @@ class ChunkQualityScorerTest extends TestCase
         $v = $this->scorer()->score('the cancelation process is a dark', $transcript);
 
         $this->assertTrue($v->ok, 'minor ASR error should not flag the chunk');
+    }
+
+    public function test_loud_short_tail_is_flagged_as_tailnoise_and_trimmable(): void
+    {
+        // Tail is only 0.6s (under the 1.2s TAIL threshold) but LOUD — a swoosh
+        // the duration signal misses. Energy catches it; it is lossless-trimmable.
+        $words = $this->fluentWords(['hello', 'there', 'friend']); // last word ends 1.2
+        $transcript = $this->transcript($words, duration: 1.8);    // trail 0.6 < 1.2
+
+        $v = $this->scorer()->score('hello there friend', $transcript, [
+            'tail_peak_dbfs' => -10.0,
+            'gaps' => [],
+        ]);
+
+        $this->assertFalse($v->ok);
+        $this->assertContains('TAILNOISE', $v->problems);
+        $this->assertNotContains('TAIL', $v->problems); // trail_s under threshold
+        $this->assertSame(1280, $v->trimAtMs);          // (1.2 + 0.08 guard) * 1000
+        $this->assertSame(-10.0, $v->tailPeakDbfs);
+    }
+
+    public function test_quiet_tail_is_not_flagged_as_tailnoise(): void
+    {
+        $words = $this->fluentWords(['hello', 'there', 'friend']);
+        $transcript = $this->transcript($words, duration: 1.8);
+
+        $v = $this->scorer()->score('hello there friend', $transcript, [
+            'tail_peak_dbfs' => -45.0, // below -38 threshold
+            'gaps' => [],
+        ]);
+
+        $this->assertTrue($v->ok);
+        $this->assertNotContains('TAILNOISE', $v->problems);
+        $this->assertSame(-45.0, $v->tailPeakDbfs);
+    }
+
+    /** A take whose only gap (after a period) is a tonal hum, not silence. */
+    private function boundaryHumTranscript(): array
+    {
+        // "noise." ends 0.8; "some" starts 1.9 → a 1.1s gap (< 1.5, so no PAUSE).
+        $words = [
+            ['the', 0.0, 0.4],
+            ['noise.', 0.4, 0.8],
+            ['some', 1.9, 2.3],
+            ['more', 2.3, 2.7],
+        ];
+
+        return $this->transcript($words, duration: 2.9);
+    }
+
+    public function test_boundary_hum_is_flagged_as_bndnoise(): void
+    {
+        $v = $this->scorer()->score('the noise some more', $this->boundaryHumTranscript(), [
+            'tail_peak_dbfs' => -60.0,
+            'gaps' => [
+                1 => ['dur_s' => 1.1, 'mean_dbfs' => -43.0, 'zcr_hz' => 800.0], // gap after "noise."
+            ],
+        ]);
+
+        $this->assertFalse($v->ok);
+        $this->assertContains('BNDNOISE', $v->problems);
+        $this->assertNotContains('PAUSE', $v->problems); // gap under the time threshold
+        $this->assertSame('noise.', $v->boundaryNoise['after']);
+        $this->assertNull($v->trimAtMs); // mid-stream: re-roll, not trim
+    }
+
+    public function test_boundary_gap_with_speech_residue_is_not_flagged(): void
+    {
+        // Same elevated gap, but broadband (high ZCR) — normal co-articulation,
+        // not a hum.
+        $v = $this->scorer()->score('the noise some more', $this->boundaryHumTranscript(), [
+            'tail_peak_dbfs' => -60.0,
+            'gaps' => [
+                1 => ['dur_s' => 1.1, 'mean_dbfs' => -43.0, 'zcr_hz' => 4200.0],
+            ],
+        ]);
+
+        $this->assertTrue($v->ok);
+        $this->assertNull($v->boundaryNoise);
+    }
+
+    public function test_tonal_gap_not_at_a_boundary_is_not_flagged(): void
+    {
+        // Identical tonal gap, but the preceding word has no punctuation, so it is
+        // mid-clause — not a sentence/comma seam where Chatterbox re-attacks.
+        $words = [
+            ['the', 0.0, 0.4],
+            ['noise', 0.4, 0.8], // no period
+            ['some', 1.9, 2.3],
+            ['more', 2.3, 2.7],
+        ];
+        $transcript = $this->transcript($words, duration: 2.9);
+
+        $v = $this->scorer()->score('the noise some more', $transcript, [
+            'tail_peak_dbfs' => -60.0,
+            'gaps' => [
+                1 => ['dur_s' => 1.1, 'mean_dbfs' => -43.0, 'zcr_hz' => 800.0],
+            ],
+        ]);
+
+        $this->assertTrue($v->ok);
+    }
+
+    public function test_energy_signals_are_skipped_without_audio_features(): void
+    {
+        // No audio features ⇒ duration-only behaviour, fully backward compatible.
+        $words = $this->fluentWords(['hello', 'there', 'friend']);
+        $transcript = $this->transcript($words, duration: 1.8);
+
+        $v = $this->scorer()->score('hello there friend', $transcript); // no $audio
+
+        $this->assertTrue($v->ok);
+        $this->assertNull($v->tailPeakDbfs);
+        $this->assertNull($v->boundaryNoise);
+        $this->assertArrayNotHasKey('tail_peak_dbfs', $v->toArray());
     }
 }

@@ -98,6 +98,13 @@ class TtsChunk extends Model
                 $detail[] = "{$label} {$report[$key]}{$unit}";
             }
         }
+        if (isset($report['tail_peak_dbfs'])) {
+            $detail[] = "tail_peak {$report['tail_peak_dbfs']}dBFS";
+        }
+        if (is_array($report['boundary_noise'] ?? null)) {
+            $bn = $report['boundary_noise'];
+            $detail[] = "hum {$bn['dbfs']}dBFS/{$bn['zcr_hz']}Hz @ {$bn['gap_s']}s";
+        }
         if (isset($report['reroll_attempts'])) {
             $detail[] = $report['reroll_attempts'].' re-roll(s)';
         }

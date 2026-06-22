@@ -17,10 +17,24 @@ namespace App\Services\Asr;
  *   tail_cov  how far into the SOURCE the transcript reached (via word-level
  *             alignment) — catches TRUNCATION, which has NO acoustic artifact
  *             because the audio simply stops before the script ends.
+ *
+ * When per-chunk audio energy features are supplied ({@see AudioConverter::analyzeChunkEnergy},
+ * wired in by {@see ChunkRemediator}), two further signals add extra scrutiny at
+ * the zones where Chatterbox anomalies cluster — the tail and sentence/comma
+ * boundaries — catching SHORT-but-LOUD junk the duration signals above miss:
+ *
+ *   TAILNOISE a loud "swoosh" right after the last word, too short to trip
+ *             trail_s. Lossless-trimmed (the junk is entirely past the speech).
+ *   BNDNOISE  a tonal "hum" filling a punctuation-boundary gap that is too short
+ *             to trip max_gap_s. Mid-stream, so it can only be re-rolled.
  */
 class ChunkQualityScorer
 {
-    public function score(string $sourceText, array $transcript): ChunkQualityVerdict
+    /**
+     * @param  array{speech_dbfs?: float|null, tail_peak_dbfs?: float|null, gaps?: array<int, array{dur_s: float, mean_dbfs: float, zcr_hz: float}>}|null  $audio
+     *                                                                                                                                                             per-chunk energy features; null skips the energy signals (duration signals still apply)
+     */
+    public function score(string $sourceText, array $transcript, ?array $audio = null): ChunkQualityVerdict
     {
         $words = array_values((array) ($transcript['words'] ?? []));
         $duration = (float) ($transcript['duration'] ?? 0.0);
@@ -86,7 +100,22 @@ class ChunkQualityScorer
             $problems[] = 'PAUSE';
         }
 
-        $trimAtMs = in_array('TAIL', $problems, true)
+        // Energy-aware signals (only when audio features were supplied). They add
+        // scrutiny at the tail and at punctuation boundaries — catching short,
+        // loud junk the duration thresholds above sail past.
+        $tailPeakDbfs = $audio !== null ? ($audio['tail_peak_dbfs'] ?? null) : null;
+        if ($tailPeakDbfs !== null && (float) $tailPeakDbfs > (float) config('tts.asr.tail_energy_dbfs_max', -38)) {
+            $problems[] = 'TAILNOISE';
+        }
+
+        $boundaryNoise = $this->detectBoundaryNoise($words, $audio);
+        if ($boundaryNoise !== null) {
+            $problems[] = 'BNDNOISE';
+        }
+
+        // TAIL and TAILNOISE are both junk strictly after the speech, so a precise
+        // cut at the last word end (+ guard) removes them losslessly.
+        $trimAtMs = array_intersect(['TAIL', 'TAILNOISE'], $problems) !== []
             ? (int) round(($lastEnd + $guardMs / 1000) * 1000)
             : null;
 
@@ -99,7 +128,57 @@ class ChunkQualityScorer
             tailCov: round($tailCov, 3),
             wordCount: count($words),
             trimAtMs: $trimAtMs,
+            tailPeakDbfs: $tailPeakDbfs !== null ? round((float) $tailPeakDbfs, 1) : null,
+            boundaryNoise: $boundaryNoise,
         );
+    }
+
+    /**
+     * A tonal "hum" filling a gap that FOLLOWS sentence/clause punctuation: a
+     * boundary gap whose inset core is both not-silent (mean dBFS above the
+     * threshold) AND tonal/low-frequency (ZCR below the ceiling). Pure energy
+     * cannot separate the hum from speech residue — it is genuinely quiet — but a
+     * boundary gap should be near-silent, and a hum's low ZCR distinguishes it
+     * from the broadband residue in a normal short gap. Returns the offending
+     * gap's measurements, or null if none qualifies.
+     *
+     * @param  array<int, array<string, mixed>>  $words  transcript words (carry punctuation)
+     * @param  array{gaps?: array<int, array{dur_s: float, mean_dbfs: float, zcr_hz: float}>}|null  $audio
+     * @return array{gap_s: float, dbfs: float, zcr_hz: float, after: string}|null
+     */
+    private function detectBoundaryNoise(array $words, ?array $audio): ?array
+    {
+        $gaps = $audio['gaps'] ?? null;
+        if (! is_array($gaps) || $gaps === []) {
+            return null;
+        }
+
+        $energyMax = (float) config('tts.asr.boundary_energy_dbfs_max', -55);
+        $zcrMax = (float) config('tts.asr.boundary_zcr_max_hz', 1500);
+
+        foreach ($gaps as $i => $g) {
+            $before = (string) ($words[$i]['word'] ?? '');
+            if (! $this->endsAtBoundary($before)) {
+                continue; // the gap is mid-clause, not a sentence/comma boundary
+            }
+
+            if ((float) $g['mean_dbfs'] > $energyMax && (float) $g['zcr_hz'] < $zcrMax) {
+                return [
+                    'gap_s' => (float) $g['dur_s'],
+                    'dbfs' => (float) $g['mean_dbfs'],
+                    'zcr_hz' => (float) $g['zcr_hz'],
+                    'after' => trim($before),
+                ];
+            }
+        }
+
+        return null;
+    }
+
+    /** Whether a transcript word ends at a sentence/clause boundary (. , ; : ! ? …). */
+    private function endsAtBoundary(string $word): bool
+    {
+        return preg_match('/[.,;:!?…]["\')\]]*\s*$/u', $word) === 1;
     }
 
     /**
