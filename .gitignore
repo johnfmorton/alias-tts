@@ -29,3 +29,5 @@ Thumbs.db
 /audio-bad-tail-end.wav
 /not in repo
 /.playwright-mcp
+/docs/blog
+/debugging-audio-files/

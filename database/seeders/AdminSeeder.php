@@ -18,7 +18,12 @@ class AdminSeeder extends Seeder
         $password = env('ADMIN_PASSWORD');
 
         if (! $email || ! $password) {
-            $this->command->warn('Skipping AdminSeeder: set ADMIN_EMAIL and ADMIN_PASSWORD in .env (or run `php artisan admin:create`).');
+            $this->command->warn('Skipping AdminSeeder: ADMIN_EMAIL / ADMIN_PASSWORD are not readable here.');
+            $this->command->line('  → Recommended: create the admin with `php artisan admin:create <email>` — it prompts');
+            $this->command->line('    for a password and does not depend on env() or cached config, so it works on production.');
+            $this->command->line('  → If you DID set them in .env: config is probably cached (e.g. `artisan optimize` runs on');
+            $this->command->line('    deploy), so env() returns null outside config files. Run `php artisan config:clear` first,');
+            $this->command->line('    or just use admin:create above.');
 
             return;
         }
