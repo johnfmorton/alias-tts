@@ -75,6 +75,17 @@
             <audio id="project-final-audio" controls class="mt-3 w-full {{ $hasFinal ? '' : 'hidden' }}" @if($hasFinal) src="{{ route('admin.studio.projects.audio', $project) }}" @endif></audio>
         </div>
 
+        @if(config('tts.asr.enabled'))
+            {{-- Explain the per-chunk ASR badges below (the acronym is otherwise unexplained on the page). --}}
+            <p class="mb-3 text-xs leading-relaxed text-zinc-500">
+                <span class="font-medium text-zinc-400">ASR</span> (Automatic Speech Recognition) checks each
+                generated chunk by transcribing it and comparing it back to the script. A badge flags a possible
+                truncation, a junk or loud tail (<span class="font-mono">TAIL</span>/<span class="font-mono">TAILNOISE</span>),
+                or a mid-stream pause or boundary hum (<span class="font-mono">PAUSE</span>/<span class="font-mono">BNDNOISE</span>) —
+                hover a badge for its measurements. <span class="text-emerald-400">ASR&nbsp;✓</span> means it passed.
+            </p>
+        @endif
+
         {{-- Chunks, with an inline "Preview stitch" connector between any two adjacent GENERATED chunks --}}
         <div class="space-y-3">
             {{-- Insert a new (empty) chunk at this gap. Always available, unlike the seam. --}}
