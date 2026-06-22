@@ -6,6 +6,7 @@
         ['route' => 'admin.api-keys.index', 'pattern' => 'admin.api-keys.*', 'label' => 'API Keys'],
         ['route' => 'admin.voices.index', 'pattern' => 'admin.voices.*', 'label' => 'Voices'],
         ['route' => 'admin.health', 'pattern' => 'admin.health', 'label' => 'Health'],
+        ['route' => 'admin.settings.index', 'pattern' => 'admin.settings.*', 'label' => 'Settings'],
     ];
 @endphp
 <!DOCTYPE html>

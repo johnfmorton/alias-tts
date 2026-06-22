@@ -4,6 +4,7 @@ use App\Http\Controllers\Admin\ApiKeyController;
 use App\Http\Controllers\Admin\DashboardController;
 use App\Http\Controllers\Admin\HealthController;
 use App\Http\Controllers\Admin\HealthTestController;
+use App\Http\Controllers\Admin\SettingsController;
 use App\Http\Controllers\Admin\StudioController;
 use App\Http\Controllers\Admin\StudioProjectController;
 use App\Http\Controllers\Admin\VoiceController;
@@ -15,6 +16,10 @@ use Illuminate\Support\Facades\Route;
 */
 
 Route::get('/', [DashboardController::class, 'index'])->name('dashboard');
+
+// Settings — service configuration (env-pinned values are read-only).
+Route::get('/settings', [SettingsController::class, 'index'])->name('settings.index');
+Route::put('/settings', [SettingsController::class, 'update'])->name('settings.update');
 
 // Health — web view over the same checks as `php artisan tts:doctor`.
 Route::get('/health', [HealthController::class, 'index'])->name('health');
