@@ -6,6 +6,26 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.11.0] - 2026-06-21
+
+### Added
+- **Independent ASR remediation policy for the Studio vs. the API.** `TTS_ASR_ACTION`
+  was a single switch shared by both generation paths, so you couldn't keep manual
+  triage in the Studio while the API self-healed. It can now be scoped per path with
+  `TTS_ASR_STUDIO_ACTION` and `TTS_ASR_API_ACTION` — each inherits `TTS_ASR_ACTION`
+  when unset, so existing single-value setups are unchanged. The intended split: the
+  interactive Studio stays `log` (an admin sees the per-chunk badge and re-rolls by
+  hand) while the unattended API / full-MP3 path runs `auto` to self-heal, since no
+  human can intervene there.
+- **Admin settings page (`/admin/settings`).** UI-editable service configuration for
+  the ASR feature — the master switch, the Studio/API remediation split, max
+  re-rolls, and (under "Advanced") the detection thresholds — backed by a new generic
+  settings store. Precedence is **`.env` (locked) → saved value → config default**: a
+  value pinned in `.env` is shown read-only with a "Set in .env" note, while every
+  other key is editable in the panel and layered onto config at boot, so `.env`
+  always wins and `config:cache` is respected. Built to extend — future setting
+  groups just register more keys.
+
 ### Removed
 - **"Sentence seam" / "paragraph seam" chunk badges in Studio.** These per-chunk
   markers exposed an internal chunking detail that wasn't actionable to the user.
@@ -461,7 +481,8 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   fixed seed; the response cache guarantees stable output for repeated identical
   requests.
 
-[Unreleased]: https://github.com/johnfmorton/bespoken-tts-service/compare/v0.10.0...HEAD
+[Unreleased]: https://github.com/johnfmorton/bespoken-tts-service/compare/v0.11.0...HEAD
+[0.11.0]: https://github.com/johnfmorton/bespoken-tts-service/compare/v0.10.0...v0.11.0
 [0.10.0]: https://github.com/johnfmorton/bespoken-tts-service/compare/v0.9.3...v0.10.0
 [0.9.3]: https://github.com/johnfmorton/bespoken-tts-service/compare/v0.9.2...v0.9.3
 [0.9.2]: https://github.com/johnfmorton/bespoken-tts-service/compare/v0.9.1...v0.9.2
