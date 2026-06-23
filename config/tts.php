@@ -42,6 +42,21 @@ return [
 
     /*
     |--------------------------------------------------------------------------
+    | Internal pipeline API
+    |--------------------------------------------------------------------------
+    |
+    | Stateless primitive endpoints under /v1/internal/* (chunk, generate,
+    | score, trim, stitch) that expose the individual pipeline stages to the
+    | external Genblaze orchestrator. Guarded by a shared secret in the
+    | X-Internal-Secret header; leave it empty to disable the surface entirely.
+    |
+    */
+    'internal' => [
+        'secret' => env('TTS_INTERNAL_SECRET'),
+    ],
+
+    /*
+    |--------------------------------------------------------------------------
     | Limits & caching
     |--------------------------------------------------------------------------
     */
