@@ -6,6 +6,8 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.13.0] - 2026-06-24
+
 ### Added
 - **A failed (and, optionally, every) `/v1` generation can hand off to an editable
   Studio project.** A new setting — `tts.api_project_mode` (`never` | `on_error` |
@@ -604,7 +606,8 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   fixed seed; the response cache guarantees stable output for repeated identical
   requests.
 
-[Unreleased]: https://github.com/johnfmorton/bespoken-tts-service/compare/v0.12.3...HEAD
+[Unreleased]: https://github.com/johnfmorton/bespoken-tts-service/compare/v0.13.0...HEAD
+[0.13.0]: https://github.com/johnfmorton/bespoken-tts-service/compare/v0.12.3...v0.13.0
 [0.12.3]: https://github.com/johnfmorton/bespoken-tts-service/compare/v0.12.2...v0.12.3
 [0.12.2]: https://github.com/johnfmorton/bespoken-tts-service/compare/v0.12.1...v0.12.2
 [0.12.1]: https://github.com/johnfmorton/bespoken-tts-service/compare/v0.12.0...v0.12.1
