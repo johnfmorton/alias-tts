@@ -399,6 +399,42 @@ class StudioProjectTest extends TestCase
         $this->assertStringStartsWith('audio/mpeg', (string) $audio->headers->get('content-type'));
     }
 
+    public function test_audio_endpoints_honor_range_requests(): void
+    {
+        // Without range support iOS Safari can't seek the player (it shows
+        // "Live Broadcast" for the MP3 final and errors on a WAV chunk).
+        $project = $this->project();
+        foreach ($project->chunks()->get() as $chunk) {
+            $this->actingAs($this->admin())->post(route('admin.studio.projects.chunks.generate', [$project, $chunk]));
+        }
+        $this->actingAs($this->admin())->postJson(route('admin.studio.projects.rebuild', $project))->assertOk();
+        $project->refresh();
+
+        // Final MP3: a full request advertises ranges; a Range request gets a 206 slice.
+        $finalBytes = Storage::disk('local')->get($project->final_audio_path);
+        $this->actingAs($this->admin())
+            ->get(route('admin.studio.projects.audio', $project))
+            ->assertOk()
+            ->assertHeader('Accept-Ranges', 'bytes');
+
+        $ranged = $this->actingAs($this->admin())
+            ->withHeaders(['Range' => 'bytes=0-9'])
+            ->get(route('admin.studio.projects.audio', $project));
+        $ranged->assertStatus(206)
+            ->assertHeader('Content-Range', 'bytes 0-9/'.strlen($finalBytes));
+        $this->assertSame(substr($finalBytes, 0, 10), $ranged->getContent());
+
+        // Per-chunk WAV endpoint is range-aware too.
+        $chunk = $project->chunks()->whereNotNull('audio_path')->first();
+        $chunkBytes = Storage::disk('local')->get($chunk->audio_path);
+        $chunkRanged = $this->actingAs($this->admin())
+            ->withHeaders(['Range' => 'bytes=0-3'])
+            ->get(route('admin.studio.projects.chunks.audio', [$project, $chunk]));
+        $chunkRanged->assertStatus(206)
+            ->assertHeader('Content-Range', 'bytes 0-3/'.strlen($chunkBytes));
+        $this->assertSame(substr($chunkBytes, 0, 4), $chunkRanged->getContent());
+    }
+
     public function test_preview_stitches_selected_chunks_without_persisting(): void
     {
         $project = $this->project();

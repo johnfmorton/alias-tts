@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Admin;
 
 use App\Enums\SpeechStatus;
+use App\Http\Controllers\Concerns\ServesRangedAudio;
 use App\Http\Controllers\Controller;
 use App\Models\ApiKey;
 use App\Models\Speech;
@@ -23,6 +24,8 @@ use Throwable;
  */
 class HealthTestController extends Controller
 {
+    use ServesRangedAudio;
+
     /** Short fixed text — one provider call, synchronous. */
     private const SHORT_TEXT = 'This is a short synchronous test of the text to speech provider.';
 
@@ -107,7 +110,7 @@ class HealthTestController extends Controller
         return response()->json($this->payload($speech));
     }
 
-    public function audio(string $id): Response
+    public function audio(Request $request, string $id): Response
     {
         $speech = $this->findTestSpeech($id);
         if (! $speech) {
@@ -122,8 +125,8 @@ class HealthTestController extends Controller
             return response()->json(['message' => 'Audio is not ready yet.'], 409);
         }
 
-        return response($this->speechService->audioBytes($speech), 200)
-            ->header('Content-Type', $speech->mime_type ?: 'audio/mpeg');
+        // Range-aware so the test player works in iOS Safari (see ServesRangedAudio).
+        return $this->rangedAudio($this->speechService->audioBytes($speech), $speech->mime_type ?: 'audio/mpeg', $request);
     }
 
     private function resolveVoice(Request $request): ?Voice

@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers\Admin;
 
+use App\Http\Controllers\Concerns\ServesRangedAudio;
 use App\Http\Controllers\Controller;
 use App\Models\TtsChunk;
 use App\Models\TtsProject;
@@ -27,6 +28,8 @@ use Throwable;
  */
 class StudioProjectController extends Controller
 {
+    use ServesRangedAudio;
+
     public function __construct(
         private readonly ProjectService $projects,
         private readonly VoiceSettingsResolver $settingsResolver,
@@ -356,7 +359,7 @@ class StudioProjectController extends Controller
         return response($bytes, 200)->header('Content-Type', $mime);
     }
 
-    public function chunkAudio(TtsProject $project, TtsChunk $chunk): Response
+    public function chunkAudio(Request $request, TtsProject $project, TtsChunk $chunk): Response
     {
         $this->assertChunkBelongs($project, $chunk);
 
@@ -365,7 +368,8 @@ class StudioProjectController extends Controller
             return response()->json(['message' => 'This chunk has not been generated yet.'], 404);
         }
 
-        return response($bytes, 200)->header('Content-Type', 'audio/wav');
+        // Range-aware so the per-chunk player works in iOS Safari (see ServesRangedAudio).
+        return $this->rangedAudio($bytes, 'audio/wav', $request);
     }
 
     public function previewConcat(Request $request, TtsProject $project): Response
@@ -406,7 +410,7 @@ class StudioProjectController extends Controller
         return response()->json(['ok' => true]);
     }
 
-    public function finalAudio(TtsProject $project): Response
+    public function finalAudio(Request $request, TtsProject $project): Response
     {
         $bytes = $this->projects->finalAudioBytes($project);
         if ($bytes === null) {
@@ -416,9 +420,11 @@ class StudioProjectController extends Controller
         $ext = pathinfo((string) $project->final_audio_path, PATHINFO_EXTENSION) ?: 'mp3';
         $filename = Str::slug($project->title ?: 'project').'.'.$ext;
 
-        return response($bytes, 200)
-            ->header('Content-Type', $project->mime_type ?: 'audio/mpeg')
-            ->header('Content-Disposition', 'inline; filename="'.$filename.'"');
+        // Range-aware so iOS Safari can seek the final player instead of showing
+        // "Live Broadcast" with a dead scrubber (see ServesRangedAudio).
+        return $this->rangedAudio($bytes, $project->mime_type ?: 'audio/mpeg', $request, [
+            'Content-Disposition' => 'inline; filename="'.$filename.'"',
+        ]);
     }
 
     private function assertChunkBelongs(TtsProject $project, TtsChunk $chunk): void
