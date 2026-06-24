@@ -29,6 +29,17 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   (default `8.1.2`). `docs/DEPLOYMENT.md` and the DDEV ffmpeg config now document
   the ffmpeg ≥ 8.1.2 requirement.
 
+### Fixed
+- **Studio audio players now work in iOS Safari.** The per-chunk and final players
+  (and the admin Health test player) serve audio with HTTP range support
+  (`206 Partial Content` + `Accept-Ranges`), so iOS can determine the duration and
+  seek — instead of showing "Live Broadcast" with a dead scrubber on the final MP3
+  or failing to play a WAV chunk. Desktop playback and downloads are unchanged, and
+  the `/v1` API path is untouched.
+- **The admin navigation no longer overflows on phone-width screens.** The header
+  stacks and the nav wraps below the `sm` breakpoint instead of clipping the
+  right-hand links.
+
 ## [0.12.2] - 2026-06-22
 
 ### Added
