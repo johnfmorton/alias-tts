@@ -35,6 +35,17 @@ sudo apt-get update && sudo apt-get install -y ffmpeg
 ffmpeg -version    # confirm
 ```
 
+> **Require ffmpeg ≥ 8.1.2.** 8.1.2 is the first release with the fix for the
+> MagicYUV "PixelSmash" flaw (CVE-2026-8461), a video-decoder bug reachable when
+> ffmpeg decodes attacker-supplied media. `ffprobe` (installed with ffmpeg) also
+> screens reference-clip uploads for video. `php artisan tts:doctor` **fails** the
+> ffmpeg check if the binary is older than 8.1.2.
+>
+> If your distro only ships an older ffmpeg, either install a newer build (e.g. a
+> static build, or a backports/PPA package) or — if the distro backported the fix
+> without bumping the version number — set `TTS_FFMPEG_MIN_VERSION` to the
+> installed version to acknowledge it and clear the check.
+
 ### 3. Configure the environment
 Edit the site's **Environment** in Forge:
 ```env

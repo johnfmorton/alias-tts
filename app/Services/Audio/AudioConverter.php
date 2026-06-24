@@ -35,7 +35,7 @@ class AudioConverter
             file_put_contents($in, $inputBytes);
 
             $args = array_merge(
-                [$this->ffmpegPath, '-y', '-hide_banner', '-loglevel', 'error', '-i', $in, '-ac', '1', '-ar', (string) $spec['rate']],
+                [$this->ffmpegPath, '-y', '-hide_banner', '-loglevel', 'error', '-i', $in, '-vn', '-ac', '1', '-ar', (string) $spec['rate']],
                 $spec['codec_args'],
                 [$out]
             );
@@ -134,7 +134,7 @@ class AudioConverter
             // demuxer joins them cleanly; encode straight to the output format.
             $args = array_merge(
                 [$this->ffmpegPath, '-y', '-hide_banner', '-loglevel', 'error',
-                    '-f', 'concat', '-safe', '0', '-i', $list,
+                    '-f', 'concat', '-safe', '0', '-i', $list, '-vn',
                     '-ac', '1', '-ar', (string) $spec['rate']],
                 $spec['codec_args'],
                 [$outFile]
@@ -187,7 +187,7 @@ class AudioConverter
             // concatenate() resamples to the output spec later). -t bounds output.
             $process = new Process([
                 $this->ffmpegPath, '-y', '-hide_banner', '-loglevel', 'error',
-                '-i', $in, '-t', $this->seconds($ms),
+                '-i', $in, '-vn', '-t', $this->seconds($ms),
                 '-c:a', 'pcm_s16le', '-f', 'wav', $out,
             ]);
             $process->setTimeout(120);
@@ -855,7 +855,7 @@ class AudioConverter
         try {
             file_put_contents($in, $bytes);
 
-            $args = [$this->ffmpegPath, '-y', '-hide_banner', '-loglevel', 'error', '-i', $in];
+            $args = [$this->ffmpegPath, '-y', '-hide_banner', '-loglevel', 'error', '-i', $in, '-vn'];
             if ($filter !== null && $filter !== '') {
                 $args[] = '-af';
                 $args[] = $filter;
@@ -894,7 +894,7 @@ class AudioConverter
             file_put_contents($in, $bytes);
 
             $process = new Process([
-                $this->ffmpegPath, '-y', '-hide_banner', '-loglevel', 'error', '-i', $in,
+                $this->ffmpegPath, '-y', '-hide_banner', '-loglevel', 'error', '-i', $in, '-vn',
                 '-filter_complex', $graph, '-map', '[out]',
                 '-ac', '1', '-ar', (string) $rate, '-c:a', 'pcm_s16le', '-f', 'wav', $out,
             ]);
@@ -981,6 +981,12 @@ class AudioConverter
             $process = new Process([
                 $this->ffmpegPath, '-y', '-hide_banner', '-loglevel', 'error',
                 '-i', $in,
+                // -vn: this is the only untrusted-input path (a user-uploaded
+                // reference clip). Drop any video stream so a smuggled/crafted
+                // video can never reach a video decoder (e.g. MagicYUV /
+                // PixelSmash, CVE-2026-8461). Uploads are also ffprobe-screened
+                // for video at the request layer; this is defense-in-depth.
+                '-vn',
                 '-af', $filter,
                 '-ac', '1', '-ar', (string) $rate,
                 '-c:a', 'pcm_s16le', '-f', 'wav',

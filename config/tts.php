@@ -203,6 +203,16 @@ return [
     */
     'ffmpeg_path' => env('TTS_FFMPEG_PATH', 'ffmpeg'),
 
+    // ffprobe ships alongside ffmpeg; used to screen uploaded reference clips
+    // for a smuggled video stream before ffmpeg ever decodes them.
+    'ffprobe_path' => env('TTS_FFPROBE_PATH', 'ffprobe'),
+
+    // Minimum ffmpeg version the health check requires. 8.1.2 is the first
+    // release with the MagicYUV "PixelSmash" fix (CVE-2026-8461). Operators on
+    // a distro that backported the fix to an older build can lower this to
+    // their version to silence the failing health check.
+    'ffmpeg_min_version' => env('TTS_FFMPEG_MIN_VERSION', '8.1.2'),
+
     /*
     |--------------------------------------------------------------------------
     | Reference normalization

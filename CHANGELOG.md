@@ -6,6 +6,29 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Security
+- **Hardened the ffmpeg/audio pipeline against the FFmpeg "PixelSmash" class of
+  decoder flaws (CVE-2026-8461).** Three defense-in-depth changes:
+  - **Uploaded reference clips are screened for video.** A new `ffprobe`-backed
+    validation rule rejects a voice-reference upload that carries a real
+    (non-cover-art) video stream — closing the container-overlap seam (m4a/mov are
+    both ISO-BMFF; Ogg can carry Theora) that the `mimes:` rule alone can't.
+    Ordinary embedded cover art still passes.
+  - **Every ffmpeg call that opens an input file now passes `-vn`** (drop video),
+    so a smuggled video stream can never be decoded to output — most importantly
+    on the only untrusted path, reference-clip normalization.
+  - **The health check enforces a minimum ffmpeg version.** `php artisan tts:doctor`
+    and the admin **Health** page now **fail** when ffmpeg is older than **8.1.2**,
+    the release that fixes the MagicYUV "PixelSmash" decoder bug. On a distro that
+    backported the fix without bumping the version number, set
+    `TTS_FFMPEG_MIN_VERSION` to the installed version to acknowledge it and clear
+    the check.
+
+### Added
+- New config: `TTS_FFPROBE_PATH` (default `ffprobe`) and `TTS_FFMPEG_MIN_VERSION`
+  (default `8.1.2`). `docs/DEPLOYMENT.md` and the DDEV ffmpeg config now document
+  the ffmpeg ≥ 8.1.2 requirement.
+
 ## [0.12.2] - 2026-06-22
 
 ### Added

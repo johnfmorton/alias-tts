@@ -32,5 +32,10 @@
         <env name="PULSE_ENABLED" value="false"/>
         <env name="TELESCOPE_ENABLED" value="false"/>
         <env name="NIGHTWATCH_ENABLED" value="false"/>
+        <!-- The PixelSmash ffmpeg version gate would otherwise fail the suite
+             whenever the test runner's ffmpeg predates 8.1.2; tests don't depend
+             on the runner shipping the newest ffmpeg. The gate itself is covered
+             by tests/Unit/FfmpegVersionParseTest.php. -->
+        <env name="TTS_FFMPEG_MIN_VERSION" value="0"/>
     </php>
 </phpunit>

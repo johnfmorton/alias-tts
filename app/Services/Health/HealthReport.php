@@ -129,15 +129,41 @@ class HealthReport
             $process = new Process([$bin, '-version']);
             $process->run();
 
-            if ($process->isSuccessful()) {
-                $first = strtok($process->getOutput(), "\n");
-                $this->add('ffmpeg', HealthStatus::Pass, 'ffmpeg', trim($first ?: 'ffmpeg'));
-            } else {
+            if (! $process->isSuccessful()) {
                 $this->add('ffmpeg', HealthStatus::Fail, 'ffmpeg', "`{$bin}` failed — install ffmpeg (e.g. `apt install ffmpeg`) or set TTS_FFMPEG_PATH");
+
+                return;
+            }
+
+            $output = $process->getOutput();
+            $banner = trim((string) strtok($output, "\n")) ?: 'ffmpeg';
+            $version = self::parseFfmpegVersion($output);
+            $min = (string) config('tts.ffmpeg_min_version', '8.1.2');
+
+            // Gate on the MagicYUV "PixelSmash" fix (CVE-2026-8461), first shipped
+            // in ffmpeg 8.1.2. A git/"N-…" build we can't parse only warns.
+            if ($version === null) {
+                $this->add('ffmpeg', HealthStatus::Warn, 'ffmpeg', "{$banner} — could not determine the version; ensure it is >= {$min} (fixes the \"PixelSmash\" MagicYUV flaw, CVE-2026-8461)");
+            } elseif (version_compare($version, $min, '<')) {
+                $this->add('ffmpeg', HealthStatus::Fail, 'ffmpeg', "{$banner} — older than {$min}, which fixes the \"PixelSmash\" MagicYUV flaw (CVE-2026-8461). Upgrade ffmpeg, or if your distro backported the fix set TTS_FFMPEG_MIN_VERSION to your version.");
+            } else {
+                $this->add('ffmpeg', HealthStatus::Pass, 'ffmpeg', $banner);
             }
         } catch (Throwable $e) {
             $this->add('ffmpeg', HealthStatus::Fail, 'ffmpeg', "could not run `{$bin}`: ".$e->getMessage());
         }
+    }
+
+    /**
+     * Extract the upstream version (e.g. "8.1.2") from `ffmpeg -version` output,
+     * or null when it can't be determined — e.g. a git "N-…" build. Public and
+     * static so the PixelSmash version gate can be unit-tested without ffmpeg.
+     */
+    public static function parseFfmpegVersion(string $versionOutput): ?string
+    {
+        return preg_match('/^ffmpeg version n?(\d+(?:\.\d+){0,2})/im', $versionOutput, $m) === 1
+            ? $m[1]
+            : null;
     }
 
     private function checkStorage(): void

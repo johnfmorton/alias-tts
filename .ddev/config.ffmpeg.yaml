@@ -1,3 +1,8 @@
 # Adds ffmpeg to the web container for audio format conversion (WAV -> MP3, etc.)
+#
+# Requires ffmpeg >= 8.1.2 — the first release with the MagicYUV "PixelSmash" fix
+# (CVE-2026-8461). `php artisan tts:doctor` fails the ffmpeg check below that
+# version. If the container's distro ships an older build, pin a newer one here
+# or set TTS_FFMPEG_MIN_VERSION to the installed version (see docs/DEPLOYMENT.md).
 webimage_extra_packages:
   - ffmpeg
