@@ -15,6 +15,11 @@ Artisan::command('inspire', function () {
 // every minute — see docs/DEPLOYMENT.md. Verify with `php artisan schedule:list`.
 Schedule::command('speech:cleanup')->dailyAt('03:00');
 
+// Daily prune of expired, untouched API-failure recovery projects (see
+// tts.api_project_mode). 'always'-mode and panel-made projects have no TTL and
+// are never pruned. Staggered just after speech:cleanup.
+Schedule::command('projects:prune-recovery')->dailyAt('03:10');
+
 // Liveness heartbeat: stamps the current time every minute so `tts:doctor` can
 // tell whether cron is actually running `schedule:run` — not just that tasks
 // are registered in code. A stale/missing beat means the cron isn't firing.

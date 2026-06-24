@@ -2,6 +2,7 @@
 
 namespace Tests\Feature;
 
+use App\Enums\ChunkStatus;
 use App\Enums\ProjectStatus;
 use App\Enums\SpeechStatus;
 use App\Models\ApiKey;
@@ -9,10 +10,12 @@ use App\Models\Speech;
 use App\Models\TtsProject;
 use App\Models\User;
 use App\Models\Voice;
+use App\Services\ProjectService;
 use App\Services\SpeechService;
 use App\Services\Tts\FakeTtsProvider;
 use App\Services\Tts\TtsProvider;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Storage;
 use RuntimeException;
 use Tests\TestCase;
@@ -37,7 +40,7 @@ class ApiProjectRecoveryTest extends TestCase
         return Voice::create(['slug' => 'v', 'name' => 'V']);
     }
 
-    /** A super-admin must exist for the magic-login recovery link to be minted. */
+    /** A super-admin user (the panel pages the recovery tests hit are admin-only). */
     private function admin(): User
     {
         return User::factory()->create(['is_super_admin' => true]);
@@ -215,5 +218,34 @@ class ApiProjectRecoveryTest extends TestCase
             ->assertOk()
             ->assertSee('Recovered from a failed API generation')
             ->assertSee('CUDA error: device-side assert triggered');
+    }
+
+    private function recoveryProject(Voice $voice, ?Carbon $expiresAt, string $origin = 'api_failure'): TtsProject
+    {
+        $project = app(ProjectService::class)->createFromText(
+            'Recovery', $voice, 'A sentence to chunk.', [],
+            config('tts.default_model_id'), config('tts.default_output_format'), null,
+        );
+        $project->update(['origin' => $origin, 'expires_at' => $expiresAt]);
+
+        return $project;
+    }
+
+    public function test_prune_removes_only_expired_untouched_recovery_projects(): void
+    {
+        $voice = Voice::create(['slug' => 'pv', 'name' => 'PV']);
+
+        $expired = $this->recoveryProject($voice, now()->subDay());            // expired + untouched -> pruned
+        $touched = $this->recoveryProject($voice, now()->subDay());            // expired but worked on -> kept
+        $touched->chunks()->first()->update(['audio_path' => 'p/x.wav', 'status' => ChunkStatus::Completed]);
+        $fresh = $this->recoveryProject($voice, now()->addDay());              // not yet expired -> kept
+        $always = $this->recoveryProject($voice, null, 'api');                 // always-mode (no TTL) -> kept
+
+        $this->artisan('projects:prune-recovery')->assertExitCode(0);
+
+        $this->assertNull(TtsProject::find($expired->id), 'expired + untouched is pruned');
+        $this->assertNotNull(TtsProject::find($touched->id), 'a started repair is kept');
+        $this->assertNotNull(TtsProject::find($fresh->id), 'not-yet-expired is kept');
+        $this->assertNotNull(TtsProject::find($always->id), 'always-mode (no TTL) is kept');
     }
 }
