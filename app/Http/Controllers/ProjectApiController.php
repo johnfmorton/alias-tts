@@ -2,11 +2,10 @@
 
 namespace App\Http\Controllers;
 
+use App\Http\Controllers\Concerns\MintsProjectEditLinks;
 use App\Http\Requests\CreateProjectRequest;
 use App\Models\ApiKey;
-use App\Models\MagicLoginToken;
 use App\Models\TtsProject;
-use App\Models\User;
 use App\Models\Voice;
 use App\Services\ProjectService;
 use App\Services\Tts\VoiceSettingsResolver;
@@ -26,6 +25,8 @@ use Symfony\Component\HttpFoundation\Response;
  */
 class ProjectApiController extends Controller
 {
+    use MintsProjectEditLinks;
+
     public function __construct(
         private ProjectService $projects,
         private VoiceSettingsResolver $settingsResolver,
@@ -71,34 +72,6 @@ class ProjectApiController extends Controller
             'edit_url' => $editUrl,
             'edit_url_expires_at' => $editUrlExpiresAt,
         ], 201)->header('request-id', $project->id);
-    }
-
-    /**
-     * Mint the single-use auto-login link for the project. Logs in the admin
-     * account (the only one today); the seam for per-user ownership is the
-     * project's api_key_id once keys map to users. Returns [url, expiresAt],
-     * both null if no admin account exists to log in.
-     *
-     * @return array{0: ?string, 1: ?string}
-     */
-    private function mintEditLink(TtsProject $project, ApiKey $apiKey): array
-    {
-        $user = User::where('is_super_admin', true)->first();
-        if (! $user) {
-            return [null, null];
-        }
-
-        [$token, $plaintext] = MagicLoginToken::mint(
-            $user,
-            $project,
-            $apiKey,
-            (int) config('tts.magic_login_ttl_minutes', 60),
-        );
-
-        return [
-            route('projects.open', ['token' => $plaintext]),
-            $token->expires_at?->toIso8601String(),
-        ];
     }
 
     /**

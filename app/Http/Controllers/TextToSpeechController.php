@@ -3,9 +3,12 @@
 namespace App\Http\Controllers;
 
 use App\Enums\SpeechStatus;
+use App\Exceptions\SpeechGenerationException;
+use App\Http\Controllers\Concerns\MintsProjectEditLinks;
 use App\Http\Requests\TextToSpeechRequest;
 use App\Models\ApiKey;
 use App\Models\Speech;
+use App\Models\TtsProject;
 use App\Models\Voice;
 use App\Services\SpeechService;
 use App\Services\Tts\VoiceSettingsResolver;
@@ -33,6 +36,8 @@ use Throwable;
  */
 class TextToSpeechController extends Controller
 {
+    use MintsProjectEditLinks;
+
     public function __construct(
         private SpeechService $speechService,
         private VoiceSettingsResolver $settingsResolver,
@@ -58,6 +63,10 @@ class TextToSpeechController extends Controller
                 seed: $request->seed(),
                 forceRefresh: $request->boolean('force_refresh'),
             );
+        } catch (SpeechGenerationException $e) {
+            report($e);
+
+            return $this->error('Speech generation failed: '.$e->getMessage(), 502, $this->recoveryUrl($e->recoveryProject));
         } catch (Throwable $e) {
             report($e);
 
@@ -132,7 +141,7 @@ class TextToSpeechController extends Controller
         }
 
         if ($speech->status === SpeechStatus::Failed) {
-            return $this->error('Speech generation failed: '.($speech->error_message ?: 'unknown error'), 502);
+            return $this->error('Speech generation failed: '.($speech->error_message ?: 'unknown error'), 502, $this->recoveryUrlForSpeech($speech));
         }
 
         if (! $speech->isCompleted() || ! $speech->audio_path) {
@@ -173,6 +182,7 @@ class TextToSpeechController extends Controller
             'status_url' => route('tts.jobs.status', ['id' => $speech->id]),
             'audio_url' => route('tts.jobs.audio', ['id' => $speech->id]),
             'error' => $speech->status === SpeechStatus::Failed ? $speech->error_message : null,
+            'recovery_url' => $this->recoveryUrlForSpeech($speech),
         ];
     }
 
@@ -187,10 +197,37 @@ class TextToSpeechController extends Controller
             ->header('x-cache', $speech->wasRecentlyCreated ? 'MISS' : 'HIT');
     }
 
-    private function error(string $message, int $status): Response
+    private function error(string $message, int $status, ?string $recoveryUrl = null): Response
     {
-        return response()->json([
-            'detail' => ['message' => $message, 'status' => $status],
-        ], $status);
+        $detail = ['message' => $message, 'status' => $status];
+        if ($recoveryUrl !== null) {
+            $detail['recovery_url'] = $recoveryUrl;
+        }
+
+        return response()->json(['detail' => $detail], $status);
+    }
+
+    /** The magic-login edit link for a failed speech's recovery project, if any. */
+    private function recoveryUrlForSpeech(Speech $speech): ?string
+    {
+        if ($speech->status !== SpeechStatus::Failed) {
+            return null;
+        }
+
+        return $this->recoveryUrl(
+            TtsProject::where('source_speech_id', $speech->id)->where('origin', 'api_failure')->first()
+        );
+    }
+
+    /** Mint the project's edit link (null when there's no project / no admin to log in). */
+    private function recoveryUrl(?TtsProject $project): ?string
+    {
+        if (! $project) {
+            return null;
+        }
+
+        [$url] = $this->mintEditLink($project, $project->apiKey);
+
+        return $url;
     }
 }

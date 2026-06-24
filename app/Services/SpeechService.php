@@ -3,6 +3,7 @@
 namespace App\Services;
 
 use App\Enums\SpeechStatus;
+use App\Exceptions\SpeechGenerationException;
 use App\Jobs\GenerateSpeechJob;
 use App\Models\ApiKey;
 use App\Models\Speech;
@@ -55,7 +56,14 @@ class SpeechService
 
         $speech = $this->createRecord($apiKey, $voice, $text, $settings, $modelId, $outputFormat, $cacheHash);
 
-        $this->process($speech, $seed);
+        try {
+            $this->process($speech, $seed);
+        } catch (Throwable $e) {
+            // process() already marked the record Failed and (per api_project_mode)
+            // may have created a linked recovery project; carry it so the controller
+            // can surface the project's edit link in the error response.
+            throw new SpeechGenerationException($e, TtsProject::where('source_speech_id', $speech->id)->first());
+        }
 
         return $speech;
     }
