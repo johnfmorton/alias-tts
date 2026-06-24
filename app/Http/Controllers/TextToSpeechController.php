@@ -4,7 +4,6 @@ namespace App\Http\Controllers;
 
 use App\Enums\SpeechStatus;
 use App\Exceptions\SpeechGenerationException;
-use App\Http\Controllers\Concerns\MintsProjectEditLinks;
 use App\Http\Requests\TextToSpeechRequest;
 use App\Models\ApiKey;
 use App\Models\Speech;
@@ -36,8 +35,6 @@ use Throwable;
  */
 class TextToSpeechController extends Controller
 {
-    use MintsProjectEditLinks;
-
     public function __construct(
         private SpeechService $speechService,
         private VoiceSettingsResolver $settingsResolver,
@@ -219,15 +216,15 @@ class TextToSpeechController extends Controller
         );
     }
 
-    /** Mint the project's edit link (null when there's no project / no admin to log in). */
+    /**
+     * A plain panel URL for the recovery project — NOT a magic-login link. The
+     * /v1 audience holds an api key, not admin rights, so it must never be
+     * auto-elevated to the admin user; an admin opens the project from the Studio
+     * panel badge after a normal login. This is just the pointer (no token, so
+     * nothing secret rides the response body or default request logs).
+     */
     private function recoveryUrl(?TtsProject $project): ?string
     {
-        if (! $project) {
-            return null;
-        }
-
-        [$url] = $this->mintEditLink($project, $project->apiKey);
-
-        return $url;
+        return $project ? route('admin.studio.projects.show', $project) : null;
     }
 }

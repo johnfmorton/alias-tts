@@ -135,7 +135,8 @@ class ApiProjectRecoveryTest extends TestCase
         $res->assertStatus(502);
         $this->assertStringContainsString('CUDA', (string) $res->json('detail.message'));
         $this->assertNotNull($res->json('detail.recovery_url'), 'a recovery link should be surfaced');
-        $this->assertStringStartsWith('http', (string) $res->json('detail.recovery_url'));
+        // A plain panel URL, never a magic-login token (the /v1 caller isn't an admin).
+        $this->assertStringContainsString('/admin/studio/projects/', (string) $res->json('detail.recovery_url'));
         $this->assertSame('api_failure', TtsProject::first()?->origin);
     }
 
@@ -184,6 +185,7 @@ class ApiProjectRecoveryTest extends TestCase
 
         $res->assertOk()->assertJsonPath('status', 'failed');
         $this->assertNotNull($res->json('recovery_url'));
+        $this->assertStringContainsString('/admin/studio/projects/', (string) $res->json('recovery_url'));
     }
 
     public function test_panel_badges_and_explains_an_api_failure_project(): void

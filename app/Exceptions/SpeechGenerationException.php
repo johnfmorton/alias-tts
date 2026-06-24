@@ -10,8 +10,8 @@ use Throwable;
 /**
  * Thrown by {@see SpeechService::synthesize()} when synchronous
  * generation fails, carrying the recovery Studio project (when api_project_mode
- * created one) so the controller can surface its edit link. The message mirrors
- * the underlying provider error so the API response detail is unchanged.
+ * created one) so the controller can point the API response at it. The message
+ * mirrors the underlying provider error so the API response detail is unchanged.
  */
 class SpeechGenerationException extends RuntimeException
 {
