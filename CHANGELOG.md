@@ -6,6 +6,8 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.12.3] - 2026-06-24
+
 ### Security
 - **Hardened the ffmpeg/audio pipeline against the FFmpeg "PixelSmash" class of
   decoder flaws (CVE-2026-8461).** Three defense-in-depth changes:
@@ -584,7 +586,8 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   fixed seed; the response cache guarantees stable output for repeated identical
   requests.
 
-[Unreleased]: https://github.com/johnfmorton/bespoken-tts-service/compare/v0.12.2...HEAD
+[Unreleased]: https://github.com/johnfmorton/bespoken-tts-service/compare/v0.12.3...HEAD
+[0.12.3]: https://github.com/johnfmorton/bespoken-tts-service/compare/v0.12.2...v0.12.3
 [0.12.2]: https://github.com/johnfmorton/bespoken-tts-service/compare/v0.12.1...v0.12.2
 [0.12.1]: https://github.com/johnfmorton/bespoken-tts-service/compare/v0.12.0...v0.12.1
 [0.12.0]: https://github.com/johnfmorton/bespoken-tts-service/compare/v0.11.0...v0.12.0
