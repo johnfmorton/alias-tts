@@ -102,6 +102,30 @@ class ApiProjectRecoveryTest extends TestCase
         $this->assertTrue($project->chunks()->exists());
     }
 
+    public function test_a_job_retry_does_not_duplicate_the_recovery_project(): void
+    {
+        config(['tts.api_project_mode' => 'on_error']);
+        $this->failTheProvider();
+        $voice = $this->voice();
+
+        try {
+            $this->generate($voice);
+        } catch (RuntimeException) {
+        }
+
+        $speech = Speech::firstWhere('status', SpeechStatus::Failed);
+        $this->assertSame(1, TtsProject::where('source_speech_id', $speech->id)->count());
+
+        // An async job retry re-runs process() on the same record — it must not
+        // create a second recovery project.
+        try {
+            app(SpeechService::class)->process($speech);
+        } catch (RuntimeException) {
+        }
+
+        $this->assertSame(1, TtsProject::where('source_speech_id', $speech->id)->count(), 'no duplicate on retry');
+    }
+
     public function test_on_error_creates_a_recovery_project_and_still_rethrows(): void
     {
         config(['tts.api_project_mode' => 'on_error']);

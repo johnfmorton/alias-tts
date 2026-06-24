@@ -6,6 +6,24 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Added
+- **A failed (and, optionally, every) `/v1` generation can hand off to an editable
+  Studio project.** A new setting — `tts.api_project_mode` (`never` | `on_error` |
+  `always`, default `never`, on the admin **Settings** page) — controls it:
+  - `on_error` turns a failed generation into a **recovery project**: the source
+    text seeded as an editable project, badged "API failure" in the Studio list,
+    with the provider's actual error (e.g. a Replicate CUDA assert) and the chunk
+    that failed shown on the project page so an admin can fix that sentence and
+    rebuild. The failure response also carries a `recovery_url` pointing at the
+    project — a plain panel URL the admin opens after a normal login, never a
+    credential.
+  - `always` creates a project on every call; `never` keeps the API stateless.
+  - Auto-created recovery projects carry a TTL and are pruned by a new scheduled
+    command, `projects:prune-recovery` (daily), when never opened or worked on;
+    `always`-mode and panel-made projects are kept.
+- New config: `TTS_API_PROJECT_MODE` (default `never`) and `TTS_API_PROJECT_TTL_HOURS`
+  (default `168` — 7 days).
+
 ## [0.12.3] - 2026-06-24
 
 ### Security
