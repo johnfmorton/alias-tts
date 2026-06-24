@@ -3,14 +3,16 @@ chained input asset's bytes back.
 
 Providers buffer audio/JSON to a local temp file and attach a ``file://``
 :class:`Asset`; the :class:`ObjectStorageSink` uploads it to Backblaze B2 and
-rewrites the URL. Inputs arrive as ``file://`` (local, pre-upload) or
-``https://`` (durable B2 URL, post-upload) — :func:`read_asset_bytes` handles
-both.
+rewrites the URL. Inputs arrive as ``file://`` (local, pre-upload) or ``https://``
+(durable B2 URL, post-upload). :func:`read_asset_bytes` handles both, fetching a
+B2 object with an authenticated (SigV4) GET when B2 credentials are present — so
+the provenance bucket can stay private (an unauthenticated GET would 401).
 """
 
 from __future__ import annotations
 
 import hashlib
+import os
 import uuid
 from pathlib import Path
 from urllib.parse import quote, unquote, urlparse
@@ -53,12 +55,43 @@ def write_json_asset(output_dir: str | Path, step_id: str | None, blob: bytes) -
     return asset
 
 
+def _parse_b2_s3_url(parsed) -> tuple[str | None, str, str]:
+    """``(region, bucket, key)`` from a path-style B2 S3 URL
+    ``https://s3.<region>.backblazeb2.com/<bucket>/<key>``."""
+    region = parsed.netloc.removeprefix("s3.").removesuffix(".backblazeb2.com") or None
+    bucket, _, key = unquote(parsed.path).lstrip("/").partition("/")
+    return region, bucket, key
+
+
+def _read_b2_object(parsed, *, timeout: float) -> bytes:
+    """Authenticated GET of a B2 object using ``B2_KEY_ID`` / ``B2_APP_KEY`` from
+    the environment (the same creds the sink uploads with), so a private bucket
+    works — an unauthenticated GET would 401."""
+    import boto3
+    from botocore.config import Config
+
+    region, bucket, key = _parse_b2_s3_url(parsed)
+    client = boto3.client(
+        "s3",
+        endpoint_url=f"https://{parsed.netloc}",
+        region_name=region,
+        aws_access_key_id=os.environ["B2_KEY_ID"],
+        aws_secret_access_key=os.environ["B2_APP_KEY"],
+        config=Config(connect_timeout=timeout, read_timeout=timeout, retries={"max_attempts": 3}),
+    )
+    return client.get_object(Bucket=bucket, Key=key)["Body"].read()
+
+
 def read_asset_bytes(url: str, *, timeout: float = 120.0) -> bytes:
-    """Read an input asset's bytes from a ``file://`` or ``https://`` URL."""
+    """Read an input asset's bytes from a ``file://`` or ``https://`` URL. A B2
+    object URL is fetched with an authenticated GET when B2 credentials are present
+    (private bucket); otherwise a plain GET is used (public bucket / CDN URL)."""
     parsed = urlparse(url)
     if parsed.scheme == "file":
         return Path(unquote(parsed.path)).read_bytes()
     if parsed.scheme == "https":
+        if parsed.netloc.endswith(".backblazeb2.com") and os.getenv("B2_KEY_ID") and os.getenv("B2_APP_KEY"):
+            return _read_b2_object(parsed, timeout=timeout)
         resp = httpx.get(url, timeout=timeout)
         resp.raise_for_status()
         return resp.content
