@@ -21,12 +21,12 @@
 <body class="h-full bg-zinc-950 text-zinc-100 antialiased">
     <div class="flex min-h-screen flex-col">
         <header class="border-b border-zinc-800 bg-zinc-900/60">
-            <div class="mx-auto flex max-w-5xl items-center justify-between px-4 py-3">
-                <a href="{{ route('admin.dashboard') }}" class="flex items-center gap-2 font-semibold">
+            <div class="mx-auto flex max-w-5xl flex-col gap-3 px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
+                <a href="{{ route('admin.dashboard') }}" class="flex shrink-0 items-center gap-2 font-semibold whitespace-nowrap">
                     <span class="grid h-7 w-7 place-items-center rounded-md bg-cyan-500 text-sm font-bold text-zinc-950">B</span>
                     Bespoken TTS
                 </a>
-                <nav class="flex items-center gap-1 text-sm">
+                <nav class="flex flex-wrap items-center gap-1 text-sm">
                     @foreach($navItems as $item)
                         <a href="{{ route($item['route']) }}"
                            class="rounded-md px-3 py-1.5 transition {{ request()->routeIs($item['pattern']) ? 'bg-cyan-500/10 text-cyan-400' : 'text-zinc-400 hover:bg-zinc-800 hover:text-zinc-100' }}">
