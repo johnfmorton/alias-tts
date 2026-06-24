@@ -6,6 +6,17 @@ import os
 from dataclasses import dataclass
 
 
+def _normalize_b2_region(raw: str | None) -> str | None:
+    """B2's S3 endpoint is ``s3.<region>.backblazeb2.com``, so people often paste
+    the endpoint-host form (``s3.us-west-001`` or the full host) into B2_REGION —
+    but boto3 wants the bare region name (``us-west-001``). Strip a leading ``s3.``
+    and any trailing ``.backblazeb2.com`` so all three forms work."""
+    if not raw:
+        return None
+    region = raw.strip().removeprefix("s3.").split(".")[0]
+    return region or None
+
+
 @dataclass
 class RunnerConfig:
     """Where the runner finds Bespoken and Backblaze B2, plus orchestration knobs."""
@@ -30,7 +41,7 @@ class RunnerConfig:
             bespoken_internal_secret=os.getenv("BESPOKEN_INTERNAL_SECRET", ""),
             output_dir=os.getenv("GENBLAZE_OUTPUT_DIR"),
             b2_bucket=os.getenv("B2_BUCKET") or None,
-            b2_region=os.getenv("B2_REGION") or None,
+            b2_region=_normalize_b2_region(os.getenv("B2_REGION")),
             b2_public_url_base=os.getenv("B2_PUBLIC_URL_BASE") or None,
             max_rerolls=int(os.getenv("GENBLAZE_MAX_REROLLS", "3")),
             max_concurrency=int(os.getenv("GENBLAZE_MAX_CONCURRENCY", "2")),
