@@ -6,6 +6,7 @@ use App\Enums\SpeechStatus;
 use App\Jobs\GenerateSpeechJob;
 use App\Models\ApiKey;
 use App\Models\Speech;
+use App\Models\TtsProject;
 use App\Models\Voice;
 use App\Services\Asr\AsrClient;
 use App\Services\Asr\ChunkRemediator;
@@ -24,6 +25,7 @@ class SpeechService
         private TextChunker $chunker,
         private AsrClient $asr,
         private ChunkRemediator $remediator,
+        private ProjectService $projects,
     ) {}
 
     /**
@@ -100,6 +102,8 @@ class SpeechService
      */
     public function process(Speech $speech, ?int $seed = null): Speech
     {
+        $failingIndex = null;
+
         try {
             $referencePath = $this->referencePath($speech->voice);
 
@@ -129,6 +133,7 @@ class SpeechService
             $rawParts = [];
             $seamGapsMs = [];
             foreach ($segments as $i => $segment) {
+                $failingIndex = $i; // attribute a provider/QA throw to this segment
                 $part = $this->provider->synthesize($segment['text'], $referencePath, $providerSettings);
 
                 if ($this->asr->enabled()) {
@@ -137,6 +142,7 @@ class SpeechService
 
                 $rawParts[] = $part;
                 $seamGapsMs[] = $segment['breakAfter'] === 'paragraph' ? $paragraphGap : $sentenceGap;
+                $failingIndex = null; // segment done; a later (concat/store) failure isn't its fault
             }
 
             [$bytes, $mime, $ext] = $this->converter->concatenate(
@@ -155,16 +161,54 @@ class SpeechService
                 'audio_path' => $audioPath,
                 'mime_type' => $mime,
             ]);
+
+            $this->maybeCreateApiProject($speech, $seed, failed: false);
         } catch (Throwable $e) {
             $speech->update([
                 'status' => SpeechStatus::Failed,
                 'error_message' => $e->getMessage(),
             ]);
 
+            $this->maybeCreateApiProject($speech, $seed, failed: true, failureReason: $e->getMessage(), failedChunkIndex: $failingIndex);
+
             throw $e;
         }
 
         return $speech;
+    }
+
+    /**
+     * Honor tts.api_project_mode by handing a finished /v1 generation off to
+     * Studio as an editable project: 'on_error' creates one only on failure (a
+     * recovery project the admin can repair + rebuild), 'always' on every call,
+     * 'never' nothing. Creation must never mask the generation outcome, so a
+     * failure here is logged and swallowed; an async-retry duplicate is skipped.
+     */
+    private function maybeCreateApiProject(Speech $speech, ?int $seed, bool $failed, ?string $failureReason = null, ?int $failedChunkIndex = null): void
+    {
+        $mode = (string) config('tts.api_project_mode', 'never');
+        if (! ($mode === 'always' || ($mode === 'on_error' && $failed))) {
+            return;
+        }
+
+        if (TtsProject::where('source_speech_id', $speech->id)->exists()) {
+            return;
+        }
+
+        try {
+            $this->projects->createFromSpeech(
+                $speech,
+                origin: $failed ? 'api_failure' : 'api',
+                failureReason: $failed ? $failureReason : null,
+                failedChunkIndex: $failed ? $failedChunkIndex : null,
+                seed: $seed,
+            );
+        } catch (Throwable $e) {
+            Log::warning('Could not create an API Studio project', [
+                'speech' => $speech->id,
+                'error' => $e->getMessage(),
+            ]);
+        }
     }
 
     /**

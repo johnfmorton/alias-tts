@@ -5,6 +5,7 @@ namespace App\Services;
 use App\Enums\ChunkStatus;
 use App\Enums\ProjectStatus;
 use App\Models\ApiKey;
+use App\Models\Speech;
 use App\Models\TtsChunk;
 use App\Models\TtsProject;
 use App\Models\Voice;
@@ -77,6 +78,48 @@ class ProjectService
         ]);
 
         $this->createChunks($project, $segments);
+
+        return $project;
+    }
+
+    /**
+     * Materialize an editable project from a finished /v1 {@see Speech} — the
+     * API → Studio hand-off (see tts.api_project_mode). The project is ungenerated
+     * (Draft); the /v1 path keeps no per-chunk audio, so this seeds the text and
+     * the admin regenerates. A failure also records the provider error and the
+     * segment index that threw (best-effort: normalization may re-chunk slightly).
+     * A recovery ('api_failure') project gets a TTL so it's pruned if never
+     * touched; an 'always' ('api') project is kept.
+     */
+    public function createFromSpeech(
+        Speech $speech,
+        string $origin,
+        ?string $failureReason = null,
+        ?int $failedChunkIndex = null,
+        ?int $seed = null,
+    ): TtsProject {
+        $snippet = trim(mb_substr((string) $speech->text, 0, 40));
+
+        $project = $this->createFromText(
+            title: ($failureReason !== null ? 'API failure' : 'API generation').($snippet !== '' ? ': '.$snippet : ''),
+            voice: $speech->voice,
+            text: $speech->text,
+            settings: is_array($speech->settings) ? $speech->settings : [],
+            modelId: $speech->model_id,
+            outputFormat: $speech->output_format,
+            seed: $seed,
+            apiKey: $speech->apiKey,
+        );
+
+        $project->update([
+            'origin' => $origin,
+            'source_speech_id' => $speech->id,
+            'failure_reason' => $failureReason,
+            'failed_chunk_index' => $failedChunkIndex,
+            'expires_at' => $origin === 'api_failure'
+                ? now()->addHours((int) config('tts.api_project_ttl_hours', 168))
+                : null,
+        ]);
 
         return $project;
     }

@@ -24,6 +24,7 @@ class TtsProject extends Model
     protected $fillable = [
         'api_key_id',
         'origin',
+        'source_speech_id',
         'title',
         'voice_id',
         'settings',

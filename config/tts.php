@@ -193,6 +193,11 @@ return [
     // Does NOT affect the explicit "Create project" API endpoint.
     'api_project_mode' => env('TTS_API_PROJECT_MODE', 'never'),
 
+    // How long (hours) an auto-created recovery project (api_project_mode=on_error)
+    // is kept before the project prune removes it if it was never opened/edited.
+    // 'always'-mode projects are intentional artifacts and are NOT auto-pruned.
+    'api_project_ttl_hours' => (int) env('TTS_API_PROJECT_TTL_HOURS', 168), // 7 days
+
     /*
     |--------------------------------------------------------------------------
     | Storage
