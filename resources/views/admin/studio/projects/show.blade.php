@@ -32,6 +32,20 @@
          data-insert-url="{{ route('admin.studio.projects.chunks.store', $project) }}"
          data-generate-pace-ms="{{ (int) config('tts.studio_generate_pace_ms', 800) }}">
 
+        @if($project->origin === 'api_failure')
+            <div class="mb-6 rounded-xl border border-red-500/30 bg-red-500/10 px-5 py-4 text-sm text-red-200">
+                <div class="font-medium text-red-300">Recovered from a failed API generation</div>
+                @if($project->failure_reason)
+                    <p class="mt-1 text-red-200/90">The provider reported: <span class="font-mono text-xs">{{ $project->failure_reason }}</span></p>
+                @endif
+                @if(! is_null($project->failed_chunk_index))
+                    <p class="mt-1 text-red-200/80">Generation failed at chunk #{{ $project->failed_chunk_index + 1 }} — edit that sentence, generate the chunks, and rebuild.</p>
+                @else
+                    <p class="mt-1 text-red-200/80">Edit the text as needed, then generate the chunks and rebuild.</p>
+                @endif
+            </div>
+        @endif
+
         {{-- Toolbar --}}
         <div class="mb-6 flex flex-col gap-4 rounded-xl border border-zinc-800 bg-zinc-900/50 p-5 sm:flex-row sm:items-center sm:justify-between">
             <div class="flex flex-wrap items-center gap-3">

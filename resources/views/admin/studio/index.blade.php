@@ -26,6 +26,11 @@
                             <div class="truncate font-medium hover:text-cyan-300">{{ $project->title }}</div>
                             <div class="text-xs text-zinc-500">{{ $project->chunks_count }} chunk(s) · updated {{ $project->updated_at->diffForHumans() }}</div>
                         </a>
+                        @if($project->origin === 'api_failure')
+                            <span class="inline-flex shrink-0 rounded-md border border-red-500/30 bg-red-500/10 px-2 py-0.5 text-xs text-red-300" title="{{ $project->failure_reason }}">API failure</span>
+                        @elseif($project->origin === 'api')
+                            <span class="inline-flex shrink-0 rounded-md border border-zinc-700 bg-zinc-800 px-2 py-0.5 text-xs text-zinc-400">API</span>
+                        @endif
                         <span class="inline-flex shrink-0 rounded-md border px-2 py-0.5 text-xs {{ $projectStyles[$project->status->value] ?? $projectStyles['draft'] }}">{{ $project->status->value }}</span>
                     </li>
                 @endforeach

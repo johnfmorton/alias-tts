@@ -2,6 +2,7 @@
 
 namespace Tests\Feature;
 
+use App\Enums\ProjectStatus;
 use App\Enums\SpeechStatus;
 use App\Models\ApiKey;
 use App\Models\Speech;
@@ -183,5 +184,34 @@ class ApiProjectRecoveryTest extends TestCase
 
         $res->assertOk()->assertJsonPath('status', 'failed');
         $this->assertNotNull($res->json('recovery_url'));
+    }
+
+    public function test_panel_badges_and_explains_an_api_failure_project(): void
+    {
+        $voice = Voice::create(['slug' => 'v2', 'name' => 'V2']);
+        $project = TtsProject::create([
+            'voice_id' => $voice->id,
+            'title' => 'Recovered job',
+            'origin' => 'api_failure',
+            'failure_reason' => 'CUDA error: device-side assert triggered',
+            'failed_chunk_index' => 0,
+            'source_text' => 'Hello.',
+            'normalized_text' => 'Hello.',
+            'status' => ProjectStatus::Draft,
+            'model_id' => config('tts.default_model_id'),
+            'output_format' => config('tts.default_output_format'),
+        ]);
+
+        // Tier-1 discovery: the list badges it, the page explains it.
+        $this->actingAs($this->admin())
+            ->get(route('admin.studio.index'))
+            ->assertOk()
+            ->assertSee('API failure');
+
+        $this->actingAs($this->admin())
+            ->get(route('admin.studio.projects.show', $project))
+            ->assertOk()
+            ->assertSee('Recovered from a failed API generation')
+            ->assertSee('CUDA error: device-side assert triggered');
     }
 }
