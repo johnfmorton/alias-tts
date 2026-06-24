@@ -23,6 +23,7 @@ class TtsProject extends Model
 
     protected $fillable = [
         'api_key_id',
+        'origin',
         'title',
         'voice_id',
         'settings',
@@ -32,14 +33,19 @@ class TtsProject extends Model
         'source_text',
         'normalized_text',
         'status',
+        'failure_reason',
+        'failed_chunk_index',
         'final_audio_path',
         'mime_type',
+        'expires_at',
     ];
 
     protected $casts = [
         'settings' => 'array',
         'status' => ProjectStatus::class,
         'seed' => 'integer',
+        'failed_chunk_index' => 'integer',
+        'expires_at' => 'datetime',
     ];
 
     public function voice(): BelongsTo

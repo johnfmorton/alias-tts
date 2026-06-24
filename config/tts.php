@@ -183,6 +183,16 @@ return [
     // unused link goes stale.
     'magic_login_ttl_minutes' => (int) env('TTS_MAGIC_LOGIN_TTL_MINUTES', 60),
 
+    // Whether a /v1 API generation also creates an editable Studio project:
+    //   never    — stateless; no project is created (default).
+    //   on_error — only when a generation fails, so the failed text becomes a
+    //              recovery project you can open in Studio, repair, and rebuild
+    //              (a magic-login link is surfaced in the API error; the panel
+    //              badges it).
+    //   always   — every call creates a project.
+    // Does NOT affect the explicit "Create project" API endpoint.
+    'api_project_mode' => env('TTS_API_PROJECT_MODE', 'never'),
+
     /*
     |--------------------------------------------------------------------------
     | Storage

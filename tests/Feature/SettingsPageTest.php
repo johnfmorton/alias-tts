@@ -48,6 +48,7 @@ class SettingsPageTest extends TestCase
             'tts_asr_boundary_gap_min_ms' => 500,
             'tts_asr_boundary_energy_dbfs_max' => -55,
             'tts_asr_boundary_zcr_max_hz' => 1500,
+            'tts_api_project_mode' => 'never',
         ], $overrides);
     }
 

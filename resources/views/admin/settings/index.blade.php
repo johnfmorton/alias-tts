@@ -11,7 +11,7 @@
 
             <section class="space-y-5 rounded-xl border border-zinc-800 bg-zinc-900/50 p-6">
                 <h2 class="text-sm font-semibold uppercase tracking-wide text-zinc-300">
-                    {{ $groupName === 'asr' ? 'ASR transcript QA' : ucfirst($groupName) }}
+                    {{ ['asr' => 'ASR transcript QA', 'projects' => 'API projects'][$groupName] ?? ucfirst($groupName) }}
                 </h2>
 
                 @foreach($primary as $f)

@@ -184,6 +184,16 @@ $keys = [
         'label' => 'BNDNOISE tonal ZCR ceiling (Hz)',
         'help' => 'A boundary gap with a zero-crossing rate below this reads as tonal/low-frequency (a hum) rather than broadband speech residue. Together with the loudness threshold this separates a hum from a clean breath.',
     ],
+    [
+        'group' => 'projects',
+        'key' => 'api_project_mode',
+        'config' => 'tts.api_project_mode',
+        'env' => 'TTS_API_PROJECT_MODE',
+        'type' => 'enum',
+        'options' => ['never', 'on_error', 'always'],
+        'label' => 'API → Studio project',
+        'help' => 'Whether a /v1 API generation also creates an editable Studio project. "never" = stateless (default). "on_error" = only when a generation fails — the failed text becomes a recovery project you can open in Studio, fix, and rebuild. "always" = every call. Does not affect the explicit "Create project" API endpoint.',
+    ],
 ];
 
 // Freeze the "pinned in .env" flag now (see header). env($var) !== null is true
