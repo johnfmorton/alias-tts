@@ -10,7 +10,7 @@ from genblaze_runner import pronounce
 from genblaze_runner.pronounce import Substitution, SubstitutionMap, detect_substitutions
 
 
-def _stub_response(text: str, model: str = "meta/meta-llama-3-8b-instruct") -> ChatResponse:
+def _stub_response(text: str, model: str = "meta/llama-4-scout-instruct") -> ChatResponse:
     return ChatResponse(text=text, model=model, tokens_in=12, tokens_out=7)
 
 
@@ -41,7 +41,7 @@ def test_detect_parses_and_reports_provenance(monkeypatch):
     assert out["available"] is True
     assert out["substitutions"][0]["term"] == "DDEV"
     assert out["provenance"]["provider"] == "replicate"
-    assert out["provenance"]["model"] == "meta/meta-llama-3-8b-instruct"
+    assert out["provenance"]["model"] == "meta/llama-4-scout-instruct"
     assert len(out["provenance"]["prompt_sha256"]) == 64
 
 
@@ -90,6 +90,6 @@ def test_available_providers_lists_replicate_first_and_importable():
 
 
 def test_default_model_resolves():
-    assert pronounce.default_model("replicate") == "meta/meta-llama-3-8b-instruct"
+    assert pronounce.default_model("replicate") == "meta/llama-4-scout-instruct"
     assert pronounce.default_model("anthropic") == "claude-haiku-4-5"
     assert pronounce.default_model("bogus") is None

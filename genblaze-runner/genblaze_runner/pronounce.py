@@ -61,7 +61,9 @@ _PROVIDERS: dict[str, tuple[str, str, str]] = {
     "replicate": (
         "genblaze_runner.providers.replicate_chat",
         "REPLICATE_API_TOKEN",
-        "meta/meta-llama-3-8b-instruct",
+        # Llama 4 Scout — verified far better at respelling + clean JSON than
+        # llama-3-8b, still cheap/fast. Override with TTS_PRONUNCIATION_MODEL.
+        "meta/llama-4-scout-instruct",
     ),
     # Off-the-shelf genblaze chat adapters — the swappable second/third options.
     "gemini": ("genblaze_google", "GEMINI_API_KEY", "gemini-2.5-flash"),

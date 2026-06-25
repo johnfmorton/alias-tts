@@ -287,8 +287,10 @@ Built on `feat/genblaze-b2`; full PHP suite green (318 tests) + runner pytest (8
   responds; `/health` shows `replicate: importable+keyed`), and a real end-to-end
   call returns parsed substitutions. The runner needs `REPLICATE_API_TOKEN` in
   ITS env now (the old `/run` path delegated Replicate to PHP, so it didn't).
-  Default Replicate model is `meta/meta-llama-3-8b-instruct` (cheap; weak at
-  respelling — set `TTS_PRONUNCIATION_MODEL` or swap to Gemini/Claude for quality).
+  Default Replicate model is `meta/llama-4-scout-instruct` (verified strong at
+  respelling + clean JSON; override with `TTS_PRONUNCIATION_MODEL`). For top
+  quality add an `ANTHROPIC_API_KEY` and select the `anthropic` provider —
+  Claude Haiku 4.5 (`claude-haiku-4-5`) uses tool-use for guaranteed-valid JSON.
   The detection schema is lenient (accepts `respelling` alias for `phonetic`,
   optional category/confidence) since Replicate LLMs have no enforced JSON mode.
 - **Deferred:** off-the-shelf Gemini/OpenAI adapters (`pip install -e '.[pronounce]'`).
