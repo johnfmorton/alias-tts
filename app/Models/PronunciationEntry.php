@@ -2,6 +2,8 @@
 
 namespace App\Models;
 
+use App\Services\Pronunciation\PronunciationDictionary;
+use App\Services\Pronunciation\PronunciationSubstituter;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Concerns\HasUuids;
 use Illuminate\Database\Eloquent\Model;
@@ -15,8 +17,8 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
  * syncs the approved set (read API) and applies the find-and-replace upstream of
  * whatever TTS backend is in use.
  *
- * @see \App\Services\Pronunciation\PronunciationSubstituter  applies entries to text
- * @see \App\Services\Pronunciation\PronunciationDictionary   load / approve / persist
+ * @see PronunciationSubstituter  applies entries to text
+ * @see PronunciationDictionary   load / approve / persist
  */
 class PronunciationEntry extends Model
 {
@@ -63,7 +65,7 @@ class PronunciationEntry extends Model
     }
 
     /**
-     * The shape {@see \App\Services\Pronunciation\PronunciationSubstituter::apply()}
+     * The shape {@see PronunciationSubstituter::apply()}
      * consumes.
      *
      * @return array{term: string, phonetic: string, match_mode: string}

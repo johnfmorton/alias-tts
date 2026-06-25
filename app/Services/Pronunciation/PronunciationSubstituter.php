@@ -2,6 +2,8 @@
 
 namespace App\Services\Pronunciation;
 
+use App\Services\TextNormalizer;
+
 /**
  * Applies a pronunciation dictionary to text: a find-and-replace that rewrites
  * each known `term` to its ASCII `phonetic` respelling BEFORE the text reaches
@@ -23,7 +25,7 @@ namespace App\Services\Pronunciation;
  *  - Replaces every occurrence.
  *
  * ASCII respelling only — the open-source Chatterbox model takes plain `prompt`
- * text (no SSML/<phoneme>/IPA), and {@see \App\Services\TextNormalizer} strips
+ * text (no SSML/<phoneme>/IPA), and {@see TextNormalizer} strips
  * "<…>" before this ever runs.
  */
 class PronunciationSubstituter
