@@ -1,0 +1,21 @@
+# Whisper ASR sidecar as a DDEV add-on service. Reachable from the web container
+# at http://whisper:8765 (see web_environment TTS_ASR_URL in config.yaml).
+# Replaces the host `uvicorn app:app --app-dir asr-sidecar --port 8765` process.
+services:
+  whisper:
+    container_name: ddev-${DDEV_SITENAME}-whisper
+    build:
+      context: ../asr-sidecar
+    image: ddev-${DDEV_SITENAME}-whisper
+    restart: "no"
+    labels:
+      com.ddev.site-name: ${DDEV_SITENAME}
+      com.ddev.approot: ${DDEV_APPROOT}
+    expose:
+      - "8765"
+    volumes:
+      - "../asr-sidecar:/app"
+      - "whisper-models:/models"
+
+volumes:
+  whisper-models:

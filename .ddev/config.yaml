@@ -11,8 +11,25 @@ database:
     version: "11.8"
 use_dns_when_possible: true
 composer_version: "2"
-web_environment: []
+web_environment:
+  # Point the app at the containerized sidecars (see docker-compose.runner.yaml /
+  # docker-compose.whisper.yaml). These override the .env host.docker.internal URLs
+  # after a `ddev restart`. Run `ddev artisan config:clear` if config is cached.
+  - TTS_GENBLAZE_RUNNER_URL=http://runner:8800
+  - TTS_ASR_URL=http://whisper:8765
 corepack_enable: false
+
+# Auto-start the Laravel queue worker + scheduler inside the web container, so
+# async TTS jobs drain and scheduled tasks (speech:cleanup) run without manually
+# starting `queue:listen`. queue:listen reloads code each job (good for dev); its
+# timeout must exceed TTS_ASYNC_TIMEOUT (1800) so a long job isn't killed mid-run.
+web_extra_daemons:
+  - name: queue
+    command: "php artisan queue:listen --timeout=1810 --tries=1"
+    directory: /var/www/html
+  - name: scheduler
+    command: "php artisan schedule:work"
+    directory: /var/www/html
 
 # Key features of DDEV's config.yaml:
 
