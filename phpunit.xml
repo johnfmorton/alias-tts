@@ -37,5 +37,11 @@
              on the runner shipping the newest ffmpeg. The gate itself is covered
              by tests/Unit/FfmpegVersionParseTest.php. -->
         <env name="TTS_FFMPEG_MIN_VERSION" value="0"/>
+        <!-- Local dev .env points these at the Whisper + Genblaze sidecars; keep the
+             test env independent of them so the suite never hits a running sidecar.
+             (TTS_ASR_ENABLED must stay UNSET — any value would lock it and break the
+             ASR auto-enable tests — so it is simply absent from .env, not pinned here.) -->
+        <env name="TTS_ASR_URL" value="http://127.0.0.1:8765"/>
+        <env name="TTS_GENBLAZE_RUNNER_URL" value=""/>
     </php>
 </phpunit>
