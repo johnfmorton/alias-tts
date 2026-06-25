@@ -75,4 +75,47 @@ class GenblazeRunnerClient
 
         return (array) $res->json();
     }
+
+    /**
+     * Ask the runner's Genblaze chat step for a pronunciation substitution map.
+     * Degrade-safe by design: every failure (runner unconfigured/unreachable,
+     * non-2xx, the LLM provider unavailable) returns ['available' => false] so the
+     * caller continues to chunking rather than blocking project creation.
+     *
+     * @param  list<string>  $knownTerms
+     * @return array{available: bool, substitutions: list<array<string, mixed>>, provenance?: mixed, error?: ?string}
+     */
+    public function detectPronunciation(string $text, array $knownTerms, string $provider, ?string $model, float $temperature): array
+    {
+        if (! $this->configured()) {
+            return ['available' => false, 'substitutions' => [], 'error' => 'TTS_GENBLAZE_RUNNER_URL is not set'];
+        }
+
+        try {
+            $res = Http::timeout((int) config('tts.pronunciation.timeout', 60))
+                ->acceptJson()
+                ->post($this->baseUrl().'/pronounce', array_filter([
+                    'text' => $text,
+                    'known_terms' => $knownTerms,
+                    'provider' => $provider,
+                    'model' => $model,
+                    'temperature' => $temperature,
+                ], fn ($v) => $v !== null));
+
+            if (! $res->successful()) {
+                return ['available' => false, 'substitutions' => [], 'error' => 'HTTP '.$res->status()];
+            }
+
+            $data = (array) $res->json();
+
+            return [
+                'available' => (bool) ($data['available'] ?? false),
+                'substitutions' => $data['substitutions'] ?? [],
+                'provenance' => $data['provenance'] ?? null,
+                'error' => $data['error'] ?? null,
+            ];
+        } catch (Throwable $e) {
+            return ['available' => false, 'substitutions' => [], 'error' => $e->getMessage()];
+        }
+    }
 }

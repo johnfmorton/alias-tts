@@ -1,6 +1,7 @@
 <?php
 
 use App\Http\Controllers\ProjectApiController;
+use App\Http\Controllers\PronunciationApiController;
 use App\Http\Controllers\TextToSpeechController;
 use App\Http\Middleware\RateLimitApiRequests;
 use App\Http\Middleware\ValidateApiKey;
@@ -40,4 +41,8 @@ Route::middleware([ValidateApiKey::class])->group(function () {
     // chunk + persist), so it stays off the generation rate limit above.
     Route::post('/v1/projects', [ProjectApiController::class, 'store'])
         ->name('api.projects.store');
+
+    // Read-only dictionary sync for the Bespoken plugin. A cheap, pollable read.
+    Route::get('/v1/pronunciations', [PronunciationApiController::class, 'index'])
+        ->name('api.pronunciations.index');
 });

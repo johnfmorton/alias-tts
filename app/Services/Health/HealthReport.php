@@ -9,6 +9,7 @@ use App\Models\Speech;
 use App\Models\Voice;
 use App\Providers\AppServiceProvider;
 use App\Services\Asr\AsrClient;
+use App\Services\Genblaze\GenblazeRunnerClient;
 use Illuminate\Console\Scheduling\Event;
 use Illuminate\Console\Scheduling\Schedule;
 use Illuminate\Contracts\Console\Kernel as ConsoleKernel;
@@ -72,6 +73,7 @@ class HealthReport
         // Inference + async
         $this->checkProvider();
         $this->checkAsr();
+        $this->checkPronunciation();
         $this->checkQueue();
         $this->checkQueueTiming();
         $this->checkFailedJobs();
@@ -268,6 +270,46 @@ class HealthReport
             $health['latency_ms'] ?? 0,
         );
         $this->add('asr', HealthStatus::Pass, 'ASR transcript QA', $detail);
+    }
+
+    /**
+     * The optional pronunciation pre-processor. Off by default; when enabled,
+     * reads the Genblaze runner's /health to confirm the selected chat provider
+     * is importable + keyed. Degrade-safe by design, so a misconfiguration only
+     * warns — detection is skipped and projects still continue to chunking.
+     */
+    private function checkPronunciation(): void
+    {
+        if (! (bool) config('tts.pronunciation.enabled', false)) {
+            $this->add('pronunciation', HealthStatus::Pass, 'Pronunciation pre-processor', 'disabled — set TTS_PRONUNCIATION_ENABLED=true to suggest phonetic respellings before chunking.');
+
+            return;
+        }
+
+        $provider = (string) config('tts.pronunciation.llm_provider', 'replicate');
+        $health = app(GenblazeRunnerClient::class)->health();
+
+        if (! ($health['reachable'] ?? false)) {
+            $this->add('pronunciation', HealthStatus::Warn, 'Pronunciation pre-processor', 'enabled, but the Genblaze runner is unreachable ('.($health['error'] ?? 'no runner URL').') — detection is skipped and projects continue to chunking.');
+
+            return;
+        }
+
+        $status = (array) (($health['body']['pronounce'] ?? [])[$provider] ?? []);
+
+        if (! ($status['importable'] ?? false)) {
+            $this->add('pronunciation', HealthStatus::Warn, 'Pronunciation pre-processor', "enabled, but provider \"{$provider}\" has no installed chat adapter in the runner — install it (`pip install -e '.[pronounce]'`) or pick another provider in Settings.");
+
+            return;
+        }
+
+        if (! ($status['keyed'] ?? false)) {
+            $this->add('pronunciation', HealthStatus::Warn, 'Pronunciation pre-processor', "enabled via \"{$provider}\", but its API key isn't set in the runner environment.");
+
+            return;
+        }
+
+        $this->add('pronunciation', HealthStatus::Pass, 'Pronunciation pre-processor', "enabled via \"{$provider}\" (Genblaze chat provider ready).");
     }
 
     private function checkQueue(): void

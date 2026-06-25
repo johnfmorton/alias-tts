@@ -24,6 +24,13 @@ dependencies = [
 dev = [
     "pytest>=8",
 ]
+# Off-the-shelf Genblaze chat adapters for the pronunciation detector's swappable
+# providers. The default provider (Replicate) needs no extra dep — it reuses the
+# runner's httpx + REPLICATE_API_TOKEN via genblaze_runner.providers.replicate_chat.
+pronounce = [
+    "genblaze-google>=0.3,<0.4",
+    "genblaze-openai>=0.3,<0.4",
+]
 
 [tool.setuptools.packages.find]
 include = ["genblaze_runner*"]

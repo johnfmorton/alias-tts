@@ -50,6 +50,8 @@ Route::prefix('studio')->name('studio.')->group(function () {
     // Editable projects: persist chunks, regenerate one at a time, rebuild the stitch.
     Route::prefix('projects')->name('projects.')->group(function () {
         Route::get('/create', [StudioProjectController::class, 'create'])->name('create');
+        Route::post('/review', [StudioProjectController::class, 'review'])->name('review');
+        Route::post('/apply', [StudioProjectController::class, 'applyAndStore'])->name('apply');
         Route::post('/', [StudioProjectController::class, 'store'])->name('store');
         Route::get('/{project}', [StudioProjectController::class, 'show'])->name('show');
         Route::patch('/{project}', [StudioProjectController::class, 'update'])->name('update');

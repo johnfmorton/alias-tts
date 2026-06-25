@@ -194,6 +194,25 @@ $keys = [
         'label' => 'API → Studio project',
         'help' => 'Whether a /v1 API generation also creates an editable Studio project. "never" = stateless (default). "on_error" = only when a generation fails — the failed text becomes a recovery project you can open in Studio, fix, and rebuild. "always" = every call. Does not affect the explicit "Create project" API endpoint.',
     ],
+    [
+        'group' => 'pronunciation',
+        'key' => 'enabled',
+        'config' => 'tts.pronunciation.enabled',
+        'env' => 'TTS_PRONUNCIATION_ENABLED',
+        'type' => 'bool',
+        'label' => 'Pronunciation pre-processor',
+        'help' => 'Insert a review screen before chunking that suggests phonetic respellings for likely-mispronounced terms ("DDEV" => "dee dev"). Off by default; degrades safely when the runner or LLM is unavailable.',
+    ],
+    [
+        'group' => 'pronunciation',
+        'key' => 'llm_provider',
+        'config' => 'tts.pronunciation.llm_provider',
+        'env' => 'TTS_PRONUNCIATION_LLM_PROVIDER',
+        'type' => 'enum',
+        'options' => ['replicate', 'gemini', 'openai', 'anthropic'],
+        'label' => 'Detection LLM provider',
+        'help' => 'Which Genblaze chat provider detects mispronounced terms. "replicate" reuses your Replicate token (wrapped as a Genblaze chat provider); "gemini"/"openai" are off-the-shelf adapters. Set TTS_PRONUNCIATION_LLM_PROVIDER in .env to lock the choice.',
+    ],
 ];
 
 // Freeze the "pinned in .env" flag now (see header). env($var) !== null is true

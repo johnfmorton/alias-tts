@@ -49,6 +49,7 @@ class SettingsPageTest extends TestCase
             'tts_asr_boundary_energy_dbfs_max' => -55,
             'tts_asr_boundary_zcr_max_hz' => 1500,
             'tts_api_project_mode' => 'never',
+            'tts_pronunciation_llm_provider' => 'gemini',
         ], $overrides);
     }
 
@@ -149,5 +150,29 @@ class SettingsPageTest extends TestCase
 
         $this->assertNull(Setting::find('tts.asr.enabled')); // never written
         $this->assertTrue(config('tts.asr.enabled'));        // still on
+    }
+
+    public function test_pronunciation_group_renders(): void
+    {
+        $res = $this->actingAs($this->admin())->get(route('admin.settings.index'));
+
+        $res->assertOk();
+        $res->assertSee('Pronunciation pre-processor');
+        $res->assertSee('Detection LLM provider');
+    }
+
+    public function test_saving_persists_the_pronunciation_provider(): void
+    {
+        config(['tts.asr.enabled' => true]);
+        $this->setLocked('tts.asr.enabled', true);
+
+        $this->actingAs($this->admin())
+            ->put(route('admin.settings.update'), $this->validPayload([
+                'tts_pronunciation_llm_provider' => 'openai',
+            ]))
+            ->assertRedirect(route('admin.settings.index'))
+            ->assertSessionHas('success');
+
+        $this->assertSame('openai', Setting::find('tts.pronunciation.llm_provider')->value);
     }
 }

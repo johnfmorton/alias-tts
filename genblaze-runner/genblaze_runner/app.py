@@ -11,6 +11,7 @@ from fastapi import FastAPI
 from fastapi.concurrency import run_in_threadpool
 from pydantic import BaseModel
 
+from genblaze_runner import pronounce
 from genblaze_runner.config import RunnerConfig
 from genblaze_runner.orchestrator import Orchestrator
 from genblaze_runner.sink import build_sink
@@ -27,9 +28,22 @@ class RunRequest(BaseModel):
     settings: dict | None = None
 
 
+class PronounceRequest(BaseModel):
+    text: str
+    known_terms: list[str] = []
+    provider: str = "replicate"  # admin-selectable; Replicate-via-Genblaze by default
+    model: str | None = None
+    temperature: float = 0.2
+
+
 @app.get("/health")
 def health() -> dict:
-    return {"status": "ok", "bespoken": _config.bespoken_base_url, "b2": bool(_config.b2_bucket)}
+    return {
+        "status": "ok",
+        "bespoken": _config.bespoken_base_url,
+        "b2": bool(_config.b2_bucket),
+        "pronounce": pronounce.available_providers(),
+    }
 
 
 @app.post("/run")
@@ -60,3 +74,16 @@ async def run(req: RunRequest) -> dict:
             for c in result.chunks
         ],
     }
+
+
+@app.post("/pronounce")
+async def pronounce_text(req: PronounceRequest) -> dict:
+    return await run_in_threadpool(
+        pronounce.detect_substitutions,
+        text=req.text,
+        known_terms=req.known_terms,
+        provider=req.provider,
+        model=req.model,
+        temperature=req.temperature,
+        config=_config,
+    )

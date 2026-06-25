@@ -73,6 +73,36 @@ return [
 
     /*
     |--------------------------------------------------------------------------
+    | Pronunciation pre-processor
+    |--------------------------------------------------------------------------
+    |
+    | Inserts a review screen before chunking that asks an LLM (run as a Genblaze
+    | chat step in the runner) to propose ASCII respellings for likely-
+    | mispronounced terms ("DDEV" => "dee dev"). Approved terms persist to a
+    | per-writer dictionary. Off by default; any runner/LLM failure degrades to
+    | "no suggestions, continue to chunking" and never blocks generation.
+    |
+    | The LLM provider keys in the 'llm' block below are read by the RUNNER
+    | (Python) from its own environment; they are mirrored here only so the
+    | Settings page and health check can report which providers are keyed.
+    |
+    */
+    'pronunciation' => [
+        'enabled' => (bool) env('TTS_PRONUNCIATION_ENABLED', false),
+        'llm_provider' => env('TTS_PRONUNCIATION_LLM_PROVIDER', 'replicate'),
+        'model' => env('TTS_PRONUNCIATION_MODEL'),                  // null => provider default
+        'temperature' => (float) env('TTS_PRONUNCIATION_TEMPERATURE', 0.2),
+        'timeout' => (int) env('TTS_PRONUNCIATION_TIMEOUT', 60),
+    ],
+
+    'llm' => [
+        'gemini' => ['key' => env('GEMINI_API_KEY')],
+        'openai' => ['key' => env('OPENAI_API_KEY')],
+        'anthropic' => ['key' => env('ANTHROPIC_API_KEY')],
+    ],
+
+    /*
+    |--------------------------------------------------------------------------
     | Limits & caching
     |--------------------------------------------------------------------------
     */
