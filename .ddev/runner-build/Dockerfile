@@ -7,6 +7,8 @@ FROM python:3.13-slim
 RUN pip install --no-cache-dir \
     "genblaze-core>=0.3,<0.4" \
     "genblaze-s3>=0.3,<0.4" \
+    "genblaze-google>=0.3,<0.4" \
+    "genblaze-openai>=0.3,<0.4" \
     "httpx>=0.27" \
     "fastapi>=0.110" \
     "uvicorn[standard]>=0.29" \

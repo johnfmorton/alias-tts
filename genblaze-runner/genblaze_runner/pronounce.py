@@ -160,24 +160,23 @@ def _call_chat(provider: str, messages: list[ChatMessage], *, model: str, temper
     if spec is None:
         raise ValueError(f"Unknown detection provider {provider!r}")
 
-    module = importlib.import_module(spec[0])
+    chat = importlib.import_module(spec[0]).chat
 
+    # Off-the-shelf genblaze connectors take `model` as the first positional arg
+    # and `messages` second; our custom in-runner providers (replicate, anthropic)
+    # take `messages` first with `model` as a keyword.
     if provider == "openai":
         from genblaze_core.models.chat import coerce_response_format
 
-        response_format = coerce_response_format(SubstitutionMap)
-    elif provider in ("gemini", "anthropic"):
-        # Gemini translates the pydantic model to its own response_schema; the
-        # custom Anthropic provider builds a forced tool from it. Neither uses
-        # coerce_response_format (that is OpenAI-wire only — see
-        # genblaze_core.models.chat).
-        response_format = SubstitutionMap
-    else:
-        # Replicate (and other custom providers): no json-schema mode — rely on
-        # the JSON-only system prompt and parse the returned text.
-        response_format = None
+        return chat(model, messages, response_format=coerce_response_format(SubstitutionMap), temperature=temperature)
+    if provider == "gemini":
+        # The google connector exposes no response_format parameter, so rely on
+        # the JSON-only system prompt (like Replicate) and parse the returned text.
+        return chat(model, messages, temperature=temperature)
 
-    return module.chat(messages, model=model, response_format=response_format, temperature=temperature)
+    # Custom providers: anthropic forces a tool from the schema; replicate ignores it.
+    response_format = SubstitutionMap if provider == "anthropic" else None
+    return chat(messages, model=model, response_format=response_format, temperature=temperature)
 
 
 def detect_substitutions(
