@@ -8,6 +8,10 @@
         ['route' => 'admin.health', 'pattern' => 'admin.health', 'label' => 'Health'],
         ['route' => 'admin.settings.index', 'pattern' => 'admin.settings.*', 'label' => 'Settings'],
     ];
+    // Headline hackathon feature — only shown when the Genblaze runner is configured.
+    if (config('tts.genblaze.runner_url')) {
+        array_splice($navItems, 2, 0, [['route' => 'admin.studio.genblaze', 'pattern' => 'admin.studio.genblaze', 'label' => 'Genblaze']]);
+    }
 @endphp
 <!DOCTYPE html>
 <html lang="en" class="h-full">

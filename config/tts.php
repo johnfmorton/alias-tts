@@ -57,6 +57,22 @@ return [
 
     /*
     |--------------------------------------------------------------------------
+    | Genblaze runner
+    |--------------------------------------------------------------------------
+    |
+    | The Genblaze-owned orchestrator (the genblaze-runner FastAPI service) that
+    | drives generate → QA-gated re-roll → stitch and persists every take + a
+    | provenance manifest to Backblaze B2. The Studio "Generate via Genblaze"
+    | button proxies to its POST /run. Leave the URL empty to hide the button.
+    |
+    */
+    'genblaze' => [
+        'runner_url' => rtrim((string) env('TTS_GENBLAZE_RUNNER_URL', ''), '/'),
+        'timeout' => (int) env('TTS_GENBLAZE_TIMEOUT', 600),
+    ],
+
+    /*
+    |--------------------------------------------------------------------------
     | Limits & caching
     |--------------------------------------------------------------------------
     */

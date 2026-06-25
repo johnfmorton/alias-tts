@@ -2,6 +2,7 @@
 
 use App\Http\Controllers\Admin\ApiKeyController;
 use App\Http\Controllers\Admin\DashboardController;
+use App\Http\Controllers\Admin\GenblazeController;
 use App\Http\Controllers\Admin\HealthController;
 use App\Http\Controllers\Admin\HealthTestController;
 use App\Http\Controllers\Admin\SettingsController;
@@ -41,6 +42,10 @@ Route::prefix('studio')->name('studio.')->group(function () {
     Route::post('/voice-defaults', [StudioController::class, 'saveVoiceDefaults'])->name('voice-defaults');
     Route::post('/presets', [StudioController::class, 'storePreset'])->name('presets.store');
     Route::delete('/presets/{preset}', [StudioController::class, 'destroyPreset'])->name('presets.destroy');
+
+    // "Generate via Genblaze" — proxies a full run to the Genblaze runner, renders provenance.
+    Route::get('/genblaze', [GenblazeController::class, 'index'])->name('genblaze');
+    Route::post('/genblaze/run', [GenblazeController::class, 'run'])->name('genblaze.run');
 
     // Editable projects: persist chunks, regenerate one at a time, rebuild the stitch.
     Route::prefix('projects')->name('projects.')->group(function () {
