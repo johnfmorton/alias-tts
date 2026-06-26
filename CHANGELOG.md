@@ -6,6 +6,17 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.14.5] - 2026-06-26
+
+### Added
+- **The Genblaze panel now shows whether the provenance manifest verifies.** Every
+  "Generate via Genblaze" run already wrote a SHA-256 provenance manifest to
+  Backblaze B2; the runner now also calls Genblaze's `manifest.verify()` and
+  returns the result, so the Studio panel renders a green **✓ verified · SHA-256**
+  badge next to the manifest hash (red if it fails to verify, hidden if the runner
+  can't compute it). The run's verifiability is now visible at a glance instead of
+  implied by the hash alone.
+
 ## [0.14.4] - 2026-06-26
 
 ### Changed
@@ -721,7 +732,8 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   fixed seed; the response cache guarantees stable output for repeated identical
   requests.
 
-[Unreleased]: https://github.com/johnfmorton/bespoken-tts-service/compare/v0.14.4...HEAD
+[Unreleased]: https://github.com/johnfmorton/bespoken-tts-service/compare/v0.14.5...HEAD
+[0.14.5]: https://github.com/johnfmorton/bespoken-tts-service/compare/v0.14.4...v0.14.5
 [0.14.4]: https://github.com/johnfmorton/bespoken-tts-service/compare/v0.14.3...v0.14.4
 [0.14.3]: https://github.com/johnfmorton/bespoken-tts-service/compare/v0.14.2...v0.14.3
 [0.14.2]: https://github.com/johnfmorton/bespoken-tts-service/compare/v0.14.1...v0.14.2
