@@ -99,7 +99,30 @@ class ApiProjectRecoveryTest extends TestCase
         $this->assertSame('api', $project->origin);
         $this->assertNull($project->failure_reason);
         $this->assertNull($project->expires_at, 'always-mode projects are kept, not auto-pruned');
-        $this->assertTrue($project->chunks()->exists());
+
+        // The finished generation is carried across, not left for the admin to
+        // regenerate: every chunk is Completed with its raw audio on disk...
+        $chunks = $project->chunks()->get();
+        $this->assertTrue($chunks->isNotEmpty());
+        $this->assertTrue(
+            $chunks->every(fn ($c) => $c->status === ChunkStatus::Completed),
+            'every retained chunk is generated, not pending',
+        );
+        foreach ($chunks as $chunk) {
+            $this->assertNotNull($chunk->audio_path);
+            Storage::disk('local')->assertExists($chunk->audio_path);
+        }
+
+        // ...and the project's final file IS the audio the API returned (Ready,
+        // byte-for-byte), so the panel doesn't show a "draft" final.
+        $this->assertSame(ProjectStatus::Ready, $project->status);
+        $this->assertNotNull($project->final_audio_path);
+        Storage::disk('local')->assertExists($project->final_audio_path);
+        $this->assertSame(
+            Storage::disk('local')->get($speech->audio_path),
+            Storage::disk('local')->get($project->final_audio_path),
+            'the project final is the same concatenated audio /v1 returned',
+        );
     }
 
     public function test_a_job_retry_does_not_duplicate_the_recovery_project(): void

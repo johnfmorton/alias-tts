@@ -6,6 +6,19 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Changed
+- **`api_project_mode=always` now keeps the audio a successful `/v1` call already
+  generated.** Previously every Studio project auto-created from a successful API
+  generation opened empty — all chunks `pending`, the final marked `draft` —
+  forcing a full regeneration of work the API had just done. A successful call now
+  hands its result across intact: each synthesized segment is persisted as a
+  `completed` chunk holding its raw audio (so per-chunk playback, editing, and
+  re-roll work immediately), and the API's concatenated final file is carried over
+  so the project opens **Ready** with the same audio the call returned. The chunks
+  are the exact segments `/v1` read, so a later edit still re-rolls only that one
+  chunk. The failure-recovery path (`api_project_mode=on_error`) is unchanged — a
+  failed generation has no usable audio, so it still seeds a bare project to repair.
+
 ## [0.14.3] - 2026-06-26
 
 ### Added

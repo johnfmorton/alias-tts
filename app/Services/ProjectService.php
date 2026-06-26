@@ -132,6 +132,84 @@ class ProjectService
     }
 
     /**
+     * Materialize a FULLY-GENERATED project from a SUCCESSFUL /v1 {@see Speech}
+     * (api_project_mode=always). Unlike {@see createFromSpeech()} — which seeds an
+     * empty project for the admin to regenerate — this persists the work /v1 just
+     * did: each already-synthesized segment becomes a Completed chunk holding its
+     * raw audio, and the API's concatenated final file is carried across, so the
+     * project opens Ready (chunks playable + editable, final built). The chunks are
+     * the EXACT segments /v1 read (no normalize, no re-chunk), so every stored
+     * audio lines up 1:1 with its text; a later edit still re-rolls only that one
+     * chunk. The raw audio is stored the same way {@see generateChunk()} stores it,
+     * so Rebuild / per-chunk editing behave identically to a Studio-built project.
+     *
+     * @param  list<array{text: string, breakAfter: string, audio: string}>  $segments
+     */
+    public function createGeneratedFromSpeech(Speech $speech, array $segments, ?int $seed = null): TtsProject
+    {
+        $snippet = trim(mb_substr((string) $speech->text, 0, 40));
+
+        $project = TtsProject::create([
+            'api_key_id' => $speech->apiKey?->id,
+            'origin' => 'api',
+            'source_speech_id' => $speech->id,
+            'title' => 'API generation'.($snippet !== '' ? ': '.$snippet : ''),
+            'voice_id' => $speech->voice->id,
+            'settings' => is_array($speech->settings) ? $speech->settings : [],
+            'model_id' => $speech->model_id,
+            'output_format' => $speech->output_format,
+            'seed' => $seed,
+            // /v1 reads the raw request text (no normalization pass), so the
+            // original and "normalized" forms are the same here.
+            'source_text' => $speech->text,
+            'normalized_text' => $speech->text,
+            'status' => ProjectStatus::Draft,
+        ]);
+
+        foreach (array_values($segments) as $i => $segment) {
+            $chunk = $project->chunks()->create([
+                'position' => $i,
+                'text' => $segment['text'],
+                'break_after' => $segment['breakAfter'],
+                'status' => ChunkStatus::Pending,
+                'characters' => mb_strlen($segment['text']),
+            ]);
+
+            $this->putChunkAudio($chunk, $segment['audio']);
+        }
+
+        $this->carryFinalAudio($project, $speech);
+
+        return $project->refresh();
+    }
+
+    /**
+     * Copy a finished Speech's concatenated audio into the project as its final
+     * file (an INDEPENDENT copy — the source Speech is pruned on its own TTL) and
+     * mark the project Ready. If the Speech audio is already gone, the project is
+     * left Draft with its generated chunks; a Rebuild reproduces the final locally
+     * from the stored chunk audio.
+     */
+    private function carryFinalAudio(TtsProject $project, Speech $speech): void
+    {
+        $disk = Storage::disk($this->disk());
+
+        if (! $speech->audio_path || ! $disk->exists($speech->audio_path)) {
+            return;
+        }
+
+        $ext = pathinfo($speech->audio_path, PATHINFO_EXTENSION) ?: 'mp3';
+        $path = config('tts.storage_path').'/projects/'.$project->id.'/final.'.$ext;
+        $disk->put($path, $disk->get($speech->audio_path));
+
+        $project->update([
+            'final_audio_path' => $path,
+            'mime_type' => $speech->mime_type,
+            'status' => ProjectStatus::Ready,
+        ]);
+    }
+
+    /**
      * Re-chunk a (possibly edited) project's text from scratch: normalize +
      * chunk the new text, delete every existing chunk and all stored audio,
      * recreate fresh (ungenerated) chunk rows, and return the project to Draft.

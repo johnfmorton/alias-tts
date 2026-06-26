@@ -171,7 +171,12 @@ class SpeechService
                 'mime_type' => $mime,
             ]);
 
-            $this->maybeCreateApiProject($speech, $seed, failed: false);
+            $this->maybeCreateApiProject(
+                $speech,
+                $seed,
+                failed: false,
+                generatedSegments: $this->generatedSegments($segments, $rawParts),
+            );
         } catch (Throwable $e) {
             $speech->update([
                 'status' => SpeechStatus::Failed,
@@ -192,8 +197,16 @@ class SpeechService
      * recovery project the admin can repair + rebuild), 'always' on every call,
      * 'never' nothing. Creation must never mask the generation outcome, so a
      * failure here is logged and swallowed; an async-retry duplicate is skipped.
+     *
+     * A SUCCESSFUL 'always' call carries the work across complete — each
+     * already-synthesized segment becomes a generated chunk and the concatenated
+     * final is copied over — so the admin opens a ready project, not an empty one
+     * to regenerate. A failure has no usable audio, so it seeds a bare recovery
+     * project from the text alone.
+     *
+     * @param  list<array{text: string, breakAfter: string, audio: string}>|null  $generatedSegments
      */
-    private function maybeCreateApiProject(Speech $speech, ?int $seed, bool $failed, ?string $failureReason = null, ?int $failedChunkIndex = null): void
+    private function maybeCreateApiProject(Speech $speech, ?int $seed, bool $failed, ?string $failureReason = null, ?int $failedChunkIndex = null, ?array $generatedSegments = null): void
     {
         $mode = (string) config('tts.api_project_mode', 'never');
         if (! ($mode === 'always' || ($mode === 'on_error' && $failed))) {
@@ -205,6 +218,12 @@ class SpeechService
         }
 
         try {
+            if (! $failed && $generatedSegments !== null) {
+                $this->projects->createGeneratedFromSpeech($speech, $generatedSegments, $seed);
+
+                return;
+            }
+
             $this->projects->createFromSpeech(
                 $speech,
                 origin: $failed ? 'api_failure' : 'api',
@@ -218,6 +237,30 @@ class SpeechService
                 'error' => $e->getMessage(),
             ]);
         }
+    }
+
+    /**
+     * Pair each segment's text + seam with the raw audio that was generated for
+     * it, so an 'always'-mode Studio project can persist them as completed chunks
+     * — 1:1 with what /v1 actually read (no re-chunk, no re-synthesis). $rawParts
+     * is appended one entry per segment, so the indexes line up.
+     *
+     * @param  array<int, array{text: string, breakAfter: string}>  $segments
+     * @param  array<int, string>  $rawParts
+     * @return list<array{text: string, breakAfter: string, audio: string}>
+     */
+    private function generatedSegments(array $segments, array $rawParts): array
+    {
+        $out = [];
+        foreach (array_values($segments) as $i => $segment) {
+            $out[] = [
+                'text' => $segment['text'],
+                'breakAfter' => $segment['breakAfter'],
+                'audio' => $rawParts[$i],
+            ];
+        }
+
+        return $out;
     }
 
     /**
