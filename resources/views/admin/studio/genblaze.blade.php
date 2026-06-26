@@ -53,7 +53,7 @@
                 <audio id="gb-final-audio" controls class="hidden w-full"></audio>
                 <div class="space-y-1 text-xs text-zinc-500">
                     <div>final: <a id="gb-final-url" href="#" target="_blank" rel="noopener" class="break-all font-mono text-cyan-400 hover:underline"></a></div>
-                    <div>manifest: <span id="gb-manifest" class="break-all font-mono text-zinc-400"></span></div>
+                    <div>manifest: <span id="gb-manifest" class="break-all font-mono text-zinc-400"></span><span id="gb-manifest-verified" class="ml-2 hidden rounded-md border px-1.5 py-0.5 text-xs"></span></div>
                 </div>
 
                 <div class="border-t border-zinc-800 pt-3">

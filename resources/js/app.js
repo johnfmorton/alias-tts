@@ -1346,6 +1346,25 @@ function initGenblaze() {
             finalUrl.href = httpOnly(data.final_play_url || data.final_url);
         }
         manifestEl.textContent = data.final_manifest_hash || '—';
+        // Genblaze's SHA-256 provenance check (manifest.verify()): green when the
+        // final asset verifies against its manifest, red if it doesn't, hidden when
+        // the runner couldn't compute it. Set className wholesale each render so a
+        // re-run can't leave a stale colour — and never co-place `hidden` with a
+        // display utility (they fight; hidden can lose).
+        const verifiedEl = document.getElementById('gb-manifest-verified');
+        if (verifiedEl) {
+            const base = 'ml-2 rounded-md border px-1.5 py-0.5 text-xs';
+            if (data.final_manifest_verified === true) {
+                verifiedEl.className = `${base} inline border-emerald-500/30 bg-emerald-500/10 text-emerald-300`;
+                verifiedEl.textContent = '✓ verified · SHA-256';
+            } else if (data.final_manifest_verified === false) {
+                verifiedEl.className = `${base} inline border-red-500/30 bg-red-500/10 text-red-300`;
+                verifiedEl.textContent = '✗ verification failed';
+            } else {
+                verifiedEl.className = `${base} hidden`;
+                verifiedEl.textContent = '';
+            }
+        }
 
         chunksEl.replaceChildren();
         (data.chunks || []).forEach((c) => {

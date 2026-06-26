@@ -83,6 +83,7 @@ class ProjectResult:
     final: Asset
     manifest: object
     final_manifest_hash: str | None = None
+    final_manifest_verified: bool | None = None
 
     @property
     def reroll_count(self) -> int:
@@ -161,6 +162,7 @@ class Orchestrator:
             final=stitched.asset,
             manifest=stitched.manifest,
             final_manifest_hash=getattr(stitched.manifest, "canonical_hash", None),
+            final_manifest_verified=self._safe_verify(stitched.manifest),
         )
 
     # -- per-chunk re-roll loop (mirror of ChunkRemediator::remediate) ------
@@ -276,6 +278,22 @@ class Orchestrator:
         asset = step.assets[0]
         self._embed_manifest(asset, result.manifest)
         return _StitchResult(asset=asset, manifest=result.manifest)
+
+    @staticmethod
+    def _safe_verify(manifest) -> bool | None:
+        """Genblaze's SHA-256 provenance check, surfaced for the Studio panel.
+
+        Returns the ``manifest.verify()`` bool, or ``None`` if the SDK build has
+        no ``verify()`` or it raises — so a missing/erroring check degrades to
+        "unknown" in the UI rather than failing the run.
+        """
+        verify = getattr(manifest, "verify", None)
+        if not callable(verify):
+            return None
+        try:
+            return bool(verify())
+        except Exception:  # noqa: BLE001 — provenance check is informational, never fatal
+            return None
 
     def _embed_manifest(self, asset: Asset, manifest) -> None:
         """Best-effort: embed the provenance manifest into a local final file.

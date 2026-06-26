@@ -58,6 +58,7 @@ class GenblazeTest extends TestCase
         $provenance = [
             'final_url' => 'https://s3.us-west-001.backblazeb2.com/johnfmorton/genblaze/runs/x/assets/final.mp3',
             'final_manifest_hash' => 'abc123',
+            'final_manifest_verified' => true,
             'reroll_count' => 2,
             'chunks' => [
                 ['position' => 0, 'attempts' => 3, 'trim_applied' => false,
@@ -79,6 +80,7 @@ class GenblazeTest extends TestCase
             ->assertOk()
             ->assertJsonPath('status', 'completed')
             ->assertJsonPath('result.reroll_count', 2)
+            ->assertJsonPath('result.final_manifest_verified', true)
             ->assertJsonPath('result.chunks.0.attempts', 3)
             ->assertJsonPath('result.final_url', $provenance['final_url'])
             ->assertJsonPath('result.final_play_url', route('admin.studio.genblaze.asset', ['key' => 'genblaze/runs/x/assets/final.mp3']))

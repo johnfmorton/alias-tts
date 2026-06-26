@@ -61,6 +61,7 @@ async def run(req: RunRequest) -> dict:
     return {
         "final_url": result.final.url,
         "final_manifest_hash": result.final_manifest_hash,
+        "final_manifest_verified": result.final_manifest_verified,
         "reroll_count": result.reroll_count,
         "chunks": [
             {

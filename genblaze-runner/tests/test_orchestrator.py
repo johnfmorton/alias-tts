@@ -164,6 +164,8 @@ def test_synthesize_project_happy_path(tmp_path):
     assert result.final.media_type == "audio/mpeg"
     assert result.reroll_count == 0
     assert result.manifest.verify() is True
+    # the verify() result is surfaced on the project result (→ /run → Studio panel)
+    assert result.final_manifest_verified is True
     # verdict flowed through Pipeline.run (metadata or JSON-asset fallback)
     assert result.chunks[0].verdict.get("available") is True
     # the stitch saw the per-chunk break_after tags
