@@ -7,12 +7,19 @@ use App\Services\Health\HealthReport;
 use App\Services\Tts\FakeTtsProvider;
 use App\Services\Tts\ReplicateChatterboxProvider;
 use App\Services\Tts\TtsProvider;
+use Aws\CommandInterface;
+use Aws\Middleware;
+use Aws\S3\S3Client;
+use Illuminate\Filesystem\FilesystemAdapter;
 use Illuminate\Queue\Events\JobProcessing;
 use Illuminate\Queue\Events\Looping;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Event;
+use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\ServiceProvider;
 use InvalidArgumentException;
+use League\Flysystem\AwsS3V3\AwsS3V3Adapter;
+use League\Flysystem\Filesystem as Flysystem;
 use Throwable;
 
 class AppServiceProvider extends ServiceProvider
@@ -69,5 +76,46 @@ class AppServiceProvider extends ServiceProvider
 
         Event::listen(Looping::class, $stampWorkerHeartbeat);
         Event::listen(JobProcessing::class, $stampWorkerHeartbeat);
+
+        $this->registerAclLessS3Driver();
+    }
+
+    /**
+     * Re-register the `s3` filesystem driver so it never sends an object ACL.
+     *
+     * Laravel's S3 driver always stamps a canned ACL ("private") on every
+     * upload, but Backblaze B2's S3-compatible API rejects object ACLs outright
+     * ("Unsupported value for canned acl 'private'") — it manages visibility at
+     * the bucket level. So we rebuild the driver with an SDK middleware that
+     * strips the `ACL` parameter from every command. Harmless on real AWS too,
+     * where modern "bucket owner enforced" buckets also reject ACLs.
+     */
+    private function registerAclLessS3Driver(): void
+    {
+        Storage::extend('s3', function ($app, array $config): FilesystemAdapter {
+            $client = new S3Client([
+                'version' => 'latest',
+                'region' => $config['region'] ?? 'us-east-1',
+                'use_path_style_endpoint' => $config['use_path_style_endpoint'] ?? false,
+                'credentials' => array_filter([
+                    'key' => $config['key'] ?? null,
+                    'secret' => $config['secret'] ?? null,
+                    'token' => $config['token'] ?? null,
+                ]),
+            ] + (empty($config['endpoint']) ? [] : ['endpoint' => $config['endpoint']]));
+
+            $client->getHandlerList()->appendInit(
+                Middleware::mapCommand(function (CommandInterface $command) {
+                    unset($command['ACL']);
+
+                    return $command;
+                }),
+                'b2-strip-acl',
+            );
+
+            $adapter = new AwsS3V3Adapter($client, $config['bucket'], $config['root'] ?? '');
+
+            return new FilesystemAdapter(new Flysystem($adapter, $config), $adapter, $config);
+        });
     }
 }
