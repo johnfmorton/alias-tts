@@ -13,6 +13,7 @@ use App\Services\Asr\AsrClient;
 use App\Services\Asr\ChunkQualityVerdict;
 use App\Services\Asr\ChunkRemediator;
 use App\Services\Audio\AudioConverter;
+use App\Services\Pronunciation\PronunciationSubstituter;
 use App\Services\Tts\TtsProvider;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
@@ -43,13 +44,17 @@ class ProjectService
         private TextNormalizer $normalizer,
         private AsrClient $asr,
         private ChunkRemediator $remediator,
+        private PronunciationSubstituter $substituter,
     ) {}
 
     /**
      * Normalize + chunk the text and create the project with its (ungenerated)
-     * chunk rows.
+     * chunk rows. `source_text` preserves the writer's ORIGINAL submission (what
+     * "Start over" re-opens); any pronunciation respellings are applied only to
+     * `normalized_text`/the chunks (what the voice actually reads).
      *
      * @param  array<string, mixed>  $settings
+     * @param  list<array{term: string, phonetic: string, match_mode?: string}>  $pronunciationMap
      */
     public function createFromText(
         string $title,
@@ -60,8 +65,9 @@ class ProjectService
         string $outputFormat,
         ?int $seed,
         ?ApiKey $apiKey = null,
+        array $pronunciationMap = [],
     ): TtsProject {
-        $normalized = $this->normalizer->normalize($text);
+        $normalized = $this->substituter->apply($this->normalizer->normalize($text), $pronunciationMap)['text'];
         $segments = $this->segmentText($normalized);
 
         $project = TtsProject::create([
@@ -129,11 +135,14 @@ class ProjectService
      * chunk the new text, delete every existing chunk and all stored audio,
      * recreate fresh (ungenerated) chunk rows, and return the project to Draft.
      * Destructive — all generated audio is discarded. Voice/settings/seed are
-     * left untouched.
+     * left untouched. As with create, `source_text` keeps the original text and
+     * the dictionary is re-applied only to `normalized_text`/the chunks.
+     *
+     * @param  list<array{term: string, phonetic: string, match_mode?: string}>  $pronunciationMap
      */
-    public function resetFromText(TtsProject $project, string $text): TtsProject
+    public function resetFromText(TtsProject $project, string $text, array $pronunciationMap = []): TtsProject
     {
-        $normalized = $this->normalizer->normalize($text);
+        $normalized = $this->substituter->apply($this->normalizer->normalize($text), $pronunciationMap)['text'];
         $segments = $this->segmentText($normalized);
 
         // Mutate the rows in a transaction; only wipe audio off disk once it

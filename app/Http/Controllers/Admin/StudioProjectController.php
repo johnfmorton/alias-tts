@@ -10,7 +10,6 @@ use App\Models\Voice;
 use App\Services\ProjectService;
 use App\Services\Pronunciation\PronunciationDetector;
 use App\Services\Pronunciation\PronunciationDictionary;
-use App\Services\Pronunciation\PronunciationSubstituter;
 use App\Services\TextNormalizer;
 use App\Services\Tts\VoiceSettingsResolver;
 use Illuminate\Http\JsonResponse;
@@ -39,7 +38,6 @@ class StudioProjectController extends Controller
         private readonly VoiceSettingsResolver $settingsResolver,
         private readonly TextNormalizer $normalizer,
         private readonly PronunciationDetector $detector,
-        private readonly PronunciationSubstituter $substituter,
         private readonly PronunciationDictionary $dictionary,
     ) {}
 
@@ -64,7 +62,7 @@ class StudioProjectController extends Controller
             return back()->withInput()->with('error', 'Unknown voice.');
         }
 
-        $project = $this->persist($request, $data, $voice, $data['text']);
+        $project = $this->persist($request, $data, $voice, $data['text'], $this->dictionary->approvedMap($request->user()?->id));
 
         return redirect()->route('admin.studio.projects.show', $project)
             ->with('success', 'Project created — generate the chunks below.');
@@ -156,16 +154,21 @@ class StudioProjectController extends Controller
             ->with('success', 'Project created — pronunciations applied. Generate the chunks below.');
     }
 
-    /** Create a project after applying the writer's approved dictionary to its text. */
+    /**
+     * Create a project, applying the writer's approved dictionary. The ORIGINAL
+     * text is stored as the project's source; the substitution is applied (inside
+     * {@see ProjectService::createFromText}) only to the chunked/normalized text,
+     * so "Start over" re-opens what the writer actually typed.
+     */
     private function persistWithDictionary(Request $request, array $data, Voice $voice, ?int $userId): TtsProject
     {
-        $normalized = $this->normalizer->normalize($data['text']);
-        $applied = $this->substituter->apply($normalized, $this->dictionary->approvedMap($userId))['text'];
-
-        return $this->persist($request, $data, $voice, $applied);
+        return $this->persist($request, $data, $voice, $data['text'], $this->dictionary->approvedMap($userId));
     }
 
-    private function persist(Request $request, array $data, Voice $voice, string $text): TtsProject
+    /**
+     * @param  list<array{term: string, phonetic: string, match_mode?: string}>  $pronunciationMap
+     */
+    private function persist(Request $request, array $data, Voice $voice, string $text, array $pronunciationMap = []): TtsProject
     {
         return $this->projects->createFromText(
             title: (string) ($data['title'] ?? ''),
@@ -175,6 +178,7 @@ class StudioProjectController extends Controller
             modelId: config('tts.default_model_id'),
             outputFormat: config('tts.default_output_format'),
             seed: $request->filled('seed') ? (int) $request->input('seed') : ($voice->settings['seed'] ?? null),
+            pronunciationMap: $pronunciationMap,
         );
     }
 
@@ -304,7 +308,7 @@ class StudioProjectController extends Controller
             'text' => ['required', 'string', 'max:'.(int) config('tts.max_async_text_length', 40000)],
         ]);
 
-        $this->projects->resetFromText($project, $data['text']);
+        $this->projects->resetFromText($project, $data['text'], $this->dictionary->approvedMap($request->user()?->id));
 
         return redirect()->route('admin.studio.projects.show', $project)
             ->with('success', 'Project reset — generate the chunks below.');

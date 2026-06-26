@@ -79,7 +79,10 @@ class PronunciationReviewFlowTest extends TestCase
 
         $project = TtsProject::first();
         $this->assertNotNull($project);
-        $this->assertStringContainsString('dee dev', $project->source_text);
+        // The original text is preserved as the source; the respelling is applied
+        // only to the normalized/chunked text the voice reads.
+        $this->assertStringContainsString('DDEV', $project->source_text);
+        $this->assertStringContainsString('dee dev', $project->normalized_text);
     }
 
     public function test_unchecked_rows_are_skipped(): void
