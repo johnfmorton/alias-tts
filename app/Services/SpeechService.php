@@ -13,6 +13,7 @@ use App\Services\Asr\AsrClient;
 use App\Services\Asr\ChunkRemediator;
 use App\Services\Audio\AudioConverter;
 use App\Services\Tts\TtsProvider;
+use App\Services\Tts\VoiceReference;
 use Carbon\Carbon;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Storage;
@@ -356,12 +357,7 @@ class SpeechService
 
     private function referencePath(Voice $voice): ?string
     {
-        if (! $voice->reference_audio_path) {
-            return null;
-        }
-
-        // Providers read the reference from a local filesystem path.
-        return Storage::disk(config('tts.storage_disk'))->path($voice->reference_audio_path);
+        return VoiceReference::localPath($voice);
     }
 
     private function cacheHash(Voice $voice, string $text, array $settings, string $modelId, string $outputFormat, ?int $seed = null): string

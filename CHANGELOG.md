@@ -14,6 +14,15 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   app (authenticated `s3` read), so takes play in-browser even when the Backblaze
   B2 bucket is **private**.
 
+### Fixed
+- **Cloned voices work again under S3/B2 storage.** Generating with a voice that
+  has a reference clip (preview, `/v1`, Studio, *and* Genblaze) failed when
+  `TTS_STORAGE_DISK=s3` — the clip was resolved with `Storage::disk('s3')->path()`,
+  which isn't a real file, surfacing as "Preview failed" / "the runner returned
+  HTTP 500". A voice's reference is now resolved to a real local path regardless
+  of disk (a local clip is used in place; an S3 clip is cached down first), so
+  clips uploaded before a switch to S3 keep working.
+
 ## [0.14.1] - 2026-06-26
 
 ### Fixed

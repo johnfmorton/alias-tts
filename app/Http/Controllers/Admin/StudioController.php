@@ -11,11 +11,11 @@ use App\Services\SpeechService;
 use App\Services\TextChunker;
 use App\Services\TextNormalizer;
 use App\Services\Tts\TtsProvider;
+use App\Services\Tts\VoiceReference;
 use App\Services\Tts\VoiceSettingsResolver;
 use App\Services\VoiceService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Facades\Validator;
 use Illuminate\View\View;
 use Symfony\Component\HttpFoundation\Response;
@@ -394,13 +394,9 @@ class StudioController extends Controller
         return $overrides;
     }
 
-    /** Providers read the reference clip from a local filesystem path. */
+    /** A readable local path to the voice's reference clip (cached from S3 if needed). */
     private function referencePath(Voice $voice): ?string
     {
-        if (! $voice->reference_audio_path) {
-            return null;
-        }
-
-        return Storage::disk(config('tts.storage_disk'))->path($voice->reference_audio_path);
+        return VoiceReference::localPath($voice);
     }
 }

@@ -15,6 +15,7 @@ use App\Services\Asr\ChunkRemediator;
 use App\Services\Audio\AudioConverter;
 use App\Services\Pronunciation\PronunciationSubstituter;
 use App\Services\Tts\TtsProvider;
+use App\Services\Tts\VoiceReference;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
@@ -666,11 +667,7 @@ class ProjectService
 
     private function referencePath(?Voice $voice): ?string
     {
-        if (! $voice || ! $voice->reference_audio_path) {
-            return null;
-        }
-
-        return Storage::disk($this->disk())->path($voice->reference_audio_path);
+        return VoiceReference::localPath($voice);
     }
 
     private function chunkPath(TtsChunk $chunk): string

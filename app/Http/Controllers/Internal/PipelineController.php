@@ -10,10 +10,10 @@ use App\Services\Audio\AudioConverter;
 use App\Services\TextChunker;
 use App\Services\TextNormalizer;
 use App\Services\Tts\TtsProvider;
+use App\Services\Tts\VoiceReference;
 use App\Services\Tts\VoiceSettingsResolver;
 use Illuminate\Http\Request;
 use Illuminate\Http\UploadedFile;
-use Illuminate\Support\Facades\Storage;
 use Symfony\Component\HttpFoundation\Response;
 use Throwable;
 
@@ -210,12 +210,7 @@ class PipelineController extends Controller
 
     private function referencePath(Voice $voice): ?string
     {
-        if (! $voice->reference_audio_path) {
-            return null;
-        }
-
-        // Providers read the reference clip from a local filesystem path.
-        return Storage::disk(config('tts.storage_disk'))->path($voice->reference_audio_path);
+        return VoiceReference::localPath($voice);
     }
 
     private function containerMime(string $container): string
