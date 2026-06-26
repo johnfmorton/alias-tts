@@ -6,6 +6,19 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.14.3] - 2026-06-26
+
+### Added
+- **Dismiss the "API failure" flag on a recovered project.** Projects auto-created
+  from a failed `/v1` generation (`api_project_mode=on_error`) were permanently
+  marked as failures — a red *"Recovered from a failed API generation"* banner on
+  the project page and a red **API failure** badge on the Studio index — with no
+  way to clear it once you'd dealt with the failure. The banner now has a
+  **Dismiss** button that converts the project into a regular entry: the banner
+  and badge disappear, the auto-pruning TTL is cleared (so it's no longer reaped),
+  and the auto-generated `API failure: ` title prefix is stripped (a title you've
+  renamed yourself is left untouched).
+
 ## [0.14.2] - 2026-06-26
 
 ### Changed
