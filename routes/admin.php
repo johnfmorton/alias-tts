@@ -59,6 +59,7 @@ Route::prefix('studio')->name('studio.')->group(function () {
         Route::post('/', [StudioProjectController::class, 'store'])->name('store');
         Route::get('/{project}', [StudioProjectController::class, 'show'])->name('show');
         Route::patch('/{project}', [StudioProjectController::class, 'update'])->name('update');
+        Route::post('/{project}/dismiss-failure', [StudioProjectController::class, 'dismissFailure'])->name('dismiss-failure');
         Route::patch('/{project}/voice', [StudioProjectController::class, 'updateVoice'])->name('voice');
         Route::delete('/{project}', [StudioProjectController::class, 'destroy'])->name('destroy');
         Route::get('/{project}/edit', [StudioProjectController::class, 'edit'])->name('edit');

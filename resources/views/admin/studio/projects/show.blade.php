@@ -28,13 +28,19 @@
          data-final-url="{{ route('admin.studio.projects.audio', $project) }}"
          data-preview-url="{{ route('admin.studio.projects.preview', $project) }}"
          data-rename-url="{{ route('admin.studio.projects.update', $project) }}"
+         data-dismiss-url="{{ route('admin.studio.projects.dismiss-failure', $project) }}"
          data-voice-url="{{ route('admin.studio.projects.voice', $project) }}"
          data-insert-url="{{ route('admin.studio.projects.chunks.store', $project) }}"
          data-generate-pace-ms="{{ (int) config('tts.studio_generate_pace_ms', 800) }}">
 
         @if($project->origin === 'api_failure')
-            <div class="mb-6 rounded-xl border border-red-500/30 bg-red-500/10 px-5 py-4 text-sm text-red-200">
-                <div class="font-medium text-red-300">Recovered from a failed API generation</div>
+            <div id="project-failure-notice" class="mb-6 rounded-xl border border-red-500/30 bg-red-500/10 px-5 py-4 text-sm text-red-200">
+                <div class="flex items-start justify-between gap-4">
+                    <div class="font-medium text-red-300">Recovered from a failed API generation</div>
+                    <button type="button" id="project-dismiss-failure"
+                            title="Clear the failure flag and keep this as a regular project."
+                            class="shrink-0 rounded-lg border border-red-500/30 px-2.5 py-1 text-xs text-red-300 hover:bg-red-500/10">Dismiss</button>
+                </div>
                 @if($project->failure_reason)
                     <p class="mt-1 text-red-200/90">The provider reported: <span class="font-mono text-xs">{{ $project->failure_reason }}</span></p>
                 @endif

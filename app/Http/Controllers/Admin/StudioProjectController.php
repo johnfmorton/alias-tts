@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers\Admin;
 
+use App\Console\Commands\PruneRecoveryProjects;
 use App\Http\Controllers\Concerns\ServesRangedAudio;
 use App\Http\Controllers\Controller;
 use App\Models\TtsChunk;
@@ -281,6 +282,35 @@ class StudioProjectController extends Controller
         }
 
         $project->update(['title' => $title]);
+
+        return response()->json(['ok' => true, 'title' => $project->title]);
+    }
+
+    /**
+     * Dismiss the "recovered from a failed API generation" flag (AJAX). Clears the
+     * api_failure origin, its failure metadata, and the prune TTL so the project
+     * becomes a regular panel entry — no red banner on this page, no "API failure"
+     * badge on the index, and {@see PruneRecoveryProjects}
+     * leaves it alone. Also strips the auto-generated "API failure: …" title prefix
+     * (a hand-edited title is left untouched). Idempotent.
+     */
+    public function dismissFailure(TtsProject $project): JsonResponse
+    {
+        $attrs = [
+            'origin' => null,
+            'failure_reason' => null,
+            'failed_chunk_index' => null,
+            'expires_at' => null,
+        ];
+
+        // Only rewrite the title while it still carries the auto-generated prefix;
+        // if the user renamed it, keep their title as-is.
+        if (Str::startsWith((string) $project->title, 'API failure')) {
+            $stripped = trim(ltrim(Str::after((string) $project->title, 'API failure'), ': '));
+            $attrs['title'] = $stripped !== '' ? $stripped : 'Untitled project';
+        }
+
+        $project->update($attrs);
 
         return response()->json(['ok' => true, 'title' => $project->title]);
     }

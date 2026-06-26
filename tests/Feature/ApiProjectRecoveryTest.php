@@ -244,6 +244,71 @@ class ApiProjectRecoveryTest extends TestCase
             ->assertSee('CUDA error: device-side assert triggered');
     }
 
+    public function test_dismiss_clears_the_failure_flag_and_strips_the_auto_title(): void
+    {
+        $voice = Voice::create(['slug' => 'v3', 'name' => 'V3']);
+        $project = TtsProject::create([
+            'voice_id' => $voice->id,
+            'title' => 'API failure: Hello world recovery',
+            'origin' => 'api_failure',
+            'failure_reason' => 'CUDA error: device-side assert triggered',
+            'failed_chunk_index' => 0,
+            'expires_at' => now()->addDay(),
+            'source_text' => 'Hello.',
+            'normalized_text' => 'Hello.',
+            'status' => ProjectStatus::Draft,
+            'model_id' => config('tts.default_model_id'),
+            'output_format' => config('tts.default_output_format'),
+        ]);
+
+        $this->actingAs($this->admin())
+            ->postJson(route('admin.studio.projects.dismiss-failure', $project))
+            ->assertOk()
+            ->assertJson(['ok' => true, 'title' => 'Hello world recovery']);
+
+        $project->refresh();
+        $this->assertNull($project->origin, 'no longer an api_failure project');
+        $this->assertNull($project->failure_reason);
+        $this->assertNull($project->failed_chunk_index);
+        $this->assertNull($project->expires_at, 'TTL cleared so the prune leaves it alone');
+        $this->assertSame('Hello world recovery', $project->title, 'auto "API failure: " prefix stripped');
+
+        // The index no longer badges it and the page no longer explains it.
+        $this->actingAs($this->admin())
+            ->get(route('admin.studio.index'))
+            ->assertOk()
+            ->assertDontSee('API failure');
+
+        $this->actingAs($this->admin())
+            ->get(route('admin.studio.projects.show', $project))
+            ->assertOk()
+            ->assertDontSee('Recovered from a failed API generation');
+    }
+
+    public function test_dismiss_keeps_a_hand_edited_title(): void
+    {
+        $voice = Voice::create(['slug' => 'v4', 'name' => 'V4']);
+        $project = TtsProject::create([
+            'voice_id' => $voice->id,
+            'title' => 'My important narration',
+            'origin' => 'api_failure',
+            'failure_reason' => 'boom',
+            'source_text' => 'Hello.',
+            'normalized_text' => 'Hello.',
+            'status' => ProjectStatus::Draft,
+            'model_id' => config('tts.default_model_id'),
+            'output_format' => config('tts.default_output_format'),
+        ]);
+
+        $this->actingAs($this->admin())
+            ->postJson(route('admin.studio.projects.dismiss-failure', $project))
+            ->assertOk()
+            ->assertJson(['title' => 'My important narration']);
+
+        $this->assertNull($project->refresh()->origin);
+        $this->assertSame('My important narration', $project->title);
+    }
+
     private function recoveryProject(Voice $voice, ?Carbon $expiresAt, string $origin = 'api_failure'): TtsProject
     {
         $project = app(ProjectService::class)->createFromText(

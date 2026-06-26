@@ -1205,6 +1205,33 @@ function initStudioProject() {
         });
     }
 
+    // Dismiss the "recovered from a failed API generation" banner: clear the flag
+    // server-side (which also drops the index's "API failure" badge and the prune
+    // TTL), then remove the banner and update the heading to the cleaned title.
+    const dismissBtn = document.getElementById('project-dismiss-failure');
+    if (dismissBtn) {
+        dismissBtn.addEventListener('click', async () => {
+            startBusy(dismissBtn, 'Dismissing…');
+            try {
+                const res = await fetch(root.dataset.dismissUrl, {
+                    method: 'POST',
+                    headers: { 'X-CSRF-TOKEN': csrfToken(), 'Accept': 'application/json' },
+                });
+                if (!res.ok) throw new Error(await errorMessage(res));
+                const data = await res.json();
+                if (data.title && heading) {
+                    heading.textContent = data.title;
+                    document.title = `${data.title} — Bespoken TTS`;
+                }
+                document.getElementById('project-failure-notice')?.remove();
+                setStatus(finalStatus, '✓ Cleared the API-failure flag — this is now a regular project.', 'ok');
+            } catch (err) {
+                endBusy(dismissBtn);
+                setStatus(finalStatus, `✗ ${err.message}`, 'error');
+            }
+        });
+    }
+
     // Voice switch: PATCH the project's voice. Existing audio was generated with
     // the old voice, so the server marks every generated chunk stale — reflect
     // that in place (and revert the picker if the request fails).
