@@ -6,6 +6,60 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.14.0] - 2026-06-26
+
+### Added
+- **Genblaze on Backblaze B2 — provenance-tracked, QA-gated audio generation.** A
+  new Studio action, **"Generate via Genblaze"** (`/admin/studio/genblaze`), runs
+  the whole pipeline through a Genblaze orchestrator: generate each chunk →
+  **Whisper ASR scores it → re-roll a flagged chunk → stitch**, writing **every
+  take (including rejected re-rolls) and a verifiable provenance manifest to B2**.
+  The panel shows per-chunk attempts/scores, the B2 take URLs, the final MP3, and
+  the manifest hash.
+  - Ships the Genblaze-owned orchestrator (a Python "runner"), a
+    `genblaze-bespoken` provider connector, and stateless `/v1/internal/*`
+    pipeline primitives the runner calls.
+  - The provenance bucket can stay **private** — reads are authenticated (SigV4).
+  - New config: `TTS_GENBLAZE_RUNNER_URL`, `B2_*` (key/region/endpoint/bucket),
+    `TTS_INTERNAL_SECRET`.
+- **Pronunciation pre-processor — respell mispronounced terms before they reach
+  the voice.** Before chunking, an LLM proposes plain-spelling respellings for
+  likely-mispronounced terms (`DDEV` → "dee dev", `nginx` → "engine ex") on a
+  review screen; approved terms are applied to the project text and saved to a
+  per-writer dictionary that accumulates over time.
+  - Detection runs as a **provider-agnostic Genblaze chat step** — swap the LLM
+    between **Replicate** (default, Llama 4 Scout), **Anthropic** (Claude Haiku),
+    **Gemini**, or **OpenAI** from the **Settings** page.
+  - A new **Pronunciations** admin screen manages each writer's dictionary
+    (add / edit / approve / delete). Dictionaries are **strictly per-user**.
+  - New read API **`GET /v1/pronunciations`** (scoped to the calling key's owner)
+    so the Bespoken Craft plugin can sync the lexicon and apply it upstream of any
+    TTS backend.
+  - New config: `TTS_PRONUNCIATION_ENABLED` (default **off**),
+    `TTS_PRONUNCIATION_LLM_PROVIDER`, `TTS_PRONUNCIATION_MODEL`,
+    `TTS_PRONUNCIATION_TEMPERATURE`, `TTS_PRONUNCIATION_TIMEOUT`, and
+    `ANTHROPIC_API_KEY` / `GEMINI_API_KEY` / `OPENAI_API_KEY`. The whole feature
+    degrades safely — a missing runner or LLM just skips straight to chunking and
+    never blocks a generation.
+- **API keys now have an owner.** A nullable `user_id` ties a key to a user and
+  scopes the pronunciation dictionary it syncs — groundwork for multiple writers,
+  each with their own lexicon and keys.
+
+### Changed
+- **Dev environment:** the Genblaze runner and Whisper ASR sidecars now run as
+  **DDEV add-on services**, with auto-started `queue:listen` + `schedule:work`
+  daemons — `ddev restart` builds and wires them.
+
+### Fixed
+- **Studio "Start over" restores your original text.** It previously re-opened the
+  *respelled* text (e.g. "dee dev") instead of what you typed; the original
+  submission is now preserved as the project source, with respellings applied only
+  to the spoken/chunked text (and re-applied consistently on reset).
+- **Genblaze/B2 robustness:** normalize `B2_REGION` when given in the
+  `s3.<region>` endpoint-host form; authenticate B2 reads so the provenance bucket
+  can be private; correct the off-the-shelf Genblaze `chat()` argument order and
+  bundle the Gemini/OpenAI chat adapters.
+
 ## [0.13.0] - 2026-06-24
 
 ### Added
@@ -606,7 +660,8 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   fixed seed; the response cache guarantees stable output for repeated identical
   requests.
 
-[Unreleased]: https://github.com/johnfmorton/bespoken-tts-service/compare/v0.13.0...HEAD
+[Unreleased]: https://github.com/johnfmorton/bespoken-tts-service/compare/v0.14.0...HEAD
+[0.14.0]: https://github.com/johnfmorton/bespoken-tts-service/compare/v0.13.0...v0.14.0
 [0.13.0]: https://github.com/johnfmorton/bespoken-tts-service/compare/v0.12.3...v0.13.0
 [0.12.3]: https://github.com/johnfmorton/bespoken-tts-service/compare/v0.12.2...v0.12.3
 [0.12.2]: https://github.com/johnfmorton/bespoken-tts-service/compare/v0.12.1...v0.12.2
