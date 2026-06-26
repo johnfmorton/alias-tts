@@ -5,6 +5,7 @@
         ['route' => 'admin.studio.index', 'pattern' => 'admin.studio.*', 'label' => 'Studio'],
         ['route' => 'admin.api-keys.index', 'pattern' => 'admin.api-keys.*', 'label' => 'API Keys'],
         ['route' => 'admin.voices.index', 'pattern' => 'admin.voices.*', 'label' => 'Voices'],
+        ['route' => 'admin.pronunciations.index', 'pattern' => 'admin.pronunciations.*', 'label' => 'Pronunciations'],
         ['route' => 'admin.health', 'pattern' => 'admin.health', 'label' => 'Health'],
         ['route' => 'admin.settings.index', 'pattern' => 'admin.settings.*', 'label' => 'Settings'],
     ];

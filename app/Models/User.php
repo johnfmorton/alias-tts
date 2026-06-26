@@ -43,4 +43,10 @@ class User extends Authenticatable
     {
         return $this->hasMany(PronunciationEntry::class);
     }
+
+    /** API keys owned by this user (for per-user sync + usage monitoring). */
+    public function apiKeys(): HasMany
+    {
+        return $this->hasMany(ApiKey::class);
+    }
 }

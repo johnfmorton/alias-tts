@@ -16,19 +16,22 @@ use Symfony\Component\HttpFoundation\Response;
  *   GET /v1/pronunciations
  *   header: xi-api-key: <key>
  *
- * Scope: API keys are not user-bound yet, so this returns every approved entry
- * (the single-admin lexicon). TODO: scope to the key's owner once keys gain one.
+ * Scope: strictly the key owner's approved entries. Dictionaries are per-user,
+ * so each writer's plugin syncs only their own lexicon (a key with no owner sees
+ * only legacy null-owner rows).
  */
 class PronunciationApiController extends Controller
 {
     public function index(Request $request): Response
     {
         // Belt-and-suspenders: ValidateApiKey already enforces this.
-        if (! $request->attributes->get('api_key') instanceof ApiKey) {
+        $apiKey = $request->attributes->get('api_key');
+        if (! $apiKey instanceof ApiKey) {
             return response()->json(['message' => 'An API key is required.'], 401);
         }
 
         $entries = PronunciationEntry::query()
+            ->ownedBy($apiKey->user_id)
             ->where('approved', true)
             ->orderBy('term')
             ->get();

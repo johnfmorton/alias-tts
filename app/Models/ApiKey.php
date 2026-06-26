@@ -5,6 +5,7 @@ namespace App\Models;
 use Illuminate\Database\Eloquent\Concerns\HasUuids;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Support\Str;
 
@@ -13,6 +14,7 @@ class ApiKey extends Model
     use HasFactory, HasUuids;
 
     protected $fillable = [
+        'user_id',
         'name',
         'key',
         'is_active',
@@ -24,14 +26,21 @@ class ApiKey extends Model
         'rate_limit' => 'integer',
     ];
 
+    /** The user who owns this key — scopes the dictionary it syncs and its usage. */
+    public function user(): BelongsTo
+    {
+        return $this->belongsTo(User::class);
+    }
+
     public function speeches(): HasMany
     {
         return $this->hasMany(Speech::class, 'api_key_id');
     }
 
-    public static function generate(string $name, ?int $rateLimit = null): self
+    public static function generate(string $name, ?int $rateLimit = null, ?int $userId = null): self
     {
         return self::create([
+            'user_id' => $userId,
             'name' => $name,
             'key' => 'sk_'.Str::random(32),
             'is_active' => true,

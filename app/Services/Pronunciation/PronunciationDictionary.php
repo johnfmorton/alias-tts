@@ -11,8 +11,9 @@ use Illuminate\Support\Collection;
  * Studio review screen approves LLM suggestions into it, and the Craft plugin
  * later syncs the approved set via the read API.
  *
- * A `null` $userId addresses the shared/global seed list; a non-null id layers a
- * writer's own entries on top of it (see {@see PronunciationEntry::scopeForUser}).
+ * Dictionaries are STRICTLY per-user: every read is scoped to exactly one owner
+ * (see {@see PronunciationEntry::scopeOwnedBy}). There is no shared/global tier —
+ * one writer's entries never apply to anyone else.
  */
 class PronunciationDictionary
 {
@@ -25,7 +26,7 @@ class PronunciationDictionary
     public function knownTerms(?int $userId): array
     {
         return PronunciationEntry::query()
-            ->forUser($userId)
+            ->ownedBy($userId)
             ->approved()
             ->pluck('term')
             ->unique()
@@ -34,18 +35,16 @@ class PronunciationDictionary
     }
 
     /**
-     * The approved entries as substitution-map rows for
-     * {@see PronunciationSubstituter::apply()}. Global entries are ordered first
-     * so a writer's own override wins when both define the same term.
+     * The writer's approved entries as substitution-map rows for
+     * {@see PronunciationSubstituter::apply()}.
      *
      * @return list<array{term: string, phonetic: string, match_mode: string}>
      */
     public function approvedMap(?int $userId): array
     {
         return PronunciationEntry::query()
-            ->forUser($userId)
+            ->ownedBy($userId)
             ->approved()
-            ->orderByRaw('user_id IS NULL DESC')
             ->get()
             ->map(fn (PronunciationEntry $e) => $e->toMapEntry())
             ->all();
@@ -78,16 +77,41 @@ class PronunciationDictionary
     }
 
     /**
-     * The full lexicon for a writer (approved or not), for the management UI.
+     * The writer's own lexicon (approved or not), for the management UI. Strictly
+     * this user's entries — never another writer's.
      *
      * @return Collection<int, PronunciationEntry>
      */
-    public function all(?int $userId): Collection
+    public function owned(?int $userId): Collection
     {
         return PronunciationEntry::query()
-            ->forUser($userId)
+            ->ownedBy($userId)
             ->orderBy('term')
             ->get();
+    }
+
+    /**
+     * Update an existing entry in place (the edit form). Unlike {@see upsertManual},
+     * this targets a specific row by id, so it can rename the `term`. Only the keys
+     * present in $data are written; `approved` is coerced to bool when given.
+     *
+     * @param  array<string, mixed>  $data
+     */
+    public function updateEntry(PronunciationEntry $entry, array $data): PronunciationEntry
+    {
+        $entry->update([
+            'term' => trim((string) ($data['term'] ?? $entry->term)),
+            'phonetic' => trim((string) ($data['phonetic'] ?? $entry->phonetic)),
+            'category' => $data['category'] ?? null,
+            'confidence' => $data['confidence'] ?? null,
+            'note' => $data['note'] ?? null,
+            'match_mode' => in_array($data['match_mode'] ?? null, ['case_sensitive', 'case_insensitive'], true)
+                ? $data['match_mode']
+                : $entry->match_mode,
+            'approved' => array_key_exists('approved', $data) ? (bool) $data['approved'] : $entry->approved,
+        ]);
+
+        return $entry;
     }
 
     public function forget(PronunciationEntry $entry): void

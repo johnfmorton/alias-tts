@@ -46,17 +46,17 @@ class PronunciationEntry extends Model
     }
 
     /**
-     * Entries owned by $userId plus any shared/global (null-owner) entries, so a
-     * writer always sees the global seed list layered under their own lexicon.
+     * Entries owned by EXACTLY this user. Dictionaries are strictly per-user — a
+     * writer's lexicon applies to that writer alone, never to anyone else — so
+     * this deliberately does not fold in a shared/global (null-owner) tier.
+     * (`where('user_id', null)` is not the same as `whereNull` in SQL, so the
+     * null case must branch explicitly.)
      */
-    public function scopeForUser(Builder $query, ?int $userId): Builder
+    public function scopeOwnedBy(Builder $query, ?int $userId): Builder
     {
-        return $query->where(function (Builder $q) use ($userId) {
-            $q->whereNull('user_id');
-            if ($userId !== null) {
-                $q->orWhere('user_id', $userId);
-            }
-        });
+        return $userId === null
+            ? $query->whereNull('user_id')
+            : $query->where('user_id', $userId);
     }
 
     public function scopeApproved(Builder $query): Builder

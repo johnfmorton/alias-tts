@@ -29,7 +29,9 @@ class ApiKeyController extends Controller
             'rate_limit' => ['nullable', 'integer', 'min:1'],
         ]);
 
-        $apiKey = ApiKey::generate($validated['name'], $validated['rate_limit'] ?? null);
+        // Own the key with the creating user. A user picker arrives with the
+        // deferred user-creation UI; today the super-admin is the only user.
+        $apiKey = ApiKey::generate($validated['name'], $validated['rate_limit'] ?? null, $request->user()?->id);
 
         return redirect()->route('admin.api-keys.index')
             ->with('success', 'API key created.')

@@ -5,6 +5,7 @@ use App\Http\Controllers\Admin\DashboardController;
 use App\Http\Controllers\Admin\GenblazeController;
 use App\Http\Controllers\Admin\HealthController;
 use App\Http\Controllers\Admin\HealthTestController;
+use App\Http\Controllers\Admin\PronunciationController;
 use App\Http\Controllers\Admin\SettingsController;
 use App\Http\Controllers\Admin\StudioController;
 use App\Http\Controllers\Admin\StudioProjectController;
@@ -80,6 +81,14 @@ Route::post('/api-keys', [ApiKeyController::class, 'store'])->name('api-keys.sto
 Route::post('/api-keys/{apiKey}/toggle', [ApiKeyController::class, 'toggle'])->name('api-keys.toggle');
 Route::post('/api-keys/{apiKey}/regenerate', [ApiKeyController::class, 'regenerate'])->name('api-keys.regenerate');
 Route::delete('/api-keys/{apiKey}', [ApiKeyController::class, 'destroy'])->name('api-keys.destroy');
+
+// Pronunciation dictionary — the signed-in writer's personal, private lexicon.
+Route::get('/pronunciations', [PronunciationController::class, 'index'])->name('pronunciations.index');
+Route::get('/pronunciations/create', [PronunciationController::class, 'create'])->name('pronunciations.create');
+Route::post('/pronunciations', [PronunciationController::class, 'store'])->name('pronunciations.store');
+Route::get('/pronunciations/{entry}/edit', [PronunciationController::class, 'edit'])->name('pronunciations.edit');
+Route::put('/pronunciations/{entry}', [PronunciationController::class, 'update'])->name('pronunciations.update');
+Route::delete('/pronunciations/{entry}', [PronunciationController::class, 'destroy'])->name('pronunciations.destroy');
 
 // Voices
 Route::get('/voices', [VoiceController::class, 'index'])->name('voices.index');
