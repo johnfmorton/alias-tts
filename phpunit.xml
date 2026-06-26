@@ -43,5 +43,11 @@
              ASR auto-enable tests — so it is simply absent from .env, not pinned here.) -->
         <env name="TTS_ASR_URL" value="http://127.0.0.1:8765"/>
         <env name="TTS_GENBLAZE_RUNNER_URL" value=""/>
+        <!-- Local dev .env may pin the pronunciation pre-processor (provider +
+             enabled). Null them here (env() reads "null" as null) so the settings
+             tests see the keys as UNLOCKED/editable and the feature defaults off
+             unless a test turns it on explicitly. -->
+        <env name="TTS_PRONUNCIATION_ENABLED" value="null"/>
+        <env name="TTS_PRONUNCIATION_LLM_PROVIDER" value="null"/>
     </php>
 </phpunit>
