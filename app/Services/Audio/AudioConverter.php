@@ -556,13 +556,26 @@ class AudioConverter
      * is loud + high-ZCR even when it is broadband hiss / noise with no pitch — a
      * blind spot ({@see detectLongTailArtifact}). A pitch-voicing check closes it:
      * real speech vowels have a clear fundamental (75–600 Hz), most tail noise
-     * does not. Scan back for the last loud VOICED window; if a trailing run of
-     * >= unvoiced_min_ms follows it, cut back to it plus fricative_allowance_ms so
-     * a genuine word-final fricative (unvoiced, but short) is never clipped — the
-     * duration floor is what separates that fricative from a sustained tail.
-     * Returns null (no voiced window, no long unvoiced tail, or disabled) to defer
-     * to the other paths. Low-freq drones are periodic, so they read VOICED and
-     * are intentionally left to the ZCR/tonal path.
+     * does not. Scan back for the last loud VOICED window; a trailing run of
+     * >= unvoiced_min_ms after it is a candidate tail.
+     *
+     * Duration alone, however, CANNOT separate that candidate from a genuine
+     * word-final unvoiced run — a sustained /s/, /f/, /ʃ/ or a devoiced/creaky word
+     * ending is also loud + unvoiced and routinely runs 600–900 ms, far past
+     * fricative_allowance_ms. The loudness RELATIONSHIP separates them: a real coda
+     * is the energy tapering off the end of a word, so its peak sits at or below
+     * the speech body's level; an appended hiss/swoosh tail is LOUDER than speech.
+     * So we only cut when the trailing run's peak window is at least over_speech_db
+     * louder than the speech-body RMS (the same over-speech discriminator the ASR
+     * TAILNOISE signal uses). Without that gate this path clipped the last word off
+     * otherwise-perfect single-chunk clips. When it does cut, it cuts back to the
+     * last voiced window plus fricative_allowance_ms.
+     *
+     * Returns null (no voiced window, no long unvoiced tail, tail not loud enough,
+     * or disabled) to defer to the other paths. Low-freq drones are periodic, so
+     * they read VOICED and are intentionally left to the ZCR/tonal path. The cut
+     * COMBINES with detectLongTailArtifact's (takes the earlier), so it can only
+     * trim MORE and never clips a quiet voiced final word.
      */
     private function voicingTailCut(string $pcmWav, int $offset, array $dbWindows, int $win, int $rate, float $totalSec): ?float
     {
@@ -574,6 +587,7 @@ class AudioConverter
         $guardSec = max(0, (int) config('tts.chunk_tail_guard_ms', 60)) / 1000;
         $allowanceSec = max(0, (int) config('tts.chunk_tail_fricative_allowance_ms', 250)) / 1000;
         $unvoicedMinSec = max(0, (int) config('tts.chunk_tail_unvoiced_min_ms', 400)) / 1000;
+        $overSpeechDb = (float) config('tts.chunk_tail_voicing_over_speech_db', 6.0);
         if ($unvoicedMinSec <= 0) {
             return null;
         }
@@ -597,6 +611,18 @@ class AudioConverter
         $voicedEnd = ($lastVoiced + 1) * $win / $rate;
         if (($totalSec - $voicedEnd) < $unvoicedMinSec) {
             return null; // no long unvoiced tail — nothing to peel
+        }
+
+        // Over-speech gate: only a tail LOUDER than the speech body is a hiss/swoosh
+        // artifact. A genuine word-final unvoiced coda tapers off the word, so it
+        // sits at/below speech level — keep it. Speech body = RMS up to voicedEnd;
+        // tail = loudest window in the unvoiced run.
+        $totalSamples = intdiv(strlen($pcmWav) - $offset, 2);
+        $windowSec = $win / $rate;
+        $speechDb = $this->spanRmsDbfs($pcmWav, $offset, $rate, $totalSamples, 0.0, $voicedEnd);
+        $tailPeak = $this->windowPeakDbfs($pcmWav, $offset, $rate, $totalSamples, $voicedEnd, $totalSec, $windowSec);
+        if ($speechDb === null || $tailPeak === null || ($tailPeak - $speechDb) < $overSpeechDb) {
+            return null; // quiet/decaying word-final coda, not a loud tail — keep it
         }
 
         return min($totalSec, $voicedEnd + $allowanceSec + $guardSec);

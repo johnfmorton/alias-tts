@@ -212,18 +212,30 @@ return [
     // above miss it. A pitch-voicing check (peak normalized autocorrelation in
     // f0_min..f0_max Hz) finds the last loud VOICED window; if a trailing
     // UNVOICED run of >= unvoiced_min_ms follows it, the chunk is cut back to that
-    // window plus fricative_allowance_ms (so a genuine word-final fricative — also
-    // unvoiced, but short — is never clipped; the duration floor separates the
-    // two). It COMBINES with the cut above (takes the earlier), so it can only
-    // trim MORE and never clips a quiet voiced final word. A low-freq drone is
-    // periodic (reads VOICED), so it's intentionally left to the ZCR/tonal path.
-    // Pure PHP (no Python/Praat dependency). 0 unvoiced_min_ms / false disables.
+    // window plus fricative_allowance_ms. It COMBINES with the cut above (takes the
+    // earlier), so it can only trim MORE and never clips a quiet voiced final word.
+    // A low-freq drone is periodic (reads VOICED), so it's intentionally left to
+    // the ZCR/tonal path. Pure PHP (no Python/Praat dependency). 0 unvoiced_min_ms
+    // / false disables.
+    //
+    // CRITICAL GATE — over_speech_db: duration alone CANNOT separate a genuine
+    // word-final unvoiced run (a sustained /s/, /f/, /ʃ/, or a devoiced/creaky word
+    // ending) from an appended broadband-hiss artifact: both are loud, unvoiced,
+    // and can run well past fricative_allowance_ms (real codas measured here run
+    // 600-900 ms). The loudness RELATIONSHIP does separate them — a real coda is
+    // the energy tapering off the end of a word, so it is QUIETER than or about
+    // equal to the speech body (measured rel +0.7..+4.3 dB), whereas a real hiss/
+    // swoosh tail is LOUDER (rel ~+9 dB). So the voicing cut only fires when the
+    // trailing run's peak window is at least over_speech_db LOUDER than the speech
+    // body's RMS — the same over-speech discriminator the ASR TAILNOISE signal
+    // uses. Without it this path clipped the last word off otherwise-perfect clips.
     'chunk_tail_voicing_enabled' => (bool) env('TTS_CHUNK_TAIL_VOICING', true),
     'chunk_tail_voicing_acf_min' => (float) env('TTS_CHUNK_TAIL_VOICING_ACF_MIN', 0.5),
     'chunk_tail_voicing_f0_min_hz' => (float) env('TTS_CHUNK_TAIL_VOICING_F0_MIN_HZ', 75),
     'chunk_tail_voicing_f0_max_hz' => (float) env('TTS_CHUNK_TAIL_VOICING_F0_MAX_HZ', 600),
     'chunk_tail_unvoiced_min_ms' => (int) env('TTS_CHUNK_TAIL_UNVOICED_MIN_MS', 400),
     'chunk_tail_fricative_allowance_ms' => (int) env('TTS_CHUNK_TAIL_FRICATIVE_ALLOWANCE_MS', 250),
+    'chunk_tail_voicing_over_speech_db' => (float) env('TTS_CHUNK_TAIL_VOICING_OVER_SPEECH_DB', 6.0),
 
     // True digital silence (ms) inserted between chunks at a sentence seam and
     // at a block/paragraph seam respectively. Tune by ear for natural pacing.

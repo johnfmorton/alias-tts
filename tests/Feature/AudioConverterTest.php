@@ -201,15 +201,19 @@ class AudioConverterTest extends TestCase
 
     public function test_voicing_detector_removes_a_loud_unvoiced_noise_tail(): void
     {
-        // The blind spot the voicing path closes: a loud, broadband NOISE tail.
-        // It is loud + high-ZCR (clears the speech gate) AND aperiodic (not a
-        // low-ZCR/tonal artifact either), so only the pitch-voicing check — no
-        // fundamental — can tell it from speech. Layout: a loud VOICED body
-        // (150 Hz fundamental, like a vowel) then a loud unvoiced noise tail.
+        // The blind spot the voicing path closes: a LOUD, broadband NOISE tail —
+        // one LOUDER than the speech body, the defining trait of a real hiss/swoosh
+        // artifact (the corpus swoosh measured ~+9 dB over speech). It is loud +
+        // high-ZCR (clears the speech gate) AND aperiodic (not a low-ZCR/tonal
+        // artifact either), so only the pitch-voicing check — no fundamental — can
+        // tell it from speech, AND only because it is louder than the body (the
+        // over-speech gate, so a quiet word-final fricative is spared). Layout: a
+        // speech-level VOICED body (150 Hz fundamental, ~-19 dB) then a louder
+        // (~-11 dB) unvoiced noise tail.
         $converter = new AudioConverter(config('tts.ffmpeg_path', 'ffmpeg'));
         $chunk = $this->wrapWav(
-            $this->rawTone(1.0, 15000, 150.0)  // loud voiced body (clear F0)
-            .$this->noiseWav(1.2, 14000)        // loud unvoiced noise tail
+            $this->rawTone(1.0, 5000, 150.0)   // speech-level voiced body (clear F0)
+            .$this->noiseWav(1.2, 16000)        // LOUDER unvoiced noise tail (real artifact)
         );
 
         [$out] = $converter->concatenate([$chunk], 'wav', 'wav', []);
@@ -221,6 +225,30 @@ class AudioConverterTest extends TestCase
         $this->assertLessThan(1.6, $seconds, 'The loud unvoiced noise tail must be cut.');
     }
 
+    public function test_voicing_keeps_a_long_unvoiced_tail_at_speech_level(): void
+    {
+        // Regression for the clipped-last-word bug: a genuine word-final unvoiced
+        // run (a sustained /s/, /f/, or a devoiced/creaky ending) is loud, high-ZCR
+        // and aperiodic — voicing-wise indistinguishable from the artifact above —
+        // and routinely runs well past fricative_allowance_ms. The ONLY thing that
+        // separates it from a hiss tail is loudness: it tapers off the word, so it
+        // sits at/below the speech body's level. With the tail at the SAME level as
+        // the body (not louder), the over-speech gate must KEEP it. Without the gate
+        // this was hard-cut and the final word was lost (badge/contact assets).
+        $converter = new AudioConverter(config('tts.ffmpeg_path', 'ffmpeg'));
+        $chunk = $this->wrapWav(
+            $this->rawTone(1.0, 14000, 150.0)  // voiced body
+            .$this->noiseWav(0.8, 14000)        // long unvoiced coda, SAME level (not louder)
+        );
+
+        [$out] = $converter->concatenate([$chunk], 'wav', 'wav', []);
+        $seconds = $this->wavDataBytes($out) / (44100 * 2);
+
+        // Body + the full coda survive (~1.8s); only the bounded tail-silence trim
+        // applies. The pre-fix voicing cut chopped this to ~1.3s.
+        $this->assertGreaterThan(1.7, $seconds, 'A coda-level unvoiced tail must not be cut.');
+    }
+
     public function test_voicing_disabled_leaves_the_unvoiced_tail_in_place(): void
     {
         // Turning the voicing refinement off proves it is what removes the tail:
@@ -228,8 +256,8 @@ class AudioConverterTest extends TestCase
         config(['tts.chunk_tail_voicing_enabled' => false]);
         $converter = new AudioConverter(config('tts.ffmpeg_path', 'ffmpeg'));
         $chunk = $this->wrapWav(
-            $this->rawTone(1.0, 15000, 150.0)
-            .$this->noiseWav(1.2, 14000)
+            $this->rawTone(1.0, 5000, 150.0)
+            .$this->noiseWav(1.2, 16000)
         );
 
         [$out] = $converter->concatenate([$chunk], 'wav', 'wav', []);
