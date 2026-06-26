@@ -1,0 +1,24 @@
+# Genblaze runner as a DDEV add-on service. Reachable from the web container at
+# http://runner:8800 (see web_environment TTS_GENBLAZE_RUNNER_URL in config.yaml).
+# Replaces the host `uvicorn ... --port 8800` process.
+services:
+  runner:
+    container_name: ddev-${DDEV_SITENAME}-runner
+    build:
+      context: runner-build
+    image: ddev-${DDEV_SITENAME}-runner
+    restart: "no"
+    labels:
+      com.ddev.site-name: ${DDEV_SITENAME}
+      com.ddev.approot: ${DDEV_APPROOT}
+    expose:
+      - "8800"
+    volumes:
+      - "../:/app"
+    # Bulk-load secrets from the Laravel .env (REPLICATE_API_TOKEN, B2_*,
+    # TTS_INTERNAL_SECRET, …); the entrypoint maps the BESPOKEN_* names.
+    env_file:
+      - ../.env
+    environment:
+      - BESPOKEN_BASE_URL=http://web
+      - GENBLAZE_MAX_CONCURRENCY=1

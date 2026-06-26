@@ -1279,3 +1279,93 @@ window.addEventListener('pageshow', (e) => {
     });
     document.querySelector('[data-health-results]')?.classList.remove('opacity-40', 'pointer-events-none');
 });
+
+// Genblaze: one POST kicks off the whole orchestrated run (generate → QA-gated
+// re-roll → stitch → B2) and renders the per-chunk provenance it returns.
+function initGenblaze() {
+    const root = document.getElementById('genblaze');
+    if (!root) return;
+    const runBtn = document.getElementById('gb-run');
+    if (!runBtn) return;
+
+    const statusEl = document.getElementById('gb-status');
+    const result = document.getElementById('gb-result');
+    const finalAudio = document.getElementById('gb-final-audio');
+    const finalUrl = document.getElementById('gb-final-url');
+    const manifestEl = document.getElementById('gb-manifest');
+    const rerollsEl = document.getElementById('gb-rerolls');
+    const chunksEl = document.getElementById('gb-chunks');
+
+    const el = (tag, cls, text) => {
+        const node = document.createElement(tag);
+        if (cls) node.className = cls;
+        if (text != null) node.textContent = text;
+        return node;
+    };
+    const pill = (cls, text) => el('span', `ml-2 inline-flex rounded-md border px-1.5 py-0.5 text-xs ${cls}`, text);
+    const httpOnly = (url) => (/^https?:\/\//.test(url || '') ? url : '#');
+
+    const render = (data) => {
+        rerollsEl.textContent = `${data.reroll_count ?? 0} re-roll(s)`;
+        if (data.final_url) {
+            finalAudio.src = httpOnly(data.final_url);
+            finalAudio.classList.remove('hidden');
+            finalUrl.textContent = data.final_url;
+            finalUrl.href = httpOnly(data.final_url);
+        }
+        manifestEl.textContent = data.final_manifest_hash || '—';
+
+        chunksEl.replaceChildren();
+        (data.chunks || []).forEach((c) => {
+            const attempts = c.attempts ?? 1;
+            const score = c.verdict && typeof c.verdict.score === 'number' ? c.verdict.score.toFixed(2) : null;
+            const problems = c.verdict && Array.isArray(c.verdict.problems) ? c.verdict.problems.filter((p) => p && p !== '-') : [];
+
+            const li = el('li', 'rounded-lg border border-zinc-800 bg-zinc-950/40 p-3');
+            const head = el('div', 'flex items-center justify-between gap-2 text-sm');
+            const title = el('span', 'font-medium text-zinc-200', `Chunk ${c.position ?? '?'}`);
+            if (attempts > 1) title.append(pill('border-amber-500/30 bg-amber-500/10 text-amber-300', `re-rolled ×${attempts - 1}`));
+            if (c.trim_applied) title.append(pill('border-sky-500/30 bg-sky-500/10 text-sky-300', 'trimmed'));
+            head.append(title, el('span', 'text-xs text-zinc-500', `${attempts} attempt(s)${score !== null ? ' · score ' + score : ''}`));
+            li.append(head);
+
+            if (problems.length) li.append(el('div', 'mt-1 text-xs text-red-300', problems.join(', ')));
+
+            const link = el('a', 'mt-1 block break-all font-mono text-xs text-cyan-400 hover:underline', c.audio_url || '');
+            link.target = '_blank';
+            link.rel = 'noopener';
+            link.href = httpOnly(c.audio_url);
+            li.append(link);
+
+            chunksEl.append(li);
+        });
+        result.classList.remove('hidden');
+    };
+
+    runBtn.addEventListener('click', async () => {
+        const text = document.getElementById('gb-text').value.trim();
+        const voice = document.getElementById('gb-voice').value;
+        if (!text) { setStatus(statusEl, 'Enter some text first.', 'error'); return; }
+
+        runBtn.disabled = true;
+        const t0 = Date.now();
+        setStatus(statusEl, '⏳ Generating via Genblaze — generate → QA → re-roll → stitch → B2…', 'pending');
+        try {
+            const res = await fetch(root.dataset.runUrl, {
+                method: 'POST',
+                headers: { 'X-CSRF-TOKEN': csrfToken(), 'Accept': 'application/json', 'Content-Type': 'application/json' },
+                body: JSON.stringify({ text, voice }),
+            });
+            if (!res.ok) throw new Error(await errorMessage(res));
+            const data = await res.json();
+            render(data);
+            const secs = Math.round((Date.now() - t0) / 1000);
+            setStatus(statusEl, `✓ Done in ${secs}s — ${data.reroll_count || 0} re-roll(s) across ${(data.chunks || []).length} chunk(s).`, 'ok');
+        } catch (err) {
+            setStatus(statusEl, `✗ ${err.message}`, 'error');
+        } finally {
+            runBtn.disabled = false;
+        }
+    });
+}
+initGenblaze();

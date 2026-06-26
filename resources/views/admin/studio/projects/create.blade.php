@@ -4,7 +4,7 @@
             No voices configured — <a class="underline" href="{{ route('admin.voices.create') }}">add a voice</a> before creating a project.
         </div>
     @else
-        <form method="POST" action="{{ route('admin.studio.projects.store') }}" class="space-y-5 rounded-xl border border-zinc-800 bg-zinc-900/50 p-6">
+        <form method="POST" action="{{ route('admin.studio.projects.review') }}" class="space-y-5 rounded-xl border border-zinc-800 bg-zinc-900/50 p-6">
             @csrf
             <div>
                 <label for="title" class="mb-1.5 block text-sm font-medium">Title</label>

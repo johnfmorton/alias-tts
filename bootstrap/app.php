@@ -1,6 +1,7 @@
 <?php
 
 use App\Http\Middleware\EnsureUserIsAdmin;
+use App\Http\Middleware\ValidateInternalSecret;
 use Illuminate\Foundation\Application;
 use Illuminate\Foundation\Configuration\Exceptions;
 use Illuminate\Foundation\Configuration\Middleware;
@@ -15,6 +16,14 @@ return Application::configure(basePath: dirname(__DIR__))
         then: function () {
             // ElevenLabs-compatible routes, mounted at the root (no /api prefix).
             Route::group([], base_path('routes/v1.php'));
+
+            // Stateless pipeline primitives for the Genblaze orchestrator.
+            // Under /v1/internal/* so they inherit JSON error rendering; guarded
+            // by a shared secret rather than an API key.
+            Route::middleware([ValidateInternalSecret::class])
+                ->prefix('v1/internal')
+                ->name('internal.')
+                ->group(base_path('routes/internal.php'));
 
             // Password-protected control panel.
             Route::middleware(['web', 'auth', EnsureUserIsAdmin::class])

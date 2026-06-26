@@ -8,6 +8,9 @@ use App\Models\TtsChunk;
 use App\Models\TtsProject;
 use App\Models\Voice;
 use App\Services\ProjectService;
+use App\Services\Pronunciation\PronunciationDetector;
+use App\Services\Pronunciation\PronunciationDictionary;
+use App\Services\TextNormalizer;
 use App\Services\Tts\VoiceSettingsResolver;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
@@ -33,6 +36,9 @@ class StudioProjectController extends Controller
     public function __construct(
         private readonly ProjectService $projects,
         private readonly VoiceSettingsResolver $settingsResolver,
+        private readonly TextNormalizer $normalizer,
+        private readonly PronunciationDetector $detector,
+        private readonly PronunciationDictionary $dictionary,
     ) {}
 
     public function create(): View
@@ -49,13 +55,84 @@ class StudioProjectController extends Controller
 
     public function store(Request $request): RedirectResponse
     {
-        $data = $request->validate([
-            'title' => ['nullable', 'string', 'max:200'],
-            'text' => ['required', 'string', 'max:'.(int) config('tts.max_async_text_length', 40000)],
-            'voice' => ['required', 'string'],
-            'seed' => ['nullable', 'integer'],
-            'stability' => ['nullable', 'numeric', 'between:0,1'],
-            'style' => ['nullable', 'numeric', 'between:0,1'],
+        $data = $request->validate($this->createRules());
+
+        $voice = Voice::resolve($data['voice']);
+        if (! $voice) {
+            return back()->withInput()->with('error', 'Unknown voice.');
+        }
+
+        $project = $this->persist($request, $data, $voice, $data['text'], $this->dictionary->approvedMap($request->user()?->id));
+
+        return redirect()->route('admin.studio.projects.show', $project)
+            ->with('success', 'Project created — generate the chunks below.');
+    }
+
+    /**
+     * Pronunciation gate: between submitting text and chunking, ask the LLM (a
+     * Genblaze chat step) for respelling suggestions. When the feature is off, the
+     * LLM is unavailable, or nothing new is found, this transparently creates the
+     * project — applying any already-approved dictionary entries — and skips the
+     * review screen entirely. Never blocks on the LLM.
+     */
+    public function review(Request $request): RedirectResponse|View
+    {
+        $data = $request->validate($this->createRules());
+
+        $voice = Voice::resolve($data['voice']);
+        if (! $voice) {
+            return back()->withInput()->with('error', 'Unknown voice.');
+        }
+
+        $userId = $request->user()?->id;
+        $normalized = $this->normalizer->normalize($data['text']);
+        $detection = $this->detector->detect($normalized, $userId);
+
+        // Drop anything already in the writer's dictionary (the detector passes
+        // these as known_terms too — this is belt-and-suspenders).
+        $known = array_map(fn ($t) => mb_strtolower($t), $this->dictionary->knownTerms($userId));
+        $suggestions = array_values(array_filter(
+            $detection['substitutions'] ?? [],
+            fn ($s) => isset($s['term']) && ! in_array(mb_strtolower((string) $s['term']), $known, true),
+        ));
+
+        // Nothing to review → apply the existing dictionary and create now.
+        if ($suggestions === []) {
+            return redirect()
+                ->route('admin.studio.projects.show', $this->persistWithDictionary($request, $data, $voice, $userId))
+                ->with('success', 'Project created — generate the chunks below.');
+        }
+
+        return view('admin.studio.projects.review', [
+            'suggestions' => $suggestions,
+            'voice' => $voice,
+            'params' => [
+                'title' => (string) ($data['title'] ?? ''),
+                'text' => $data['text'],
+                'voice' => $data['voice'],
+                'seed' => $data['seed'] ?? null,
+                'stability' => $data['stability'] ?? null,
+                'style' => $data['style'] ?? null,
+            ],
+            'provenance' => $detection['provenance'] ?? null,
+        ]);
+    }
+
+    /**
+     * Persist the writer's approved suggestions, apply the full dictionary to the
+     * project text, then create the project (the chunking screen follows).
+     */
+    public function applyAndStore(Request $request): RedirectResponse
+    {
+        $data = $request->validate($this->createRules() + [
+            'approve' => ['array'],
+            'substitutions' => ['array'],
+            'substitutions.*.term' => ['required_with:substitutions', 'string'],
+            'substitutions.*.phonetic' => ['required_with:substitutions', 'string'],
+            'substitutions.*.category' => ['nullable', 'string'],
+            'substitutions.*.confidence' => ['nullable', 'string'],
+            'substitutions.*.note' => ['nullable', 'string'],
+            'substitutions.*.match_mode' => ['nullable', 'in:case_sensitive,case_insensitive'],
         ]);
 
         $voice = Voice::resolve($data['voice']);
@@ -63,18 +140,59 @@ class StudioProjectController extends Controller
             return back()->withInput()->with('error', 'Unknown voice.');
         }
 
-        $project = $this->projects->createFromText(
+        $userId = $request->user()?->id;
+
+        // Keep only the rows the writer checked.
+        $approvedIdx = array_flip(array_map('intval', (array) $request->input('approve', [])));
+        $approved = array_values(array_intersect_key($data['substitutions'] ?? [], $approvedIdx));
+        if ($approved !== []) {
+            $this->dictionary->approveSuggestions($userId, $approved);
+        }
+
+        return redirect()
+            ->route('admin.studio.projects.show', $this->persistWithDictionary($request, $data, $voice, $userId))
+            ->with('success', 'Project created — pronunciations applied. Generate the chunks below.');
+    }
+
+    /**
+     * Create a project, applying the writer's approved dictionary. The ORIGINAL
+     * text is stored as the project's source; the substitution is applied (inside
+     * {@see ProjectService::createFromText}) only to the chunked/normalized text,
+     * so "Start over" re-opens what the writer actually typed.
+     */
+    private function persistWithDictionary(Request $request, array $data, Voice $voice, ?int $userId): TtsProject
+    {
+        return $this->persist($request, $data, $voice, $data['text'], $this->dictionary->approvedMap($userId));
+    }
+
+    /**
+     * @param  list<array{term: string, phonetic: string, match_mode?: string}>  $pronunciationMap
+     */
+    private function persist(Request $request, array $data, Voice $voice, string $text, array $pronunciationMap = []): TtsProject
+    {
+        return $this->projects->createFromText(
             title: (string) ($data['title'] ?? ''),
             voice: $voice,
-            text: $data['text'],
+            text: $text,
             settings: $this->settings($request, $voice),
             modelId: config('tts.default_model_id'),
             outputFormat: config('tts.default_output_format'),
             seed: $request->filled('seed') ? (int) $request->input('seed') : ($voice->settings['seed'] ?? null),
+            pronunciationMap: $pronunciationMap,
         );
+    }
 
-        return redirect()->route('admin.studio.projects.show', $project)
-            ->with('success', 'Project created — generate the chunks below.');
+    /** @return array<string, array<int, string>> */
+    private function createRules(): array
+    {
+        return [
+            'title' => ['nullable', 'string', 'max:200'],
+            'text' => ['required', 'string', 'max:'.(int) config('tts.max_async_text_length', 40000)],
+            'voice' => ['required', 'string'],
+            'seed' => ['nullable', 'integer'],
+            'stability' => ['nullable', 'numeric', 'between:0,1'],
+            'style' => ['nullable', 'numeric', 'between:0,1'],
+        ];
     }
 
     public function show(TtsProject $project): View
@@ -190,7 +308,7 @@ class StudioProjectController extends Controller
             'text' => ['required', 'string', 'max:'.(int) config('tts.max_async_text_length', 40000)],
         ]);
 
-        $this->projects->resetFromText($project, $data['text']);
+        $this->projects->resetFromText($project, $data['text'], $this->dictionary->approvedMap($request->user()?->id));
 
         return redirect()->route('admin.studio.projects.show', $project)
             ->with('success', 'Project reset — generate the chunks below.');

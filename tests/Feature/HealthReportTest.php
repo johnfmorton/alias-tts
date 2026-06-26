@@ -38,7 +38,7 @@ class HealthReportTest extends TestCase
         $keys = array_map(fn (HealthCheckResult $r) => $r->key, $results);
         $this->assertEqualsCanonicalizing([
             'php_version', 'php_extensions', 'database', 'migrations', 'cache',
-            'ffmpeg', 'storage', 'disk', 'provider', 'asr', 'queue', 'failed_jobs',
+            'ffmpeg', 'storage', 'disk', 'provider', 'asr', 'pronunciation', 'queue', 'failed_jobs',
             'scheduler', 'cleanup', 'voices', 'api_keys', 'app_key', 'debug', 'app_url',
         ], $keys);
     }

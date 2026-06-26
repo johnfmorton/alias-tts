@@ -5,9 +5,14 @@
         ['route' => 'admin.studio.index', 'pattern' => 'admin.studio.*', 'label' => 'Studio'],
         ['route' => 'admin.api-keys.index', 'pattern' => 'admin.api-keys.*', 'label' => 'API Keys'],
         ['route' => 'admin.voices.index', 'pattern' => 'admin.voices.*', 'label' => 'Voices'],
+        ['route' => 'admin.pronunciations.index', 'pattern' => 'admin.pronunciations.*', 'label' => 'Pronunciations'],
         ['route' => 'admin.health', 'pattern' => 'admin.health', 'label' => 'Health'],
         ['route' => 'admin.settings.index', 'pattern' => 'admin.settings.*', 'label' => 'Settings'],
     ];
+    // Headline hackathon feature — only shown when the Genblaze runner is configured.
+    if (config('tts.genblaze.runner_url')) {
+        array_splice($navItems, 2, 0, [['route' => 'admin.studio.genblaze', 'pattern' => 'admin.studio.genblaze', 'label' => 'Genblaze']]);
+    }
 @endphp
 <!DOCTYPE html>
 <html lang="en" class="h-full">

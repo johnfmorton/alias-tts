@@ -2,8 +2,10 @@
 
 use App\Http\Controllers\Admin\ApiKeyController;
 use App\Http\Controllers\Admin\DashboardController;
+use App\Http\Controllers\Admin\GenblazeController;
 use App\Http\Controllers\Admin\HealthController;
 use App\Http\Controllers\Admin\HealthTestController;
+use App\Http\Controllers\Admin\PronunciationController;
 use App\Http\Controllers\Admin\SettingsController;
 use App\Http\Controllers\Admin\StudioController;
 use App\Http\Controllers\Admin\StudioProjectController;
@@ -42,9 +44,15 @@ Route::prefix('studio')->name('studio.')->group(function () {
     Route::post('/presets', [StudioController::class, 'storePreset'])->name('presets.store');
     Route::delete('/presets/{preset}', [StudioController::class, 'destroyPreset'])->name('presets.destroy');
 
+    // "Generate via Genblaze" — proxies a full run to the Genblaze runner, renders provenance.
+    Route::get('/genblaze', [GenblazeController::class, 'index'])->name('genblaze');
+    Route::post('/genblaze/run', [GenblazeController::class, 'run'])->name('genblaze.run');
+
     // Editable projects: persist chunks, regenerate one at a time, rebuild the stitch.
     Route::prefix('projects')->name('projects.')->group(function () {
         Route::get('/create', [StudioProjectController::class, 'create'])->name('create');
+        Route::post('/review', [StudioProjectController::class, 'review'])->name('review');
+        Route::post('/apply', [StudioProjectController::class, 'applyAndStore'])->name('apply');
         Route::post('/', [StudioProjectController::class, 'store'])->name('store');
         Route::get('/{project}', [StudioProjectController::class, 'show'])->name('show');
         Route::patch('/{project}', [StudioProjectController::class, 'update'])->name('update');
@@ -73,6 +81,14 @@ Route::post('/api-keys', [ApiKeyController::class, 'store'])->name('api-keys.sto
 Route::post('/api-keys/{apiKey}/toggle', [ApiKeyController::class, 'toggle'])->name('api-keys.toggle');
 Route::post('/api-keys/{apiKey}/regenerate', [ApiKeyController::class, 'regenerate'])->name('api-keys.regenerate');
 Route::delete('/api-keys/{apiKey}', [ApiKeyController::class, 'destroy'])->name('api-keys.destroy');
+
+// Pronunciation dictionary — the signed-in writer's personal, private lexicon.
+Route::get('/pronunciations', [PronunciationController::class, 'index'])->name('pronunciations.index');
+Route::get('/pronunciations/create', [PronunciationController::class, 'create'])->name('pronunciations.create');
+Route::post('/pronunciations', [PronunciationController::class, 'store'])->name('pronunciations.store');
+Route::get('/pronunciations/{entry}/edit', [PronunciationController::class, 'edit'])->name('pronunciations.edit');
+Route::put('/pronunciations/{entry}', [PronunciationController::class, 'update'])->name('pronunciations.update');
+Route::delete('/pronunciations/{entry}', [PronunciationController::class, 'destroy'])->name('pronunciations.destroy');
 
 // Voices
 Route::get('/voices', [VoiceController::class, 'index'])->name('voices.index');

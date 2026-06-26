@@ -1,0 +1,36 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "genblaze-runner"
+version = "0.1.0"
+description = "Genblaze-owned orchestrator for the Bespoken TTS pipeline (chunk -> generate -> ASR re-roll -> stitch) with Backblaze B2 provenance."
+readme = "README.md"
+requires-python = ">=3.11"
+license = { text = "MIT" }
+# NOTE: genblaze-bespoken is a sibling editable install, not on PyPI:
+#   pip install -e ../connectors/genblaze-bespoken
+dependencies = [
+    "genblaze-core>=0.3,<0.4",
+    "genblaze-s3>=0.3,<0.4",
+    "httpx>=0.27",
+    "fastapi>=0.110",
+    "uvicorn>=0.29",
+    "pydantic>=2",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8",
+]
+# Off-the-shelf Genblaze chat adapters for the pronunciation detector's swappable
+# providers. The default provider (Replicate) needs no extra dep — it reuses the
+# runner's httpx + REPLICATE_API_TOKEN via genblaze_runner.providers.replicate_chat.
+pronounce = [
+    "genblaze-google>=0.3,<0.4",
+    "genblaze-openai>=0.3,<0.4",
+]
+
+[tool.setuptools.packages.find]
+include = ["genblaze_runner*"]
