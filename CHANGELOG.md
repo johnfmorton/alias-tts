@@ -6,6 +6,24 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.14.6] - 2026-06-26
+
+### Fixed
+- **Generated clips no longer lose their last word.** A single-chunk Studio or
+  "Generate via Genblaze" run could ship a final MP3 with the last word chopped
+  off mid-syllable at full volume (reported: a 2.52s clip cut to 1.59s, a 2.96s
+  clip to 2.25s). The tail-artifact detector's voicing path decided where speech
+  ended using a pitch check, then hard-cut any unvoiced run longer than ~400ms
+  after it — but a genuine word-final unvoiced sound (a sustained *s*/*f*/*sh* or
+  a soft, devoiced ending) has no pitch and routinely runs 600–900ms, so it was
+  mistaken for an appended hiss tail and removed. Duration alone can't tell the
+  two apart; loudness can — a real word ending tapers *off* the word (no louder
+  than the speech before it), whereas a hiss/swoosh artifact is markedly *louder*.
+  The voicing cut now only fires when the trailing run is at least 6 dB louder
+  than the speech body (new `TTS_CHUNK_TAIL_VOICING_OVER_SPEECH_DB`, default 6.0),
+  the same over-speech test the ASR tail-noise check already used. Genuine hiss
+  tails are still trimmed; ordinary clips keep every word.
+
 ## [0.14.5] - 2026-06-26
 
 ### Added
