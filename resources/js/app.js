@@ -1307,11 +1307,16 @@ function initGenblaze() {
 
     const render = (data) => {
         rerollsEl.textContent = `${data.reroll_count ?? 0} re-roll(s)`;
-        if (data.final_url) {
-            finalAudio.src = httpOnly(data.final_url);
+        // Play through the app-proxied URL (works on a private B2 bucket); still
+        // show the real B2 location as the provenance link.
+        const finalSrc = data.final_play_url || data.final_url;
+        if (finalSrc) {
+            finalAudio.src = httpOnly(finalSrc);
             finalAudio.classList.remove('hidden');
+        }
+        if (data.final_url) {
             finalUrl.textContent = data.final_url;
-            finalUrl.href = httpOnly(data.final_url);
+            finalUrl.href = httpOnly(data.final_play_url || data.final_url);
         }
         manifestEl.textContent = data.final_manifest_hash || '—';
 
@@ -1334,12 +1339,32 @@ function initGenblaze() {
             const link = el('a', 'mt-1 block break-all font-mono text-xs text-cyan-400 hover:underline', c.audio_url || '');
             link.target = '_blank';
             link.rel = 'noopener';
-            link.href = httpOnly(c.audio_url);
+            link.href = httpOnly(c.play_url || c.audio_url);
             li.append(link);
 
             chunksEl.append(li);
         });
         result.classList.remove('hidden');
+    };
+
+    // Poll the run's status URL until it completes or fails. The orchestration
+    // runs in a queued job, so this can take minutes without any HTTP timeout.
+    const POLL_MS = 2500;
+    const POLL_MAX_MS = 10 * 60 * 1000;
+    const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+
+    const poll = async (statusUrl, t0) => {
+        for (;;) {
+            if (Date.now() - t0 > POLL_MAX_MS) throw new Error('Timed out waiting for the run.');
+            const res = await fetch(statusUrl, { headers: { 'Accept': 'application/json' } });
+            if (!res.ok) throw new Error(await errorMessage(res));
+            const body = await res.json();
+            if (body.status === 'completed') return body.result || {};
+            if (body.status === 'failed') throw new Error(body.error || 'The run failed.');
+            const secs = Math.round((Date.now() - t0) / 1000);
+            setStatus(statusEl, `⏳ ${body.status === 'running' ? 'Generating' : 'Queued'} — ${secs}s elapsed…`, 'pending');
+            await sleep(POLL_MS);
+        }
     };
 
     runBtn.addEventListener('click', async () => {
@@ -1348,8 +1373,9 @@ function initGenblaze() {
         if (!text) { setStatus(statusEl, 'Enter some text first.', 'error'); return; }
 
         runBtn.disabled = true;
+        result.classList.add('hidden');
         const t0 = Date.now();
-        setStatus(statusEl, '⏳ Generating via Genblaze — generate → QA → re-roll → stitch → B2…', 'pending');
+        setStatus(statusEl, '⏳ Queued — generate → QA → re-roll → stitch → B2…', 'pending');
         try {
             const res = await fetch(root.dataset.runUrl, {
                 method: 'POST',
@@ -1357,7 +1383,8 @@ function initGenblaze() {
                 body: JSON.stringify({ text, voice }),
             });
             if (!res.ok) throw new Error(await errorMessage(res));
-            const data = await res.json();
+            const { status_url: statusUrl } = await res.json();
+            const data = await poll(statusUrl, t0);
             render(data);
             const secs = Math.round((Date.now() - t0) / 1000);
             setStatus(statusEl, `✓ Done in ${secs}s — ${data.reroll_count || 0} re-roll(s) across ${(data.chunks || []).length} chunk(s).`, 'ok');

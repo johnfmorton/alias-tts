@@ -6,6 +6,14 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Changed
+- **"Generate via Genblaze" now runs asynchronously.** The Studio button dispatches
+  a queued job and the panel polls for the result, so a long multi-attempt run no
+  longer holds an HTTP request open past the web server's read timeout (was
+  surfacing as HTTP 502). Its provenance audio is also streamed back through the
+  app (authenticated `s3` read), so takes play in-browser even when the Backblaze
+  B2 bucket is **private**.
+
 ## [0.14.1] - 2026-06-26
 
 ### Fixed

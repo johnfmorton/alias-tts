@@ -44,9 +44,12 @@ Route::prefix('studio')->name('studio.')->group(function () {
     Route::post('/presets', [StudioController::class, 'storePreset'])->name('presets.store');
     Route::delete('/presets/{preset}', [StudioController::class, 'destroyPreset'])->name('presets.destroy');
 
-    // "Generate via Genblaze" — proxies a full run to the Genblaze runner, renders provenance.
+    // "Generate via Genblaze" — dispatches an async run to the Genblaze runner and
+    // polls for provenance; asset() proxies the B2 audio so a private bucket plays.
     Route::get('/genblaze', [GenblazeController::class, 'index'])->name('genblaze');
     Route::post('/genblaze/run', [GenblazeController::class, 'run'])->name('genblaze.run');
+    Route::get('/genblaze/runs/{run}', [GenblazeController::class, 'status'])->name('genblaze.status');
+    Route::get('/genblaze/asset', [GenblazeController::class, 'asset'])->name('genblaze.asset');
 
     // Editable projects: persist chunks, regenerate one at a time, rebuild the stitch.
     Route::prefix('projects')->name('projects.')->group(function () {

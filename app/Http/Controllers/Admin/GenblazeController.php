@@ -2,25 +2,36 @@
 
 namespace App\Http\Controllers\Admin;
 
+use App\Http\Controllers\Concerns\ServesRangedAudio;
 use App\Http\Controllers\Controller;
+use App\Jobs\RunGenblazeJob;
 use App\Models\Voice;
 use App\Services\Genblaze\GenblazeRunnerClient;
+use App\Services\Genblaze\GenblazeRunStore;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Facades\Validator;
+use Illuminate\Support\Str;
 use Illuminate\View\View;
-use Throwable;
+use Symfony\Component\HttpFoundation\Response;
 
 /**
- * "Generate via Genblaze" — the judge-facing entry point. Renders a small form
- * and proxies generation to the Genblaze runner's POST /run, returning the
- * per-chunk provenance (attempts, re-rolls, B2 take URLs, verified manifest) for
- * the page to render. The run is unattended end-to-end: Genblaze orchestrates
- * generate → QA-gated re-roll → stitch and writes every take to B2.
+ * "Generate via Genblaze" — the judge-facing entry point. The run is unattended
+ * end-to-end (Genblaze orchestrates generate → QA-gated re-roll → stitch and
+ * writes every take + a verifiable manifest to B2), and can take minutes, so the
+ * button dispatches a queued {@see RunGenblazeJob} and the panel polls
+ * {@see status()} — never holding an HTTP request open. Provenance audio is
+ * proxied back through {@see asset()} so it plays even from a PRIVATE B2 bucket.
  */
 class GenblazeController extends Controller
 {
-    public function __construct(private readonly GenblazeRunnerClient $runner) {}
+    use ServesRangedAudio;
+
+    public function __construct(
+        private readonly GenblazeRunnerClient $runner,
+        private readonly GenblazeRunStore $runs,
+    ) {}
 
     public function index(): View
     {
@@ -31,6 +42,7 @@ class GenblazeController extends Controller
         ]);
     }
 
+    /** Kick off an async run and return its id + poll URL (HTTP 202). */
     public function run(Request $request): JsonResponse
     {
         $validator = Validator::make($request->all(), [
@@ -46,25 +58,105 @@ class GenblazeController extends Controller
             return response()->json(['message' => 'Unknown voice.'], 422);
         }
 
-        // The run is synchronous — the runner holds this request for the whole
-        // generate → re-roll → stitch. Lift PHP's execution cap (the HTTP client
-        // timeout still bounds it). NOTE: a long multi-chunk run can still hit the
-        // web server's fastcgi/proxy read timeout; moving this to a queued job +
-        // status poll is the proper fix for long text.
-        set_time_limit(0);
+        $id = (string) Str::uuid();
+        $this->runs->create($id);
 
-        try {
-            $provenance = $this->runner->run(
-                text: (string) $request->input('text'),
-                voice: (string) $request->input('voice'),
-                seed: $request->filled('seed') ? (int) $request->input('seed') : null,
-            );
-        } catch (Throwable $e) {
-            report($e);
+        RunGenblazeJob::dispatch(
+            $id,
+            (string) $request->input('text'),
+            (string) $request->input('voice'),
+            $request->filled('seed') ? (int) $request->input('seed') : null,
+        );
 
-            return response()->json(['message' => 'Genblaze run failed — '.$e->getMessage()], 502);
+        return response()->json([
+            'run_id' => $id,
+            'status' => $this->runs->get($id)['status'] ?? 'queued',
+            'status_url' => route('admin.studio.genblaze.status', $id),
+        ], 202);
+    }
+
+    /** Poll a run's state; on completion the provenance is returned with proxied play URLs. */
+    public function status(string $run): JsonResponse
+    {
+        $state = $this->runs->get($run);
+        if ($state === null) {
+            return response()->json(['message' => 'Unknown or expired run.'], 404);
         }
 
-        return response()->json($provenance);
+        $payload = [
+            'run_id' => $run,
+            'status' => $state['status'] ?? 'unknown',
+            'error' => $state['error'] ?? null,
+        ];
+        if (($state['status'] ?? null) === 'completed' && isset($state['result'])) {
+            $payload['result'] = $this->withPlayUrls((array) $state['result']);
+        }
+
+        return response()->json($payload);
+    }
+
+    /**
+     * Stream a Genblaze provenance object from B2 through the app (authenticated
+     * `s3` read), so the panel plays it even when the bucket is private. Restricted
+     * to the `genblaze/` prefix so it can never serve an arbitrary bucket key.
+     */
+    public function asset(Request $request): Response
+    {
+        $key = ltrim((string) $request->query('key', ''), '/');
+        abort_unless($key !== '' && str_starts_with($key, 'genblaze/'), 404);
+
+        $disk = Storage::disk('s3');
+        abort_unless($disk->exists($key), 404);
+
+        $mime = str_ends_with($key, '.wav') ? 'audio/wav' : 'audio/mpeg';
+
+        return $this->rangedAudio((string) $disk->get($key), $mime, $request);
+    }
+
+    /**
+     * Add app-proxied `*_play_url`s alongside the runner's raw B2 URLs, so a
+     * private bucket still plays in-browser while the real B2 location stays
+     * visible for provenance.
+     *
+     * @param  array<string, mixed>  $result
+     * @return array<string, mixed>
+     */
+    private function withPlayUrls(array $result): array
+    {
+        if (isset($result['final_url'])) {
+            $result['final_play_url'] = $this->playUrl((string) $result['final_url']);
+        }
+
+        $result['chunks'] = array_map(function ($chunk) {
+            if (is_array($chunk) && isset($chunk['audio_url'])) {
+                $chunk['play_url'] = $this->playUrl((string) $chunk['audio_url']);
+            }
+
+            return $chunk;
+        }, (array) ($result['chunks'] ?? []));
+
+        return $result;
+    }
+
+    private function playUrl(string $b2Url): ?string
+    {
+        $key = $this->keyFromB2Url($b2Url);
+
+        return $key === null ? null : route('admin.studio.genblaze.asset', ['key' => $key]);
+    }
+
+    /** Map a runner B2 object URL back to its bucket key (null if it isn't a Genblaze object in our bucket). */
+    private function keyFromB2Url(string $url): ?string
+    {
+        $bucket = (string) config('filesystems.disks.s3.bucket');
+        $path = ltrim((string) parse_url($url, PHP_URL_PATH), '/');
+
+        if ($bucket === '' || ! str_starts_with($path, $bucket.'/')) {
+            return null;
+        }
+
+        $key = substr($path, strlen($bucket) + 1);
+
+        return str_starts_with($key, 'genblaze/') ? $key : null;
     }
 }
