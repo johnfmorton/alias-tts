@@ -6,6 +6,20 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.14.1] - 2026-06-26
+
+### Fixed
+- **S3-compatible object storage now works as the audio disk.** `TTS_STORAGE_DISK=s3`
+  previously failed at runtime because the Flysystem S3 adapter wasn't bundled;
+  `league/flysystem-aws-s3-v3` is now a dependency, so generated audio + voice
+  clips can live in AWS S3, **Backblaze B2**, Cloudflare R2, MinIO, Wasabi, etc.
+- **Backblaze B2 (and other ACL-less providers) accepted as the storage disk.**
+  Laravel's S3 driver stamped a canned object ACL on every upload, which B2
+  rejects ("Unsupported value for canned acl 'private'") — silently failing every
+  write. The `s3` driver is re-registered to strip the ACL parameter. Also
+  documents the previously-undocumented `AWS_ENDPOINT` (+ path-style) needed for
+  non-AWS S3 providers, in `.env.example` and the deployment guide.
+
 ## [0.14.0] - 2026-06-26
 
 ### Added
@@ -660,7 +674,8 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   fixed seed; the response cache guarantees stable output for repeated identical
   requests.
 
-[Unreleased]: https://github.com/johnfmorton/bespoken-tts-service/compare/v0.14.0...HEAD
+[Unreleased]: https://github.com/johnfmorton/bespoken-tts-service/compare/v0.14.1...HEAD
+[0.14.1]: https://github.com/johnfmorton/bespoken-tts-service/compare/v0.14.0...v0.14.1
 [0.14.0]: https://github.com/johnfmorton/bespoken-tts-service/compare/v0.13.0...v0.14.0
 [0.13.0]: https://github.com/johnfmorton/bespoken-tts-service/compare/v0.12.3...v0.13.0
 [0.12.3]: https://github.com/johnfmorton/bespoken-tts-service/compare/v0.12.2...v0.12.3
