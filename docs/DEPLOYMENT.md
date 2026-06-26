@@ -204,14 +204,17 @@ works as a deploy-script / CI gate — run `--deep` *after* the worker is up.
 
 ---
 
-## Storage: local vs S3
+## Storage: local vs S3-compatible
 
 By default (`TTS_STORAGE_DISK=local`) voice reference clips and generated audio
 live in `storage/app/private` on the app server. That's simplest and survives
 deploys (the `storage` dir is shared), but it ties audio to one server's disk.
 
-**Use S3** if you'd rather not keep audio on the app server, you re-provision
-servers, or you run more than one instance:
+**Use object storage** if you'd rather not keep audio on the app server, you
+re-provision servers, or you run more than one instance. **Any S3-compatible
+provider works** — AWS S3, **Backblaze B2**, Cloudflare R2, MinIO, Wasabi,
+DigitalOcean Spaces. The config keys are `AWS_*` by Laravel/SDK convention (the
+S3 protocol), not Amazon-specific:
 
 ```env
 TTS_STORAGE_DISK=s3
@@ -220,10 +223,16 @@ AWS_ACCESS_KEY_ID=...
 AWS_SECRET_ACCESS_KEY=...
 AWS_DEFAULT_REGION=us-east-1
 AWS_BUCKET=your-bucket
+# Non-AWS providers: set the endpoint + path-style (leave both unset for AWS S3).
+AWS_ENDPOINT=                      # Backblaze B2 e.g. https://s3.us-west-001.backblazeb2.com
+AWS_USE_PATH_STYLE_ENDPOINT=false  # true for B2 / MinIO
 ```
 
-The IAM identity needs `s3:GetObject`, `s3:PutObject`, `s3:DeleteObject`, and
-`s3:ListBucket` on the bucket (or the configured prefix).
+The access key needs **read / write / delete / list** on the bucket (or prefix).
+On AWS that's an IAM policy with `s3:GetObject`, `s3:PutObject`, `s3:DeleteObject`,
+`s3:ListBucket`; on **Backblaze B2** it's an application key scoped to the bucket
+with Read + Write + Delete + List capabilities. (B2's S3 API rejects per-object
+ACLs — the app handles that automatically and never sends one.)
 
 **Cleanup works the same on S3.** All storage goes through Laravel's disk
 abstraction, so `speech:cleanup` (and the daily schedule) delete expired audio
