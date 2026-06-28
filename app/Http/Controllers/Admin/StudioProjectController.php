@@ -507,6 +507,47 @@ class StudioProjectController extends Controller
         return response($bytes, 200)->header('Content-Type', $mime);
     }
 
+    /**
+     * "Use this take": persist the exact clip the user just previewed (uploaded
+     * back from the browser) as this chunk's audio, with the stability/style it
+     * was auditioned at. The provider is non-deterministic even with a pinned
+     * seed, so regenerating can't reproduce a good preview — keeping the actual
+     * bytes is the only reliable way. See docs/STUDIO-TUNING.md.
+     */
+    public function useChunkPreview(Request $request, TtsProject $project, TtsChunk $chunk): JsonResponse
+    {
+        $this->assertChunkBelongs($project, $chunk);
+
+        $validator = Validator::make($request->all(), [
+            'audio' => ['required', 'file', 'mimetypes:audio/wav,audio/x-wav,audio/wave,audio/vnd.wave,audio/mpeg', 'max:20480'],
+            'stability' => ['nullable', 'numeric', 'between:0,1'],
+            'style' => ['nullable', 'numeric', 'between:0,1'],
+        ]);
+        if ($validator->fails()) {
+            return response()->json(['message' => $validator->errors()->first()], 422);
+        }
+
+        try {
+            $chunk = $this->projects->useChunkPreview(
+                $chunk,
+                (string) file_get_contents($request->file('audio')->getRealPath()),
+                $request->filled('stability') ? (float) $request->input('stability') : null,
+                $request->filled('style') ? (float) $request->input('style') : null,
+            );
+        } catch (Throwable $e) {
+            report($e);
+
+            return response()->json(['message' => 'Could not save this take: '.$e->getMessage()], 502);
+        }
+
+        return response()->json([
+            'ok' => true,
+            'status' => $chunk->status->value,
+            'asr_badge' => $chunk->asrBadge(),
+            'project_status' => $project->refresh()->status->value,
+        ]);
+    }
+
     public function chunkAudio(Request $request, TtsProject $project, TtsChunk $chunk): Response
     {
         $this->assertChunkBelongs($project, $chunk);

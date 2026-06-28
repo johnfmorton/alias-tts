@@ -487,6 +487,51 @@ class ProjectService
         return $this->provider->synthesize($chunk->text, $this->referencePath($chunk->voice ?? $project->voice), $settings);
     }
 
+    /**
+     * "Use this take": store the exact preview bytes the user auditioned (uploaded
+     * back from the browser) as the chunk's audio, recording the stability/style
+     * it was previewed at and marking the chunk Completed. Re-scores ASR for the
+     * new audio (score only — never auto-remediate; the admin chose this take
+     * deliberately). Because the provider is non-deterministic even with a fixed
+     * seed, promoting the actual bytes is the only way to keep a good preview.
+     */
+    public function useChunkPreview(TtsChunk $chunk, string $bytes, ?float $stability, ?float $style): TtsChunk
+    {
+        $settings = is_array($chunk->settings) ? $chunk->settings : [];
+        foreach (['stability' => $stability, 'style' => $style] as $key => $value) {
+            if ($value !== null) {
+                $settings[$key] = $value;
+            } else {
+                unset($settings[$key]);
+            }
+        }
+
+        Storage::disk($this->disk())->put($path = $this->chunkPath($chunk), $bytes);
+
+        $chunk->update([
+            'settings' => $settings ?: null,
+            'audio_path' => $path,
+            'status' => ChunkStatus::Completed,
+            'error_message' => null,
+        ]);
+
+        // The stored audio changed, so any prior ASR verdict is stale. Re-score
+        // when ASR is available; otherwise drop the old verdict so the badge can't
+        // describe audio that's no longer there.
+        $verdict = $this->asr->enabled()
+            ? $this->remediator->score($chunk->text, $bytes, "chunk-{$chunk->id}")
+            : null;
+        if ($verdict !== null) {
+            $this->persistVerdict($chunk, $verdict);
+        } else {
+            $chunk->update(['asr_score' => null, 'asr_report' => null]);
+        }
+
+        $this->markFinalOutdated($chunk->project);
+
+        return $chunk;
+    }
+
     /** The container/format of raw provider audio (e.g. "wav"). */
     public function providerContainer(): string
     {

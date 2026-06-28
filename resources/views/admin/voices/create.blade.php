@@ -19,12 +19,6 @@
             <p class="mt-1.5 text-xs text-zinc-500">WAV/MP3/M4A/OGG/FLAC, up to 20 MB. A clean, quiet ~15–30s sample works best. Leave blank to use Chatterbox's built-in voice (no cloning).</p>
         </div>
         <div>
-            <label for="seed" class="mb-1.5 block text-sm font-medium">Default seed <span class="text-zinc-500">(optional)</span></label>
-            <input id="seed" name="seed" type="number" value="{{ old('seed') }}" placeholder="random"
-                   class="w-full rounded-lg border border-zinc-700 bg-zinc-900 px-3 py-2 text-sm focus:border-cyan-500 focus:outline-none focus:ring-2 focus:ring-cyan-500/30">
-            <p class="mt-1.5 text-xs text-zinc-500">Pins reproducible output. Leave blank for a random seed each call.</p>
-        </div>
-        <div>
             <span class="mb-1.5 block text-sm font-medium">Default tuning <span class="text-zinc-500">(optional)</span></span>
             <div class="flex gap-3">
                 <label class="flex-1">

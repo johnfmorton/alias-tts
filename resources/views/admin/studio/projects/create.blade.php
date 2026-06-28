@@ -28,11 +28,6 @@
                         @endforeach
                     </select>
                 </div>
-                <label class="flex flex-col gap-1">
-                    <span class="text-xs text-zinc-500">Seed (optional)</span>
-                    <input name="seed" type="number" inputmode="numeric" value="{{ old('seed') }}"
-                           class="w-36 rounded-lg border border-zinc-700 bg-zinc-950 px-3 py-1.5 text-sm">
-                </label>
             </div>
 
             <div class="flex items-center gap-3">

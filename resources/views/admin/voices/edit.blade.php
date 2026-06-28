@@ -1,4 +1,4 @@
-<x-layout title="Edit voice" description="Rename the voice_id, set default tuning or seed, or replace the reference clip.">
+<x-layout title="Edit voice" description="Rename the voice_id, set default tuning, or replace the reference clip.">
     <form method="POST" action="{{ route('admin.voices.update', $voice) }}" enctype="multipart/form-data" class="max-w-lg space-y-5 rounded-xl border border-zinc-800 bg-zinc-900/50 p-6">
         @csrf
         @method('PUT')
@@ -13,12 +13,9 @@
                    class="w-full rounded-lg border border-zinc-700 bg-zinc-900 px-3 py-2 font-mono text-sm focus:border-cyan-500 focus:outline-none focus:ring-2 focus:ring-cyan-500/30">
             <p class="mt-1.5 text-xs text-zinc-500">Used in the API path and by clients (e.g. the Bespoken plugin). Renaming it also moves the stored reference clip.</p>
         </div>
-        <div>
-            <label for="seed" class="mb-1.5 block text-sm font-medium">Default seed <span class="text-zinc-500">(optional)</span></label>
-            <input id="seed" name="seed" type="number" value="{{ old('seed', $voice->settings['seed'] ?? '') }}" placeholder="random"
-                   class="w-full rounded-lg border border-zinc-700 bg-zinc-900 px-3 py-2 text-sm focus:border-cyan-500 focus:outline-none focus:ring-2 focus:ring-cyan-500/30">
-            <p class="mt-1.5 text-xs text-zinc-500">Leave blank for a random seed each call.</p>
-        </div>
+        {{-- Seed is intentionally not surfaced — a fixed seed doesn't guarantee an
+             identical take. Preserve any existing value so editing doesn't wipe it. --}}
+        <input type="hidden" name="seed" value="{{ old('seed', $voice->settings['seed'] ?? '') }}">
         <div>
             <span class="mb-1.5 block text-sm font-medium">Default tuning <span class="text-zinc-500">(optional)</span></span>
             <div class="flex gap-3">

@@ -249,7 +249,6 @@ function initStudio() {
     const els = {
         text: document.getElementById('studio-text'),
         voice: document.getElementById('studio-voice'),
-        seed: document.getElementById('studio-seed'),
         stability: document.getElementById('studio-stability'),
         style: document.getElementById('studio-style'),
         status: document.getElementById('studio-status'),
@@ -279,7 +278,6 @@ function initStudio() {
     const params = (text) => {
         const body = { text };
         if (els.voice?.value) body.voice = els.voice.value;
-        if (els.seed?.value !== '') body.seed = els.seed.value;
         if (els.stability?.value !== '') body.stability = els.stability.value;
         if (els.style?.value !== '') body.style = els.style.value;
         return new URLSearchParams(body);
@@ -885,6 +883,7 @@ function initStudioProject() {
             audio.play().catch(() => {});
             endBusy(btn);
             card.querySelector('.chunk-generate').textContent = '▶ Regenerate';
+            card.querySelector('.chunk-tune-keep')?.classList.add('hidden'); // this take replaces any pending preview
             refreshSeams(); // may reveal an inline seam preview next to a generated neighbor
         } catch (err) {
             setChunkStatus(card, 'failed');
@@ -992,6 +991,18 @@ function initStudioProject() {
     });
 
     root.querySelectorAll('.studio-chunk').forEach((card) => {
+        // The blob + settings from the last successful tuning preview, so
+        // "Use this take" can persist the exact clip the user just heard. Any
+        // edit that would change how a fresh preview sounds clears it (below).
+        let previewBlob = null;
+        let previewStability = '';
+        let previewStyle = '';
+        const keepBtn = card.querySelector('.chunk-tune-keep');
+        const invalidatePreview = () => {
+            previewBlob = null;
+            keepBtn?.classList.add('hidden');
+        };
+
         card.querySelector('.chunk-save').addEventListener('click', async () => {
             const btn = card.querySelector('.chunk-save');
             startBusy(btn, 'Saving…');
@@ -1060,12 +1071,56 @@ function initStudioProject() {
                     body,
                 });
                 if (!res.ok) throw new Error(await errorMessage(res));
-                playAudio(card.querySelector('.chunk-tune-audio'), await res.blob());
-                setStatus(finalStatus, '');
+                const blob = await res.blob();
+                playAudio(card.querySelector('.chunk-tune-audio'), blob);
+                // Remember this exact clip so "Use this take" can keep it verbatim.
+                previewBlob = blob;
+                previewStability = stability;
+                previewStyle = style;
+                keepBtn?.classList.remove('hidden');
+                setStatus(finalStatus, '✓ Preview ready — "Use this take" keeps this exact clip.', 'ok');
             } catch (err) {
                 setStatus(finalStatus, `✗ ${err.message}`, 'error');
             } finally {
                 endBusy(btn);
+            }
+        });
+
+        // Use this take: upload the exact previewed clip back and store it as the
+        // chunk's audio (with the settings it was previewed at). No regeneration,
+        // so what's saved is byte-for-byte what the user just auditioned — the only
+        // reliable way to keep a good take given the provider's non-determinism.
+        keepBtn?.addEventListener('click', async () => {
+            if (!previewBlob) return;
+            startBusy(keepBtn, 'Saving…');
+            try {
+                const ext = previewBlob.type === 'audio/mpeg' ? 'mp3' : 'wav';
+                const fd = new FormData();
+                fd.append('audio', previewBlob, `take.${ext}`);
+                if (previewStability !== '') fd.append('stability', previewStability);
+                if (previewStyle !== '') fd.append('style', previewStyle);
+                const res = await fetch(card.dataset.usePreviewUrl, {
+                    method: 'POST',
+                    headers: { 'X-CSRF-TOKEN': csrfToken(), 'Accept': 'application/json' },
+                    body: fd,
+                });
+                if (!res.ok) throw new Error(await errorMessage(res));
+                const data = await res.json();
+                setChunkStatus(card, data.status);
+                setChunkAsrBadge(card, data.asr_badge ?? null);
+                setProjectStatus(data.project_status);
+                const audio = card.querySelector('.chunk-audio');
+                audio.src = bust(card.dataset.audioUrl);
+                audio.classList.remove('hidden');
+                audio.play().catch(() => {});
+                card.querySelector('.chunk-generate').textContent = '▶ Regenerate';
+                invalidatePreview();
+                refreshSeams();
+                setStatus(finalStatus, '✓ Saved this take as the chunk audio.', 'ok');
+            } catch (err) {
+                setStatus(finalStatus, `✗ ${err.message}`, 'error');
+            } finally {
+                endBusy(keepBtn);
             }
         });
 
@@ -1096,6 +1151,13 @@ function initStudioProject() {
                 endBusy(btn);
             }
         });
+
+        // A preview reflects the inputs at preview time; once any of them change,
+        // the kept clip would no longer match, so retire the "Use this take" offer.
+        card.querySelector('.chunk-stability').addEventListener('input', invalidatePreview);
+        card.querySelector('.chunk-style').addEventListener('input', invalidatePreview);
+        card.querySelector('.chunk-text').addEventListener('input', invalidatePreview);
+        card.querySelector('.chunk-voice').addEventListener('change', invalidatePreview);
 
         // Track dirty state as the user types; Revert restores the saved text.
         card.querySelector('.chunk-text').addEventListener('input', () => setDirty(card, isDirty(card)));

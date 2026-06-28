@@ -96,4 +96,25 @@ class VoiceTuningTest extends TestCase
         $this->assertSame(0.8, $settings['stability']);
         $this->assertSame(0.3, $settings['style']);
     }
+
+    /**
+     * Seed is no longer surfaced in the UI (a fixed seed doesn't guarantee an
+     * identical take), but the edit form keeps it in a hidden field so saving an
+     * existing voice doesn't silently wipe its stored seed.
+     */
+    public function test_voice_edit_preserves_seed_without_surfacing_it(): void
+    {
+        $voice = Voice::create([
+            'slug' => 'john',
+            'name' => 'John',
+            'settings' => ['seed' => 42],
+        ]);
+
+        $res = $this->actingAs($this->admin())->get(route('admin.voices.edit', $voice));
+
+        $res->assertOk();
+        $res->assertSee('name="seed"', false);   // preserved...
+        $res->assertSee('value="42"', false);
+        $res->assertDontSee('Default seed', false); // ...but not shown as a control
+    }
 }

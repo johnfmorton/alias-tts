@@ -11,6 +11,7 @@ use App\Services\ProjectService;
 use App\Services\Tts\FakeTtsProvider;
 use App\Services\Tts\TtsProvider;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\Storage;
 use Tests\TestCase;
 
@@ -804,6 +805,60 @@ class StudioProjectTest extends TestCase
 
         $this->actingAs($this->admin())
             ->postJson(route('admin.studio.projects.chunks.preview-tuning', [$project, $chunk]), ['stability' => 2])
+            ->assertStatus(422);
+    }
+
+    public function test_use_preview_saves_the_exact_clip_as_chunk_audio(): void
+    {
+        $project = $this->project();
+        $chunk = $project->chunks()->orderBy('position')->first();
+
+        // The bytes the user "previewed" — reuse the provider's own WAV output.
+        $bytes = app(ProjectService::class)->previewChunkTuning($chunk, 0.5, 0.2);
+        $upload = UploadedFile::fake()->createWithContent('take.wav', $bytes);
+
+        $this->actingAs($this->admin())
+            ->post(route('admin.studio.projects.chunks.use-preview', [$project, $chunk]), [
+                'audio' => $upload,
+                'stability' => 0.5,
+                'style' => 0.2,
+            ])
+            ->assertOk()
+            ->assertJsonPath('status', 'completed');
+
+        $chunk->refresh();
+        $this->assertSame(ChunkStatus::Completed, $chunk->status);
+        $this->assertNotNull($chunk->audio_path);
+        // Stored audio is byte-for-byte the previewed clip — no regeneration.
+        $this->assertSame($bytes, Storage::disk('local')->get($chunk->audio_path));
+        // And the tuning it was previewed at is recorded on the chunk.
+        $this->assertSame(0.5, $chunk->settings['stability']);
+        $this->assertSame(0.2, $chunk->settings['style']);
+    }
+
+    public function test_use_preview_with_blank_tuning_inherits_project_settings(): void
+    {
+        $project = $this->project();
+        $chunk = $project->chunks()->orderBy('position')->first();
+        $bytes = app(ProjectService::class)->previewChunkTuning($chunk, null, null);
+
+        $this->actingAs($this->admin())
+            ->post(route('admin.studio.projects.chunks.use-preview', [$project, $chunk]), [
+                'audio' => UploadedFile::fake()->createWithContent('take.wav', $bytes),
+            ])
+            ->assertOk();
+
+        // No per-chunk override stored → the chunk keeps inheriting the project.
+        $this->assertNull($chunk->refresh()->settings);
+    }
+
+    public function test_use_preview_requires_an_audio_file(): void
+    {
+        $project = $this->project();
+        $chunk = $project->chunks()->first();
+
+        $this->actingAs($this->admin())
+            ->postJson(route('admin.studio.projects.chunks.use-preview', [$project, $chunk]), ['stability' => 0.5])
             ->assertStatus(422);
     }
 }

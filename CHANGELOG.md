@@ -6,6 +6,33 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Added
+- **Studio: "Use this take" keeps the exact clip you just previewed.** Auditioning
+  a per-chunk tuning with **Preview** generated a clip that was then discarded —
+  and because the voice model is non-deterministic even with a fixed seed,
+  regenerating could never reproduce a good take. A new **✓ Use this take** button
+  (next to Preview) saves the exact previewed audio as the chunk's audio, along
+  with the stability/style it was previewed at, with no re-generation. It appears
+  once you preview and retires itself the moment you change the text, tuning, or
+  voice, so a kept clip always matches its settings.
+
+### Changed
+- **Per-chunk tuning fields now show what "inherit" resolves to.** The Stability
+  and Style overrides displayed a bare `inherit` placeholder with no hint of the
+  underlying value; they now show the inherited project setting (e.g.
+  `inherit (0.50)`) and were widened to fit it. The Generate/Re-roll tooltips and
+  the tuning help text were reworded to describe **Generate** as a render and
+  **Re-roll** as simply "another take."
+
+### Removed
+- **"Seed" is no longer surfaced anywhere in the admin UI.** Because a fixed seed
+  doesn't guarantee an identical take, exposing it promised a reproducibility the
+  model can't deliver and added needless complexity. The seed inputs were removed
+  from the Studio create form, the Studio inspector, and the voice create/edit
+  forms, and the Seed column was dropped from the voices list. The underlying seed
+  plumbing is unchanged (database, API, voice-manifest import); the voice edit form
+  preserves any existing seed in a hidden field so saving doesn't wipe it.
+
 ## [0.14.6] - 2026-06-26
 
 ### Fixed

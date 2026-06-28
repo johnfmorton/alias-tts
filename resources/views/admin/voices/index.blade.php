@@ -16,7 +16,6 @@
                     <th class="px-4 py-3">voice_id</th>
                     <th class="px-4 py-3">Name</th>
                     <th class="px-4 py-3">Reference</th>
-                    <th class="px-4 py-3">Seed</th>
                     <th class="px-4 py-3">Preview</th>
                     <th class="px-4 py-3"></th>
                 </tr>
@@ -40,7 +39,6 @@
                                 <span class="rounded-md bg-zinc-700/40 px-2 py-1 text-xs text-zinc-400">None</span>
                             @endif
                         </td>
-                        <td class="px-4 py-3 font-mono text-zinc-400">{{ $voice->settings['seed'] ?? '—' }}</td>
                         <td class="px-4 py-3">
                             <button data-test-voice="{{ route('admin.voices.test', $voice) }}" data-audio-target="#audio-{{ $voice->id }}"
                                     class="rounded-md border border-zinc-700 px-2.5 py-1 text-xs hover:bg-zinc-800 disabled:cursor-not-allowed disabled:opacity-40">Test</button>

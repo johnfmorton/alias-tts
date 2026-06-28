@@ -85,11 +85,6 @@
                 {{-- Single-shot knobs (used by Whole / Stitched / per-chunk Generate) --}}
                 <div class="mt-3 flex flex-wrap gap-4 rounded-lg border border-zinc-800 bg-zinc-950/40 p-3 text-sm text-zinc-400">
                     <label class="flex flex-col gap-1">
-                        <span class="text-xs text-zinc-500">Seed (blank = random)</span>
-                        <input id="studio-seed" type="number" inputmode="numeric"
-                               class="w-36 rounded-lg border border-zinc-700 bg-zinc-950 px-3 py-1.5 text-sm">
-                    </label>
-                    <label class="flex flex-col gap-1">
                         <span class="text-xs text-zinc-500">Stability (0–1)</span>
                         <input id="studio-stability" type="number" step="0.05" min="0" max="1" placeholder="0.5"
                                class="w-28 rounded-lg border border-zinc-700 bg-zinc-950 px-3 py-1.5 text-sm">
