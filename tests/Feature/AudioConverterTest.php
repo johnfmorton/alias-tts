@@ -199,6 +199,33 @@ class AudioConverterTest extends TestCase
         $this->assertGreaterThan(1.3, $seconds, 'A short final word after a brief pause must survive.');
     }
 
+    public function test_detector_keeps_a_short_voiced_coda_at_the_end(): void
+    {
+        // Regression for the concat clip: a word ending in a VOICED nasal coda
+        // (/n/, /m/, /ŋ/) — loud but low-frequency, hence low-ZCR — fails the
+        // speech (high-ZCR) gate, so the detector read the loud nasal as the start
+        // of a trailing artifact and hard-cut mid-word ("...built in" lost its "n").
+        // A short voiced run at/below speech level that tapers to silence is a coda,
+        // not a drone, and must be folded back into speech and kept. Layout:
+        // broadband speech | a short loud 120 Hz voiced coda | trailing silence.
+        $converter = new AudioConverter(config('tts.ffmpeg_path', 'ffmpeg'));
+        $chunk = $this->wrapWav(
+            $this->noiseWav(1.0, 15000)        // speech body (high ZCR)
+            .$this->rawTone(0.25, 9000, 120.0) // short voiced coda (loud, low ZCR, below speech)
+            .$this->rawTone(0.6, 0, 0.0)       // trailing silence (the word has ended)
+        );
+
+        [$out] = $converter->concatenate([$chunk], 'wav', 'wav', []);
+        $seconds = $this->wavDataBytes($out) / (44100 * 2);
+
+        // ~1.25s preserved (speech + coda). The bug cut at the speech/coda boundary
+        // (~1.06s), clipping the coda; the trailing silence is still trimmed (the
+        // 1.0s drone in test_long_tail_detector_trims_synthetic_drone — longer than
+        // voiced_coda_max_ms — proves a sustained voiced tail is still cut).
+        $this->assertGreaterThan(1.2, $seconds, 'A short voiced coda at the end must not be clipped.');
+        $this->assertLessThan(1.5, $seconds, 'The trailing silence after the coda must still be trimmed.');
+    }
+
     public function test_voicing_detector_removes_a_loud_unvoiced_noise_tail(): void
     {
         // The blind spot the voicing path closes: a LOUD, broadband NOISE tail —

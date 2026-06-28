@@ -205,6 +205,18 @@ return [
     // as a tonal artifact and peeled regardless of length. 0 = disable that path
     // (only short blips are peeled). Raise toward speech's CV (~0.7+) cautiously.
     'chunk_tail_tonal_cv_max' => (float) env('TTS_CHUNK_TAIL_TONAL_CV_MAX', 0.35),
+    // The ZCR speech gate marks a window as speech only when it is loud AND
+    // high-ZCR, so a loud word-final VOICED coda (a nasal /n/, /m/, /ŋ/ — voiced
+    // but low-frequency, hence low-ZCR) fails it and reads as the START of a
+    // trailing artifact: the detector then hard-cuts mid-word (e.g. "...built in"
+    // loses the "n"). Before measuring the cut, the speech end is extended forward
+    // over a short voiced coda: contiguous windows that are loud, voiced (a clear
+    // fundamental), and AT/BELOW the speech body level (the over_speech_db gate, so
+    // a louder re-swell swoosh is NOT folded). The fold is bounded to this many ms
+    // so a sustained voiced drone (multi-second) is NOT mistaken for a coda and is
+    // still cut. Purely acoustic (voicing + loudness + duration) — no phoneme/
+    // language assumptions; a nasal is voiced + low-ZCR in any language. 0 disables.
+    'chunk_tail_voiced_coda_max_ms' => (int) env('TTS_CHUNK_TAIL_VOICED_CODA_MAX_MS', 300),
 
     // Voicing refinement of the tail detector. A trailing run that clears the
     // loud + high-ZCR speech gate but has NO fundamental (broadband hiss/noise

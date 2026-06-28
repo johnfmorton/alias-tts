@@ -33,6 +33,18 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   plumbing is unchanged (database, API, voice-manifest import); the voice edit form
   preserves any existing seed in a hidden field so saving doesn't wipe it.
 
+### Fixed
+- **A word ending in a soft "n"/"m"/"ng" no longer gets its last sound clipped.**
+  When a chunk ended on a voiced nasal (e.g. "…with proof built in"), the tail
+  cleanup mistook the quiet, low-pitched nasal release for trailing noise and
+  trimmed into the real word — so the final word sounded cut off, most visibly
+  where chunks were joined. The cleanup now recognises a short voiced word-ending
+  as part of speech and keeps it, while still trimming genuine hums, drones, and
+  hiss after the voice stops. The check is purely acoustic (pitch + loudness +
+  length), so it isn't tied to any one language. Tunable via
+  `TTS_CHUNK_TAIL_VOICED_CODA_MAX_MS` (default 300 ms). Affects newly generated
+  audio; clips already saved before this fix need re-generating.
+
 ## [0.14.6] - 2026-06-26
 
 ### Fixed

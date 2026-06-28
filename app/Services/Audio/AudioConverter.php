@@ -527,6 +527,11 @@ class AudioConverter
         // Cut from the ZCR/tonal path (drone / blip / tonal-swell), if any.
         $zcrCut = null;
         if ($lastSpeechWin !== null) {
+            // A loud word-final VOICED coda (a nasal /n/, /m/, /ŋ/) is low-ZCR, so
+            // it fails the speech gate above and would read as the start of a
+            // trailing artifact — clipping the real final word mid-coda (e.g.
+            // "...built in" loses its "n"). Fold such a coda back into speech first.
+            $lastSpeechWin = $this->voicedCodaEnd($pcmWav, $offset, $dbWindows, $lastSpeechWin, $win, $rate);
             $lastSpeechEnd = ($lastSpeechWin + 1) * $win / $rate;
             if (($totalSec - $lastSpeechEnd) >= $minArtifactSec) {
                 $zcrCut = min($totalSec, $lastSpeechEnd + $guardSec);
@@ -549,6 +554,69 @@ class AudioConverter
         }
 
         return $cut; // null keeps trimChunk's bounded trim
+    }
+
+    /**
+     * Extend a ZCR-path speech end forward over a short word-final VOICED coda,
+     * returning the (possibly unchanged) last-speech window index.
+     *
+     * The ZCR speech gate in {@see detectLongTailArtifact} marks a window as speech
+     * only when it is loud AND high-ZCR. A voiced nasal coda (/n/, /m/, /ŋ/) is loud
+     * but low-frequency, so low-ZCR — it fails that gate, and the loud nasal release
+     * of the final word reads as the start of a trailing artifact and is hard-cut
+     * mid-word (e.g. "...built in" → the "n" of "in" is clipped). This is the ZCR
+     * path's analogue of the over-speech gate the voicing path already applies, and
+     * it is purely acoustic (voicing + loudness + duration) — no phoneme/language
+     * assumptions, since a nasal is voiced + low-ZCR in any language.
+     *
+     * From the window after $lastSpeechWin, fold each contiguous window that is loud
+     * (above the floor), VOICED (a clear fundamental), and AT/BELOW the speech body
+     * level + over_speech_db — i.e. energy tapering off the word, not a louder
+     * re-swell swoosh. Stop folding at the first window that is quiet (the word
+     * ended), too loud (a swoosh), or unvoiced (leave a fricative/hiss tail to the
+     * other paths). If the voiced run runs LONGER than voiced_coda_max_ms it is a
+     * sustained drone, not a coda — don't extend at all, so the drone is still cut.
+     * {@see AudioConverterTest}.
+     */
+    private function voicedCodaEnd(string $pcmWav, int $offset, array $dbWindows, int $lastSpeechWin, int $win, int $rate): int
+    {
+        $codaMaxSec = max(0, (int) config('tts.chunk_tail_voiced_coda_max_ms', 300)) / 1000;
+        if ($codaMaxSec <= 0) {
+            return $lastSpeechWin;
+        }
+
+        $floorDb = (float) config('tts.chunk_tail_rms_floor_db', -40);
+        $overSpeechDb = (float) config('tts.chunk_tail_voicing_over_speech_db', 6.0);
+        $windowSec = $win / $rate;
+        $codaMaxWin = (int) round($codaMaxSec / $windowSec);
+        $nWindows = count($dbWindows);
+
+        // Speech body reference: RMS up to the ZCR-path speech end.
+        $totalSamples = intdiv(strlen($pcmWav) - $offset, 2);
+        $speechEnd = ($lastSpeechWin + 1) * $win / $rate;
+        $speechDb = $this->spanRmsDbfs($pcmWav, $offset, $rate, $totalSamples, 0.0, $speechEnd);
+        if ($speechDb === null) {
+            return $lastSpeechWin;
+        }
+
+        $ext = $lastSpeechWin;
+        for ($w = $lastSpeechWin + 1; $w < $nWindows; $w++) {
+            if (($w - $lastSpeechWin) > $codaMaxWin) {
+                return $lastSpeechWin; // voiced run too long for a coda — a drone; cut as before
+            }
+            if ($dbWindows[$w] <= $floorDb) {
+                break; // quiet — the word ended; coda complete
+            }
+            if ($dbWindows[$w] > $speechDb + $overSpeechDb) {
+                return $lastSpeechWin; // louder than speech — a re-swell swoosh, not a coda; cut as before
+            }
+            if (! $this->windowIsVoiced($pcmWav, $offset, $w * $win, $win, $rate)) {
+                break; // loud unvoiced — a fricative/hiss tail; leave it to the other paths
+            }
+            $ext = $w; // fold this voiced coda window into speech
+        }
+
+        return $ext;
     }
 
     /**
