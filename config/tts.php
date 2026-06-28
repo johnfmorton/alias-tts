@@ -260,6 +260,15 @@ return [
     // (which can fail with transient CUDA asserts). 0 = no delay (back-to-back).
     'studio_generate_pace_ms' => (int) env('TTS_STUDIO_GENERATE_PACE_MS', 800),
 
+    // Take history retention per chunk. Every synthesis (Generate, Re-roll,
+    // Preview, "Use this take", auto-remediation) is saved as a selectable take so
+    // none is ever lost; older takes are auto-pruned. The currently-selected take
+    // is always kept. Previews are cheap auditions, so they're pruned harder.
+    'takes' => [
+        'keep' => (int) env('TTS_TAKES_KEEP', 10),            // committed takes kept per chunk
+        'keep_preview' => (int) env('TTS_TAKES_KEEP_PREVIEW', 3), // preview takes kept per chunk
+    ],
+
     'ttl_hours' => (int) env('TTS_TTL_HOURS', 720), // cache generated audio for 30 days
 
     // How long (minutes) a project's single-use auto-login link stays valid. The

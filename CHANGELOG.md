@@ -6,6 +6,31 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.15.0] - 2026-06-28
+
+### Added
+- **Studio keeps every take.** Every render of a chunk — Generate, Re-roll,
+  Preview, "Use this take", and ASR auto-remediation — is now saved as its own
+  immutable clip in a new **"Takes & tuning"** panel below each chunk (renamed from
+  "Tune this chunk"). Audition any prior take, **Select** the one that sounded best
+  to make it the chunk's audio, or **Delete** the duds. Older takes are auto-pruned
+  per chunk (config `tts.takes.keep` / `keep_preview`); the selected take is always
+  kept, and previews are pruned harder than committed takes. Previously each render
+  overwrote the single stored clip, so a better earlier take was lost forever.
+  Existing projects backfill one "legacy" take per generated chunk on migrate.
+- **Native Chatterbox knobs across the Studio.** The tuning controls (per-chunk
+  panel, single-shot inspector, and A/B bench) now expose Chatterbox's own
+  **Exaggeration** (0.25–2.0, neutral 0.5) and **CFG/Pace** (0.2–1.0) as
+  slider + number box + reset (↺), matching the Hugging Face Chatterbox demo,
+  instead of the abstract 0–1 Stability/Style fields and a derived readout.
+
+### Changed
+- The shared `VoiceSettingsResolver` and the Replicate provider now accept the
+  native `exaggeration`/`cfg_weight` keys directly (native wins), falling back to
+  deriving them from `stability`/`style`. The public `/v1` API is unchanged — it
+  still speaks ElevenLabs-style `stability`/`style`, which the provider maps. Named
+  tuning presets and saved voice defaults were migrated to the native knobs.
+
 ## [0.14.7] - 2026-06-28
 
 ### Added

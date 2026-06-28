@@ -6,12 +6,14 @@ use App\Console\Commands\PruneRecoveryProjects;
 use App\Http\Controllers\Concerns\ServesRangedAudio;
 use App\Http\Controllers\Controller;
 use App\Models\TtsChunk;
+use App\Models\TtsChunkTake;
 use App\Models\TtsProject;
 use App\Models\Voice;
 use App\Services\ProjectService;
 use App\Services\Pronunciation\PronunciationDetector;
 use App\Services\Pronunciation\PronunciationDictionary;
 use App\Services\TextNormalizer;
+use App\Services\Tts\ChatterboxTuning;
 use App\Services\Tts\VoiceSettingsResolver;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
@@ -112,8 +114,8 @@ class StudioProjectController extends Controller
                 'text' => $data['text'],
                 'voice' => $data['voice'],
                 'seed' => $data['seed'] ?? null,
-                'stability' => $data['stability'] ?? null,
-                'style' => $data['style'] ?? null,
+                'exaggeration' => $data['exaggeration'] ?? null,
+                'cfg_weight' => $data['cfg_weight'] ?? null,
             ],
             'provenance' => $detection['provenance'] ?? null,
         ]);
@@ -191,17 +193,24 @@ class StudioProjectController extends Controller
             'text' => ['required', 'string', 'max:'.(int) config('tts.max_async_text_length', 40000)],
             'voice' => ['required', 'string'],
             'seed' => ['nullable', 'integer'],
-            'stability' => ['nullable', 'numeric', 'between:0,1'],
-            'style' => ['nullable', 'numeric', 'between:0,1'],
+            'exaggeration' => ['nullable', 'numeric', 'between:0.25,2'],
+            'cfg_weight' => ['nullable', 'numeric', 'between:0.2,1'],
         ];
     }
 
     public function show(TtsProject $project): View
     {
+        $project->load('voice');
+        $chunks = $project->chunks()->with('takes')->get();
+
         return view('admin.studio.projects.show', [
-            'project' => $project->load('voice'),
-            'chunks' => $project->chunks()->get(),
+            'project' => $project,
+            'chunks' => $chunks,
             'voices' => Voice::orderBy('name')->get(),
+            // Each chunk's take history, prebuilt so the panel renders without a
+            // per-chunk fetch and the JS reuses the same shape it gets from the
+            // action endpoints. Keyed by chunk id.
+            'takesByChunk' => $chunks->mapWithKeys(fn (TtsChunk $c) => [$c->id => $this->takesPayload($project, $c)])->all(),
         ]);
     }
 
@@ -404,12 +413,12 @@ class StudioProjectController extends Controller
             return response()->json(['message' => 'Generation failed: '.$e->getMessage()], 502);
         }
 
-        return response()->json([
+        return response()->json(array_merge([
             'ok' => true,
             'status' => $chunk->status->value,
             'asr_badge' => $chunk->asrBadge(),
             'project_status' => $project->refresh()->status->value,
-        ]);
+        ], $this->takesPayload($project, $chunk)));
     }
 
     /**
@@ -420,19 +429,12 @@ class StudioProjectController extends Controller
     {
         $this->assertChunkBelongs($project, $chunk);
 
-        $validator = Validator::make($request->all(), [
-            'stability' => ['nullable', 'numeric', 'between:0,1'],
-            'style' => ['nullable', 'numeric', 'between:0,1'],
-        ]);
+        $validator = Validator::make($request->all(), $this->knobRules());
         if ($validator->fails()) {
             return response()->json(['message' => $validator->errors()->first()], 422);
         }
 
-        $chunk = $this->projects->updateChunkTuning(
-            $chunk,
-            $request->filled('stability') ? (float) $request->input('stability') : null,
-            $request->filled('style') ? (float) $request->input('style') : null,
-        );
+        $chunk = $this->projects->updateChunkTuning($chunk, $this->knobInput($request));
 
         return response()->json([
             'ok' => true,
@@ -461,12 +463,12 @@ class StudioProjectController extends Controller
             return response()->json(['message' => 'Generation failed: '.$e->getMessage()], 502);
         }
 
-        return response()->json([
+        return response()->json(array_merge([
             'ok' => true,
             'status' => $chunk->status->value,
             'asr_badge' => $chunk->asrBadge(),
             'project_status' => $project->refresh()->status->value,
-        ]);
+        ], $this->takesPayload($project, $chunk)));
     }
 
     /**
@@ -482,20 +484,13 @@ class StudioProjectController extends Controller
             return response()->json(['message' => 'This chunk is empty — add text before previewing.'], 422);
         }
 
-        $validator = Validator::make($request->all(), [
-            'stability' => ['nullable', 'numeric', 'between:0,1'],
-            'style' => ['nullable', 'numeric', 'between:0,1'],
-        ]);
+        $validator = Validator::make($request->all(), $this->knobRules());
         if ($validator->fails()) {
             return response()->json(['message' => $validator->errors()->first()], 422);
         }
 
         try {
-            $bytes = $this->projects->previewChunkTuning(
-                $chunk,
-                $request->filled('stability') ? (float) $request->input('stability') : null,
-                $request->filled('style') ? (float) $request->input('style') : null,
-            );
+            $bytes = $this->projects->previewChunkTuning($chunk, $this->knobInput($request));
         } catch (Throwable $e) {
             report($e);
 
@@ -518,11 +513,9 @@ class StudioProjectController extends Controller
     {
         $this->assertChunkBelongs($project, $chunk);
 
-        $validator = Validator::make($request->all(), [
+        $validator = Validator::make($request->all(), array_merge([
             'audio' => ['required', 'file', 'mimetypes:audio/wav,audio/x-wav,audio/wave,audio/vnd.wave,audio/mpeg', 'max:20480'],
-            'stability' => ['nullable', 'numeric', 'between:0,1'],
-            'style' => ['nullable', 'numeric', 'between:0,1'],
-        ]);
+        ], $this->knobRules()));
         if ($validator->fails()) {
             return response()->json(['message' => $validator->errors()->first()], 422);
         }
@@ -531,8 +524,7 @@ class StudioProjectController extends Controller
             $chunk = $this->projects->useChunkPreview(
                 $chunk,
                 (string) file_get_contents($request->file('audio')->getRealPath()),
-                $request->filled('stability') ? (float) $request->input('stability') : null,
-                $request->filled('style') ? (float) $request->input('style') : null,
+                $this->knobInput($request),
             );
         } catch (Throwable $e) {
             report($e);
@@ -540,12 +532,12 @@ class StudioProjectController extends Controller
             return response()->json(['message' => 'Could not save this take: '.$e->getMessage()], 502);
         }
 
-        return response()->json([
+        return response()->json(array_merge([
             'ok' => true,
             'status' => $chunk->status->value,
             'asr_badge' => $chunk->asrBadge(),
             'project_status' => $project->refresh()->status->value,
-        ]);
+        ], $this->takesPayload($project, $chunk)));
     }
 
     public function chunkAudio(Request $request, TtsProject $project, TtsChunk $chunk): Response
@@ -559,6 +551,63 @@ class StudioProjectController extends Controller
 
         // Range-aware so the per-chunk player works in iOS Safari (see ServesRangedAudio).
         return $this->rangedAudio($bytes, 'audio/wav', $request);
+    }
+
+    /** The chunk's saved takes (newest first) for the "Takes & tuning" panel. */
+    public function listTakes(TtsProject $project, TtsChunk $chunk): JsonResponse
+    {
+        $this->assertChunkBelongs($project, $chunk);
+
+        return response()->json($this->takesPayload($project, $chunk));
+    }
+
+    public function takeAudio(Request $request, TtsProject $project, TtsChunk $chunk, TtsChunkTake $take): Response
+    {
+        $this->assertTakeBelongs($project, $chunk, $take);
+
+        $bytes = $this->projects->takeAudioBytes($take);
+        if ($bytes === null) {
+            return response()->json(['message' => 'This take audio is no longer available.'], 404);
+        }
+
+        // Range-aware so each take's player works in iOS Safari (see ServesRangedAudio).
+        return $this->rangedAudio($bytes, 'audio/wav', $request);
+    }
+
+    /** Make a saved take the chunk's current audio (audition a prior take, pick a better one). */
+    public function selectTake(TtsProject $project, TtsChunk $chunk, TtsChunkTake $take): JsonResponse
+    {
+        $this->assertTakeBelongs($project, $chunk, $take);
+
+        $chunk = $this->projects->selectTake($take);
+
+        return response()->json(array_merge([
+            'ok' => true,
+            'status' => $chunk->status->value,
+            'asr_badge' => $chunk->asrBadge(),
+            'project_status' => $project->refresh()->status->value,
+            'audio_url' => route('admin.studio.projects.chunks.audio', [$project, $chunk]),
+        ], $this->takesPayload($project, $chunk)));
+    }
+
+    /** Permanently delete a take (refused while it's the selected one). */
+    public function deleteTake(TtsProject $project, TtsChunk $chunk, TtsChunkTake $take): JsonResponse
+    {
+        $this->assertTakeBelongs($project, $chunk, $take);
+
+        if ($take->audio_path === $chunk->audio_path) {
+            return response()->json(['message' => "You can't delete the take that's currently selected — pick another take first."], 422);
+        }
+
+        try {
+            $this->projects->deleteTake($take);
+        } catch (Throwable $e) {
+            report($e);
+
+            return response()->json(['message' => 'Could not delete this take: '.$e->getMessage()], 502);
+        }
+
+        return response()->json(array_merge(['ok' => true], $this->takesPayload($project, $chunk->refresh())));
     }
 
     public function previewConcat(Request $request, TtsProject $project): Response
@@ -621,18 +670,104 @@ class StudioProjectController extends Controller
         abort_unless($chunk->tts_project_id === $project->id, 404);
     }
 
+    private function assertTakeBelongs(TtsProject $project, TtsChunk $chunk, TtsChunkTake $take): void
+    {
+        $this->assertChunkBelongs($project, $chunk);
+        abort_unless($take->tts_chunk_id === $chunk->id, 404);
+    }
+
+    /**
+     * Serialize a chunk's takes for the panel: newest first, each playable, with a
+     * human label of the tuning that produced it and its ASR badge. The selected
+     * take is the one the chunk's audio currently points at.
+     *
+     * @return array{selected_take_id: string|null, takes: list<array<string, mixed>>}
+     */
+    private function takesPayload(TtsProject $project, TtsChunk $chunk): array
+    {
+        $selectedId = null;
+        $takes = $chunk->takes->map(function (TtsChunkTake $take) use ($project, $chunk, &$selectedId) {
+            $selected = $take->audio_path !== null && $take->audio_path === $chunk->audio_path;
+            if ($selected) {
+                $selectedId = $take->id;
+            }
+
+            return [
+                'id' => $take->id,
+                'source' => $take->source,
+                'created_human' => $take->created_at?->diffForHumans(),
+                'audio_url' => route('admin.studio.projects.chunks.takes.audio', [$project, $chunk, $take]),
+                'selected' => $selected,
+                'tuning_label' => $this->tuningLabel(is_array($take->settings) ? $take->settings : []),
+                'asr_badge' => $take->asrBadge(),
+            ];
+        })->all();
+
+        return ['selected_take_id' => $selectedId, 'takes' => $takes];
+    }
+
+    /**
+     * Human label of the tuning a take was rendered at. Reads native keys
+     * (exaggeration/cfg_weight) when present, else maps the ElevenLabs
+     * stability/style to their native equivalents so legacy takes read
+     * consistently. An empty override means the take inherited the project tuning.
+     *
+     * @param  array<string, mixed>  $settings
+     */
+    private function tuningLabel(array $settings): string
+    {
+        $tuning = array_intersect_key($settings, array_flip(['stability', 'style', 'exaggeration', 'cfg_weight']));
+        if ($tuning === []) {
+            return 'inherited';
+        }
+
+        $native = ChatterboxTuning::resolveNative($settings);
+
+        return sprintf('exaggeration %.2f · cfg/pace %.2f', $native['exaggeration'], $native['cfg_weight']);
+    }
+
+    /**
+     * Validation rules for the per-chunk tuning knobs. Single place the Studio
+     * panel's knob names + ranges are declared, shared by tune/preview/use.
+     *
+     * @return array<string, list<string>>
+     */
+    private function knobRules(): array
+    {
+        return [
+            'exaggeration' => ['nullable', 'numeric', 'between:0.25,2'],
+            'cfg_weight' => ['nullable', 'numeric', 'between:0.2,1'],
+        ];
+    }
+
+    /**
+     * The per-chunk tuning knobs from the request as a name => value|null map
+     * (null = inherit/clear). Single place the panel's knob names are read.
+     *
+     * @return array<string, float|null>
+     */
+    private function knobInput(Request $request): array
+    {
+        $knobs = [];
+        foreach (array_keys($this->knobRules()) as $knob) {
+            $knobs[$knob] = $request->filled($knob) ? (float) $request->input($knob) : null;
+        }
+
+        return $knobs;
+    }
+
     /**
      * Resolve the project's stored settings snapshot through the shared
      * {@see VoiceSettingsResolver} (config defaults -> voice defaults -> the
-     * stability/style chosen at creation). Seed is tracked on the project
-     * column, so the resolver deliberately leaves it out.
+     * native knobs chosen at creation). Seed is tracked on the project column, so
+     * the resolver deliberately leaves it out.
      *
      * @return array<string, mixed>
      */
     private function settings(Request $request, Voice $voice): array
     {
         $overrides = [];
-        foreach (['stability', 'style'] as $knob) {
+        foreach (['exaggeration', 'cfg_weight'] as $knob) {
             if ($request->filled($knob)) {
                 $overrides[$knob] = (float) $request->input($knob);
             }

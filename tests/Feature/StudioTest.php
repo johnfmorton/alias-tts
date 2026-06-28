@@ -65,40 +65,40 @@ class StudioTest extends TestCase
         $this->actingAs($this->admin())
             ->post(route('admin.studio.voice-defaults'), [
                 'voice' => 'john',
-                'stability' => 0.8,
-                'style' => 0.3,
+                'exaggeration' => 1.2,
+                'cfg_weight' => 0.8,
             ])
             ->assertOk()
             ->assertJsonPath('ok', true);
 
         $settings = $voice->refresh()->settings;
-        $this->assertSame(0.8, $settings['stability']);
-        $this->assertSame(0.3, $settings['style']);
+        $this->assertSame(1.2, $settings['exaggeration']);
+        $this->assertSame(0.8, $settings['cfg_weight']);
     }
 
     public function test_save_voice_defaults_validates_range_and_voice(): void
     {
         $this->actingAs($this->admin())
-            ->postJson(route('admin.studio.voice-defaults'), ['voice' => 'nope', 'stability' => 0.5])
+            ->postJson(route('admin.studio.voice-defaults'), ['voice' => 'nope', 'exaggeration' => 1.0])
             ->assertStatus(422);
 
         Voice::create(['slug' => 'john', 'name' => 'John']);
         $this->actingAs($this->admin())
-            ->postJson(route('admin.studio.voice-defaults'), ['voice' => 'john', 'stability' => 2])
+            ->postJson(route('admin.studio.voice-defaults'), ['voice' => 'john', 'exaggeration' => 3])
             ->assertStatus(422);
     }
 
     public function test_tuning_preset_can_be_created_and_deleted(): void
     {
         $this->actingAs($this->admin())
-            ->post(route('admin.studio.presets.store'), ['name' => 'Calm narration', 'stability' => 0.8, 'style' => 0.1])
+            ->post(route('admin.studio.presets.store'), ['name' => 'Calm narration', 'exaggeration' => 0.95, 'cfg_weight' => 0.8])
             ->assertOk()
             ->assertJsonPath('preset.name', 'Calm narration')
-            ->assertJsonPath('preset.stability', 0.8);
+            ->assertJsonPath('preset.exaggeration', 0.95);
 
         $preset = TuningPreset::firstWhere('name', 'Calm narration');
-        $this->assertSame(0.8, $preset->stability);
-        $this->assertSame(0.1, $preset->style);
+        $this->assertSame(0.95, $preset->exaggeration);
+        $this->assertSame(0.8, $preset->cfg_weight);
 
         $this->actingAs($this->admin())
             ->delete(route('admin.studio.presets.destroy', $preset))
@@ -108,20 +108,20 @@ class StudioTest extends TestCase
 
     public function test_tuning_preset_rejects_duplicate_name_and_bad_range(): void
     {
-        TuningPreset::create(['name' => 'Energetic', 'stability' => 0.3, 'style' => 0.7]);
+        TuningPreset::create(['name' => 'Energetic', 'exaggeration' => 1.6, 'cfg_weight' => 0.3]);
 
         $this->actingAs($this->admin())
-            ->postJson(route('admin.studio.presets.store'), ['name' => 'Energetic', 'stability' => 0.5])
+            ->postJson(route('admin.studio.presets.store'), ['name' => 'Energetic', 'exaggeration' => 1.0])
             ->assertStatus(422);
 
         $this->actingAs($this->admin())
-            ->postJson(route('admin.studio.presets.store'), ['name' => 'Too loud', 'style' => 5])
+            ->postJson(route('admin.studio.presets.store'), ['name' => 'Too loud', 'exaggeration' => 5])
             ->assertStatus(422);
     }
 
     public function test_studio_page_renders_existing_presets(): void
     {
-        TuningPreset::create(['name' => 'Calm narration', 'stability' => 0.8, 'style' => 0.1]);
+        TuningPreset::create(['name' => 'Calm narration', 'exaggeration' => 0.95, 'cfg_weight' => 0.8]);
 
         $this->actingAs($this->admin())
             ->get(route('admin.studio.index'))

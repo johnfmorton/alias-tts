@@ -76,6 +76,11 @@ Route::prefix('studio')->name('studio.')->group(function () {
         Route::post('/{project}/chunks/{chunk}/generate', [StudioProjectController::class, 'generateChunk'])->name('chunks.generate');
         Route::post('/{project}/chunks/{chunk}/reroll', [StudioProjectController::class, 'rerollChunk'])->name('chunks.reroll');
         Route::get('/{project}/chunks/{chunk}/audio', [StudioProjectController::class, 'chunkAudio'])->name('chunks.audio');
+        // Take history: every render is kept; the user can audition, re-select, or delete a take.
+        Route::get('/{project}/chunks/{chunk}/takes', [StudioProjectController::class, 'listTakes'])->name('chunks.takes.index');
+        Route::get('/{project}/chunks/{chunk}/takes/{take}/audio', [StudioProjectController::class, 'takeAudio'])->name('chunks.takes.audio');
+        Route::post('/{project}/chunks/{chunk}/takes/{take}/select', [StudioProjectController::class, 'selectTake'])->name('chunks.takes.select');
+        Route::delete('/{project}/chunks/{chunk}/takes/{take}', [StudioProjectController::class, 'deleteTake'])->name('chunks.takes.delete');
     });
 });
 

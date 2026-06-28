@@ -24,8 +24,13 @@ use App\Services\SpeechService;
  */
 class VoiceSettingsResolver
 {
-    /** The tunable keys this resolver owns. `seed` is handled outside it. */
-    private const KEYS = ['stability', 'similarity_boost', 'style', 'use_speaker_boost'];
+    /**
+     * The tunable keys this resolver owns. `seed` is handled outside it. Both the
+     * ElevenLabs-style knobs (stability/style) the public /v1 API speaks AND
+     * Chatterbox's native knobs (exaggeration/cfg_weight) the Studio speaks pass
+     * through; the provider prefers native and falls back to deriving them from EL.
+     */
+    private const KEYS = ['stability', 'similarity_boost', 'style', 'use_speaker_boost', 'exaggeration', 'cfg_weight'];
 
     /**
      * @param  array<string, mixed>  $overrides  values the caller explicitly set; only known keys apply
@@ -62,7 +67,7 @@ class VoiceSettingsResolver
      */
     private function cast(array $settings): array
     {
-        foreach (['stability', 'similarity_boost', 'style'] as $key) {
+        foreach (['stability', 'similarity_boost', 'style', 'exaggeration', 'cfg_weight'] as $key) {
             if (isset($settings[$key])) {
                 $settings[$key] = (float) $settings[$key];
             }

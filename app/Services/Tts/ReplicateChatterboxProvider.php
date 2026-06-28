@@ -61,18 +61,14 @@ class ReplicateChatterboxProvider implements TtsProvider
             $input[$this->config['reference_field'] ?? 'audio_prompt'] = $this->toDataUri($referenceAudio);
         }
 
-        // Map ElevenLabs-style settings (0..1) onto Chatterbox knobs, staying
-        // within the model's documented bounds and keeping the EL defaults
-        // (stability 0.5, style 0) aligned to Chatterbox defaults
-        // (cfg_weight 0.5, exaggeration 0.5). Worth tuning by ear.
-        $stability = (float) ($settings['stability'] ?? 0.5);
-        $style = (float) ($settings['style'] ?? 0.0);
-
-        // cfg_weight in [0.2, 1.0]: higher stability -> steadier pacing.
-        $input['cfg_weight'] = max(0.2, min(1.0, $stability));
-
-        // exaggeration in [0.25, 2.0]: style 0 -> 0.5 (neutral), style 1 -> 2.0.
-        $input['exaggeration'] = max(0.25, min(2.0, 0.5 + ($style * 1.5)));
+        // Resolve Chatterbox's native knobs. Native keys (cfg_weight/exaggeration)
+        // win when present (the Studio speaks native); otherwise they're derived
+        // from the ElevenLabs-style 0..1 knobs the public /v1 API speaks
+        // (stability/style), keeping the EL defaults aligned to Chatterbox defaults.
+        // ChatterboxTuning is the single source of truth for this mapping.
+        $native = ChatterboxTuning::resolveNative($settings);
+        $input['cfg_weight'] = $native['cfg_weight'];      // [0.2, 1.0]: higher = steadier pacing
+        $input['exaggeration'] = $native['exaggeration'];  // [0.25, 2.0]: higher = more animated
 
         // Pin the seed for reproducible output when provided; otherwise
         // Chatterbox uses a random seed on each call.

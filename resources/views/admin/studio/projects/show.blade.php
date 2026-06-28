@@ -114,10 +114,13 @@
             </div>
 
             @php
-                // What a blank per-chunk tuning field falls back to: the project's
-                // resolved setting (stored at creation), else the system default.
-                $inheritStability = number_format((float) ($project->settings['stability'] ?? config('tts.default_voice_settings.stability', 0.5)), 2);
-                $inheritStyle = number_format((float) ($project->settings['style'] ?? config('tts.default_voice_settings.style', 0.0)), 2);
+                // What a blank per-chunk knob falls back to: the project's resolved
+                // tuning (stored at creation) mapped to Chatterbox's native knobs via
+                // the same formula the provider uses, so the inherited value shown is
+                // exactly what would render. Native keys win if the project stores them.
+                $inheritNative = \App\Services\Tts\ChatterboxTuning::resolveNative(is_array($project->settings) ? $project->settings : []);
+                $inheritExaggeration = number_format($inheritNative['exaggeration'], 2);
+                $inheritCfg = number_format($inheritNative['cfg_weight'], 2);
             @endphp
             @foreach($chunks as $chunk)
                 <div class="studio-chunk rounded-xl border border-zinc-800 bg-zinc-900/50 p-4"
@@ -128,7 +131,9 @@
                      data-reroll-url="{{ route('admin.studio.projects.chunks.reroll', [$project, $chunk]) }}"
                      data-preview-tuning-url="{{ route('admin.studio.projects.chunks.preview-tuning', [$project, $chunk]) }}"
                      data-use-preview-url="{{ route('admin.studio.projects.chunks.use-preview', [$project, $chunk]) }}"
-                     data-audio-url="{{ route('admin.studio.projects.chunks.audio', [$project, $chunk]) }}">
+                     data-audio-url="{{ route('admin.studio.projects.chunks.audio', [$project, $chunk]) }}"
+                     data-takes-url="{{ route('admin.studio.projects.chunks.takes.index', [$project, $chunk]) }}"
+                     data-takes='@json($takesByChunk[$chunk->id])'>
                     <div class="flex flex-wrap items-center justify-between gap-2">
                         <div class="flex items-center gap-2 text-sm text-zinc-400">
                             <span class="font-mono text-zinc-300">#{{ $chunk->position + 1 }}</span>
@@ -165,20 +170,24 @@
                     <audio class="chunk-audio mt-3 w-full {{ $chunk->isCompleted() ? '' : 'hidden' }}" controls
                            @if($chunk->isCompleted()) src="{{ route('admin.studio.projects.chunks.audio', [$project, $chunk]) }}" @endif></audio>
 
-                    {{-- Per-chunk tuning override + re-roll (a fresh random take). --}}
-                    <details class="chunk-tune mt-3 text-sm text-zinc-400" @if(!empty($chunk->settings['stability']) || !empty($chunk->settings['style'])) open @endif>
-                        <summary class="cursor-pointer select-none text-xs hover:text-zinc-200">Tune this chunk</summary>
-                        <div class="mt-2 flex flex-wrap items-end gap-3">
-                            <label class="flex flex-col gap-1">
-                                <span class="text-xs text-zinc-500">Stability (0–1)</span>
-                                <input class="chunk-stability w-32 rounded-lg border border-zinc-700 bg-zinc-950 px-2 py-1 text-sm" type="number" step="0.05" min="0" max="1"
-                                       value="{{ $chunk->settings['stability'] ?? '' }}" placeholder="inherit ({{ $inheritStability }})">
-                            </label>
-                            <label class="flex flex-col gap-1">
-                                <span class="text-xs text-zinc-500">Style (0–1)</span>
-                                <input class="chunk-style w-32 rounded-lg border border-zinc-700 bg-zinc-950 px-2 py-1 text-sm" type="number" step="0.05" min="0" max="1"
-                                       value="{{ $chunk->settings['style'] ?? '' }}" placeholder="inherit ({{ $inheritStyle }})">
-                            </label>
+                    {{-- Take history + per-chunk tuning override + re-roll (a fresh random take). --}}
+                    <details class="chunk-tune mt-3 text-sm text-zinc-400" @if(!empty($chunk->settings) || $chunk->takes->count() > 1) open @endif>
+                        <summary class="cursor-pointer select-none text-xs hover:text-zinc-200">Takes &amp; tuning</summary>
+
+                        {{-- Every render is kept here — audition a prior take, re-select the
+                             one that sounded best, or delete the duds. Populated by the JS from
+                             data-takes (and refreshed after each render). --}}
+                        <ul class="chunk-takes mt-2 space-y-1.5"></ul>
+
+                        <div class="mt-3 flex flex-wrap items-end gap-3">
+                            <x-tuning-knob knob="exaggeration" label="Exaggeration" hint="neutral 0.5"
+                                           :min="0.25" :max="2" :step="0.05"
+                                           :value="$chunk->settings['exaggeration'] ?? ''" :placeholder="$inheritExaggeration"
+                                           inputClass="chunk-exaggeration" class="w-44" />
+                            <x-tuning-knob knob="cfg_weight" label="CFG / Pace"
+                                           :min="0.2" :max="1" :step="0.05"
+                                           :value="$chunk->settings['cfg_weight'] ?? ''" :placeholder="$inheritCfg"
+                                           inputClass="chunk-cfg" class="w-44" />
                             <button type="button" class="chunk-tune-preview rounded-lg border border-zinc-700 px-3 py-1.5 text-sm hover:bg-zinc-800">▶ Preview</button>
                             <button type="button" class="chunk-tune-keep hidden rounded-lg border border-emerald-600/50 bg-emerald-500/10 px-3 py-1.5 text-sm text-emerald-300 hover:bg-emerald-500/20"
                                     title="Save the exact clip you just previewed as this chunk's audio, with these settings. No re-generation, so it sounds identical to the preview.">✓ Use this take</button>
@@ -187,7 +196,7 @@
                                     title="Another take of the same text and tuning — use it when the words and settings are right but you want a different delivery.">⟳ Re-roll</button>
                         </div>
                         <audio class="chunk-tune-audio mt-2 hidden w-full" controls></audio>
-                        <p class="mt-1.5 text-xs text-zinc-500">Blank inherits the project's setting (the value shown in each field). <span class="text-zinc-400">Preview</span> auditions the typed settings without saving (compare it to the chunk audio above). Like what you hear? <span class="text-zinc-400">Use this take</span> keeps that exact clip as the chunk's audio. <span class="text-zinc-400">Save tuning</span> only stores the numbers and marks the chunk stale, so <span class="text-zinc-400">Generate</span> (top) renders a fresh take. <span class="text-zinc-400">Re-roll</span> gives you another take of the same text and tuning.</p>
+                        <p class="mt-1.5 text-xs text-zinc-500">Every render is kept in the list above — play any take, <span class="text-zinc-400">Select</span> the one that sounded best, or <span class="text-zinc-400">Delete</span> the duds (older takes are pruned automatically). Blank inherits the project's setting (the value shown in each field). <span class="text-zinc-400">Preview</span> auditions the typed settings (saved as a take, but not selected). Like what you hear? <span class="text-zinc-400">Use this take</span> keeps that exact clip as the chunk's audio. <span class="text-zinc-400">Save tuning</span> only stores the numbers and marks the chunk stale, so <span class="text-zinc-400">Generate</span> (top) renders a fresh take. <span class="text-zinc-400">Re-roll</span> gives you another take of the same text and tuning.</p>
                     </details>
                 </div>
 

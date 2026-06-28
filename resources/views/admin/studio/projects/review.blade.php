@@ -7,8 +7,8 @@
         <input type="hidden" name="text" value="{{ $params['text'] }}">
         <input type="hidden" name="voice" value="{{ $params['voice'] }}">
         @if($params['seed'] !== null)<input type="hidden" name="seed" value="{{ $params['seed'] }}">@endif
-        @if($params['stability'] !== null)<input type="hidden" name="stability" value="{{ $params['stability'] }}">@endif
-        @if($params['style'] !== null)<input type="hidden" name="style" value="{{ $params['style'] }}">@endif
+        @if($params['exaggeration'] !== null)<input type="hidden" name="exaggeration" value="{{ $params['exaggeration'] }}">@endif
+        @if($params['cfg_weight'] !== null)<input type="hidden" name="cfg_weight" value="{{ $params['cfg_weight'] }}">@endif
 
         <div class="space-y-2">
             @foreach($suggestions as $i => $s)

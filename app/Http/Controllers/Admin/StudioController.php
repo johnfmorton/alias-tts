@@ -57,22 +57,22 @@ class StudioController extends Controller
     }
 
     /**
-     * Save a named stability/style preset for reuse in the tuning bench (3b).
+     * Save a named exaggeration/cfg_weight preset for reuse in the tuning bench.
      */
     public function storePreset(Request $request): JsonResponse
     {
         if ($error = $this->validationError($request, [
             'name' => ['required', 'string', 'max:60', 'unique:tuning_presets,name'],
-            'stability' => ['nullable', 'numeric', 'between:0,1'],
-            'style' => ['nullable', 'numeric', 'between:0,1'],
+            'exaggeration' => ['nullable', 'numeric', 'between:0.25,2'],
+            'cfg_weight' => ['nullable', 'numeric', 'between:0.2,1'],
         ])) {
             return $error;
         }
 
         $preset = TuningPreset::create([
             'name' => trim((string) $request->input('name')),
-            'stability' => $request->filled('stability') ? (float) $request->input('stability') : null,
-            'style' => $request->filled('style') ? (float) $request->input('style') : null,
+            'exaggeration' => $request->filled('exaggeration') ? (float) $request->input('exaggeration') : null,
+            'cfg_weight' => $request->filled('cfg_weight') ? (float) $request->input('cfg_weight') : null,
         ]);
 
         return response()->json([
@@ -80,8 +80,8 @@ class StudioController extends Controller
             'preset' => [
                 'id' => $preset->id,
                 'name' => $preset->name,
-                'stability' => $preset->stability,
-                'style' => $preset->style,
+                'exaggeration' => $preset->exaggeration,
+                'cfg_weight' => $preset->cfg_weight,
             ],
         ]);
     }
@@ -327,17 +327,17 @@ class StudioController extends Controller
     }
 
     /**
-     * "Save to voice defaults" from the tuning bench: write the chosen
-     * stability/style onto the voice so every future request (including the
-     * plugin's) inherits them when it doesn't send its own. A blank knob clears
-     * that default.
+     * "Save to voice defaults" from the tuning bench: write the chosen native
+     * knobs (exaggeration/cfg_weight) onto the voice so every future request
+     * (including the plugin's) inherits them when it doesn't send its own. A blank
+     * knob clears that default.
      */
     public function saveVoiceDefaults(Request $request, VoiceService $voices): JsonResponse
     {
         if ($error = $this->validationError($request, [
             'voice' => ['required', 'string'],
-            'stability' => ['nullable', 'numeric', 'between:0,1'],
-            'style' => ['nullable', 'numeric', 'between:0,1'],
+            'exaggeration' => ['nullable', 'numeric', 'between:0.25,2'],
+            'cfg_weight' => ['nullable', 'numeric', 'between:0.2,1'],
         ])) {
             return $error;
         }
@@ -347,11 +347,7 @@ class StudioController extends Controller
             return response()->json(['message' => 'Unknown voice.'], 422);
         }
 
-        $voices->saveTuning(
-            $voice,
-            $request->filled('stability') ? (float) $request->input('stability') : null,
-            $request->filled('style') ? (float) $request->input('style') : null,
-        );
+        $voices->saveTuning($voice, $this->overrides($request));
 
         return response()->json(['ok' => true, 'message' => "Saved as {$voice->name}'s defaults."]);
     }
@@ -377,15 +373,16 @@ class StudioController extends Controller
     }
 
     /**
-     * The tunable knobs the request explicitly set (Studio exposes stability and
-     * style — the only two Chatterbox actually responds to).
+     * The tunable knobs the request explicitly set. The Studio speaks Chatterbox's
+     * native knobs (exaggeration/cfg_weight); the provider/resolver also accept the
+     * ElevenLabs stability/style the public /v1 API speaks.
      *
      * @return array<string, float>
      */
     private function overrides(Request $request): array
     {
         $overrides = [];
-        foreach (['stability', 'style'] as $knob) {
+        foreach (['exaggeration', 'cfg_weight'] as $knob) {
             if ($request->filled($knob)) {
                 $overrides[$knob] = (float) $request->input($knob);
             }

@@ -5,15 +5,16 @@ namespace App\Models;
 use Illuminate\Database\Eloquent\Model;
 
 /**
- * A named stability/style combo reusable in the Studio tuning bench (e.g. "Calm
- * narration"). A null knob means "leave that one to inherit" when applied.
+ * A named Chatterbox knob combo (exaggeration/cfg_weight) reusable in the Studio
+ * tuning bench (e.g. "Calm narration"). A null knob means "leave that one to
+ * inherit" when applied.
  */
 class TuningPreset extends Model
 {
-    protected $fillable = ['name', 'stability', 'style'];
+    protected $fillable = ['name', 'exaggeration', 'cfg_weight'];
 
     protected $casts = [
-        'stability' => 'float',
-        'style' => 'float',
+        'exaggeration' => 'float',
+        'cfg_weight' => 'float',
     ];
 }

@@ -82,20 +82,12 @@
             </label>
 
             <div id="studio-advanced" @unless(auth()->user()->studio_advanced) class="hidden" @endunless>
-                {{-- Single-shot knobs (used by Whole / Stitched / per-chunk Generate) --}}
+                {{-- Single-shot native Chatterbox knobs (Whole / Stitched / per-chunk Generate) --}}
                 <div class="mt-3 flex flex-wrap gap-4 rounded-lg border border-zinc-800 bg-zinc-950/40 p-3 text-sm text-zinc-400">
-                    <label class="flex flex-col gap-1">
-                        <span class="text-xs text-zinc-500">Stability (0–1)</span>
-                        <input id="studio-stability" type="number" step="0.05" min="0" max="1" placeholder="0.5"
-                               class="w-28 rounded-lg border border-zinc-700 bg-zinc-950 px-3 py-1.5 text-sm">
-                    </label>
-                    <label class="flex flex-col gap-1">
-                        <span class="text-xs text-zinc-500">Style (0–1)</span>
-                        <input id="studio-style" type="number" step="0.05" min="0" max="1" placeholder="0.0"
-                               class="w-28 rounded-lg border border-zinc-700 bg-zinc-950 px-3 py-1.5 text-sm">
-                    </label>
-                    {{-- Live Chatterbox mapping for the current knobs (3a). --}}
-                    <span id="studio-mapping" class="self-end pb-1.5 font-mono text-xs text-zinc-500"></span>
+                    <x-tuning-knob knob="exaggeration" label="Exaggeration" hint="neutral 0.5"
+                                   :min="0.25" :max="2" :step="0.05" placeholder="0.50" inputClass="studio-exaggeration" class="w-48" />
+                    <x-tuning-knob knob="cfg_weight" label="CFG / Pace"
+                                   :min="0.2" :max="1" :step="0.05" placeholder="0.50" inputClass="studio-cfg" class="w-48" />
                 </div>
 
                 {{-- A/B tuning bench: hear the text above at several settings, pick the
@@ -105,7 +97,7 @@
                     <div class="flex flex-wrap items-start justify-between gap-3">
                         <div>
                             <h3 class="text-sm font-semibold text-zinc-200">Tuning bench</h3>
-                            <p class="mt-0.5 text-xs text-zinc-500">Hear the text above at different settings, then save the best to the voice. Higher stability = steadier pacing; higher style = more animated.</p>
+                            <p class="mt-0.5 text-xs text-zinc-500">Hear the text above at different settings, then save the best to the voice. Higher exaggeration = more animated delivery; lower CFG/Pace = quicker, looser pacing.</p>
                         </div>
                         <button type="button" id="studio-bench-add"
                                 class="rounded-lg border border-zinc-700 px-3 py-1.5 text-xs hover:bg-zinc-800">+ Add setting</button>
@@ -117,7 +109,7 @@
                         <span class="text-xs text-zinc-500">Presets:</span>
                         @foreach($presets as $preset)
                             <span class="studio-preset inline-flex items-center gap-1 rounded-full border border-zinc-700 bg-zinc-800 py-0.5 pl-2.5 pr-1.5 text-xs"
-                                  data-id="{{ $preset->id }}" data-stability="{{ $preset->stability }}" data-style="{{ $preset->style }}">
+                                  data-id="{{ $preset->id }}" data-exaggeration="{{ $preset->exaggeration }}" data-cfg="{{ $preset->cfg_weight }}">
                                 <button type="button" class="preset-apply text-zinc-200 hover:text-cyan-300">{{ $preset->name }}</button>
                                 <button type="button" class="preset-delete text-zinc-500 hover:text-red-300" title="Delete preset" aria-label="Delete preset">✕</button>
                             </span>

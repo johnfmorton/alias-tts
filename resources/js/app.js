@@ -224,15 +224,33 @@ document.addEventListener('click', async (e) => {
 // ---------------------------------------------------------------------------
 // Studio: inspect normalization + chunking, then play whole / per-chunk / stitched.
 // ---------------------------------------------------------------------------
-// Mirrors App\Services\Tts\ReplicateChatterboxProvider's settings mapping — keep
-// in sync: cfg_weight = clamp(stability, 0.2, 1.0); exaggeration = clamp(0.5 +
-// style*1.5, 0.25, 2.0). Blank knobs fall back to the EL defaults (0.5 / 0.0).
-function chatterboxMapping(stability, style) {
-    const clamp = (v, lo, hi) => Math.min(hi, Math.max(lo, v));
-    const s = stability === '' || stability == null ? 0.5 : Number(stability);
-    const st = style === '' || style == null ? 0.0 : Number(style);
-    if (Number.isNaN(s) || Number.isNaN(st)) return '';
-    return `→ cfg_weight ${clamp(s, 0.2, 1).toFixed(2)} · exaggeration ${clamp(0.5 + st * 1.5, 0.25, 2).toFixed(2)}`;
+// Wire every Chatterbox knob widget (slider + number + reset) under `scope` to
+// stay in sync. The number box is the source of truth ('' = inherit); dragging
+// the slider writes an explicit value, ↺ clears back to inherit. Idempotent — a
+// widget is wired once (dynamic bench rows call this on the new row).
+function initTuningKnobs(scope) {
+    scope.querySelectorAll('.tuning-knob').forEach((knob) => {
+        if (knob.dataset.wired) return;
+        knob.dataset.wired = '1';
+        const number = knob.querySelector('.knob-number');
+        const range = knob.querySelector('.knob-range');
+        const reset = knob.querySelector('.knob-reset');
+        if (!number || !range) return;
+        const fallback = () => number.getAttribute('placeholder') || range.min;
+        // number -> slider (blank rests the slider at the inherited value)
+        number.addEventListener('input', () => { range.value = number.value === '' ? fallback() : number.value; });
+        // slider -> number (an explicit value); re-notify the number's own listeners
+        range.addEventListener('input', () => {
+            number.value = range.value;
+            number.dispatchEvent(new Event('input', { bubbles: true }));
+        });
+        // ↺ -> inherit
+        reset?.addEventListener('click', () => {
+            number.value = '';
+            range.value = fallback();
+            number.dispatchEvent(new Event('input', { bubbles: true }));
+        });
+    });
 }
 
 function initStudio() {
@@ -249,8 +267,8 @@ function initStudio() {
     const els = {
         text: document.getElementById('studio-text'),
         voice: document.getElementById('studio-voice'),
-        stability: document.getElementById('studio-stability'),
-        style: document.getElementById('studio-style'),
+        exaggeration: root.querySelector('.studio-exaggeration'),
+        cfg: root.querySelector('.studio-cfg'),
         status: document.getElementById('studio-status'),
         results: document.getElementById('studio-results'),
         normalized: document.getElementById('studio-normalized'),
@@ -278,8 +296,8 @@ function initStudio() {
     const params = (text) => {
         const body = { text };
         if (els.voice?.value) body.voice = els.voice.value;
-        if (els.stability?.value !== '') body.stability = els.stability.value;
-        if (els.style?.value !== '') body.style = els.style.value;
+        if (els.exaggeration?.value !== '') body.exaggeration = els.exaggeration.value;
+        if (els.cfg?.value !== '') body.cfg_weight = els.cfg.value;
         return new URLSearchParams(body);
     };
 
@@ -457,14 +475,7 @@ function initStudio() {
     // Editing the text invalidates the breakdown — hide it until re-previewed.
     els.text.addEventListener('input', () => els.results.classList.add('hidden'));
 
-    // Live Chatterbox mapping readout for the single knobs (3a).
-    const mappingEl = document.getElementById('studio-mapping');
-    const renderMapping = () => {
-        if (mappingEl) mappingEl.textContent = chatterboxMapping(els.stability?.value, els.style?.value);
-    };
-    els.stability?.addEventListener('input', renderMapping);
-    els.style?.addEventListener('input', renderMapping);
-    renderMapping();
+    initTuningKnobs(root); // wire the single-shot Exaggeration / CFG-Pace sliders
 
     els.wholeBtn?.addEventListener('click', () =>
         generate(urls.synthesize, normalizedText, els.wholeAudio, els.wholeBtn, 'Generating whole…'));
@@ -514,10 +525,10 @@ function initStudioBench() {
 
     const rows = [];
 
-    const knob = (value, placeholder) => {
+    const knob = (value, placeholder, min, max) => {
         const input = document.createElement('input');
-        Object.assign(input, { type: 'number', step: '0.05', min: '0', max: '1', placeholder });
-        if (value !== null) input.value = value;
+        Object.assign(input, { type: 'number', step: '0.05', min, max, placeholder });
+        if (value !== null && value !== '') input.value = value;
         input.className = 'w-20 rounded-lg border border-zinc-700 bg-zinc-950 px-2 py-1 text-sm';
         return input;
     };
@@ -530,14 +541,14 @@ function initStudioBench() {
     };
 
     // The bench body for one candidate row: the text above, the voice, and this
-    // row's stability/style. Returns null when there's no text to synthesize.
+    // row's native knobs. Returns null when there's no text to synthesize.
     const rowBody = (state) => {
         const text = els.text.value.trim();
         if (!text) return null;
         const body = new URLSearchParams({ text });
         if (els.voice?.value) body.set('voice', els.voice.value);
-        if (state.stabIn.value !== '') body.set('stability', state.stabIn.value);
-        if (state.styleIn.value !== '') body.set('style', state.styleIn.value);
+        if (state.exagIn.value !== '') body.set('exaggeration', state.exagIn.value);
+        if (state.cfgIn.value !== '') body.set('cfg_weight', state.cfgIn.value);
         return body;
     };
 
@@ -568,7 +579,7 @@ function initStudioBench() {
         }
     }
 
-    function addRow(stability, style) {
+    function addRow(exaggeration, cfg) {
         const li = document.createElement('li');
         li.className = 'flex flex-wrap items-center gap-2 rounded-lg border border-zinc-800 bg-zinc-950/40 p-2';
 
@@ -576,8 +587,8 @@ function initStudioBench() {
         Object.assign(pick, { type: 'radio', name: 'studio-bench-pick', title: 'Pick this setting to save' });
         pick.className = 'accent-emerald-500';
 
-        const stabIn = knob(stability, '0.5');
-        const styleIn = knob(style, '0.0');
+        const exagIn = knob(exaggeration, '0.5', '0.25', '2');
+        const cfgIn = knob(cfg, '0.5', '0.2', '1');
 
         const playBtn = document.createElement('button');
         playBtn.type = 'button';
@@ -594,16 +605,9 @@ function initStudioBench() {
         remove.title = 'Remove';
         remove.textContent = '✕';
 
-        const mapping = document.createElement('span');
-        mapping.className = 'font-mono text-xs text-zinc-500';
-        const renderMapping = () => { mapping.textContent = chatterboxMapping(stabIn.value, styleIn.value); };
-        stabIn.addEventListener('input', renderMapping);
-        styleIn.addEventListener('input', renderMapping);
-        renderMapping();
+        li.append(pick, field('Exaggeration', exagIn), field('CFG/Pace', cfgIn), playBtn, audio, remove);
 
-        li.append(pick, field('Stability', stabIn), field('Style', styleIn), mapping, playBtn, audio, remove);
-
-        const state = { stabIn, styleIn, audio, pick };
+        const state = { exagIn, cfgIn, audio, pick };
         rows.push(state);
         if (rows.length === 1) pick.checked = true;
 
@@ -636,8 +640,8 @@ function initStudioBench() {
         if (!picked) { setStatus(els.status, 'Pick a setting first.', 'error'); return; }
         if (!els.voice?.value) { setStatus(els.status, 'Select a voice first.', 'error'); return; }
         const body = new URLSearchParams({ voice: els.voice.value });
-        if (picked.stabIn.value !== '') body.set('stability', picked.stabIn.value);
-        if (picked.styleIn.value !== '') body.set('style', picked.styleIn.value);
+        if (picked.exagIn.value !== '') body.set('exaggeration', picked.exagIn.value);
+        if (picked.cfgIn.value !== '') body.set('cfg_weight', picked.cfgIn.value);
         startBusy(els.saveBtn, 'Saving…');
         try {
             const res = await fetch(saveUrl, {
@@ -672,7 +676,7 @@ function initStudioBench() {
 
         const wireChip = (chip) => {
             chip.querySelector('.preset-apply').addEventListener('click', () =>
-                addRow(chip.dataset.stability || null, chip.dataset.style || null));
+                addRow(chip.dataset.exaggeration || null, chip.dataset.cfg || null));
             chip.querySelector('.preset-delete').addEventListener('click', async () => {
                 if (!confirm(`Delete preset "${chip.querySelector('.preset-apply').textContent}"?`)) return;
                 try {
@@ -693,8 +697,8 @@ function initStudioBench() {
             const chip = document.createElement('span');
             chip.className = 'studio-preset inline-flex items-center gap-1 rounded-full border border-zinc-700 bg-zinc-800 py-0.5 pl-2.5 pr-1.5 text-xs';
             chip.dataset.id = preset.id;
-            chip.dataset.stability = preset.stability ?? '';
-            chip.dataset.style = preset.style ?? '';
+            chip.dataset.exaggeration = preset.exaggeration ?? '';
+            chip.dataset.cfg = preset.cfg_weight ?? '';
             const apply = document.createElement('button');
             apply.type = 'button';
             apply.className = 'preset-apply text-zinc-200 hover:text-cyan-300';
@@ -718,8 +722,8 @@ function initStudioBench() {
             const name = (window.prompt('Preset name?') || '').trim();
             if (!name) return;
             const body = new URLSearchParams({ name });
-            if (picked.stabIn.value !== '') body.set('stability', picked.stabIn.value);
-            if (picked.styleIn.value !== '') body.set('style', picked.styleIn.value);
+            if (picked.exagIn.value !== '') body.set('exaggeration', picked.exagIn.value);
+            if (picked.cfgIn.value !== '') body.set('cfg_weight', picked.cfgIn.value);
             startBusy(presetSaveBtn, 'Saving…');
             try {
                 const res = await fetch(storeUrl, {
@@ -739,9 +743,10 @@ function initStudioBench() {
         });
     }
 
-    // Seed with the current default and the README's steadier/more-expressive example.
-    addRow(0.5, 0.0);
-    addRow(0.8, 0.3);
+    // Seed with the neutral default and a steadier/more-expressive example
+    // (exaggeration 0.95, cfg/pace 0.80).
+    addRow(0.5, 0.5);
+    addRow(0.95, 0.8);
 }
 initStudioBench();
 
@@ -884,6 +889,7 @@ function initStudioProject() {
             endBusy(btn);
             card.querySelector('.chunk-generate').textContent = '▶ Regenerate';
             card.querySelector('.chunk-tune-keep')?.classList.add('hidden'); // this take replaces any pending preview
+            renderTakes(card, data); // the new take joins the history (and becomes selected)
             refreshSeams(); // may reveal an inline seam preview next to a generated neighbor
         } catch (err) {
             setChunkStatus(card, 'failed');
@@ -990,18 +996,146 @@ function initStudioProject() {
         btn.addEventListener('click', () => previewSeam(btn.closest('.chunk-seam')));
     });
 
+    // ---- Take history -------------------------------------------------------
+    // Every render is kept as a selectable take. These render the per-chunk list
+    // from the JSON the server returns (embedded on load, or from each action's
+    // response / the listTakes endpoint).
+    function takeRow(card, take) {
+        const li = document.createElement('li');
+        li.dataset.takeId = take.id;
+        li.className = 'chunk-take flex flex-wrap items-center gap-2 rounded-lg border px-2 py-1.5 '
+            + (take.selected ? 'border-emerald-600/50 bg-emerald-500/10' : 'border-zinc-800 bg-zinc-950/40');
+
+        const audio = document.createElement('audio');
+        audio.controls = true;
+        audio.preload = 'none';
+        audio.className = 'h-8 w-56 max-w-full';
+        audio.src = take.audio_url;
+
+        const meta = document.createElement('div');
+        meta.className = 'flex min-w-0 flex-col text-xs text-zinc-500';
+        const line1 = document.createElement('span');
+        line1.className = take.selected ? 'text-emerald-300' : 'text-zinc-400';
+        line1.textContent = take.source + (take.selected ? ' · selected' : '');
+        const line2 = document.createElement('span');
+        line2.textContent = take.tuning_label + (take.created_human ? ' · ' + take.created_human : '');
+        meta.append(line1, line2);
+        if (take.asr_badge) {
+            const b = document.createElement('span');
+            b.className = 'mt-0.5 inline-flex w-fit rounded-md border px-1.5 py-0.5 text-[11px] '
+                + (ASR_TONE[take.asr_badge.tone] || ASR_TONE.bad);
+            b.textContent = take.asr_badge.text;
+            if (take.asr_badge.title) b.title = take.asr_badge.title;
+            meta.append(b);
+        }
+
+        const actions = document.createElement('div');
+        actions.className = 'ml-auto flex items-center gap-1.5';
+        const selectBtn = document.createElement('button');
+        selectBtn.type = 'button';
+        selectBtn.className = 'chunk-take-select rounded-lg border border-zinc-700 px-2.5 py-1 text-xs hover:bg-zinc-800 disabled:cursor-default disabled:border-emerald-700/50 disabled:text-emerald-300 disabled:hover:bg-transparent';
+        selectBtn.textContent = take.selected ? '✓ Selected' : 'Select';
+        selectBtn.disabled = !!take.selected;
+        const deleteBtn = document.createElement('button');
+        deleteBtn.type = 'button';
+        deleteBtn.className = 'chunk-take-delete rounded-lg border border-zinc-800 px-2 py-1 text-xs text-zinc-500 hover:border-red-700/60 hover:text-red-300 disabled:cursor-default disabled:opacity-30 disabled:hover:border-zinc-800 disabled:hover:text-zinc-500';
+        deleteBtn.textContent = 'Delete';
+        deleteBtn.disabled = !!take.selected;
+        deleteBtn.title = take.selected ? 'Select another take before deleting this one.' : 'Delete this take permanently.';
+        actions.append(selectBtn, deleteBtn);
+
+        li.append(audio, meta, actions);
+        return li;
+    }
+
+    function renderTakes(card, data) {
+        const list = card.querySelector('.chunk-takes');
+        if (!list) return;
+        const takes = (data && data.takes) || [];
+        list.innerHTML = '';
+        if (!takes.length) {
+            const li = document.createElement('li');
+            li.className = 'text-xs text-zinc-600';
+            li.textContent = 'No takes yet — Generate or Preview to create one.';
+            list.append(li);
+            return;
+        }
+        takes.forEach((take) => list.append(takeRow(card, take)));
+    }
+
+    async function refreshTakes(card) {
+        try {
+            const res = await fetch(card.dataset.takesUrl, { headers: { 'Accept': 'application/json' } });
+            if (res.ok) renderTakes(card, await res.json());
+        } catch { /* a missing list is non-fatal */ }
+    }
+
+    async function selectTake(card, takeId, btn) {
+        startBusy(btn, 'Selecting…');
+        try {
+            const res = await fetch(card.dataset.takesUrl + '/' + takeId + '/select', {
+                method: 'POST',
+                headers: { 'X-CSRF-TOKEN': csrfToken(), 'Accept': 'application/json' },
+            });
+            if (!res.ok) throw new Error(await errorMessage(res));
+            const data = await res.json();
+            setChunkStatus(card, data.status);
+            setChunkAsrBadge(card, data.asr_badge ?? null);
+            setProjectStatus(data.project_status);
+            const audio = card.querySelector('.chunk-audio');
+            audio.src = bust(card.dataset.audioUrl);
+            audio.classList.remove('hidden');
+            card.querySelector('.chunk-generate').textContent = '▶ Regenerate';
+            renderTakes(card, data); // rebuilds the list (and detaches btn)
+            refreshSeams();
+            setStatus(finalStatus, '✓ Selected this take as the chunk audio.', 'ok');
+        } catch (err) {
+            setStatus(finalStatus, `✗ ${err.message}`, 'error');
+            endBusy(btn);
+        }
+    }
+
+    async function deleteTake(card, takeId, btn) {
+        if (!window.confirm('Delete this take permanently? This cannot be undone.')) return;
+        startBusy(btn, 'Deleting…');
+        try {
+            const res = await fetch(card.dataset.takesUrl + '/' + takeId, {
+                method: 'DELETE',
+                headers: { 'X-CSRF-TOKEN': csrfToken(), 'Accept': 'application/json' },
+            });
+            if (!res.ok) throw new Error(await errorMessage(res));
+            renderTakes(card, await res.json());
+            setStatus(finalStatus, '✓ Take deleted.', 'ok');
+        } catch (err) {
+            setStatus(finalStatus, `✗ ${err.message}`, 'error');
+            endBusy(btn);
+        }
+    }
+
     root.querySelectorAll('.studio-chunk').forEach((card) => {
         // The blob + settings from the last successful tuning preview, so
         // "Use this take" can persist the exact clip the user just heard. Any
         // edit that would change how a fresh preview sounds clears it (below).
         let previewBlob = null;
-        let previewStability = '';
-        let previewStyle = '';
+        let previewExaggeration = '';
+        let previewCfg = '';
         const keepBtn = card.querySelector('.chunk-tune-keep');
         const invalidatePreview = () => {
             previewBlob = null;
             keepBtn?.classList.add('hidden');
         };
+
+        // Render the take history embedded on the card, and wire Select/Delete via
+        // one delegated listener (the list is rebuilt wholesale on every change).
+        try { renderTakes(card, JSON.parse(card.dataset.takes || '{}')); } catch { /* ignore */ }
+        card.querySelector('.chunk-takes')?.addEventListener('click', (e) => {
+            const row = e.target.closest('.chunk-take');
+            if (!row) return;
+            const selBtn = e.target.closest('.chunk-take-select');
+            const delBtn = e.target.closest('.chunk-take-delete');
+            if (selBtn && !selBtn.disabled) selectTake(card, row.dataset.takeId, selBtn);
+            else if (delBtn && !delBtn.disabled) deleteTake(card, row.dataset.takeId, delBtn);
+        });
 
         card.querySelector('.chunk-save').addEventListener('click', async () => {
             const btn = card.querySelector('.chunk-save');
@@ -1055,14 +1189,14 @@ function initStudioProject() {
         card.querySelector('.chunk-reroll')?.addEventListener('click', () =>
             runGeneration(card, card.dataset.rerollUrl, card.querySelector('.chunk-reroll'), 'Re-rolling…').catch(() => {}));
 
-        // A/B preview (3c): audition the typed settings without persisting.
+        // A/B preview: audition the typed native knobs (saved as a non-selected take).
         card.querySelector('.chunk-tune-preview')?.addEventListener('click', async () => {
             const btn = card.querySelector('.chunk-tune-preview');
-            const stability = card.querySelector('.chunk-stability').value;
-            const style = card.querySelector('.chunk-style').value;
+            const exaggeration = card.querySelector('.chunk-exaggeration').value;
+            const cfg = card.querySelector('.chunk-cfg').value;
             const body = new URLSearchParams();
-            if (stability !== '') body.set('stability', stability);
-            if (style !== '') body.set('style', style);
+            if (exaggeration !== '') body.set('exaggeration', exaggeration);
+            if (cfg !== '') body.set('cfg_weight', cfg);
             startBusy(btn, 'Previewing…');
             try {
                 const res = await fetch(card.dataset.previewTuningUrl, {
@@ -1075,10 +1209,11 @@ function initStudioProject() {
                 playAudio(card.querySelector('.chunk-tune-audio'), blob);
                 // Remember this exact clip so "Use this take" can keep it verbatim.
                 previewBlob = blob;
-                previewStability = stability;
-                previewStyle = style;
+                previewExaggeration = exaggeration;
+                previewCfg = cfg;
                 keepBtn?.classList.remove('hidden');
-                setStatus(finalStatus, '✓ Preview ready — "Use this take" keeps this exact clip.', 'ok');
+                refreshTakes(card); // the preview was saved as a (non-selected) take
+                setStatus(finalStatus, '✓ Preview ready — "Use this take" keeps it, or play it from the list.', 'ok');
             } catch (err) {
                 setStatus(finalStatus, `✗ ${err.message}`, 'error');
             } finally {
@@ -1097,8 +1232,8 @@ function initStudioProject() {
                 const ext = previewBlob.type === 'audio/mpeg' ? 'mp3' : 'wav';
                 const fd = new FormData();
                 fd.append('audio', previewBlob, `take.${ext}`);
-                if (previewStability !== '') fd.append('stability', previewStability);
-                if (previewStyle !== '') fd.append('style', previewStyle);
+                if (previewExaggeration !== '') fd.append('exaggeration', previewExaggeration);
+                if (previewCfg !== '') fd.append('cfg_weight', previewCfg);
                 const res = await fetch(card.dataset.usePreviewUrl, {
                     method: 'POST',
                     headers: { 'X-CSRF-TOKEN': csrfToken(), 'Accept': 'application/json' },
@@ -1115,6 +1250,7 @@ function initStudioProject() {
                 audio.play().catch(() => {});
                 card.querySelector('.chunk-generate').textContent = '▶ Regenerate';
                 invalidatePreview();
+                renderTakes(card, data); // the kept clip is now a selected take
                 refreshSeams();
                 setStatus(finalStatus, '✓ Saved this take as the chunk audio.', 'ok');
             } catch (err) {
@@ -1124,19 +1260,19 @@ function initStudioProject() {
             }
         });
 
-        // Save this chunk's stability/style override; the server marks it stale.
+        // Save this chunk's native tuning override; the server marks it stale.
         card.querySelector('.chunk-tune-save')?.addEventListener('click', async () => {
             const btn = card.querySelector('.chunk-tune-save');
-            const stability = card.querySelector('.chunk-stability').value;
-            const style = card.querySelector('.chunk-style').value;
+            const exaggeration = card.querySelector('.chunk-exaggeration').value;
+            const cfg = card.querySelector('.chunk-cfg').value;
             startBusy(btn, 'Saving…');
             try {
                 const res = await fetch(card.dataset.tuningUrl, {
                     method: 'PATCH',
                     headers: { 'X-CSRF-TOKEN': csrfToken(), 'Accept': 'application/json', 'Content-Type': 'application/json' },
                     body: JSON.stringify({
-                        stability: stability === '' ? null : Number(stability),
-                        style: style === '' ? null : Number(style),
+                        exaggeration: exaggeration === '' ? null : Number(exaggeration),
+                        cfg_weight: cfg === '' ? null : Number(cfg),
                     }),
                 });
                 if (!res.ok) throw new Error(await errorMessage(res));
@@ -1154,8 +1290,8 @@ function initStudioProject() {
 
         // A preview reflects the inputs at preview time; once any of them change,
         // the kept clip would no longer match, so retire the "Use this take" offer.
-        card.querySelector('.chunk-stability').addEventListener('input', invalidatePreview);
-        card.querySelector('.chunk-style').addEventListener('input', invalidatePreview);
+        card.querySelector('.chunk-exaggeration').addEventListener('input', invalidatePreview);
+        card.querySelector('.chunk-cfg').addEventListener('input', invalidatePreview);
         card.querySelector('.chunk-text').addEventListener('input', invalidatePreview);
         card.querySelector('.chunk-voice').addEventListener('change', invalidatePreview);
 
@@ -1167,6 +1303,8 @@ function initStudioProject() {
             setDirty(card, false);
         });
     });
+
+    initTuningKnobs(root); // wire every per-chunk Exaggeration / CFG-Pace slider
 
     generateAllBtn.addEventListener('click', generateAll);
     rebuildBtn.addEventListener('click', rebuild);

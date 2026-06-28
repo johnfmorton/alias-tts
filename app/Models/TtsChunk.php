@@ -6,6 +6,7 @@ use App\Enums\ChunkStatus;
 use Illuminate\Database\Eloquent\Concerns\HasUuids;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\HasMany;
 
 /**
  * One sentence-ish unit of a {@see TtsProject}: its text, the pause that should
@@ -47,6 +48,15 @@ class TtsChunk extends Model
     }
 
     /**
+     * Every saved take of this chunk, newest first. The chunk's audio_path points
+     * at whichever take is currently selected (see {@see TtsChunkTake}).
+     */
+    public function takes(): HasMany
+    {
+        return $this->hasMany(TtsChunkTake::class, 'tts_chunk_id')->orderByDesc('created_at');
+    }
+
+    /**
      * The chunk's explicit voice override, or null when it inherits the project
      * voice. Generation uses {@see TtsChunk::voice} ?? the project voice.
      */
@@ -76,7 +86,20 @@ class TtsChunk extends Model
             return null;
         }
 
-        $report = $this->asr_report;
+        return self::asrBadgeFrom($this->asr_report);
+    }
+
+    /**
+     * Format an ASR report into badge presentation data, independent of any
+     * status gate. Shared by {@see TtsChunk::asrBadge()} (which adds the
+     * completed-status gate) and {@see TtsChunkTake::asrBadge()} (a take's audio
+     * is always a completed render) so the two never drift.
+     *
+     * @param  array<string, mixed>|null  $report
+     * @return array{tone: string, text: string, title: string}|null
+     */
+    public static function asrBadgeFrom(?array $report): ?array
+    {
         if (! is_array($report) || $report === []) {
             return null;
         }

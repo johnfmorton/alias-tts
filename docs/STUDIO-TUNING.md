@@ -3,6 +3,19 @@
 > **Status:** Drafted 2026-06-19. The four decisions below are resolved.
 > **Phases 0–3 are all implemented and test-verified 2026-06-19** (Phases 0–2
 > also had a live UI walkthrough). The plan is fully built.
+>
+> **Update (v0.15.0):** The Studio surfaces (per-chunk panel, single-shot
+> inspector, A/B bench, named presets) now speak Chatterbox's **native** knobs —
+> **Exaggeration** (0.25–2.0) and **CFG/Pace** (0.2–1.0) — as slider + number +
+> reset, not the abstract 0–1 Stability/Style fields below. The mapping is
+> unchanged and lives in one place, `App\Services\Tts\ChatterboxTuning`
+> (mirrored by `initTuningKnobs()` in app.js): `cfg_weight = clamp(stability,
+> 0.2, 1.0)`, `exaggeration = clamp(0.5 + style·1.5, 0.25, 2.0)`. The resolver and
+> provider accept BOTH key forms — **native wins**, EL is the fallback — so the
+> public `/v1` API stays ElevenLabs-compatible (it still sends stability/style;
+> the provider derives native). When the Studio writes a native knob it drops the
+> stale EL twin so a settings map never carries both. Separately, every render is
+> now persisted as a selectable **take** (see CHANGELOG / `tts.takes`).
 
 ## Why
 

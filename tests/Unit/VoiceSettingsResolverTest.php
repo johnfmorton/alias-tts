@@ -76,6 +76,16 @@ class VoiceSettingsResolverTest extends TestCase
         $this->assertArrayNotHasKey('nonsense', $resolved);
     }
 
+    public function test_native_knobs_pass_through_and_are_cast(): void
+    {
+        // The Studio speaks native; these must survive resolution as floats so the
+        // provider can use them directly (it prefers native over the EL twins).
+        $resolved = $this->resolve([], ['exaggeration' => '1.2', 'cfg_weight' => '0.4']);
+
+        $this->assertSame(1.2, $resolved['exaggeration']);
+        $this->assertSame(0.4, $resolved['cfg_weight']);
+    }
+
     public function test_values_are_cast_to_their_types(): void
     {
         $resolved = $this->resolve([], ['stability' => '0.7', 'use_speaker_boost' => 0]);

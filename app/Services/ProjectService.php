@@ -7,6 +7,7 @@ use App\Enums\ProjectStatus;
 use App\Models\ApiKey;
 use App\Models\Speech;
 use App\Models\TtsChunk;
+use App\Models\TtsChunkTake;
 use App\Models\TtsProject;
 use App\Models\Voice;
 use App\Services\Asr\AsrClient;
@@ -20,6 +21,7 @@ use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Storage;
+use Illuminate\Support\Str;
 use RuntimeException;
 use Throwable;
 
@@ -175,7 +177,7 @@ class ProjectService
                 'characters' => mb_strlen($segment['text']),
             ]);
 
-            $this->putChunkAudio($chunk, $segment['audio']);
+            $this->recordTake($chunk, $segment['audio'], 'generate');
         }
 
         $this->carryFinalAudio($project, $speech);
@@ -332,30 +334,34 @@ class ProjectService
                 $this->providerSettings($project, $chunk, pinSeed: ! $reroll),
             );
 
-            $this->putChunkAudio($chunk, $bytes);
+            // Score BEFORE recording so the verdict rides on the take row itself.
+            $verdict = $this->asr->enabled()
+                ? $this->remediator->score($chunk->text, $bytes, "chunk-{$chunk->id}")
+                : null;
 
-            if ($this->asr->enabled()) {
-                $verdict = $this->remediator->score($chunk->text, $bytes, "chunk-{$chunk->id}");
-                if ($verdict !== null) {
-                    $this->persistVerdict($chunk, $verdict);
+            $this->recordTake(
+                $chunk,
+                $bytes,
+                $reroll ? 'reroll' : 'generate',
+                $this->tuningOnly(is_array($chunk->settings) ? $chunk->settings : []),
+                $verdict,
+            );
 
-                    if (! $verdict->ok) {
-                        Log::warning('ASR flagged a generated chunk', [
-                            'chunk' => $chunk->id,
-                            'problems' => $verdict->problems,
-                            'trail_s' => $verdict->trailS,
-                            'max_gap_s' => $verdict->maxGapS,
-                            'tail_cov' => $verdict->tailCov,
-                        ]);
+            if ($verdict !== null && ! $verdict->ok) {
+                Log::warning('ASR flagged a generated chunk', [
+                    'chunk' => $chunk->id,
+                    'problems' => $verdict->problems,
+                    'trail_s' => $verdict->trailS,
+                    'max_gap_s' => $verdict->maxGapS,
+                    'tail_cov' => $verdict->tailCov,
+                ]);
 
-                        // studio_action=auto remediates; a MANUAL reroll never
-                        // auto-rerolls again (the user asked for exactly one new
-                        // take). The Studio path is interactive, so this usually
-                        // stays 'log' — the admin re-rolls from the per-chunk badge.
-                        if (! $reroll && $this->asr->studioAction() === 'auto') {
-                            $this->autoRemediate($chunk, $bytes, $verdict);
-                        }
-                    }
+                // studio_action=auto remediates; a MANUAL reroll never auto-rerolls
+                // again (the user asked for exactly one new take). The Studio path is
+                // interactive, so this usually stays 'log' — the admin re-rolls from
+                // the per-chunk badge.
+                if (! $reroll && $this->asr->studioAction() === 'auto') {
+                    $this->autoRemediate($chunk, $bytes, $verdict);
                 }
             }
 
@@ -372,37 +378,122 @@ class ProjectService
         return $chunk;
     }
 
-    /** Store a chunk's audio bytes and mark it completed. */
-    private function putChunkAudio(TtsChunk $chunk, string $bytes): void
-    {
-        $path = $this->chunkPath($chunk);
+    /**
+     * Record one synthesized take of a chunk: write its own immutable audio file,
+     * insert the take row (tuning override snapshot + optional ASR verdict), prune
+     * old takes, and — unless it's a bare preview ($select=false) — point the chunk
+     * at it as the current audio. Returns the take. Because the provider is
+     * non-deterministic even with a fixed seed, every take's bytes are persisted so
+     * none is ever lost ("keep every take").
+     *
+     * $override is the per-chunk tuning override that was in effect (empty = the
+     * chunk inherited the project setting). It's snapshotted so the take list can
+     * show what produced it and a later "select" can restore the same knobs.
+     *
+     * @param  'generate'|'reroll'|'preview'|'use'|'remediate'  $source
+     * @param  array<string, mixed>  $override
+     * @param  array<string, mixed>  $reportExtra  merged into asr_report (e.g. action=rerolled)
+     */
+    private function recordTake(
+        TtsChunk $chunk,
+        string $bytes,
+        string $source,
+        array $override = [],
+        ?ChunkQualityVerdict $verdict = null,
+        array $reportExtra = [],
+        bool $select = true,
+        bool $keepAsrWhenUnscored = false,
+    ): TtsChunkTake {
+        $takeId = (string) Str::orderedUuid();
+        $path = $this->takePath($chunk, $takeId);
         Storage::disk($this->disk())->put($path, $bytes);
 
-        $chunk->update([
+        $report = $verdict === null
+            ? null
+            : ($reportExtra === [] ? $verdict->toArray() : array_merge($verdict->toArray(), $reportExtra));
+
+        $take = $chunk->takes()->create([
+            'id' => $takeId,
             'audio_path' => $path,
-            'status' => ChunkStatus::Completed,
-            'error_message' => null,
+            'settings' => $override ?: null,
+            'source' => $source,
+            'asr_score' => $verdict?->score,
+            'asr_report' => $report,
+            'characters' => mb_strlen($chunk->text),
         ]);
+
+        if ($select) {
+            $attributes = [
+                'audio_path' => $path,
+                'status' => ChunkStatus::Completed,
+                'error_message' => null,
+            ];
+            // The stored audio changed, so the chunk's ASR must reflect THIS take:
+            // its verdict, or null when unscored — except an auto-remediation whose
+            // re-roll couldn't be scored, which keeps the original verdict.
+            if ($verdict !== null) {
+                $attributes['asr_score'] = $verdict->score;
+                $attributes['asr_report'] = $report;
+            } elseif (! $keepAsrWhenUnscored) {
+                $attributes['asr_score'] = null;
+                $attributes['asr_report'] = null;
+            }
+            $chunk->update($attributes);
+        }
+
+        $this->pruneTakes($chunk);
+
+        return $take;
     }
 
     /**
-     * Persist a verdict onto the chunk. $extra is merged into asr_report to
-     * record what action was taken (e.g. action=rerolled / trimmed).
-     *
-     * @param  array<string, mixed>  $extra
+     * Retention: keep the newest `tts.takes.keep` committed takes and the newest
+     * `tts.takes.keep_preview` previews per chunk (previews are cheap auditions, so
+     * pruned harder), always preserving the currently-selected take. Older takes'
+     * rows and files are deleted; anything pruned is logged.
      */
-    private function persistVerdict(TtsChunk $chunk, ChunkQualityVerdict $verdict, array $extra = []): void
+    private function pruneTakes(TtsChunk $chunk): void
     {
-        $chunk->update([
-            'asr_score' => $verdict->score,
-            'asr_report' => $extra === [] ? $verdict->toArray() : array_merge($verdict->toArray(), $extra),
+        $keep = max(1, (int) config('tts.takes.keep', 10));
+        $keepPreview = max(0, (int) config('tts.takes.keep_preview', 3));
+
+        $selectedPath = $chunk->audio_path;
+        $all = $chunk->takes()->get(); // newest first
+        $candidates = $all->reject(fn (TtsChunkTake $t) => $t->audio_path === $selectedPath);
+
+        [$previews, $committed] = $candidates->partition(fn (TtsChunkTake $t) => $t->source === 'preview');
+        $doomed = $previews->slice($keepPreview)->concat($committed->slice($keep))->values();
+
+        if ($doomed->isEmpty()) {
+            return;
+        }
+
+        $doomedIds = $doomed->pluck('id')->all();
+        $survivingPaths = $all->reject(fn (TtsChunkTake $t) => in_array($t->id, $doomedIds, true))
+            ->pluck('audio_path')->all();
+
+        $disk = Storage::disk($this->disk());
+        foreach ($doomed as $take) {
+            // Never delete a file another surviving take still references (guards the
+            // in-place legacy file that may share the chunk's old path).
+            if (! in_array($take->audio_path, $survivingPaths, true)) {
+                $disk->delete($take->audio_path);
+            }
+            $take->delete();
+        }
+
+        Log::info('Pruned chunk takes', [
+            'chunk' => $chunk->id,
+            'pruned' => $doomed->count(),
+            'previews' => $previews->slice($keepPreview)->count(),
+            'committed' => $committed->slice($keep)->count(),
         ]);
     }
 
     /**
-     * Act on a flagged chunk under action=auto via the shared remediator
-     * (re-roll missing content keeping the best take, or precise-trim a junk
-     * tail), then persist the winning take + what was done.
+     * Act on a flagged chunk under action=auto via the shared remediator (re-roll
+     * missing content keeping the best take, or precise-trim a junk tail), then
+     * record the winning take + what was done as the chunk's selected audio.
      */
     private function autoRemediate(TtsChunk $chunk, string $bytes, ChunkQualityVerdict $verdict): void
     {
@@ -420,13 +511,17 @@ class ProjectService
             "chunk-{$chunk->id}",
         );
 
-        $this->putChunkAudio($chunk, $outcome->bytes);
-
-        // A null verdict means a re-roll couldn't be scored (sidecar dropped): keep
-        // the new audio but leave the original verdict on the chunk.
-        if ($outcome->verdict !== null) {
-            $this->persistVerdict($chunk, $outcome->verdict, $outcome->reportExtra());
-        }
+        // A null outcome verdict means a re-roll couldn't be scored (sidecar
+        // dropped): keep the new audio but leave the original verdict on the chunk.
+        $this->recordTake(
+            $chunk,
+            $outcome->bytes,
+            'remediate',
+            $this->tuningOnly(is_array($chunk->settings) ? $chunk->settings : []),
+            $outcome->verdict,
+            $outcome->verdict !== null ? $outcome->reportExtra() : [],
+            keepAsrWhenUnscored: true,
+        );
 
         Log::info('ASR auto-remediated a chunk', [
             'chunk' => $chunk->id,
@@ -436,21 +531,16 @@ class ProjectService
     }
 
     /**
-     * Set a chunk's per-chunk tuning override (stability/style); a null value
-     * clears that key so it falls back to the project's setting. A generated
-     * chunk goes Stale (its audio no longer matches the tuning) and the final
-     * file is flagged out of date; an ungenerated chunk is left as-is.
+     * Set a chunk's per-chunk tuning override; a null value clears that key so it
+     * falls back to the project's setting. A generated chunk goes Stale (its audio
+     * no longer matches the tuning) and the final file is flagged out of date; an
+     * ungenerated chunk is left as-is.
+     *
+     * @param  array<string, float|null>  $override  the typed knobs (null = clear)
      */
-    public function updateChunkTuning(TtsChunk $chunk, ?float $stability, ?float $style): TtsChunk
+    public function updateChunkTuning(TtsChunk $chunk, array $override): TtsChunk
     {
-        $settings = is_array($chunk->settings) ? $chunk->settings : [];
-        foreach (['stability' => $stability, 'style' => $style] as $key => $value) {
-            if ($value !== null) {
-                $settings[$key] = $value;
-            } else {
-                unset($settings[$key]);
-            }
-        }
+        $settings = $this->applyOverride(is_array($chunk->settings) ? $chunk->settings : [], $override);
 
         $attributes = ['settings' => $settings ?: null];
         if ($chunk->status === ChunkStatus::Completed) {
@@ -466,66 +556,53 @@ class ProjectService
     }
 
     /**
-     * Synthesize one chunk at a transient stability/style override (A/B preview,
-     * Phase 3c) and return the raw audio bytes WITHOUT persisting — neither the
-     * chunk's stored override, audio, nor status is touched. Lets the user
-     * audition a candidate tuning before committing it with updateChunkTuning.
+     * Synthesize one chunk at a transient stability/style override (A/B preview)
+     * and return the raw audio bytes. The chunk's stored override, current audio,
+     * and status are NOT touched — but the preview is saved as a NON-selected take
+     * (capture-every-take) so it appears in the chunk's history and can be selected
+     * later. Lets the user audition a candidate tuning before committing it.
+     *
+     * @param  array<string, float|null>  $override  the typed knobs (null = inherit)
      */
-    public function previewChunkTuning(TtsChunk $chunk, ?float $stability, ?float $style): string
+    public function previewChunkTuning(TtsChunk $chunk, array $override): string
     {
         $project = $chunk->project;
         $settings = is_array($project->settings) ? $project->settings : [];
-        foreach (['stability' => $stability, 'style' => $style] as $key => $value) {
-            if ($value !== null) {
-                $settings[$key] = $value;
-            }
+        $typed = array_filter($override, fn ($v) => $v !== null);
+        foreach ($typed as $key => $value) {
+            $settings[$key] = $value;
         }
         if ($project->seed !== null) {
             $settings['seed'] = $project->seed;
         }
 
-        return $this->provider->synthesize($chunk->text, $this->referencePath($chunk->voice ?? $project->voice), $settings);
+        $bytes = $this->provider->synthesize($chunk->text, $this->referencePath($chunk->voice ?? $project->voice), $settings);
+
+        $this->recordTake($chunk, $bytes, 'preview', $this->tuningOnly($typed), select: false);
+
+        return $bytes;
     }
 
     /**
      * "Use this take": store the exact preview bytes the user auditioned (uploaded
-     * back from the browser) as the chunk's audio, recording the stability/style
+     * back from the browser) as the chunk's selected audio, recording the override
      * it was previewed at and marking the chunk Completed. Re-scores ASR for the
      * new audio (score only — never auto-remediate; the admin chose this take
      * deliberately). Because the provider is non-deterministic even with a fixed
      * seed, promoting the actual bytes is the only way to keep a good preview.
+     *
+     * @param  array<string, float|null>  $override  the typed knobs (null = clear)
      */
-    public function useChunkPreview(TtsChunk $chunk, string $bytes, ?float $stability, ?float $style): TtsChunk
+    public function useChunkPreview(TtsChunk $chunk, string $bytes, array $override): TtsChunk
     {
-        $settings = is_array($chunk->settings) ? $chunk->settings : [];
-        foreach (['stability' => $stability, 'style' => $style] as $key => $value) {
-            if ($value !== null) {
-                $settings[$key] = $value;
-            } else {
-                unset($settings[$key]);
-            }
-        }
+        $settings = $this->applyOverride(is_array($chunk->settings) ? $chunk->settings : [], $override);
+        $chunk->update(['settings' => $settings ?: null]);
 
-        Storage::disk($this->disk())->put($path = $this->chunkPath($chunk), $bytes);
-
-        $chunk->update([
-            'settings' => $settings ?: null,
-            'audio_path' => $path,
-            'status' => ChunkStatus::Completed,
-            'error_message' => null,
-        ]);
-
-        // The stored audio changed, so any prior ASR verdict is stale. Re-score
-        // when ASR is available; otherwise drop the old verdict so the badge can't
-        // describe audio that's no longer there.
         $verdict = $this->asr->enabled()
             ? $this->remediator->score($chunk->text, $bytes, "chunk-{$chunk->id}")
             : null;
-        if ($verdict !== null) {
-            $this->persistVerdict($chunk, $verdict);
-        } else {
-            $chunk->update(['asr_score' => null, 'asr_report' => null]);
-        }
+
+        $this->recordTake($chunk, $bytes, 'use', $this->tuningOnly($settings), $verdict);
 
         $this->markFinalOutdated($chunk->project);
 
@@ -793,9 +870,108 @@ class ProjectService
         return VoiceReference::localPath($voice);
     }
 
-    private function chunkPath(TtsChunk $chunk): string
+    /** A take's own immutable file (one per render, never overwritten). */
+    private function takePath(TtsChunk $chunk, string $takeId): string
     {
-        return config('tts.storage_path').'/projects/'.$chunk->tts_project_id.'/chunks/'.$chunk->id.'.wav';
+        return config('tts.storage_path').'/projects/'.$chunk->tts_project_id.'/chunks/'.$chunk->id.'/takes/'.$takeId.'.wav';
+    }
+
+    /**
+     * Keep only the tuning knobs from a settings array (drops seed and the
+     * ElevenLabs-compat keys that don't affect the Studio panel). Handles both the
+     * EL form (stability/style) and the native form (exaggeration/cfg_weight).
+     *
+     * @param  array<string, mixed>  $settings
+     * @return array<string, mixed>
+     */
+    private function tuningOnly(array $settings): array
+    {
+        return array_intersect_key($settings, array_flip(['stability', 'style', 'exaggeration', 'cfg_weight']));
+    }
+
+    /** Native knob -> the ElevenLabs key it supersedes once the Studio writes native. */
+    private const EL_TWIN = ['exaggeration' => 'style', 'cfg_weight' => 'stability'];
+
+    /**
+     * Apply a per-chunk tuning override onto a settings map: set each non-null
+     * knob, clear each null one, and — when a native knob is written — drop its
+     * stale ElevenLabs twin so a chunk never carries both forms (the Studio speaks
+     * native; the provider would prefer native and ignore the EL key anyway).
+     *
+     * @param  array<string, mixed>  $settings
+     * @param  array<string, float|null>  $override
+     * @return array<string, mixed>
+     */
+    private function applyOverride(array $settings, array $override): array
+    {
+        foreach ($override as $key => $value) {
+            if ($value !== null) {
+                $settings[$key] = $value;
+                if (isset(self::EL_TWIN[$key])) {
+                    unset($settings[self::EL_TWIN[$key]]);
+                }
+            } else {
+                unset($settings[$key]);
+            }
+        }
+
+        return $settings;
+    }
+
+    public function takeAudioBytes(TtsChunkTake $take): ?string
+    {
+        if (! $take->audio_path || ! Storage::disk($this->disk())->exists($take->audio_path)) {
+            return null;
+        }
+
+        return Storage::disk($this->disk())->get($take->audio_path);
+    }
+
+    /**
+     * Make a saved take the chunk's current audio: point audio_path at its file
+     * and carry its ASR verdict (so the badge describes the audio you'll now hear).
+     * The chunk's tuning override is left untouched — selecting a take chooses its
+     * SOUND, not its settings; each take shows the tuning it was rendered at in the
+     * list. Marks the final file out of date.
+     */
+    public function selectTake(TtsChunkTake $take): TtsChunk
+    {
+        $chunk = $take->chunk;
+
+        $chunk->update([
+            'audio_path' => $take->audio_path,
+            'status' => ChunkStatus::Completed,
+            'error_message' => null,
+            'asr_score' => $take->asr_score,
+            'asr_report' => $take->asr_report,
+        ]);
+
+        $this->markFinalOutdated($chunk->project);
+
+        return $chunk;
+    }
+
+    /**
+     * Permanently delete a take (row + file). Refuses to delete the currently
+     * selected take — the caller must select another first — and never removes a
+     * file another take still references (the in-place legacy file).
+     */
+    public function deleteTake(TtsChunkTake $take): void
+    {
+        $chunk = $take->chunk;
+        if ($take->audio_path === $chunk->audio_path) {
+            throw new RuntimeException("You can't delete the take that's currently selected — pick another take first.");
+        }
+
+        $shared = $chunk->takes()
+            ->where('id', '!=', $take->id)
+            ->where('audio_path', $take->audio_path)
+            ->exists();
+        if (! $shared) {
+            Storage::disk($this->disk())->delete($take->audio_path);
+        }
+
+        $take->delete();
     }
 
     private function disk(): string

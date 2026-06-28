@@ -125,17 +125,24 @@ class VoiceService
     }
 
     /**
-     * Persist just the stability/style tuning onto a voice's settings — the
-     * "save to voice defaults" action from the Studio tuning bench. A null value
-     * clears that key (falling back to the system default). Leaves the seed,
-     * reference clip, name and slug untouched.
+     * Persist just the native tuning (exaggeration/cfg_weight) onto a voice's
+     * settings — the "save to voice defaults" action from the Studio tuning bench.
+     * A null value clears that key (falling back to the system default); writing a
+     * native knob drops its stale ElevenLabs twin so a voice never carries both
+     * forms. Leaves the seed, reference clip, name and slug untouched.
+     *
+     * @param  array<string, float|null>  $override
      */
-    public function saveTuning(Voice $voice, ?float $stability, ?float $style): Voice
+    public function saveTuning(Voice $voice, array $override): Voice
     {
+        $twin = ['exaggeration' => 'style', 'cfg_weight' => 'stability'];
         $settings = is_array($voice->settings) ? $voice->settings : [];
-        foreach (['stability' => $stability, 'style' => $style] as $key => $value) {
+        foreach ($override as $key => $value) {
             if ($value !== null) {
                 $settings[$key] = $value;
+                if (isset($twin[$key])) {
+                    unset($settings[$twin[$key]]);
+                }
             } else {
                 unset($settings[$key]);
             }
