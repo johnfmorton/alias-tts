@@ -6,6 +6,8 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.14.7] - 2026-06-28
+
 ### Added
 - **Studio: "Use this take" keeps the exact clip you just previewed.** Auditioning
   a per-chunk tuning with **Preview** generated a clip that was then discarded —
