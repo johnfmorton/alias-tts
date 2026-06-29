@@ -6,6 +6,14 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Added
+- **Reset a leaked API key from the Dashboard.** The "Connect Bespoken" panel now
+  has a **Reset** button beside the API key that issues a new secret and revokes
+  the old one immediately (with a confirmation, since it breaks any client still
+  using the old value). The rotation resolves the current user's key server-side,
+  so it's per-user-safe — one user can't reset another's — and a legacy unowned
+  key is claimed by the user when reset so future rotations stay owner-scoped.
+
 ### Fixed
 - **Studio "Create project" no longer looks frozen.** Clicking **Create project**
   kicks off a synchronous request that normalizes the text and runs the LLM

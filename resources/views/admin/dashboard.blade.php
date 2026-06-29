@@ -28,7 +28,13 @@
                     <div class="flex items-center gap-2">
                         <code class="flex-1 truncate rounded-lg border border-zinc-800 bg-zinc-950 px-3 py-2 font-mono text-sm text-zinc-300">{{ $connect['apiKey'] }}</code>
                         <button data-copy="{{ $connect['apiKey'] }}" class="rounded-lg border border-zinc-700 px-3 py-2 text-sm hover:bg-zinc-800">Copy</button>
+                        <form method="POST" action="{{ route('admin.dashboard.reset-key') }}"
+                              onsubmit="return confirm('Reset this API key? The current value stops working immediately — you will need to update the Bespoken plugin with the new key.')">
+                            @csrf
+                            <button class="rounded-lg border border-red-500/30 px-3 py-2 text-sm text-red-400 hover:bg-red-500/10" title="Issue a new key if this one leaked">Reset</button>
+                        </form>
                     </div>
+                    <p class="mt-1.5 text-xs text-zinc-500">Leaked? <span class="text-zinc-400">Reset</span> issues a new key and immediately revokes this one.</p>
                 @else
                     <p class="text-sm text-zinc-500">No active key yet — <a class="text-cyan-400 hover:underline" href="{{ route('admin.api-keys.create') }}">create one</a>.</p>
                 @endif

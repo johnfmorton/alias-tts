@@ -18,6 +18,7 @@ use Illuminate\Support\Facades\Route;
 */
 
 Route::get('/', [DashboardController::class, 'index'])->name('dashboard');
+Route::post('/reset-api-key', [DashboardController::class, 'resetApiKey'])->name('dashboard.reset-key');
 
 // Settings — service configuration (env-pinned values are read-only).
 Route::get('/settings', [SettingsController::class, 'index'])->name('settings.index');

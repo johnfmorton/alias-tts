@@ -182,6 +182,86 @@ class DashboardTest extends TestCase
             ->assertStatus(401);
     }
 
+    public function test_admin_can_reset_the_dashboard_api_key(): void
+    {
+        $admin = $this->admin();
+        $key = ApiKey::generate('connection', null, $admin->id);
+        $old = $key->key;
+
+        $this->actingAs($admin)->post(route('admin.dashboard.reset-key'))
+            ->assertRedirect(route('admin.dashboard'))
+            ->assertSessionHas('success');
+
+        $key->refresh();
+        $this->assertNotSame($old, $key->key);
+        $this->assertStringStartsWith('sk_', $key->key);
+
+        // The leaked value no longer authenticates against the API.
+        Voice::create(['slug' => 'rk', 'name' => 'RK']);
+        $this->withHeaders(['xi-api-key' => $old])
+            ->postJson('/v1/text-to-speech/rk', ['text' => 'hi'])
+            ->assertStatus(401);
+    }
+
+    public function test_reset_claims_a_legacy_unowned_key_for_the_current_user(): void
+    {
+        $admin = $this->admin();
+        $legacy = ApiKey::generate('legacy', null, null);
+        $this->assertNull($legacy->user_id);
+
+        $this->actingAs($admin)->post(route('admin.dashboard.reset-key'))
+            ->assertRedirect(route('admin.dashboard'));
+
+        $this->assertSame($admin->id, $legacy->fresh()->user_id);
+    }
+
+    public function test_reset_only_touches_the_current_users_own_key(): void
+    {
+        $alice = $this->admin();
+        $bob = $this->admin();
+        $aliceKey = ApiKey::generate('alice', null, $alice->id);
+        $bobKey = ApiKey::generate('bob', null, $bob->id);
+        $aliceOld = $aliceKey->key;
+        $bobOld = $bobKey->key;
+
+        $this->actingAs($bob)->post(route('admin.dashboard.reset-key'))
+            ->assertRedirect(route('admin.dashboard'));
+
+        $this->assertSame($aliceOld, $aliceKey->fresh()->key, "Alice's key must be untouched");
+        $this->assertNotSame($bobOld, $bobKey->fresh()->key);
+    }
+
+    public function test_reset_with_no_key_shows_an_error(): void
+    {
+        $this->actingAs($this->admin())->post(route('admin.dashboard.reset-key'))
+            ->assertRedirect(route('admin.dashboard'))
+            ->assertSessionHas('error');
+    }
+
+    public function test_resolve_for_user_prefers_an_owned_key_over_a_legacy_one(): void
+    {
+        $admin = $this->admin();
+        $legacy = ApiKey::generate('legacy', null, null);
+        $owned = ApiKey::generate('owned', null, $admin->id);
+
+        $this->assertSame($owned->id, ApiKey::resolveForUser($admin->id)->id);
+
+        // A user with no key of their own falls back to the legacy unowned key.
+        $other = $this->admin();
+        $this->assertSame($legacy->id, ApiKey::resolveForUser($other->id)->id);
+    }
+
+    public function test_dashboard_shows_the_resolved_key_and_a_reset_control(): void
+    {
+        $admin = $this->admin();
+        $key = ApiKey::generate('connection', null, $admin->id);
+
+        $this->actingAs($admin)->get(route('admin.dashboard'))
+            ->assertOk()
+            ->assertSee($key->key)
+            ->assertSee('admin/reset-api-key', escape: false);
+    }
+
     public function test_footer_shows_the_app_version_for_authenticated_users(): void
     {
         $this->actingAs($this->admin())
