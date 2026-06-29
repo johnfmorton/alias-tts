@@ -1642,3 +1642,42 @@ function initGenblaze() {
     });
 }
 initGenblaze();
+
+// New-project form: the "Create project" POST blocks while the server normalizes
+// the text and runs the (potentially ~minute-long) LLM pronunciation check before
+// it can render the review screen. Without feedback the page reads as frozen, so
+// show a spinner + honest step messaging until the browser navigates away.
+function initCreateProjectForm() {
+    const form = document.getElementById('create-project-form');
+    if (!form) return;
+
+    const btn = form.querySelector('button[type=submit]');
+    const status = document.getElementById('create-project-status');
+    let timers = [];
+
+    const reset = () => {
+        timers.forEach(clearTimeout);
+        timers = [];
+        if (btn) endBusy(btn);
+        setStatus(status, '');
+    };
+
+    // Native `required` validation blocks submit before this fires, so reaching
+    // here means the form is valid and the request is on its way.
+    form.addEventListener('submit', () => {
+        if (!btn) return;
+        startBusy(btn, 'Normalizing text…');
+        setStatus(status, 'This can take up to a minute for long articles — please keep this page open.');
+        timers = [
+            setTimeout(() => setRunning(btn, 'Checking pronunciations…'), 900),
+        ];
+    });
+
+    // The form is a full-page POST, so a successful submit navigates away and the
+    // spinner clears on its own. But the back/forward cache can restore this page
+    // with the button still stuck in its busy state — reset it when that happens.
+    window.addEventListener('pageshow', (e) => {
+        if (e.persisted) reset();
+    });
+}
+initCreateProjectForm();

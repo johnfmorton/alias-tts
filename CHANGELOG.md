@@ -6,6 +6,16 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Fixed
+- **Studio "Create project" no longer looks frozen.** Clicking **Create project**
+  kicks off a synchronous request that normalizes the text and runs the LLM
+  pronunciation check (up to ~a minute for a long article) before the review
+  screen can render — with no feedback, the page read as an error. The button now
+  disables and shows a spinner with honest step labels ("Normalizing text…" →
+  "Checking pronunciations…") plus a "this can take up to a minute for long
+  articles" note, so it's clear the app is working. Resets cleanly on back/forward
+  navigation, and an empty form still falls through to native validation.
+
 ## [0.15.0] - 2026-06-28
 
 ### Added
