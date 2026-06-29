@@ -6,6 +6,8 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.16.0] - 2026-06-29
+
 ### Added
 - **Reset a leaked API key from the Dashboard.** The "Connect Bespoken" panel now
   has a **Reset** button beside the API key that issues a new secret and revokes
