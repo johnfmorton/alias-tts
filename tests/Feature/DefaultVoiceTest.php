@@ -28,16 +28,26 @@ class DefaultVoiceTest extends TestCase
         return User::factory()->create(['is_super_admin' => true]);
     }
 
-    public function test_default_voice_is_seeded_with_no_reference(): void
+    public function test_default_voices_are_seeded_with_bundled_references(): void
     {
-        $voice = Voice::resolve(Voice::defaultSlug());
+        $male = Voice::resolve(Voice::defaultSlug());
+        $female = Voice::resolve(Voice::femaleDefaultSlug());
 
-        $this->assertNotNull($voice, 'The built-in default voice should be seeded by migration.');
-        $this->assertNull($voice->reference_audio_path, 'The default voice has no reference clip.');
-        $this->assertTrue($voice->isDefault());
+        $this->assertNotNull($male, 'The built-in male default voice should be seeded by migration.');
+        $this->assertNotNull($female, 'The built-in female default voice should be seeded by migration.');
+
+        // Both ship with a bundled reference clip (no longer reference-less).
+        $this->assertNotNull($male->reference_audio_path, 'The male default has a bundled reference clip.');
+        $this->assertNotNull($female->reference_audio_path, 'The female default has a bundled reference clip.');
+
+        // The primary default is the male voice; both are protected built-ins.
+        $this->assertTrue($male->isDefault());
+        $this->assertFalse($female->isDefault());
+        $this->assertTrue($male->isBuiltin());
+        $this->assertTrue($female->isBuiltin());
     }
 
-    public function test_default_voice_generates_audio_without_a_reference(): void
+    public function test_default_voice_generates_audio(): void
     {
         $key = ApiKey::generate('test');
 
@@ -77,15 +87,31 @@ class DefaultVoiceTest extends TestCase
         $this->assertNotNull(Voice::resolve(Voice::defaultSlug()), 'The default voice must survive a delete attempt.');
     }
 
-    public function test_voices_index_marks_the_default_voice_builtin_and_undeletable(): void
+    public function test_female_default_voice_cannot_be_deleted(): void
+    {
+        $voice = Voice::resolve(Voice::femaleDefaultSlug());
+
+        $this->actingAs($this->admin())
+            ->delete(route('admin.voices.destroy', $voice))
+            ->assertRedirect(route('admin.voices.index'))
+            ->assertSessionHas('error');
+
+        $this->assertNotNull(Voice::resolve(Voice::femaleDefaultSlug()), 'The female default voice must survive a delete attempt.');
+    }
+
+    public function test_voices_index_marks_the_default_voices_builtin_and_undeletable(): void
     {
         $res = $this->actingAs($this->admin())->get(route('admin.voices.index'));
 
         $res->assertOk()->assertSee('built-in')->assertSee('Default voice');
-        // The default voice row exposes no delete action (its edit/export links
-        // share the URL prefix, so match the form's action attribute exactly).
+        // Neither default voice row exposes a delete action (their edit/export
+        // links share the URL prefix, so match each form's action attribute).
         $this->assertStringNotContainsString(
             'action="'.route('admin.voices.destroy', Voice::resolve(Voice::defaultSlug())).'"',
+            $res->getContent(),
+        );
+        $this->assertStringNotContainsString(
+            'action="'.route('admin.voices.destroy', Voice::resolve(Voice::femaleDefaultSlug())).'"',
             $res->getContent(),
         );
     }

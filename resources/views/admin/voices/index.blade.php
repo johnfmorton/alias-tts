@@ -28,8 +28,8 @@
                         </td>
                         <td class="px-4 py-3 text-zinc-300">
                             {{ $voice->name }}
-                            @if($voice->isDefault())
-                                <span class="ml-1 rounded-md bg-cyan-500/10 px-2 py-0.5 text-xs text-cyan-300" title="Chatterbox's native voice — always available">built-in</span>
+                            @if($voice->isBuiltin())
+                                <span class="ml-1 rounded-md bg-cyan-500/10 px-2 py-0.5 text-xs text-cyan-300" title="Built-in default voice — always available, protected from deletion">built-in</span>
                             @endif
                         </td>
                         <td class="px-4 py-3">
@@ -48,7 +48,7 @@
                             <div class="flex justify-end gap-1.5">
                                 <a href="{{ route('admin.voices.edit', $voice) }}" class="rounded-md border border-zinc-700 px-2.5 py-1 text-xs hover:bg-zinc-800">Edit</a>
                                 <a href="{{ route('admin.voices.export', $voice) }}" class="rounded-md border border-zinc-700 px-2.5 py-1 text-xs hover:bg-zinc-800">Export</a>
-                                @unless($voice->isDefault())
+                                @unless($voice->isBuiltin())
                                     <form method="POST" action="{{ route('admin.voices.destroy', $voice) }}" onsubmit="return confirm('Delete this voice and its reference clip?')">@csrf @method('DELETE')
                                         <button class="rounded-md border border-red-500/30 px-2.5 py-1 text-xs text-red-400 hover:bg-red-500/10">Delete</button>
                                     </form>

@@ -23,6 +23,9 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   audio file and it confirms — entirely on your device, no upload, works offline
   from `file://` — whether it's the untouched approved final (✅) or has been
   edited (❌). The expected fingerprint travels in the link, never the request.
+- **A built-in female default voice** (`voice_id` = `default-female`) ships
+  alongside the existing default, so a fresh install offers both a neutral US
+  male and female voice out of the box. Both are protected from deletion.
 
 ### Changed
 - **Audio downloads are named by content fingerprint.** The final-audio and
@@ -30,6 +33,13 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   the filename (e.g. `my-project-3f9a1c08.mp3`), so each distinct build downloads
   under its own name instead of the operating system appending ` (1) (2) …`. The
   tag is the same short code shown by the seal badge and verify page.
+- **The default voice now ships with a real reference clip** instead of falling
+  back to Chatterbox's native voice. The unconditioned native voice isn't anchored
+  to a speaker, so it drifted between runs and could resemble a cloned voice. The
+  built-in `default` is now a neutral US male voice with a bundled reference clip
+  (from the VCTK corpus, CC BY 4.0 — see `CREDITS.md`), giving a consistent,
+  distinct result. Existing audio generated under the old default isn't
+  auto-updated — re-roll a chunk to adopt the new voice.
 
 ## [0.16.0] - 2026-06-29
 

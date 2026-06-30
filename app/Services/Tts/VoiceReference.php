@@ -13,8 +13,8 @@ use Illuminate\Support\Facades\Storage;
  * (including clips uploaded before a switch to S3) is used in place; a clip on
  * the configured S3/B2 disk is cached down to the local disk first, because
  * `Storage::disk('s3')->path()` is NOT a real filesystem path. Returns null when
- * the voice has no reference (the reference-less default voice) or the clip is
- * genuinely gone.
+ * the voice has no reference (a voice with no reference clip uses Chatterbox's
+ * native voice) or the clip is genuinely gone.
  */
 class VoiceReference
 {

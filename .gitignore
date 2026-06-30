@@ -31,3 +31,6 @@ Thumbs.db
 /.playwright-mcp
 /docs/blog
 /debugging-audio-files/
+
+# Local working dir for auditioning/cleaning default-voice candidates (not shipped)
+/vctk_candidates_cleaned/

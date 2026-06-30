@@ -50,10 +50,10 @@ class StudioProjectController extends Controller
     {
         return view('admin.studio.projects.create', [
             'voices' => Voice::orderBy('name')->get(),
-            // Pre-select the built-in default voice so a new project uses the
-            // native voice unless the user actively picks another — without this
-            // the <select> silently defaults to whichever voice sorts first by
-            // name, which bound new projects to an arbitrary cloning voice.
+            // Pre-select the primary built-in default voice so a new project uses
+            // it unless the user actively picks another — without this the <select>
+            // silently defaults to whichever voice sorts first by name, which
+            // bound new projects to an arbitrary cloning voice.
             'defaultVoiceSlug' => Voice::defaultSlug(),
         ]);
     }

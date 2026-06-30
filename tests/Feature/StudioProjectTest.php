@@ -99,7 +99,7 @@ class StudioProjectTest extends TestCase
         // A cloning voice whose name sorts before "Default voice" would become the
         // <select>'s silent first-option default; the form must still pre-select
         // the built-in default voice (seeded by migration) so a new project uses
-        // the native voice.
+        // the built-in default voice.
         Voice::create(['slug' => 'aaa', 'name' => 'Aardvark', 'reference_audio_path' => 'voices/aaa.wav']);
 
         $this->actingAs($this->admin())
@@ -211,12 +211,15 @@ class StudioProjectTest extends TestCase
     public function test_chunk_generated_after_voice_change_uses_the_new_voice_reference(): void
     {
         // Reproduces the reported bug: generate a chunk with a cloning voice,
-        // switch the project to the reference-less default voice, then generate
-        // another chunk — it must be synthesized with a NULL reference (native
-        // voice), not the previous voice's clip.
+        // switch the project to a reference-less voice, then generate another
+        // chunk — it must be synthesized with a NULL reference (native voice),
+        // not the previous voice's clip. (The built-in defaults now ship with a
+        // bundled clip, so a freshly created reference-less voice exercises the
+        // null-reference path here.)
         $spy = $this->spyProvider();
 
         $john = Voice::create(['slug' => 'john', 'name' => 'John', 'reference_audio_path' => 'voices/john.wav']);
+        $narrator = Voice::create(['slug' => 'narrator', 'name' => 'Narrator', 'reference_audio_path' => null]);
         $project = $this->projectWithVoice($john);
         [$first, $second] = $project->chunks()->orderBy('position')->get()->all();
         $admin = $this->admin();
@@ -226,7 +229,7 @@ class StudioProjectTest extends TestCase
             ->assertOk();
 
         $this->actingAs($admin)
-            ->patchJson(route('admin.studio.projects.voice', $project), ['voice' => Voice::defaultSlug()])
+            ->patchJson(route('admin.studio.projects.voice', $project), ['voice' => $narrator->slug])
             ->assertOk();
 
         $this->actingAs($admin)
@@ -234,7 +237,28 @@ class StudioProjectTest extends TestCase
             ->assertOk();
 
         $this->assertStringContainsString('john.wav', (string) $spy->refs[0], 'First chunk used the John reference.');
-        $this->assertNull($spy->refs[array_key_last($spy->refs)], 'After switching to the default voice, the chunk must be generated with a null (native) reference.');
+        $this->assertNull($spy->refs[array_key_last($spy->refs)], 'After switching to a reference-less voice, the chunk must be generated with a null (native) reference.');
+    }
+
+    public function test_default_voice_chunk_uses_the_bundled_reference(): void
+    {
+        // The built-in default is no longer reference-less: a chunk on the default
+        // voice must be synthesized WITH the bundled reference clip, not a null
+        // (native) reference. This is the fix for the reported bug where a
+        // "Default voice" chunk came out sounding like a cloned voice.
+        $spy = $this->spyProvider();
+        $project = $this->projectWithVoice(Voice::resolve(Voice::defaultSlug()));
+        $first = $project->chunks()->orderBy('position')->first();
+
+        $this->actingAs($this->admin())
+            ->post(route('admin.studio.projects.chunks.generate', [$project, $first]))
+            ->assertOk();
+
+        $this->assertStringContainsString(
+            'default.wav',
+            (string) $spy->refs[array_key_last($spy->refs)],
+            'The default voice chunk must use the bundled default reference clip.',
+        );
     }
 
     public function test_per_chunk_voice_override_is_used_instead_of_the_project_voice(): void
@@ -1086,10 +1110,11 @@ class StudioProjectTest extends TestCase
 
         // Re-run the takes migration against the already-generated chunk, as a real
         // deploy would: drop + recreate the table so up()'s backfill runs over the
-        // existing audio (the chunk's audio_path is untouched by the rollback). Three
-        // steps because the takes table is the third-newest migration (the native
-        // presets conversion and the project-seal columns sit on top of it).
-        Artisan::call('migrate:rollback', ['--step' => 3]);
+        // existing audio (the chunk's audio_path is untouched by the rollback). Four
+        // steps because the takes table is the fourth-newest migration (the native
+        // presets conversion, the project-seal columns, and the bundled default
+        // voices sit on top of it).
+        Artisan::call('migrate:rollback', ['--step' => 4]);
         Artisan::call('migrate', ['--force' => true]);
 
         $takes = $chunk->refresh()->takes()->get();

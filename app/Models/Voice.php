@@ -49,19 +49,48 @@ class Voice extends Model
             ?? self::whereKey($voiceId)->first();
     }
 
-    /** Slug of the always-present built-in voice (Chatterbox's native voice). */
+    /**
+     * Slug of the primary built-in voice (the neutral US male default). This is
+     * the one pre-selected in the new-project picker and the canonical fallback.
+     */
     public static function defaultSlug(): string
     {
         return (string) config('tts.default_voice_slug', 'default');
     }
 
+    /** Slug of the built-in female default voice. */
+    public static function femaleDefaultSlug(): string
+    {
+        return (string) config('tts.default_voice_female_slug', 'default-female');
+    }
+
     /**
-     * Whether this is the built-in default voice — seeded at install, protected
-     * from deletion, and used (with no reference clip) when a user has not added
-     * a custom voice.
+     * Slugs of every built-in voice — seeded at install with a bundled reference
+     * clip and protected from deletion in the admin UI.
+     */
+    public static function builtinSlugs(): array
+    {
+        return array_values(array_unique(array_filter([
+            self::defaultSlug(),
+            self::femaleDefaultSlug(),
+        ])));
+    }
+
+    /**
+     * Whether this is the primary built-in default voice — pre-selected in the
+     * new-project picker and used as the canonical default.
      */
     public function isDefault(): bool
     {
         return $this->slug === self::defaultSlug();
+    }
+
+    /**
+     * Whether this is one of the built-in voices (male or female default). These
+     * are seeded at install and cannot be deleted.
+     */
+    public function isBuiltin(): bool
+    {
+        return in_array($this->slug, self::builtinSlugs(), true);
     }
 }

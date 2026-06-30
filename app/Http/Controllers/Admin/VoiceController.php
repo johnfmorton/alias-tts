@@ -137,7 +137,7 @@ class VoiceController extends Controller
 
     public function destroy(Voice $voice): RedirectResponse
     {
-        if ($voice->isDefault()) {
+        if ($voice->isBuiltin()) {
             return redirect()->route('admin.voices.index')
                 ->with('error', 'The built-in default voice can’t be deleted.');
         }
