@@ -6,6 +6,8 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.17.0] - 2026-06-30
+
 ### Added
 - **Seal a project's final and prove it later.** A ready project now has a
   **🔒 Seal as final** button that freezes the current stitched audio as the
