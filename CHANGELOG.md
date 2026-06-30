@@ -6,6 +6,15 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Fixed
+- **Manually re-rolled chunks now get a junk tail auto-trimmed.** With ASR
+  auto-remediation on, a manual re-roll still won't auto-re-roll (you asked for
+  exactly one new take, so it never spends extra generation behind your back) —
+  but a flagged `TAIL`/`TAILNOISE` (junk strictly after the speech) is now
+  precise-trimmed on that take, the same lossless cut a first-generation chunk
+  gets. Previously a manual re-roll skipped remediation entirely, so a long
+  trailing artifact could survive.
+
 ## [0.17.0] - 2026-06-30
 
 ### Added

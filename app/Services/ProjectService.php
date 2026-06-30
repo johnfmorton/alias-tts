@@ -361,12 +361,11 @@ class ProjectService
                     'tail_cov' => $verdict->tailCov,
                 ]);
 
-                // studio_action=auto remediates; a MANUAL reroll never auto-rerolls
-                // again (the user asked for exactly one new take). The Studio path is
-                // interactive, so this usually stays 'log' — the admin re-rolls from
-                // the per-chunk badge.
-                if (! $reroll && $this->asr->studioAction() === 'auto') {
-                    $this->autoRemediate($chunk, $bytes, $verdict);
+                // studio_action=auto remediates. On a MANUAL reroll the user asked
+                // for exactly one new take, so never auto-reroll again — but a junk
+                // TAIL is a lossless post-speech trim, so still apply that.
+                if ($this->asr->studioAction() === 'auto') {
+                    $this->autoRemediate($chunk, $bytes, $verdict, allowReroll: ! $reroll);
                 }
             }
 
@@ -500,7 +499,7 @@ class ProjectService
      * missing content keeping the best take, or precise-trim a junk tail), then
      * record the winning take + what was done as the chunk's selected audio.
      */
-    private function autoRemediate(TtsChunk $chunk, string $bytes, ChunkQualityVerdict $verdict): void
+    private function autoRemediate(TtsChunk $chunk, string $bytes, ChunkQualityVerdict $verdict, bool $allowReroll = true): void
     {
         $project = $chunk->project;
 
@@ -514,7 +513,14 @@ class ProjectService
                 $this->providerSettings($project, $chunk, pinSeed: false),
             ),
             "chunk-{$chunk->id}",
+            $allowReroll,
         );
+
+        // Nothing was applied (a manual re-roll whose defect needs a fresh take,
+        // which we won't force): leave the take the user asked for in place.
+        if ($outcome->action === 'none') {
+            return;
+        }
 
         // A null outcome verdict means a re-roll couldn't be scored (sidecar
         // dropped): keep the new audio but leave the original verdict on the chunk.

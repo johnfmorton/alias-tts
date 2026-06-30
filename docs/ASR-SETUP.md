@@ -222,9 +222,11 @@ flagged chunk/segment during generation — on **both** the editable-project pat
 On the project path the action taken is recorded in the chunk's `asr_report`
 (`action` = `rerolled` / `rerolled_unrecovered` / `trimmed` / `trim_failed`); the
 `/v1` path has no per-segment record, so flagged segments are written to the log
-instead. A **manual** re-roll (the Studio re-roll button) is never auto-remediated —
-it always produces exactly one new take. If the sidecar goes down mid-loop, the
-latest take is kept and generation continues.
+instead. A **manual** re-roll (the Studio re-roll button) is never auto-**re-rolled** —
+you asked for exactly one new take, so it won't spend more Replicate calls behind your
+back. A junk **TAIL / TAILNOISE** on that take *is* still precise-trimmed, though,
+since that's a lossless cut strictly after the speech (no extra generation). If the
+sidecar goes down mid-loop, the latest take is kept and generation continues.
 
 ### Per-path policy: manual in the Studio, automatic on the API
 

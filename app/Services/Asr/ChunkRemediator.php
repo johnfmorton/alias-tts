@@ -92,15 +92,26 @@ class ChunkRemediator
      * trim-only take (TAIL/TAILNOISE), precise-trim at the ASR speech end (no
      * re-roll). A re-rolled take that ends up trim-only is trimmed too.
      *
+     * When $allowReroll is false (a MANUAL re-roll — the user asked for exactly one
+     * fresh take) re-rolling is suppressed: a junk tail is still precise-trimmed
+     * (lossless, strictly after the speech), but a defect that would need a fresh
+     * take is left untouched (action='none').
+     *
      * @param  callable(): string  $resynthesize  produces a fresh take (fresh seed)
      */
-    public function remediate(string $sourceText, string $bytes, ChunkQualityVerdict $verdict, callable $resynthesize, string $label = 'chunk'): RemediationOutcome
+    public function remediate(string $sourceText, string $bytes, ChunkQualityVerdict $verdict, callable $resynthesize, string $label = 'chunk', bool $allowReroll = true): RemediationOutcome
     {
         $needsReroll = array_intersect(self::REROLL_PROBLEMS, $verdict->problems) !== [];
 
         if (! $needsReroll) {
             // Not ok and not reroll-class ⇒ a trimmable tail (TAIL/TAILNOISE) only.
             return $this->trim($bytes, $verdict, 0);
+        }
+
+        if (! $allowReroll) {
+            // Manual re-roll: never auto-re-roll again. The defect sits inside the
+            // speech (not a trimmable tail), so keep the take the user asked for.
+            return new RemediationOutcome($bytes, $verdict, 'none');
         }
 
         $bestBytes = $bytes;
