@@ -812,7 +812,75 @@ function initStudioProject() {
         // longer completed (edited / retuned / failed). It returns on regenerate.
         if (status !== 'completed') setChunkAsrBadge(card, null);
     };
-    const setProjectStatus = (status) => badge(projectStatus, status);
+    // ---- Seal as final ------------------------------------------------------
+    const sealUrl = root.dataset.sealUrl;
+    const verifyBase = root.dataset.verifyBase;
+    const sealBtn = document.getElementById('project-seal');
+    const receiptLink = document.getElementById('project-receipt');
+    const sealBadge = document.getElementById('project-seal-badge');
+    const sealApproverEl = document.getElementById('project-seal-approver');
+    const sealWhenEl = document.getElementById('project-seal-when');
+    const sealHashEl = document.getElementById('project-seal-hash');
+    const sealCopyBtn = document.getElementById('project-seal-copy');
+    let isSealed = sealBadge ? !sealBadge.classList.contains('hidden') : false;
+    // route('verify') is already an absolute URL; append the byte hash as a fragment.
+    const buildVerifyUrl = (hash) => hash ? verifyBase + '#expect=' + hash : '';
+    let verifyUrl = isSealed ? buildVerifyUrl(sealBadge?.dataset.sha256) : '';
+
+    // Toggle hidden + the element's display class together so neither lingers and
+    // overrides the other (see the dirty-badge note above).
+    const showEl = (el, show, displayClass) => {
+        if (!el) return;
+        el.classList.toggle('hidden', !show);
+        if (displayClass) el.classList.toggle(displayClass, show);
+    };
+    // Seal is offered only on a clean (ready) final; the badge + receipt show once
+    // sealed. Any edit clears the seal server-side; this mirrors it in the UI.
+    const reflectSeal = () => {
+        const ready = projectStatus.textContent.trim() === 'ready';
+        if (!ready) isSealed = false; // a stale/draft project is never sealed
+        showEl(sealBtn, ready && !isSealed);
+        showEl(receiptLink, isSealed);
+        showEl(sealBadge, isSealed, 'flex');
+    };
+
+    const setProjectStatus = (status) => { badge(projectStatus, status); reflectSeal(); };
+
+    async function seal() {
+        if (!sealBtn) return;
+        startBusy(sealBtn, 'Sealing…');
+        try {
+            const res = await fetch(sealUrl, {
+                method: 'POST',
+                headers: { 'X-CSRF-TOKEN': csrfToken(), 'Accept': 'application/json' },
+            });
+            if (!res.ok) throw new Error(await errorMessage(res));
+            const data = await res.json();
+            isSealed = true;
+            verifyUrl = data.verify_url || buildVerifyUrl(data.sha256);
+            if (sealBadge) sealBadge.dataset.sha256 = data.sha256;
+            if (sealApproverEl) sealApproverEl.textContent = data.approver ? ' — approved by ' + data.approver : '';
+            if (sealWhenEl) sealWhenEl.textContent = data.sealed_at_human ? ' · ' + data.sealed_at_human : '';
+            if (sealHashEl) sealHashEl.textContent = data.short || '';
+            reflectSeal();
+            setStatus(finalStatus, '✓ Sealed as the approved final.', 'ok');
+        } catch (err) {
+            setStatus(finalStatus, `✗ ${err.message}`, 'error');
+        } finally {
+            endBusy(sealBtn);
+        }
+    }
+
+    sealBtn?.addEventListener('click', seal);
+    sealCopyBtn?.addEventListener('click', async () => {
+        if (!verifyUrl) return;
+        try {
+            await navigator.clipboard.writeText(verifyUrl);
+            setStatus(finalStatus, '✓ Verify link copied.', 'ok');
+        } catch (_) {
+            setStatus(finalStatus, verifyUrl, 'ok');
+        }
+    });
 
     // A chunk is "dirty" while its textarea differs from the last-saved text
     // (data-original). Show an amber badge + border and reveal Revert; warn before
@@ -946,6 +1014,7 @@ function initStudioProject() {
             finalAudio.classList.remove('hidden');
             finalAudio.play().catch(() => {});
             downloadLink.classList.remove('hidden');
+            isSealed = false; // new bytes — the server cleared the seal; offer to re-seal
             setProjectStatus('ready');
             setStatus(finalStatus, '✓ Rebuilt.', 'ok');
         } catch (err) {

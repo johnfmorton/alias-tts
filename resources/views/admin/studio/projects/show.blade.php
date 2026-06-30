@@ -31,6 +31,9 @@
          data-dismiss-url="{{ route('admin.studio.projects.dismiss-failure', $project) }}"
          data-voice-url="{{ route('admin.studio.projects.voice', $project) }}"
          data-insert-url="{{ route('admin.studio.projects.chunks.store', $project) }}"
+         data-seal-url="{{ route('admin.studio.projects.seal', $project) }}"
+         data-receipt-url="{{ route('admin.studio.projects.receipt', $project) }}"
+         data-verify-base="{{ route('verify') }}"
          data-generate-pace-ms="{{ (int) config('tts.studio_generate_pace_ms', 800) }}">
 
         @if($project->origin === 'api_failure')
@@ -74,6 +77,12 @@
                         class="rounded-lg border border-cyan-700/50 bg-cyan-500/10 px-3 py-2 text-sm text-cyan-300 hover:bg-cyan-500/20">⟳ Rebuild final</button>
                 <a id="project-download" href="{{ route('admin.studio.projects.audio', $project) }}" download
                    class="rounded-lg border border-zinc-700 px-3 py-2 text-sm hover:bg-zinc-800 {{ $hasFinal ? '' : 'hidden' }}">⤓ Download</a>
+                <button type="button" id="project-seal"
+                        title="Freeze this final as the approved cut and record who approved it. Editing the project afterward clears the seal."
+                        class="rounded-lg border border-emerald-700/50 bg-emerald-500/10 px-3 py-2 text-sm text-emerald-300 hover:bg-emerald-500/20 {{ ($hasFinal && $project->status->value === 'ready' && ! $project->isSealed()) ? '' : 'hidden' }}">🔒 Seal as final</button>
+                <a id="project-receipt" href="{{ route('admin.studio.projects.receipt', $project) }}" download
+                   title="Download a verifiable receipt (.zip): the final, a provenance report, and an offline verify page."
+                   class="rounded-lg border border-emerald-700/50 px-3 py-2 text-sm text-emerald-300 hover:bg-emerald-500/10 {{ $project->isSealed() ? '' : 'hidden' }}">⤓ Download receipt (.zip)</a>
                 <a href="{{ route('admin.studio.projects.edit', $project) }}"
                    class="rounded-lg border border-zinc-700 px-3 py-2 text-sm hover:bg-zinc-800">↺ Start over</a>
                 <form method="POST" action="{{ route('admin.studio.projects.destroy', $project) }}"
@@ -90,6 +99,15 @@
             <div class="flex items-center justify-between">
                 <h2 class="font-semibold">Final audio</h2>
                 <span id="project-status" class="inline-flex rounded-md border px-2 py-0.5 text-xs {{ $project->status->value === 'ready' ? $chunkStyles['completed'] : ($project->status->value === 'stale' ? $chunkStyles['stale'] : $chunkStyles['pending']) }}">{{ $project->status->value }}</span>
+            </div>
+            {{-- Sealed-final badge: shown once a human approves the cut. Toggled in JS
+                 alongside the seal button (see initStudioProject). --}}
+            <div id="project-seal-badge" data-sha256="{{ $project->final_sha256 }}"
+                 class="mt-3 flex flex-wrap items-center gap-x-3 gap-y-1 rounded-lg border border-emerald-500/30 bg-emerald-500/10 px-3 py-2 text-sm text-emerald-300 {{ $project->isSealed() ? '' : 'hidden' }}">
+                <span class="font-medium">✓ Sealed final<span id="project-seal-approver">{{ $project->isSealed() ? ' — approved by '.$project->sealApprover() : '' }}</span><span id="project-seal-when">{{ $project->isSealed() ? ' · '.optional($project->sealed_at)->toDayDateTimeString() : '' }}</span></span>
+                <span id="project-seal-hash" class="font-mono text-xs text-emerald-400/80">{{ $project->isSealed() ? substr((string) $project->final_sha256, 0, 12) : '' }}</span>
+                <button type="button" id="project-seal-copy"
+                        class="rounded-md border border-emerald-700/50 px-2 py-0.5 text-xs text-emerald-300 hover:bg-emerald-500/20">Copy verify link</button>
             </div>
             <div id="project-final-status" class="mt-2 text-sm text-zinc-400" role="status" aria-live="polite"></div>
             <audio id="project-final-audio" controls class="mt-3 w-full {{ $hasFinal ? '' : 'hidden' }}" @if($hasFinal) src="{{ route('admin.studio.projects.audio', $project) }}" @endif></audio>

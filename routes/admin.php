@@ -68,6 +68,9 @@ Route::prefix('studio')->name('studio.')->group(function () {
         Route::get('/{project}/audio', [StudioProjectController::class, 'finalAudio'])->name('audio');
         Route::post('/{project}/preview', [StudioProjectController::class, 'previewConcat'])->name('preview');
         Route::post('/{project}/rebuild', [StudioProjectController::class, 'rebuild'])->name('rebuild');
+        // Seal the final as the human-approved cut, then download a verifiable receipt zip.
+        Route::post('/{project}/seal', [StudioProjectController::class, 'seal'])->name('seal');
+        Route::get('/{project}/receipt', [StudioProjectController::class, 'receipt'])->name('receipt');
         Route::post('/{project}/chunks', [StudioProjectController::class, 'storeChunk'])->name('chunks.store');
         Route::patch('/{project}/chunks/{chunk}', [StudioProjectController::class, 'updateChunk'])->name('chunks.update');
         Route::patch('/{project}/chunks/{chunk}/voice', [StudioProjectController::class, 'updateChunkVoice'])->name('chunks.voice');

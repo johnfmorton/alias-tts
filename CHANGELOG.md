@@ -6,6 +6,31 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Added
+- **Seal a project's final and prove it later.** A ready project now has a
+  **🔒 Seal as final** button that freezes the current stitched audio as the
+  approved cut: it records who approved it, when, and the SHA-256 of the exact
+  bytes, and snapshots those bytes to an immutable copy (so a later rebuild can't
+  silently change what "approved" pointed at). A **✓ Sealed final** badge shows
+  the approver, date, and short fingerprint, with a "Copy verify link". Any edit,
+  rebuild, voice change, or reset automatically clears the seal so an "approved"
+  claim can never outlive the audio it described.
+- **Downloadable provenance receipt (.zip).** A sealed project can download a
+  self-verifying receipt: the final audio, a human-readable `receipt.html`
+  (per-chunk script text, **per-chunk voice**, seed, takes, QA, and source-audio
+  hashes), a machine-readable `manifest.json`, and an offline verify page.
+- **Drag-to-verify page** at `/verify` (and bundled in the receipt): drop the
+  audio file and it confirms — entirely on your device, no upload, works offline
+  from `file://` — whether it's the untouched approved final (✅) or has been
+  edited (❌). The expected fingerprint travels in the link, never the request.
+
+### Changed
+- **Audio downloads are named by content fingerprint.** The final-audio and
+  receipt downloads now include the first 8 characters of the audio's SHA-256 in
+  the filename (e.g. `my-project-3f9a1c08.mp3`), so each distinct build downloads
+  under its own name instead of the operating system appending ` (1) (2) …`. The
+  tag is the same short code shown by the seal badge and verify page.
+
 ## [0.16.0] - 2026-06-29
 
 ### Added

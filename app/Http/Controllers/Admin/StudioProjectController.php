@@ -9,6 +9,7 @@ use App\Models\TtsChunk;
 use App\Models\TtsChunkTake;
 use App\Models\TtsProject;
 use App\Models\Voice;
+use App\Services\ProjectExportService;
 use App\Services\ProjectService;
 use App\Services\Pronunciation\PronunciationDetector;
 use App\Services\Pronunciation\PronunciationDictionary;
@@ -38,6 +39,7 @@ class StudioProjectController extends Controller
 
     public function __construct(
         private readonly ProjectService $projects,
+        private readonly ProjectExportService $export,
         private readonly VoiceSettingsResolver $settingsResolver,
         private readonly TextNormalizer $normalizer,
         private readonly PronunciationDetector $detector,
@@ -648,6 +650,60 @@ class StudioProjectController extends Controller
         return response()->json(['ok' => true]);
     }
 
+    /**
+     * Seal the current final as the approved cut: record the approver, the moment,
+     * and the SHA-256 of a frozen snapshot of the bytes. AJAX (JSON) like rebuild().
+     */
+    public function seal(Request $request, TtsProject $project): JsonResponse
+    {
+        try {
+            $this->projects->seal($project, $request->user());
+        } catch (RuntimeException $e) {
+            return response()->json(['message' => $e->getMessage()], 422);
+        } catch (Throwable $e) {
+            report($e);
+
+            return response()->json(['message' => 'Seal failed: '.$e->getMessage()], 502);
+        }
+
+        return response()->json([
+            'ok' => true,
+            'sha256' => $project->final_sha256,
+            'short' => substr((string) $project->final_sha256, 0, 12),
+            'sealed_at' => optional($project->sealed_at)->toIso8601String(),
+            'sealed_at_human' => optional($project->sealed_at)->toDayDateTimeString(),
+            'approver' => $project->sealApprover(),
+            'receipt_url' => route('admin.studio.projects.receipt', $project),
+            'verify_url' => route('verify').'#expect='.$project->final_sha256,
+        ]);
+    }
+
+    /**
+     * Download the verifiable receipt .zip (final + provenance + offline verifier)
+     * for a sealed project.
+     */
+    public function receipt(TtsProject $project): Response
+    {
+        try {
+            $zip = $this->export->buildReceiptZip($project);
+        } catch (RuntimeException $e) {
+            return response()->json(['message' => $e->getMessage()], 422);
+        } catch (Throwable $e) {
+            report($e);
+
+            return response()->json(['message' => 'Receipt failed: '.$e->getMessage()], 502);
+        }
+
+        // Same content fingerprint as the audio download, so the receipt for a
+        // given approved cut has a stable, distinct name.
+        $fingerprint = substr((string) $project->final_sha256, 0, 8);
+        $filename = Str::slug($project->title ?: 'project').'-sealed-'.$fingerprint.'.zip';
+
+        return response($zip, 200)
+            ->header('Content-Type', 'application/zip')
+            ->header('Content-Disposition', 'attachment; filename="'.$filename.'"');
+    }
+
     public function finalAudio(Request $request, TtsProject $project): Response
     {
         $bytes = $this->projects->finalAudioBytes($project);
@@ -656,7 +712,11 @@ class StudioProjectController extends Controller
         }
 
         $ext = pathinfo((string) $project->final_audio_path, PATHINFO_EXTENSION) ?: 'mp3';
-        $filename = Str::slug($project->title ?: 'project').'.'.$ext;
+        // Tag the filename with the first 8 chars of the audio's SHA-256 so each
+        // distinct build downloads under its own name (no OS "(1) (2)" churn) —
+        // and the tag is the same fingerprint the verify page / seal show.
+        $fingerprint = substr(hash('sha256', $bytes), 0, 8);
+        $filename = Str::slug($project->title ?: 'project').'-'.$fingerprint.'.'.$ext;
 
         // Range-aware so iOS Safari can seek the final player instead of showing
         // "Live Broadcast" with a dead scrubber (see ServesRangedAudio).

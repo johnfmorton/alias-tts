@@ -9,6 +9,7 @@ use App\Models\Speech;
 use App\Models\TtsChunk;
 use App\Models\TtsChunkTake;
 use App\Models\TtsProject;
+use App\Models\User;
 use App\Models\Voice;
 use App\Services\Asr\AsrClient;
 use App\Services\Asr\ChunkQualityVerdict;
@@ -223,6 +224,10 @@ class ProjectService
      */
     public function resetFromText(TtsProject $project, string $text, array $pronunciationMap = []): TtsProject
     {
+        // Re-chunking throws the old audio away — un-approve first (the snapshot is
+        // also removed by the directory wipe below).
+        $this->clearSeal($project);
+
         $normalized = $this->substituter->apply($this->normalizer->normalize($text), $pronunciationMap)['text'];
         $segments = $this->segmentText($normalized);
 
@@ -707,6 +712,10 @@ class ProjectService
         $path = config('tts.storage_path').'/projects/'.$project->id.'/final.'.$ext;
         Storage::disk($this->disk())->put($path, $bytes);
 
+        // New bytes replace whatever was approved — drop the seal so it must be
+        // re-approved deliberately. The project lands Ready + unsealed.
+        $this->clearSeal($project);
+
         $project->update([
             'final_audio_path' => $path,
             'mime_type' => $mime,
@@ -787,6 +796,93 @@ class ProjectService
         return Storage::disk($this->disk())->get($project->final_audio_path);
     }
 
+    /** The frozen, approved snapshot bytes (what the receipt ships), or null. */
+    public function sealedAudioBytes(TtsProject $project): ?string
+    {
+        if (! $project->sealed_audio_path || ! Storage::disk($this->disk())->exists($project->sealed_audio_path)) {
+            return null;
+        }
+
+        return Storage::disk($this->disk())->get($project->sealed_audio_path);
+    }
+
+    /**
+     * Seal the current final as the human-approved cut: snapshot the exact bytes
+     * to an immutable path and record their SHA-256 + the approver + the moment.
+     * Requires a Ready project with a final (we seal what was approved, never
+     * auto-rebuild). Re-sealing identical bytes just refreshes the stamp.
+     */
+    public function seal(TtsProject $project, User $approver): TtsProject
+    {
+        if ($project->status !== ProjectStatus::Ready) {
+            throw new RuntimeException('Only a ready project can be sealed — rebuild the final first.');
+        }
+
+        $bytes = $this->finalAudioBytes($project);
+        if ($bytes === null) {
+            throw new RuntimeException('This project has no final audio to seal.');
+        }
+
+        $sha = hash('sha256', $bytes);
+
+        // Idempotent: re-sealing the same bytes just re-stamps who/when.
+        if ($project->isSealed() && $project->final_sha256 === $sha) {
+            $project->update([
+                'sealed_at' => now(),
+                'sealed_by_id' => $approver->id,
+                'sealed_by_name' => $approver->name,
+                'sealed_by_email' => $approver->email,
+            ]);
+
+            return $project->refresh();
+        }
+
+        // Clear any prior seal (and its snapshot) before writing the new one.
+        $this->clearSeal($project);
+
+        $ext = pathinfo((string) $project->final_audio_path, PATHINFO_EXTENSION) ?: 'mp3';
+        $path = config('tts.storage_path').'/projects/'.$project->id.'/sealed/'.$sha.'.'.$ext;
+        Storage::disk($this->disk())->put($path, $bytes);
+
+        $project->update([
+            'final_sha256' => $sha,
+            'final_bytes' => strlen($bytes),
+            'sealed_audio_path' => $path,
+            'sealed_at' => now(),
+            'sealed_by_id' => $approver->id,
+            'sealed_by_name' => $approver->name,
+            'sealed_by_email' => $approver->email,
+        ]);
+
+        return $project->refresh();
+    }
+
+    /**
+     * Drop a project's seal: delete the frozen snapshot and null the seal columns.
+     * A no-op when unsealed. Called whenever the audio changes (edit/rebuild/reset)
+     * so a stale "approved" claim can never outlive the bytes it pointed at.
+     */
+    private function clearSeal(TtsProject $project): void
+    {
+        if ($project->sealed_at === null) {
+            return;
+        }
+
+        if ($project->sealed_audio_path) {
+            Storage::disk($this->disk())->delete($project->sealed_audio_path);
+        }
+
+        $project->update([
+            'final_sha256' => null,
+            'final_bytes' => null,
+            'sealed_audio_path' => null,
+            'sealed_at' => null,
+            'sealed_by_id' => null,
+            'sealed_by_name' => null,
+            'sealed_by_email' => null,
+        ]);
+    }
+
     /** Delete a project, its chunks (cascade), and all of its stored audio. */
     public function deleteProject(TtsProject $project): void
     {
@@ -837,6 +933,11 @@ class ProjectService
      */
     private function markFinalOutdated(TtsProject $project): void
     {
+        // A chunk change un-approves the final — clear the seal unconditionally,
+        // before the status guard below (which early-returns when there's no final
+        // yet or the project is already stale).
+        $this->clearSeal($project);
+
         if ($project->final_audio_path && $project->status !== ProjectStatus::Stale) {
             $project->update(['status' => ProjectStatus::Stale]);
         }

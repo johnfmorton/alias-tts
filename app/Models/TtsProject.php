@@ -39,6 +39,13 @@ class TtsProject extends Model
         'final_audio_path',
         'mime_type',
         'expires_at',
+        'final_sha256',
+        'final_bytes',
+        'sealed_audio_path',
+        'sealed_at',
+        'sealed_by_id',
+        'sealed_by_name',
+        'sealed_by_email',
     ];
 
     protected $casts = [
@@ -47,6 +54,9 @@ class TtsProject extends Model
         'seed' => 'integer',
         'failed_chunk_index' => 'integer',
         'expires_at' => 'datetime',
+        'final_bytes' => 'integer',
+        'sealed_at' => 'datetime',
+        'sealed_by_id' => 'integer',
     ];
 
     public function voice(): BelongsTo
@@ -68,5 +78,21 @@ class TtsProject extends Model
     public function isFullyGenerated(): bool
     {
         return ! $this->chunks()->where('status', '!=', ChunkStatus::Completed->value)->exists();
+    }
+
+    /**
+     * Whether a human has sealed this final as the approved cut. A seal records
+     * the approver, the moment, and the SHA-256 of the frozen audio snapshot; any
+     * later edit/rebuild clears it (see ProjectService::clearSeal).
+     */
+    public function isSealed(): bool
+    {
+        return $this->sealed_at !== null && $this->final_sha256 !== null;
+    }
+
+    /** Human label for who approved the seal (name preferred, email fallback). */
+    public function sealApprover(): ?string
+    {
+        return $this->sealed_by_name ?: $this->sealed_by_email;
     }
 }
