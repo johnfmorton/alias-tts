@@ -2,7 +2,7 @@
     "$schema": "https://getcomposer.org/schema.json",
     "name": "johnfmorton/bespoken-tts-service",
     "type": "project",
-    "version": "0.17.0",
+    "version": "0.17.1",
     "description": "Self-hosted, ElevenLabs-compatible text-to-speech server — a drop-in voice backend for the Bespoken Craft CMS plugin (Chatterbox on Replicate).",
     "keywords": ["tts", "text-to-speech", "elevenlabs", "chatterbox", "replicate", "voice-cloning", "self-hosted", "bespoken", "laravel"],
     "license": "MIT",

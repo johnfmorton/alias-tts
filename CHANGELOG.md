@@ -6,6 +6,8 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.17.1] - 2026-06-30
+
 ### Fixed
 - **Manually re-rolled chunks now get a junk tail auto-trimmed.** With ASR
   auto-remediation on, a manual re-roll still won't auto-re-roll (you asked for
