@@ -6,6 +6,8 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.20.0] - 2026-07-01
+
 ### Security
 - **Studio projects are now private to their owner.** Opening the control
   panel to every active user (0.19.0) had left Studio unscoped: any signed-in
