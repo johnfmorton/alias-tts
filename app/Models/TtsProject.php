@@ -4,6 +4,7 @@ namespace App\Models;
 
 use App\Enums\ChunkStatus;
 use App\Enums\ProjectStatus;
+use App\Policies\TtsProjectPolicy;
 use Illuminate\Database\Eloquent\Concerns\HasUuids;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
@@ -23,6 +24,7 @@ class TtsProject extends Model
 
     protected $fillable = [
         'api_key_id',
+        'user_id',
         'origin',
         'source_speech_id',
         'title',
@@ -50,6 +52,7 @@ class TtsProject extends Model
 
     protected $casts = [
         'settings' => 'array',
+        'user_id' => 'integer',
         'status' => ProjectStatus::class,
         'seed' => 'integer',
         'failed_chunk_index' => 'integer',
@@ -67,6 +70,12 @@ class TtsProject extends Model
     public function apiKey(): BelongsTo
     {
         return $this->belongsTo(ApiKey::class, 'api_key_id');
+    }
+
+    /** The owner; see {@see TtsProjectPolicy} for who may open it. */
+    public function user(): BelongsTo
+    {
+        return $this->belongsTo(User::class, 'user_id');
     }
 
     public function chunks(): HasMany

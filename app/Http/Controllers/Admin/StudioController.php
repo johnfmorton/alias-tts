@@ -47,11 +47,18 @@ class StudioController extends Controller
         private readonly VoiceSettingsResolver $settingsResolver,
     ) {}
 
-    public function index(): View
+    public function index(Request $request): View
     {
+        $user = $request->user();
+
         return view('admin.studio.index', [
             'voices' => Voice::orderBy('name')->get(),
-            'projects' => TtsProject::withCount('chunks')->latest()->get(),
+            // Projects are personal; a SuperAdmin sees everyone's, labeled by owner.
+            'projects' => TtsProject::withCount('chunks')
+                ->when(! $user->isSuperAdmin(), fn ($q) => $q->where('user_id', $user->id))
+                ->when($user->isSuperAdmin(), fn ($q) => $q->with('user:id,name'))
+                ->latest()
+                ->get(),
             'presets' => TuningPreset::orderBy('name')->get(),
         ]);
     }

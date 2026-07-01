@@ -96,33 +96,39 @@ Route::prefix('studio')->name('studio.')->group(function () {
         Route::post('/review', [StudioProjectController::class, 'review'])->name('review');
         Route::post('/apply', [StudioProjectController::class, 'applyAndStore'])->name('apply');
         Route::post('/', [StudioProjectController::class, 'store'])->name('store');
-        Route::get('/{project}', [StudioProjectController::class, 'show'])->name('show');
-        Route::patch('/{project}', [StudioProjectController::class, 'update'])->name('update');
-        Route::post('/{project}/dismiss-failure', [StudioProjectController::class, 'dismissFailure'])->name('dismiss-failure');
-        Route::patch('/{project}/voice', [StudioProjectController::class, 'updateVoice'])->name('voice');
-        Route::delete('/{project}', [StudioProjectController::class, 'destroy'])->name('destroy');
-        Route::get('/{project}/edit', [StudioProjectController::class, 'edit'])->name('edit');
-        Route::post('/{project}/reset', [StudioProjectController::class, 'reset'])->name('reset');
-        Route::get('/{project}/audio', [StudioProjectController::class, 'finalAudio'])->name('audio');
-        Route::post('/{project}/preview', [StudioProjectController::class, 'previewConcat'])->name('preview');
-        Route::post('/{project}/rebuild', [StudioProjectController::class, 'rebuild'])->name('rebuild');
-        // Seal the final as the human-approved cut, then download a verifiable receipt zip.
-        Route::post('/{project}/seal', [StudioProjectController::class, 'seal'])->name('seal');
-        Route::get('/{project}/receipt', [StudioProjectController::class, 'receipt'])->name('receipt');
-        Route::post('/{project}/chunks', [StudioProjectController::class, 'storeChunk'])->name('chunks.store');
-        Route::patch('/{project}/chunks/{chunk}', [StudioProjectController::class, 'updateChunk'])->name('chunks.update');
-        Route::patch('/{project}/chunks/{chunk}/voice', [StudioProjectController::class, 'updateChunkVoice'])->name('chunks.voice');
-        Route::patch('/{project}/chunks/{chunk}/tuning', [StudioProjectController::class, 'tuneChunk'])->name('chunks.tuning');
-        Route::post('/{project}/chunks/{chunk}/preview-tuning', [StudioProjectController::class, 'previewChunkTuning'])->name('chunks.preview-tuning');
-        Route::post('/{project}/chunks/{chunk}/use-preview', [StudioProjectController::class, 'useChunkPreview'])->name('chunks.use-preview');
-        Route::post('/{project}/chunks/{chunk}/generate', [StudioProjectController::class, 'generateChunk'])->name('chunks.generate');
-        Route::post('/{project}/chunks/{chunk}/reroll', [StudioProjectController::class, 'rerollChunk'])->name('chunks.reroll');
-        Route::get('/{project}/chunks/{chunk}/audio', [StudioProjectController::class, 'chunkAudio'])->name('chunks.audio');
-        // Take history: every render is kept; the user can audition, re-select, or delete a take.
-        Route::get('/{project}/chunks/{chunk}/takes', [StudioProjectController::class, 'listTakes'])->name('chunks.takes.index');
-        Route::get('/{project}/chunks/{chunk}/takes/{take}/audio', [StudioProjectController::class, 'takeAudio'])->name('chunks.takes.audio');
-        Route::post('/{project}/chunks/{chunk}/takes/{take}/select', [StudioProjectController::class, 'selectTake'])->name('chunks.takes.select');
-        Route::delete('/{project}/chunks/{chunk}/takes/{take}', [StudioProjectController::class, 'deleteTake'])->name('chunks.takes.delete');
+
+        // Projects are personal: every {project} route requires the owner (or a
+        // SuperAdmin) — TtsProjectPolicy::access. Chunk/take mismatches inside a
+        // project are separately 404'd in the controller.
+        Route::middleware('can:access,project')->group(function () {
+            Route::get('/{project}', [StudioProjectController::class, 'show'])->name('show');
+            Route::patch('/{project}', [StudioProjectController::class, 'update'])->name('update');
+            Route::post('/{project}/dismiss-failure', [StudioProjectController::class, 'dismissFailure'])->name('dismiss-failure');
+            Route::patch('/{project}/voice', [StudioProjectController::class, 'updateVoice'])->name('voice');
+            Route::delete('/{project}', [StudioProjectController::class, 'destroy'])->name('destroy');
+            Route::get('/{project}/edit', [StudioProjectController::class, 'edit'])->name('edit');
+            Route::post('/{project}/reset', [StudioProjectController::class, 'reset'])->name('reset');
+            Route::get('/{project}/audio', [StudioProjectController::class, 'finalAudio'])->name('audio');
+            Route::post('/{project}/preview', [StudioProjectController::class, 'previewConcat'])->name('preview');
+            Route::post('/{project}/rebuild', [StudioProjectController::class, 'rebuild'])->name('rebuild');
+            // Seal the final as the human-approved cut, then download a verifiable receipt zip.
+            Route::post('/{project}/seal', [StudioProjectController::class, 'seal'])->name('seal');
+            Route::get('/{project}/receipt', [StudioProjectController::class, 'receipt'])->name('receipt');
+            Route::post('/{project}/chunks', [StudioProjectController::class, 'storeChunk'])->name('chunks.store');
+            Route::patch('/{project}/chunks/{chunk}', [StudioProjectController::class, 'updateChunk'])->name('chunks.update');
+            Route::patch('/{project}/chunks/{chunk}/voice', [StudioProjectController::class, 'updateChunkVoice'])->name('chunks.voice');
+            Route::patch('/{project}/chunks/{chunk}/tuning', [StudioProjectController::class, 'tuneChunk'])->name('chunks.tuning');
+            Route::post('/{project}/chunks/{chunk}/preview-tuning', [StudioProjectController::class, 'previewChunkTuning'])->name('chunks.preview-tuning');
+            Route::post('/{project}/chunks/{chunk}/use-preview', [StudioProjectController::class, 'useChunkPreview'])->name('chunks.use-preview');
+            Route::post('/{project}/chunks/{chunk}/generate', [StudioProjectController::class, 'generateChunk'])->name('chunks.generate');
+            Route::post('/{project}/chunks/{chunk}/reroll', [StudioProjectController::class, 'rerollChunk'])->name('chunks.reroll');
+            Route::get('/{project}/chunks/{chunk}/audio', [StudioProjectController::class, 'chunkAudio'])->name('chunks.audio');
+            // Take history: every render is kept; the user can audition, re-select, or delete a take.
+            Route::get('/{project}/chunks/{chunk}/takes', [StudioProjectController::class, 'listTakes'])->name('chunks.takes.index');
+            Route::get('/{project}/chunks/{chunk}/takes/{take}/audio', [StudioProjectController::class, 'takeAudio'])->name('chunks.takes.audio');
+            Route::post('/{project}/chunks/{chunk}/takes/{take}/select', [StudioProjectController::class, 'selectTake'])->name('chunks.takes.select');
+            Route::delete('/{project}/chunks/{chunk}/takes/{take}', [StudioProjectController::class, 'deleteTake'])->name('chunks.takes.delete');
+        });
     });
 });
 

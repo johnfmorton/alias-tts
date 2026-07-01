@@ -24,7 +24,7 @@
                     <li class="flex items-center justify-between gap-3 px-5 py-3">
                         <a href="{{ route('admin.studio.projects.show', $project) }}" class="min-w-0 flex-1">
                             <div class="truncate font-medium hover:text-cyan-300">{{ $project->title }}</div>
-                            <div class="text-xs text-zinc-500">{{ $project->chunks_count }} chunk(s) · updated {{ $project->updated_at->diffForHumans() }}</div>
+                            <div class="text-xs text-zinc-500">{{ $project->chunks_count }} chunk(s) · updated {{ $project->updated_at->diffForHumans() }}@if(auth()->user()->isSuperAdmin() && $project->relationLoaded('user') && $project->user) · {{ $project->user->name }}@endif</div>
                         </a>
                         @if($project->origin === 'api_failure')
                             <span class="inline-flex shrink-0 rounded-md border border-red-500/30 bg-red-500/10 px-2 py-0.5 text-xs text-red-300" title="{{ $project->failure_reason }}">API failure</span>

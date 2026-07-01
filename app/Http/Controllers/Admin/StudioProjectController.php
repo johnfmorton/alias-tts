@@ -184,6 +184,7 @@ class StudioProjectController extends Controller
             outputFormat: config('tts.default_output_format'),
             seed: $request->filled('seed') ? (int) $request->input('seed') : ($voice->settings['seed'] ?? null),
             pronunciationMap: $pronunciationMap,
+            userId: $request->user()?->id,
         );
     }
 

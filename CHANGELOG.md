@@ -6,6 +6,16 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Security
+- **Studio projects are now private to their owner.** Opening the control
+  panel to every active user (0.19.0) had left Studio unscoped: any signed-in
+  user could list, open, edit, regenerate, seal, or delete anyone's projects.
+  Every project now records an owner — panel projects get the signed-in user,
+  API-created projects the API key's owner, and existing rows are backfilled
+  by the migration — and every project route requires the owner (or a
+  SuperAdmin). The Studio list shows only your own projects; a SuperAdmin
+  still sees everyone's, labeled by owner.
+
 ## [0.19.0] - 2026-07-01
 
 ### Added

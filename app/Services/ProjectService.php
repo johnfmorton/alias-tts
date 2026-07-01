@@ -70,12 +70,16 @@ class ProjectService
         ?int $seed,
         ?ApiKey $apiKey = null,
         array $pronunciationMap = [],
+        ?int $userId = null,
     ): TtsProject {
         $normalized = $this->substituter->apply($this->normalizer->normalize($text), $pronunciationMap)['text'];
         $segments = $this->segmentText($normalized);
 
         $project = TtsProject::create([
             'api_key_id' => $apiKey?->id,
+            // Owner: the signed-in panel user, or the API key's owner. Projects
+            // are personal (TtsProjectPolicy) — never leave this null on create.
+            'user_id' => $userId ?? $apiKey?->user_id,
             'title' => $title !== '' ? $title : 'Untitled project',
             'voice_id' => $voice->id,
             'settings' => $settings,
@@ -154,6 +158,7 @@ class ProjectService
 
         $project = TtsProject::create([
             'api_key_id' => $speech->apiKey?->id,
+            'user_id' => $speech->apiKey?->user_id,
             'origin' => 'api',
             'source_speech_id' => $speech->id,
             'title' => 'API generation'.($snippet !== '' ? ': '.$snippet : ''),
