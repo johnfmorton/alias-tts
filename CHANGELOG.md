@@ -47,6 +47,11 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   accounts are signed out on their next request. This is the multi-user access
   model the Users screen manages — the two roles (User and SuperAdmin) map onto
   the existing `is_super_admin` flag, so there is no separate roles table.
+- **API keys are strictly per-user.** On the dashboard and the API Keys page each
+  user sees, resets, and manages only their own connection key — a keyless user no
+  longer inherits a shared or legacy key, and nobody can rotate or delete someone
+  else's. Any pre-existing unowned keys are reassigned to the primary admin on
+  upgrade.
 
 ## [0.18.0] - 2026-07-01
 

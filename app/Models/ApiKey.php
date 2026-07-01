@@ -38,25 +38,16 @@ class ApiKey extends Model
     }
 
     /**
-     * The active key to surface as a user's connection key (Dashboard).
-     * Prefers a key the user owns; falls back to a legacy unowned key so the
-     * single-admin installs that predate per-user ownership still show theirs.
+     * The signed-in user's own active connection key (most recent), or null.
+     * Strictly per-user: there is NO cross-user or unowned fallback, so one user
+     * never sees another's — or a legacy shared — key. Legacy unowned keys are
+     * reassigned to the primary admin by migration, so `null` here means the user
+     * simply hasn't created a key yet (the dashboard prompts them to).
      */
-    public static function resolveForUser(?int $userId): ?self
+    public static function ownedActiveFor(int $userId): ?self
     {
-        if ($userId !== null) {
-            $owned = self::where('is_active', true)
-                ->where('user_id', $userId)
-                ->orderByDesc('created_at')
-                ->first();
-
-            if ($owned) {
-                return $owned;
-            }
-        }
-
         return self::where('is_active', true)
-            ->whereNull('user_id')
+            ->where('user_id', $userId)
             ->orderByDesc('created_at')
             ->first();
     }

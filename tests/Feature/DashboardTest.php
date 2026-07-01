@@ -165,7 +165,7 @@ class DashboardTest extends TestCase
     public function test_admin_can_regenerate_an_api_key(): void
     {
         $admin = $this->admin();
-        $key = ApiKey::generate('rotate-me', 100);
+        $key = ApiKey::generate('rotate-me', 100, $admin->id);
         $old = $key->key;
 
         $this->actingAs($admin)->post(route('admin.api-keys.regenerate', $key))
@@ -206,16 +206,18 @@ class DashboardTest extends TestCase
             ->assertStatus(401);
     }
 
-    public function test_reset_claims_a_legacy_unowned_key_for_the_current_user(): void
+    public function test_reset_never_touches_an_unowned_or_shared_key(): void
     {
+        // Keys are strictly per-user now: a user with no key of their own can't reset
+        // (or silently claim) a legacy unowned key — it's left untouched.
         $admin = $this->admin();
         $legacy = ApiKey::generate('legacy', null, null);
-        $this->assertNull($legacy->user_id);
 
         $this->actingAs($admin)->post(route('admin.dashboard.reset-key'))
-            ->assertRedirect(route('admin.dashboard'));
+            ->assertRedirect(route('admin.dashboard'))
+            ->assertSessionHas('error');
 
-        $this->assertSame($admin->id, $legacy->fresh()->user_id);
+        $this->assertNull($legacy->fresh()->user_id);
     }
 
     public function test_reset_only_touches_the_current_users_own_key(): void
@@ -241,17 +243,18 @@ class DashboardTest extends TestCase
             ->assertSessionHas('error');
     }
 
-    public function test_resolve_for_user_prefers_an_owned_key_over_a_legacy_one(): void
+    public function test_owned_active_for_returns_only_the_users_own_key(): void
     {
         $admin = $this->admin();
-        $legacy = ApiKey::generate('legacy', null, null);
+        ApiKey::generate('legacy', null, null);
         $owned = ApiKey::generate('owned', null, $admin->id);
 
-        $this->assertSame($owned->id, ApiKey::resolveForUser($admin->id)->id);
+        $this->assertSame($owned->id, ApiKey::ownedActiveFor($admin->id)->id);
 
-        // A user with no key of their own falls back to the legacy unowned key.
+        // A different user with no key of their own gets NOTHING — never the shared
+        // or legacy key. (This is the cross-user leak we're preventing.)
         $other = $this->admin();
-        $this->assertSame($legacy->id, ApiKey::resolveForUser($other->id)->id);
+        $this->assertNull(ApiKey::ownedActiveFor($other->id));
     }
 
     public function test_dashboard_shows_the_resolved_key_and_a_reset_control(): void

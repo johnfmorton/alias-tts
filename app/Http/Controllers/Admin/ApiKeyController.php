@@ -10,9 +10,13 @@ use Illuminate\View\View;
 
 class ApiKeyController extends Controller
 {
-    public function index(): View
+    public function index(Request $request): View
     {
-        $apiKeys = ApiKey::withCount('speeches')->orderByDesc('created_at')->get();
+        // Only your own keys — keys are personal, never shared or cross-user.
+        $apiKeys = $request->user()->apiKeys()
+            ->withCount('speeches')
+            ->orderByDesc('created_at')
+            ->get();
 
         return view('admin.api-keys.index', compact('apiKeys'));
     }
@@ -40,6 +44,7 @@ class ApiKeyController extends Controller
 
     public function toggle(ApiKey $apiKey): RedirectResponse
     {
+        $this->ensureOwned($apiKey);
         $apiKey->update(['is_active' => ! $apiKey->is_active]);
 
         return redirect()->route('admin.api-keys.index')
@@ -48,6 +53,7 @@ class ApiKeyController extends Controller
 
     public function regenerate(ApiKey $apiKey): RedirectResponse
     {
+        $this->ensureOwned($apiKey);
         $apiKey->rotate();
 
         return redirect()->route('admin.api-keys.index')
@@ -57,9 +63,16 @@ class ApiKeyController extends Controller
 
     public function destroy(ApiKey $apiKey): RedirectResponse
     {
+        $this->ensureOwned($apiKey);
         $apiKey->delete();
 
         return redirect()->route('admin.api-keys.index')
             ->with('success', 'API key deleted.');
+    }
+
+    /** A key belongs to exactly one user; nobody else may toggle, rotate, or delete it. */
+    private function ensureOwned(ApiKey $apiKey): void
+    {
+        abort_unless($apiKey->user_id === auth()->id(), 403);
     }
 }

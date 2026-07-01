@@ -14,18 +14,22 @@ class DashboardController extends Controller
 {
     public function index(Request $request): View
     {
+        $user = $request->user();
         $voices = Voice::orderBy('name')->get();
+        $keyIds = $user->apiKeys()->pluck('id');
 
         $stats = [
             'voices' => $voices->count(),
-            'apiKeys' => ApiKey::count(),
-            'speeches' => Speech::count(),
+            // Per-user: your own keys and your own generations, not the whole server's.
+            'apiKeys' => $keyIds->count(),
+            'speeches' => Speech::whereIn('api_key_id', $keyIds)->count(),
         ];
 
-        // Copy-paste connection details for the Bespoken Craft plugin.
+        // Copy-paste connection details for the Bespoken Craft plugin. The key is the
+        // user's OWN key (null if they haven't created one — the view prompts them).
         $connect = [
             'baseUrl' => rtrim((string) config('app.url'), '/'),
-            'apiKey' => optional(ApiKey::resolveForUser($request->user()?->id))->key,
+            'apiKey' => optional(ApiKey::ownedActiveFor($user->id))->key,
             'voiceIds' => $voices->pluck('slug')->all(),
         ];
 
@@ -33,24 +37,19 @@ class DashboardController extends Controller
     }
 
     /**
-     * Rotate the connection key shown on the dashboard — for when it leaks.
-     * Resolves the current user's key server-side (so one user can't reset
-     * another's), and claims a legacy unowned key for them as it rotates so
-     * future resets stay owner-scoped. The previous value stops working at once.
+     * Rotate the current user's own connection key — for when it leaks. Scoped to
+     * their key server-side, so one user can never reset another's. The previous
+     * value stops working at once.
      */
     public function resetApiKey(Request $request): RedirectResponse
     {
-        $userId = $request->user()?->id;
-        $apiKey = ApiKey::resolveForUser($userId);
+        $apiKey = ApiKey::ownedActiveFor($request->user()->id);
 
         if (! $apiKey) {
             return redirect()->route('admin.dashboard')
                 ->with('error', 'No active API key to reset — create one on the API Keys page first.');
         }
 
-        if ($apiKey->user_id === null && $userId !== null) {
-            $apiKey->user_id = $userId;
-        }
         $apiKey->rotate();
 
         return redirect()->route('admin.dashboard')
