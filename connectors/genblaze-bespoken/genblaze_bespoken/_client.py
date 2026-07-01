@@ -90,6 +90,27 @@ class BespokenClient:
             resp.raise_for_status()
             return TtsResult(audio=resp.content, content_type=resp.headers.get("content-type", "audio/mpeg"))
 
+    # --- Live progress (best-effort) ---------------------------------------
+
+    def report_progress(self, run_id: str, step: str, detail: str = "") -> None:
+        """Ping the Studio panel with the stage the run just entered.
+
+        Fire-and-forget: every failure (panel closed, run expired, network) is
+        swallowed and short-timed so progress reporting can never break or
+        meaningfully slow a real ``/run``.
+        """
+        if not run_id:
+            return
+        try:
+            with self._http(internal=True) as client:
+                client.post(
+                    "/v1/internal/genblaze/progress",
+                    json={"run_id": run_id, "step": step, "detail": detail},
+                    timeout=5.0,
+                )
+        except Exception:  # noqa: BLE001 — progress is informational, never fatal
+            pass
+
     # --- Posture B: pipeline primitives ------------------------------------
 
     def chunk(self, text: str) -> list[dict]:

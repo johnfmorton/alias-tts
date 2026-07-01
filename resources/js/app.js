@@ -1635,6 +1635,25 @@ function initGenblaze() {
             }
         }
 
+        // The sealed final deliverable — download via the app proxy (works on a
+        // private bucket) with a friendly, hash-stamped filename.
+        const dl = document.getElementById('gb-download');
+        if (dl) {
+            const src = data.final_play_url || data.final_url;
+            if (src) {
+                dl.href = data.final_play_url
+                    ? data.final_play_url + (data.final_play_url.includes('?') ? '&' : '?') + 'download=1'
+                    : data.final_url;
+                const hash8 = (data.final_manifest_hash || '').slice(0, 8);
+                const ext = (data.final_url || '').toLowerCase().endsWith('.wav') ? 'wav' : 'mp3';
+                dl.setAttribute('download', `bespoken-sealed-final${hash8 ? '-' + hash8 : ''}.${ext}`);
+                dl.className = 'mt-2 inline-flex items-center gap-1.5 rounded-md border border-emerald-500/30 bg-emerald-500/10 px-2.5 py-1 text-xs font-medium text-emerald-300 hover:bg-emerald-500/20';
+            } else {
+                dl.className = 'hidden';
+                dl.removeAttribute('href');
+            }
+        }
+
         chunksEl.replaceChildren();
         (data.chunks || []).forEach((c) => {
             const attempts = c.attempts ?? 1;
@@ -1664,9 +1683,127 @@ function initGenblaze() {
 
     // Poll the run's status URL until it completes or fails. The orchestration
     // runs in a queued job, so this can take minutes without any HTTP timeout.
-    const POLL_MS = 2500;
+    const POLL_MS = 1200; // tight-ish so the live checklist advances smoothly
     const POLL_MAX_MS = 10 * 60 * 1000;
     const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+
+    // Pipeline walkthrough. The runner reports no mid-run progress (one blocking
+    // call), so we can't animate the steps live; instead, once the real run
+    // completes we reveal each step one-by-one at a readable pace from the actual
+    // provenance — the "Queued/Generating" flash was too fast for a judge to read.
+    const STEP_KEYS = ['pronounce', 'chunk', 'generate', 'stitch', 'seal', 'upload'];
+    const DOT_BASE = 'mt-0.5 inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-full border text-[11px] font-medium';
+    const stepEl = (key) => root.querySelector(`[data-gb-step="${key}"]`);
+
+    const setStep = (key, state, detail) => {
+        const li = stepEl(key);
+        if (!li) return;
+        const dot = li.querySelector('[data-gb-dot]');
+        const detailEl = li.querySelector('[data-gb-detail]');
+        if (state === 'done') {
+            dot.className = `${DOT_BASE} border-emerald-500/40 bg-emerald-500/10 text-emerald-300`;
+            dot.textContent = '✓';
+        } else if (state === 'active') {
+            dot.className = `${DOT_BASE} border-cyan-500/50 bg-cyan-500/10 text-cyan-300 animate-pulse`;
+            dot.textContent = String(STEP_KEYS.indexOf(key) + 1);
+        } else if (state === 'skip') {
+            dot.className = `${DOT_BASE} border-zinc-700 bg-zinc-800 text-zinc-500`;
+            dot.textContent = '–';
+        } else {
+            dot.className = `${DOT_BASE} border-zinc-700 text-zinc-500`;
+            dot.textContent = String(STEP_KEYS.indexOf(key) + 1);
+        }
+        if (detail) {
+            detailEl.textContent = detail;
+            detailEl.classList.remove('hidden');
+        } else {
+            detailEl.textContent = '';
+            detailEl.classList.add('hidden');
+        }
+    };
+
+    const resetSteps = () => STEP_KEYS.forEach((k) => setStep(k, 'pending', ''));
+
+    // Derive the ordered [key, state, detail] rows from a completed provenance payload.
+    const stepsFrom = (data) => {
+        const chunks = data.chunks || [];
+        const p = data.pronunciation || {};
+        const subs = Array.isArray(p.substitutions) ? p.substitutions : [];
+        const trimmed = chunks.filter((c) => c.trim_applied).length;
+        const hash = data.final_manifest_hash || '';
+        const shortHash = hash ? `${hash.slice(0, 12)}…` : '';
+        const finalName = (data.final_url || '').split('/').pop() || data.final_url || '';
+
+        let pron;
+        if (p.available === false) {
+            pron = ['pronounce', 'skip', 'pronunciation service unavailable — text sent unchanged'];
+        } else if (subs.length) {
+            const list = subs.slice(0, 4).map((s) => `${s.term} → ${s.phonetic}`).join(', ');
+            pron = ['pronounce', 'done', `${subs.length} term(s) respelled (${p.provider || 'llm'}): ${list}${subs.length > 4 ? ', …' : ''}`];
+        } else {
+            pron = ['pronounce', 'done', `no changes needed${p.provider ? ' · ' + p.provider : ''}`];
+        }
+
+        const seal = data.final_manifest_verified === true
+            ? `SHA-256 verified${shortHash ? ' · ' + shortHash : ''}`
+            : data.final_manifest_verified === false
+                ? 'verification failed'
+                : (shortHash ? `manifest ${shortHash}` : 'manifest sealed');
+
+        return [
+            pron,
+            ['chunk', 'done', `${chunks.length} segment(s)`],
+            ['generate', 'done', `${chunks.length} chunk(s) · ${data.reroll_count ?? 0} re-roll(s)${trimmed ? ' · ' + trimmed + ' trimmed' : ''}`],
+            ['stitch', 'done', `joined ${chunks.length} chunk(s)`],
+            ['seal', 'done', seal],
+            ['upload', 'done', finalName],
+        ];
+    };
+
+    // A token guards against an in-flight reveal being clobbered by a Replay (or a
+    // fresh run) started mid-walk.
+    let revealToken = 0;
+    const REVEAL_MS = 550;
+    const revealSteps = async (data) => {
+        const mine = ++revealToken;
+        resetSteps();
+        for (const [key, state, detail] of stepsFrom(data)) {
+            await sleep(REVEAL_MS);
+            if (mine !== revealToken) return; // superseded by a newer reveal
+            setStep(key, state, detail);
+        }
+    };
+
+    // Drive the checklist LIVE from the runner's progress pings while the run is
+    // in flight: every stage already entered is done, the current one active, the
+    // rest pending. This is what makes the checks track the REAL pipeline rather
+    // than replay after the fact.
+    const applyProgress = (events) => {
+        const detailByStep = {};
+        let current = null;
+        (events || []).forEach((e) => {
+            if (e && e.step && STEP_KEYS.includes(e.step)) {
+                current = e.step;
+                if (e.detail) detailByStep[e.step] = e.detail;
+            }
+        });
+        if (!current) current = STEP_KEYS[0]; // nothing reported yet → first step active
+        const curIdx = STEP_KEYS.indexOf(current);
+        STEP_KEYS.forEach((k, i) => {
+            if (i < curIdx) setStep(k, 'done', detailByStep[k] || '');
+            else if (i === curIdx) setStep(k, 'active', detailByStep[k] || '');
+            else setStep(k, 'pending', '');
+        });
+    };
+
+    // On completion, snap every step to its authoritative final state/detail from
+    // the provenance (exact respellings, scores, hash) — no animation, they were
+    // already lit live during the run.
+    const finalizeSteps = (data) => { for (const [k, s, d] of stepsFrom(data)) setStep(k, s, d); };
+
+    let lastData = null;
+    const replayBtn = document.getElementById('gb-replay');
+    if (replayBtn) replayBtn.addEventListener('click', () => { if (lastData) revealSteps(lastData); });
 
     const poll = async (statusUrl, t0) => {
         for (;;) {
@@ -1676,6 +1813,7 @@ function initGenblaze() {
             const body = await res.json();
             if (body.status === 'completed') return body.result || {};
             if (body.status === 'failed') throw new Error(body.error || 'The run failed.');
+            applyProgress(body.progress);
             const secs = Math.round((Date.now() - t0) / 1000);
             setStatus(statusEl, `⏳ ${body.status === 'running' ? 'Generating' : 'Queued'} — ${secs}s elapsed…`, 'pending');
             await sleep(POLL_MS);
@@ -1689,6 +1827,9 @@ function initGenblaze() {
 
         runBtn.disabled = true;
         result.classList.add('hidden');
+        revealToken++; // cancel any in-flight reveal from a prior run/replay
+        resetSteps();
+        if (replayBtn) replayBtn.classList.add('hidden');
         const t0 = Date.now();
         setStatus(statusEl, '⏳ Queued — generate → QA → re-roll → stitch → B2…', 'pending');
         try {
@@ -1701,6 +1842,9 @@ function initGenblaze() {
             const { status_url: statusUrl } = await res.json();
             const data = await poll(statusUrl, t0);
             render(data);
+            lastData = data;
+            if (replayBtn) replayBtn.classList.remove('hidden');
+            finalizeSteps(data);
             const secs = Math.round((Date.now() - t0) / 1000);
             setStatus(statusEl, `✓ Done in ${secs}s — ${data.reroll_count || 0} re-roll(s) across ${(data.chunks || []).length} chunk(s).`, 'ok');
         } catch (err) {

@@ -26,6 +26,7 @@ class RunRequest(BaseModel):
     output_format: str = "mp3_44100_128"
     seed: int | None = None
     settings: dict | None = None
+    run_id: str | None = None  # opaque Studio run id; echoed back on progress pings
 
 
 class PronounceRequest(BaseModel):
@@ -57,6 +58,7 @@ async def run(req: RunRequest) -> dict:
         output_format=req.output_format,
         base_seed=req.seed,
         max_concurrency=_config.max_concurrency,
+        run_id=req.run_id,
     )
     return {
         "final_url": result.final.url,

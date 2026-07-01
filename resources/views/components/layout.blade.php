@@ -2,16 +2,19 @@
 @php
     $navItems = [
         ['route' => 'admin.dashboard', 'pattern' => 'admin.dashboard', 'label' => 'Dashboard'],
-        ['route' => 'admin.studio.index', 'pattern' => 'admin.studio.*', 'label' => 'Studio'],
+        // Studio must NOT highlight on the nested Genblaze route (admin.studio.genblaze),
+        // which its wildcard pattern would otherwise match — hence the `except`.
+        ['route' => 'admin.studio.index', 'pattern' => 'admin.studio.*', 'except' => 'admin.studio.genblaze', 'label' => 'Studio'],
         ['route' => 'admin.api-keys.index', 'pattern' => 'admin.api-keys.*', 'label' => 'API Keys'],
         ['route' => 'admin.voices.index', 'pattern' => 'admin.voices.*', 'label' => 'Voices'],
         ['route' => 'admin.pronunciations.index', 'pattern' => 'admin.pronunciations.*', 'label' => 'Pronunciations'],
         ['route' => 'admin.health', 'pattern' => 'admin.health', 'label' => 'Health'],
         ['route' => 'admin.settings.index', 'pattern' => 'admin.settings.*', 'label' => 'Settings'],
     ];
-    // Headline hackathon feature — only shown when the Genblaze runner is configured.
+    // Headline hackathon feature — shown FIRST (the judges' landing page) when the
+    // Genblaze runner is configured.
     if (config('tts.genblaze.runner_url')) {
-        array_splice($navItems, 2, 0, [['route' => 'admin.studio.genblaze', 'pattern' => 'admin.studio.genblaze', 'label' => 'Genblaze']]);
+        array_unshift($navItems, ['route' => 'admin.studio.genblaze', 'pattern' => 'admin.studio.genblaze', 'label' => 'Genblaze Demo']);
     }
 @endphp
 <!DOCTYPE html>
@@ -33,8 +36,12 @@
                 </a>
                 <nav class="flex flex-wrap items-center gap-1 text-sm">
                     @foreach($navItems as $item)
+                        @php
+                            $active = request()->routeIs($item['pattern'])
+                                && ! (isset($item['except']) && request()->routeIs($item['except']));
+                        @endphp
                         <a href="{{ route($item['route']) }}"
-                           class="rounded-md px-3 py-1.5 transition {{ request()->routeIs($item['pattern']) ? 'bg-cyan-500/10 text-cyan-400' : 'text-zinc-400 hover:bg-zinc-800 hover:text-zinc-100' }}">
+                           class="rounded-md px-3 py-1.5 transition {{ $active ? 'bg-cyan-500/10 text-cyan-400' : 'text-zinc-400 hover:bg-zinc-800 hover:text-zinc-100' }}">
                             {{ $item['label'] }}
                         </a>
                     @endforeach

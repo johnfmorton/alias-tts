@@ -39,6 +39,25 @@ class GenblazeRunStore
         $this->merge($id, ['status' => 'failed', 'error' => $error]);
     }
 
+    /**
+     * Append one live pipeline-progress event (which stage the run just entered)
+     * so the panel can light up its checklist in real time. Best-effort: no-ops
+     * for an unknown/expired run. The runner reports these sequentially, so the
+     * read-modify-write here never races.
+     *
+     * @param  array{step: string, detail?: string}  $event
+     */
+    public function appendProgress(string $id, array $event): void
+    {
+        $current = $this->get($id);
+        if ($current === null) {
+            return;
+        }
+        $progress = $current['progress'] ?? [];
+        $progress[] = $event;
+        $this->write($id, array_merge($current, ['progress' => $progress]));
+    }
+
     /** @return array<string, mixed>|null */
     public function get(string $id): ?array
     {

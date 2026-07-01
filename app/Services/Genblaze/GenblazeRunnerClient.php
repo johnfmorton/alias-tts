@@ -52,7 +52,7 @@ class GenblazeRunnerClient
      *
      * @return array<string, mixed>
      */
-    public function run(string $text, string $voice, ?int $seed = null, ?string $outputFormat = null): array
+    public function run(string $text, string $voice, ?int $seed = null, ?string $outputFormat = null, ?string $runId = null): array
     {
         if (! $this->configured()) {
             throw new RuntimeException('The Genblaze runner URL is not configured (TTS_GENBLAZE_RUNNER_URL).');
@@ -63,6 +63,8 @@ class GenblazeRunnerClient
             'voice' => $voice,
             'seed' => $seed,
             'output_format' => $outputFormat,
+            // Echoed back on the runner's progress pings so they land on this run.
+            'run_id' => $runId,
         ], fn ($v) => $v !== null);
 
         $res = Http::timeout((int) config('tts.genblaze.timeout', 600))

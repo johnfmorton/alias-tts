@@ -6,6 +6,35 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Added
+- **The Genblaze page is now a self-contained live demo.** "Generate via
+  Genblaze" shows a pipeline checklist that lights up **as the run happens** —
+  Pronunciation → Chunk → Generate & QA (re-rolls surfaced live) → Stitch →
+  Seal + verify → Upload to B2 — driven by real per-stage progress the runner
+  reports while it works, with a **Replay walkthrough** to re-watch it at any
+  time at no cost.
+- **Automatic pronunciation on the Genblaze page.** Every run now begins with
+  the Genblaze CHAT pronunciation pass (always on here, regardless of the global
+  toggle), respelling tricky terms before synthesis and showing exactly what it
+  changed as the first step.
+- **Download the sealed final audio.** A one-click download of the verified
+  final deliverable — the way a real client receives it — streamed through the
+  app's authenticated proxy so it works even from a private bucket, with a
+  hash-stamped filename.
+
+### Changed
+- **Genblaze is the headline landing.** It's now the first nav item
+  ("Genblaze Demo") and the page you land on after logging in when the runner is
+  configured (falling back to the dashboard otherwise), so the flagship flow is
+  front-and-center for evaluators.
+- Added a storage note on the page explaining that the demo bucket is public for
+  convenience, while the app is private-bucket-ready via the authenticated proxy.
+
+### Fixed
+- The nav no longer highlights both "Studio" and "Genblaze Demo" when viewing the
+  Genblaze page — its route lives under `admin.studio.*` but now only its own tab
+  lights up.
+
 ## [0.17.1] - 2026-06-30
 
 ### Fixed

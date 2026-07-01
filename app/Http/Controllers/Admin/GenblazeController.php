@@ -66,6 +66,7 @@ class GenblazeController extends Controller
             (string) $request->input('text'),
             (string) $request->input('voice'),
             $request->filled('seed') ? (int) $request->input('seed') : null,
+            $request->user()?->id,
         );
 
         return response()->json([
@@ -87,6 +88,10 @@ class GenblazeController extends Controller
             'run_id' => $run,
             'status' => $state['status'] ?? 'unknown',
             'error' => $state['error'] ?? null,
+            // Live per-stage pings (chunk/generate/stitch/seal/upload) the runner
+            // reports mid-run, plus the pronounce step the job records — so the
+            // panel lights up its checklist as the text moves through the pipeline.
+            'progress' => $state['progress'] ?? [],
         ];
         if (($state['status'] ?? null) === 'completed' && isset($state['result'])) {
             $payload['result'] = $this->withPlayUrls((array) $state['result']);
@@ -110,7 +115,16 @@ class GenblazeController extends Controller
 
         $mime = str_ends_with($key, '.wav') ? 'audio/wav' : 'audio/mpeg';
 
-        return $this->rangedAudio((string) $disk->get($key), $mime, $request);
+        // ?download=1 → serve the same (private-bucket-proxied) bytes as an
+        // attachment, so a judge can grab the sealed final deliverable the way a
+        // real client would. The <audio> src omits the flag and still streams.
+        $headers = [];
+        if ($request->boolean('download')) {
+            $ext = str_ends_with($key, '.wav') ? 'wav' : 'mp3';
+            $headers['Content-Disposition'] = 'attachment; filename="bespoken-sealed-final.'.$ext.'"';
+        }
+
+        return $this->rangedAudio((string) $disk->get($key), $mime, $request, $headers);
     }
 
     /**

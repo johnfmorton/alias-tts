@@ -16,3 +16,7 @@ Route::post('/generate', [PipelineController::class, 'generate'])->name('generat
 Route::post('/score', [PipelineController::class, 'score'])->name('score');
 Route::post('/trim', [PipelineController::class, 'trim'])->name('trim');
 Route::post('/stitch', [PipelineController::class, 'stitch'])->name('stitch');
+
+// Live pipeline-progress pings from the runner (drives the Studio panel's
+// real-time checklist); does not touch the TTS pipeline itself.
+Route::post('/genblaze/progress', [PipelineController::class, 'progress'])->name('genblaze.progress');

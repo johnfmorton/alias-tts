@@ -4,6 +4,8 @@ namespace App\Jobs;
 
 use App\Services\Genblaze\GenblazeRunnerClient;
 use App\Services\Genblaze\GenblazeRunStore;
+use App\Services\Pronunciation\PronunciationDetector;
+use App\Services\Pronunciation\PronunciationSubstituter;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Bus\Dispatchable;
@@ -31,21 +33,59 @@ class RunGenblazeJob implements ShouldQueue
         public readonly string $text,
         public readonly string $voice,
         public readonly ?int $seed = null,
+        public readonly ?int $userId = null,
     ) {
         // A little headroom over the runner client's own HTTP timeout.
         $this->timeout = (int) config('tts.genblaze.timeout', 600) + 60;
     }
 
-    public function handle(GenblazeRunnerClient $runner, GenblazeRunStore $store): void
-    {
+    public function handle(
+        GenblazeRunnerClient $runner,
+        GenblazeRunStore $store,
+        PronunciationDetector $detector,
+        PronunciationSubstituter $substituter,
+    ): void {
         $store->markRunning($this->runId);
 
         try {
-            $store->complete($this->runId, $runner->run(
-                text: $this->text,
+            // Genblaze CHAT pronunciation pass — always on for this judge-facing
+            // page (force past the global toggle) so the LLM respelling step is a
+            // visible part of the demo. Degrade-safe: any runner/LLM failure yields
+            // no substitutions and the original text goes through unchanged.
+            $detection = $detector->detect($this->text, $this->userId, force: true);
+            $applied = $substituter->apply($this->text, $detection['substitutions'] ?? []);
+
+            // Record the pronunciation pass as the first LIVE pipeline step (the
+            // runner reports the rest — chunk/generate/stitch/seal/upload — as it
+            // works). A coarse detail here; the final panel fills the exact
+            // respellings from the result's pronunciation block.
+            $subs = $detection['substitutions'] ?? [];
+            $store->appendProgress($this->runId, [
+                'step' => 'pronounce',
+                'detail' => ($detection['available'] ?? false)
+                    ? (count($subs) ? count($subs).' term(s) respelled' : 'no changes needed')
+                    : 'unavailable',
+            ]);
+
+            $result = $runner->run(
+                text: $applied['text'],
                 voice: $this->voice,
                 seed: $this->seed,
-            ));
+                runId: $this->runId,
+            );
+
+            // Rides through GenblazeController::status() untouched so the panel can
+            // reveal it as the first pipeline step.
+            $result['pronunciation'] = [
+                'available' => (bool) ($detection['available'] ?? false),
+                'provider' => (string) config('tts.pronunciation.llm_provider', 'replicate'),
+                'model' => config('tts.pronunciation.model'),
+                'substitutions' => $detection['substitutions'] ?? [],
+                'applied' => $applied['applied'],
+                'error' => $detection['error'] ?? null,
+            ];
+
+            $store->complete($this->runId, $result);
         } catch (Throwable $e) {
             report($e);
             $store->fail($this->runId, $e->getMessage());

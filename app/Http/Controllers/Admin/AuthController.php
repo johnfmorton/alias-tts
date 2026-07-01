@@ -25,7 +25,11 @@ class AuthController extends Controller
         if (Auth::attempt($credentials, $request->boolean('remember'))) {
             $request->session()->regenerate();
 
-            return redirect()->intended(route('admin.dashboard'));
+            // Land on the headline Genblaze page when it's live (the first thing a
+            // judge should see); otherwise the dashboard.
+            $home = config('tts.genblaze.runner_url') ? 'admin.studio.genblaze' : 'admin.dashboard';
+
+            return redirect()->intended(route($home));
         }
 
         return back()

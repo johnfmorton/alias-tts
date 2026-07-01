@@ -7,6 +7,7 @@ use App\Models\Voice;
 use App\Services\Asr\AsrClient;
 use App\Services\Asr\ChunkRemediator;
 use App\Services\Audio\AudioConverter;
+use App\Services\Genblaze\GenblazeRunStore;
 use App\Services\TextChunker;
 use App\Services\TextNormalizer;
 use App\Services\Tts\TtsProvider;
@@ -76,6 +77,28 @@ class PipelineController extends Controller
             'normalized_text' => $normalized,
             'chunks' => $chunks,
         ]);
+    }
+
+    /**
+     * Live pipeline-progress ping from the Genblaze runner: records which stage a
+     * run just entered so the Studio panel can advance its checklist in real time
+     * (the run itself is one blocking /run call). Best-effort — an unknown/expired
+     * run id is silently ignored.
+     */
+    public function progress(Request $request, GenblazeRunStore $runs): Response
+    {
+        $data = $request->validate([
+            'run_id' => ['required', 'string'],
+            'step' => ['required', 'string'],
+            'detail' => ['nullable', 'string'],
+        ]);
+
+        $runs->appendProgress($data['run_id'], [
+            'step' => $data['step'],
+            'detail' => (string) ($data['detail'] ?? ''),
+        ]);
+
+        return response()->noContent();
     }
 
     /**

@@ -82,4 +82,20 @@ class PronunciationDetectionTest extends TestCase
         $this->assertFalse($out['available']);
         Http::assertNothingSent();
     }
+
+    public function test_force_runs_detection_even_when_globally_disabled(): void
+    {
+        // The Genblaze page forces this on so judges always see the CHAT step.
+        config(['tts.pronunciation.enabled' => false]);
+        Http::fake(['runner.test/pronounce' => Http::response([
+            'available' => true,
+            'substitutions' => [['term' => 'B2', 'phonetic' => 'bee two']],
+        ])]);
+
+        $out = $this->detector()->detect('Upload to B2.', null, force: true);
+
+        $this->assertTrue($out['available']);
+        $this->assertSame('B2', $out['substitutions'][0]['term']);
+        Http::assertSent(fn ($req) => str_contains($req->url(), 'runner.test/pronounce'));
+    }
 }

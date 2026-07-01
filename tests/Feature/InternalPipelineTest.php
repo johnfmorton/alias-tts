@@ -3,6 +3,7 @@
 namespace Tests\Feature;
 
 use App\Models\Voice;
+use App\Services\Genblaze\GenblazeRunStore;
 use App\Services\Tts\TtsProvider;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\UploadedFile;
@@ -60,6 +61,33 @@ class InternalPipelineTest extends TestCase
         $this->withHeaders($this->headers())
             ->postJson('/v1/internal/chunk', ['text' => 'Hi'])
             ->assertStatus(503);
+    }
+
+    public function test_genblaze_progress_appends_live_steps_to_a_run(): void
+    {
+        $store = app(GenblazeRunStore::class);
+        $store->create('run-abc');
+
+        $this->withHeaders($this->headers())
+            ->postJson('/v1/internal/genblaze/progress', [
+                'run_id' => 'run-abc', 'step' => 'chunk', 'detail' => '2 segment(s)',
+            ])
+            ->assertNoContent();
+
+        $this->assertSame(
+            [['step' => 'chunk', 'detail' => '2 segment(s)']],
+            $store->get('run-abc')['progress'] ?? [],
+        );
+    }
+
+    public function test_genblaze_progress_needs_the_secret_and_required_fields(): void
+    {
+        $this->postJson('/v1/internal/genblaze/progress', ['run_id' => 'x', 'step' => 'chunk'])
+            ->assertStatus(403);
+
+        $this->withHeaders($this->headers())
+            ->postJson('/v1/internal/genblaze/progress', ['run_id' => 'x'])
+            ->assertStatus(422);
     }
 
     public function test_chunk_normalizes_and_segments(): void

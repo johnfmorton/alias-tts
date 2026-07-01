@@ -47,6 +47,11 @@ REROLL_PROBLEMS = frozenset({"TRUNC", "PAUSE", "NOSPEECH", "BNDNOISE"})
 TRIM_PROBLEMS = frozenset({"TAIL", "TAILNOISE"})
 
 
+def _basename(url: str) -> str:
+    """Filename tail of an asset URL (for the panel's 'Upload → B2' step)."""
+    return unquote(urlparse(url).path).rstrip("/").split("/")[-1] or url
+
+
 @dataclass
 class ChunkTake:
     """One synthesis attempt of a chunk and its ASR verdict."""
@@ -142,37 +147,68 @@ class Orchestrator:
         output_format: str = "mp3_44100_128",
         base_seed: int | None = None,
         max_concurrency: int = 2,
+        run_id: str | None = None,
     ) -> ProjectResult:
+        # Report each stage as it happens so the Studio panel can light up its
+        # pipeline checklist LIVE (the /run call itself is blocking). Best-effort
+        # and a no-op when no run_id is threaded (tests, smoke).
+        def report(step: str, detail: str = "") -> None:
+            if run_id and self.client is not None:
+                self.client.report_progress(run_id, step, detail)
+
         segments = self.client.chunk(text)
         if not segments:
             raise ValueError("No chunks were produced from the input text.")
+        report("chunk", f"{len(segments)} segment(s)")
+
+        total = len(segments)
 
         def run_one(seg: dict) -> ChunkResult:
-            return self.synth_chunk(seg, voice, settings, base_seed)
+            return self.synth_chunk(seg, voice, settings, base_seed, report=report, total=total)
 
         if max_concurrency <= 1 or len(segments) == 1:
-            chunk_results = [run_one(s) for s in segments]
+            chunk_results = []
+            for seg in segments:
+                report("generate", f"chunk {seg['position'] + 1}/{total}")
+                chunk_results.append(run_one(seg))
         else:
+            report("generate", f"{total} chunk(s)")
             with ThreadPoolExecutor(max_workers=max_concurrency) as pool:
                 chunk_results = list(pool.map(run_one, segments))
 
+        report("stitch", f"{len(chunk_results)} chunk(s)")
         stitched = self.stitch(chunk_results, output_format)
+        verified = self._safe_verify(stitched.manifest)
+        report("seal", "SHA-256 provenance manifest")
+        report("upload", _basename(stitched.asset.url))
         return ProjectResult(
             chunks=chunk_results,
             final=stitched.asset,
             manifest=stitched.manifest,
             final_manifest_hash=getattr(stitched.manifest, "canonical_hash", None),
-            final_manifest_verified=self._safe_verify(stitched.manifest),
+            final_manifest_verified=verified,
         )
 
     # -- per-chunk re-roll loop (mirror of ChunkRemediator::remediate) ------
 
-    def synth_chunk(self, seg: dict, voice: str, settings: dict | None, base_seed: int | None) -> ChunkResult:
+    def synth_chunk(
+        self,
+        seg: dict,
+        voice: str,
+        settings: dict | None,
+        base_seed: int | None,
+        *,
+        report=None,
+        total: int | None = None,
+    ) -> ChunkResult:
         best: ChunkTake | None = None
         prev = None
         attempts = 0
 
         for attempt in range(self.max_rerolls + 1):
+            # A re-roll is the QA gate rejecting the prior take — surface it live.
+            if report and attempt > 0:
+                report("generate", f"chunk {seg['position'] + 1}/{total or '?'} · re-roll #{attempt}")
             attempts += 1
             seed = (base_seed + attempt) if base_seed is not None else None
             take, prev = self._run_attempt(seg, voice, settings, seed, prev)

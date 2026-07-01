@@ -29,9 +29,21 @@ class AuthRedirectTest extends TestCase
 
     public function test_direct_login_without_an_intended_url_lands_on_the_dashboard(): void
     {
+        // Without the Genblaze runner configured, the dashboard is the landing page.
+        config(['tts.genblaze.runner_url' => '']);
         $admin = User::factory()->create(['is_super_admin' => true, 'password' => 'secret123']);
 
         $this->post(route('login.submit'), ['email' => $admin->email, 'password' => 'secret123'])
             ->assertRedirect(route('admin.dashboard'));
+    }
+
+    public function test_login_lands_on_genblaze_when_the_runner_is_configured(): void
+    {
+        // With the headline feature live, a fresh login should land judges on it.
+        config(['tts.genblaze.runner_url' => 'http://runner.test']);
+        $admin = User::factory()->create(['is_super_admin' => true, 'password' => 'secret123']);
+
+        $this->post(route('login.submit'), ['email' => $admin->email, 'password' => 'secret123'])
+            ->assertRedirect(route('admin.studio.genblaze'));
     }
 }

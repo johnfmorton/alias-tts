@@ -48,7 +48,28 @@ class GenblazeTest extends TestCase
             ->get(route('admin.studio.genblaze'))
             ->assertOk()
             ->assertSee('Generate via Genblaze')
-            ->assertSee('Runner up');
+            ->assertSee('Runner up')
+            // The always-visible pipeline walkthrough + its steps.
+            ->assertSee('Genblaze pipeline')
+            ->assertSee('Replay walkthrough')
+            ->assertSee('Pronunciation')
+            ->assertSee('Seal + verify');
+    }
+
+    public function test_genblaze_page_highlights_only_the_genblaze_nav_tab(): void
+    {
+        Http::fake(['runner.test/health' => Http::response(['status' => 'ok', 'bespoken' => 'x', 'b2' => true])]);
+        Voice::create(['slug' => 'v', 'name' => 'V']);
+
+        $html = $this->actingAs($this->admin())
+            ->get(route('admin.studio.genblaze'))
+            ->assertOk()
+            ->getContent();
+
+        // Genblaze tab active (cyan); Studio tab stays inactive (zinc) even though
+        // its wildcard pattern admin.studio.* would otherwise match this nested route.
+        $this->assertMatchesRegularExpression('#/admin/studio/genblaze"[^>]*text-cyan-400#', $html);
+        $this->assertMatchesRegularExpression('#/admin/studio"[^>]*text-zinc-400#', $html);
     }
 
     public function test_run_dispatches_and_status_returns_provenance_with_proxied_play_urls(): void
@@ -66,7 +87,10 @@ class GenblazeTest extends TestCase
                     'manifest_hash' => 'h0', 'verdict' => ['score' => 0.97, 'problems' => []]],
             ],
         ];
-        Http::fake(['runner.test/run' => Http::response($provenance)]);
+        Http::fake([
+            'runner.test/pronounce' => Http::response(['available' => true, 'substitutions' => []]),
+            'runner.test/run' => Http::response($provenance),
+        ]);
 
         // The run dispatches a job (runs inline on the sync queue) and returns a poll URL.
         $start = $this->actingAs($this->admin())
@@ -90,6 +114,41 @@ class GenblazeTest extends TestCase
             && $req['text'] === 'Hello there.' && $req['voice'] === 'v');
     }
 
+    public function test_run_applies_pronunciation_and_reports_it_in_provenance(): void
+    {
+        // Global toggle OFF — this page forces the pronunciation pass on regardless.
+        config(['filesystems.disks.s3.bucket' => 'johnfmorton', 'tts.pronunciation.enabled' => false]);
+        Voice::create(['slug' => 'v', 'name' => 'V']);
+        Http::fake([
+            'runner.test/pronounce' => Http::response(['available' => true, 'substitutions' => [
+                ['term' => 'B2', 'phonetic' => 'bee two'],
+            ]]),
+            'runner.test/run' => Http::response([
+                'final_url' => 'https://s3.us-west-001.backblazeb2.com/johnfmorton/genblaze/runs/x/assets/final.mp3',
+                'final_manifest_hash' => 'abc', 'final_manifest_verified' => true,
+                'reroll_count' => 0, 'chunks' => [],
+            ]),
+        ]);
+
+        $start = $this->actingAs($this->admin())
+            ->postJson(route('admin.studio.genblaze.run'), ['text' => 'Upload to B2 now.', 'voice' => 'v'])
+            ->assertStatus(202);
+
+        // The rewritten text — not the original — is what reaches the runner.
+        Http::assertSent(fn ($req) => str_contains($req->url(), 'runner.test/run')
+            && $req['text'] === 'Upload to bee two now.');
+
+        // ...and the applied respelling rides back in the provenance for the panel.
+        $this->actingAs($this->admin())
+            ->getJson($start->json('status_url'))
+            ->assertOk()
+            ->assertJsonPath('result.pronunciation.available', true)
+            ->assertJsonPath('result.pronunciation.substitutions.0.term', 'B2')
+            ->assertJsonPath('result.pronunciation.applied.0', 'B2')
+            // The job records pronunciation as the first LIVE pipeline step.
+            ->assertJsonPath('progress.0.step', 'pronounce');
+    }
+
     public function test_run_rejects_missing_text_and_unknown_voice(): void
     {
         $this->actingAs($this->admin())
@@ -105,7 +164,10 @@ class GenblazeTest extends TestCase
     public function test_a_runner_failure_surfaces_through_the_status_poll(): void
     {
         Voice::create(['slug' => 'v', 'name' => 'V']);
-        Http::fake(['runner.test/run' => Http::response('boom', 500)]);
+        Http::fake([
+            'runner.test/pronounce' => Http::response(['available' => true, 'substitutions' => []]),
+            'runner.test/run' => Http::response('boom', 500),
+        ]);
 
         $start = $this->actingAs($this->admin())
             ->postJson(route('admin.studio.genblaze.run'), ['text' => 'hi', 'voice' => 'v'])
@@ -135,6 +197,12 @@ class GenblazeTest extends TestCase
         $this->actingAs($this->admin())
             ->get(route('admin.studio.genblaze.asset', ['key' => 'genblaze/runs/x/assets/final.mp3']))
             ->assertOk();
+
+        // ?download=1 serves the same bytes as the sealed-final deliverable.
+        $this->actingAs($this->admin())
+            ->get(route('admin.studio.genblaze.asset', ['key' => 'genblaze/runs/x/assets/final.mp3', 'download' => 1]))
+            ->assertOk()
+            ->assertHeader('Content-Disposition', 'attachment; filename="bespoken-sealed-final.mp3"');
 
         // Any non-genblaze key is refused — the proxy can't serve arbitrary bucket objects.
         $this->actingAs($this->admin())

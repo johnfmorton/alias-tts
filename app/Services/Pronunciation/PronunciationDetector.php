@@ -21,11 +21,14 @@ class PronunciationDetector
     ) {}
 
     /**
+     * @param  bool  $force  Skip the global on/off toggle and always run — used by
+     *                       the judge-facing Genblaze page, which surfaces this
+     *                       Genblaze CHAT step as a first-class part of the demo.
      * @return array{available: bool, substitutions: list<array<string, mixed>>, provenance?: mixed, error?: ?string}
      */
-    public function detect(string $text, ?int $userId = null): array
+    public function detect(string $text, ?int $userId = null, bool $force = false): array
     {
-        if (! config('tts.pronunciation.enabled', false)) {
+        if (! $force && ! config('tts.pronunciation.enabled', false)) {
             return ['available' => false, 'substitutions' => []];
         }
 
