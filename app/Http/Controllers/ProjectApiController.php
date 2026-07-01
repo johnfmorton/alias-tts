@@ -2,7 +2,6 @@
 
 namespace App\Http\Controllers;
 
-use App\Http\Controllers\Concerns\MintsProjectEditLinks;
 use App\Http\Requests\CreateProjectRequest;
 use App\Models\ApiKey;
 use App\Models\TtsProject;
@@ -15,9 +14,9 @@ use Symfony\Component\HttpFoundation\Response;
 /**
  * Creates an editable Studio project from text — the non-generating sibling of
  * {@see TextToSpeechController}. Instead of returning audio, it normalizes and
- * chunks the text into a {@see TtsProject} (no provider calls) and returns a
- * single-use link that logs the user into the control panel on that project,
- * ready to generate chunk-by-chunk.
+ * chunks the text into a {@see TtsProject} (no provider calls) owned by the API
+ * key's user, who opens it in the control panel to generate chunk-by-chunk after
+ * a normal login.
  *
  *   POST /v1/projects
  *   header: xi-api-key: <key>
@@ -25,8 +24,6 @@ use Symfony\Component\HttpFoundation\Response;
  */
 class ProjectApiController extends Controller
 {
-    use MintsProjectEditLinks;
-
     public function __construct(
         private ProjectService $projects,
         private VoiceSettingsResolver $settingsResolver,
@@ -58,8 +55,6 @@ class ProjectApiController extends Controller
             apiKey: $apiKey,
         );
 
-        [$editUrl, $editUrlExpiresAt] = $this->mintEditLink($project, $apiKey);
-
         return response()->json([
             'id' => $project->id,
             'title' => $project->title,
@@ -69,8 +64,6 @@ class ProjectApiController extends Controller
             'chunk_count' => $project->chunks()->count(),
             'created_at' => $project->created_at?->toIso8601String(),
             'url' => route('admin.studio.projects.show', $project),
-            'edit_url' => $editUrl,
-            'edit_url_expires_at' => $editUrlExpiresAt,
         ], 201)->header('request-id', $project->id);
     }
 

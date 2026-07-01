@@ -4,7 +4,6 @@ namespace Tests\Feature;
 
 use App\Enums\ProjectStatus;
 use App\Models\ApiKey;
-use App\Models\MagicLoginToken;
 use App\Models\TtsProject;
 use App\Models\User;
 use App\Models\Voice;
@@ -125,7 +124,11 @@ class ProjectApiTest extends TestCase
             ->assertJsonPath('status', ProjectStatus::Draft->value)
             ->assertJsonPath('voice_id', 'my-voice')
             ->assertJsonPath('chunk_count', 2)
-            ->assertJsonStructure(['id', 'url', 'edit_url', 'edit_url_expires_at', 'characters', 'created_at']);
+            ->assertJsonStructure(['id', 'url', 'characters', 'created_at'])
+            // The auto-login edit link was removed (privilege-escalation risk); the
+            // response is a plain pointer the owner opens after a normal login.
+            ->assertJsonMissingPath('edit_url')
+            ->assertJsonMissingPath('edit_url_expires_at');
 
         $project = TtsProject::firstWhere('title', 'My article');
         $this->assertNotNull($project);
@@ -134,10 +137,6 @@ class ProjectApiTest extends TestCase
 
         // The created project is tagged with the calling API key.
         $this->assertSame($key->id, $project->api_key_id);
-
-        // A single-use login token was minted and the link points at it.
-        $this->assertSame(1, MagicLoginToken::count());
-        $this->assertStringContainsString('/projects/open/', (string) $response->json('edit_url'));
     }
 
     public function test_it_auto_generates_a_title_when_omitted(): void

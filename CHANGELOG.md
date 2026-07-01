@@ -15,6 +15,17 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   by the migration — and every project route requires the owner (or a
   SuperAdmin). The Studio list shows only your own projects; a SuperAdmin
   still sees everyone's, labeled by owner.
+- **Removed the auto-login ("magic") project link.** `POST /v1/projects` used
+  to return an `edit_url` that logged the visitor straight into the panel — but
+  always as the SuperAdmin, so once the panel opened to regular users, any of
+  them could mint their own API key, call the endpoint, and open the link to
+  gain a SuperAdmin session. The whole feature is gone: no token is minted, the
+  `edit_url`/`edit_url_expires_at` response fields and the `/projects/open/{token}`
+  route are removed, and the `magic_login_tokens` table is dropped. The response
+  now returns only a plain `url` the project's owner opens after a normal login.
+
+### Removed
+- The `TTS_MAGIC_LOGIN_TTL_MINUTES` setting (the feature it configured is gone).
 
 ## [0.19.0] - 2026-07-01
 

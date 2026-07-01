@@ -204,7 +204,7 @@ class TextToSpeechController extends Controller
         return response()->json(['detail' => $detail], $status);
     }
 
-    /** The magic-login edit link for a failed speech's recovery project, if any. */
+    /** The panel URL for a failed speech's recovery project, if any. */
     private function recoveryUrlForSpeech(Speech $speech): ?string
     {
         if ($speech->status !== SpeechStatus::Failed) {
