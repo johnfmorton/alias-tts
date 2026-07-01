@@ -13,8 +13,16 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   manages their profile (display name, email, avatar), changes their password,
   and can delete their own account. Avatars live on the private object-storage
   disk (B2 in prod) and stream through an authenticated proxy — the same pattern
-  as generated audio. (Two-factor and Google/GitHub sign-in are laid out on the
-  page and land in a follow-up.)
+  as generated audio.
+- **Two-factor authentication (TOTP).** Set up an authenticator app from the
+  Account screen (the QR is rendered locally, so the secret never leaves the
+  server), confirm a code, and save one-time recovery codes. Login gains a
+  second step for protected accounts. No configuration required.
+- **Single sign-on (Google & GitHub).** Connect a provider from the Account
+  screen and sign in with it thereafter. Invite-only — SSO links and
+  authenticates existing accounts, it never creates them — and each provider
+  stays dormant (buttons read "Not configured") until its credentials are set.
+  See `docs/SSO-SETUP.md`.
 - **Users admin (SuperAdmin only).** A `/admin/users` screen — a table of
   everyone with access plus a click-in detail drawer — to create users (with a
   one-time temporary password), invite by email (a signed set-password link),

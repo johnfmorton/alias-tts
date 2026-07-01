@@ -4,10 +4,12 @@ namespace App\Http\Controllers\Admin;
 
 use App\Http\Controllers\Controller;
 use App\Models\User;
+use App\Services\TwoFactorService;
 use Illuminate\Contracts\Filesystem\Filesystem;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Http\Response;
+use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Validation\Rules\Password;
@@ -15,15 +17,37 @@ use Illuminate\View\View;
 
 /**
  * Self-service account management (design 2A) — any signed-in user manages their
- * own profile, password, avatar, and account, regardless of role. Two-factor and
- * connected-account (SSO) wiring lands in the next phase; the screen renders those
- * sections now so the layout is complete.
+ * own profile, password, avatar, and account, regardless of role. Two-factor setup
+ * lives in TwoFactorController and connected-account (SSO) in SocialAuthController;
+ * index() feeds this screen their current state.
  */
 class AccountController extends Controller
 {
-    public function index(Request $request): View
+    public function index(Request $request, TwoFactorService $twoFactor): View
     {
-        return view('admin.account.index', ['user' => $request->user()]);
+        $user = $request->user();
+
+        return view('admin.account.index', [
+            'user' => $user,
+            'two' => [
+                'enabled' => $user->hasTwoFactorEnabled(),
+                'pending' => $user->hasTwoFactorPending(),
+                'qr' => $user->hasTwoFactorPending() ? $twoFactor->qrSvg($user, $user->two_factor_secret) : null,
+                'secret' => $user->hasTwoFactorPending() ? $user->two_factor_secret : null,
+            ],
+            'providers' => $this->providerStatus($user),
+        ]);
+    }
+
+    /** Per-provider SSO status for the Connected-accounts section. */
+    private function providerStatus(User $user): Collection
+    {
+        return collect(['google' => 'Google', 'github' => 'GitHub'])->map(fn ($label, $key) => [
+            'key' => $key,
+            'label' => $label,
+            'configured' => filled(config("services.{$key}.client_id")) && filled(config("services.{$key}.client_secret")),
+            'account' => $user->connectedAccounts->firstWhere('provider', $key),
+        ])->values();
     }
 
     public function updateProfile(Request $request): RedirectResponse

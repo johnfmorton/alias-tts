@@ -91,41 +91,120 @@
             </form>
         </div>
 
-        {{-- Two-factor authentication (wired in the next update) --}}
-        <div class="flex items-center justify-between border-b border-white/8 py-[18px]">
-            <div>
-                <div class="text-sm text-zinc-200">Two-factor authentication</div>
-                <div class="mt-[3px] text-[13px] text-zinc-500">Authenticator app (TOTP)</div>
+        {{-- Two-factor authentication --}}
+        <div class="border-b border-white/8 py-[18px]">
+            <div class="flex items-center justify-between gap-3">
+                <div>
+                    <div class="text-sm text-zinc-200">Two-factor authentication</div>
+                    <div class="mt-[3px] text-[13px] text-zinc-500">Authenticator app (TOTP)</div>
+                </div>
+                <div class="flex items-center gap-2.5">
+                    @if($two['enabled'])
+                        <span class="{{ $badgeOk }}">On</span>
+                        <button id="twofa-manage-toggle" type="button" class="{{ $btnSecondary }}">Manage</button>
+                    @elseif($two['pending'])
+                        <span class="{{ $badgeNeutral }}">Setup pending</span>
+                    @else
+                        <span class="{{ $badgeNeutral }}">Off</span>
+                        <form method="POST" action="{{ route('admin.account.2fa.enable') }}">
+                            @csrf
+                            <button type="submit" class="{{ $btnSecondary }}">Set up</button>
+                        </form>
+                    @endif
+                </div>
             </div>
-            <div class="flex items-center gap-2.5">
-                <span class="{{ $badgeNeutral }}">Off</span>
-                <button type="button" disabled title="Arrives in the next update" class="{{ $btnSecondaryDisabled }}">Set up</button>
-            </div>
+
+            {{-- Pending: scan the QR + confirm a code to finish --}}
+            @if($two['pending'])
+                <div class="mt-4 rounded-[12px] border border-white/10 bg-inset p-4">
+                    <div class="flex flex-wrap items-start gap-5">
+                        <div class="shrink-0 rounded-[10px] bg-white p-2">{!! $two['qr'] !!}</div>
+                        <div class="min-w-[220px] flex-1">
+                            <p class="text-[13px] leading-relaxed text-zinc-400">Scan this with your authenticator app (or type the key in manually), then enter the 6-digit code to finish.</p>
+                            <div class="mt-2 font-mono text-xs break-all text-zinc-500">{{ $two['secret'] }}</div>
+                            <div class="mt-3 flex flex-wrap items-end gap-2.5">
+                                <form method="POST" action="{{ route('admin.account.2fa.confirm') }}" class="flex items-end gap-2.5">
+                                    @csrf
+                                    <div>
+                                        <label for="code" class="mb-[7px] block text-[13px] text-zinc-400">6-digit code</label>
+                                        <input id="code" name="code" inputmode="numeric" autocomplete="one-time-code" required
+                                               class="{{ $well }} w-36 font-mono tracking-widest">
+                                    </div>
+                                    <button type="submit" class="{{ $btnPrimary }}">Confirm</button>
+                                </form>
+                                <form method="POST" action="{{ route('admin.account.2fa.disable') }}">
+                                    @csrf
+                                    @method('DELETE')
+                                    <button type="submit" class="px-2 py-2 text-sm text-zinc-500 hover:text-zinc-300">Cancel</button>
+                                </form>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            @endif
+
+            {{-- Enabled → Manage: regenerate codes / turn off (both need the password) --}}
+            @if($two['enabled'])
+                <div id="twofa-manage" class="mt-4 hidden space-y-3 rounded-[12px] border border-white/10 bg-inset p-4">
+                    <form method="POST" action="{{ route('admin.account.2fa.recovery') }}" class="flex flex-wrap items-end gap-2.5">
+                        @csrf
+                        <div class="min-w-[200px] flex-1">
+                            <label class="mb-[7px] block text-[13px] text-zinc-400">Password — to regenerate recovery codes</label>
+                            <input name="password" type="password" autocomplete="current-password" required class="{{ $well }}">
+                        </div>
+                        <button type="submit" class="{{ $btnSecondary }}">Regenerate codes</button>
+                    </form>
+                    <form method="POST" action="{{ route('admin.account.2fa.disable') }}" class="flex flex-wrap items-end gap-2.5">
+                        @csrf
+                        @method('DELETE')
+                        <div class="min-w-[200px] flex-1">
+                            <label class="mb-[7px] block text-[13px] text-zinc-400">Password — to turn off 2FA</label>
+                            <input name="password" type="password" autocomplete="current-password" required class="{{ $well }}">
+                        </div>
+                        <button type="submit" class="rounded-[9px] border border-bad/45 px-[14px] py-2 text-sm text-bad transition hover:bg-bad/[0.06]">Turn off</button>
+                    </form>
+                </div>
+            @endif
         </div>
 
-        {{-- Connected accounts (wired in the next update) --}}
+        {{-- Recovery codes — shown once, right after enabling or regenerating --}}
+        @if(session('recovery_codes'))
+            <div class="border-b border-white/8 py-[18px]">
+                <div class="rounded-[12px] border border-ok/30 bg-ok/[0.06] p-4">
+                    <div class="text-sm font-semibold text-ok">Recovery codes</div>
+                    <p class="mt-1 text-[13px] leading-relaxed text-zinc-400">Store these somewhere safe. Each works once if you lose your authenticator — they won't be shown again.</p>
+                    <div class="mt-3 grid grid-cols-2 gap-x-6 gap-y-1 font-mono text-[13px] text-zinc-200">
+                        @foreach(session('recovery_codes') as $rc)<div>{{ $rc }}</div>@endforeach
+                    </div>
+                </div>
+            </div>
+        @endif
+
+        {{-- Connected accounts (SSO) --}}
         <div class="pt-[18px]">
             <div class="mb-3.5 text-sm text-zinc-200">Connected accounts</div>
-            <div class="mb-3 flex items-center justify-between">
-                <div class="flex items-center gap-[11px]">
-                    <span class="grid h-[30px] w-[30px] place-items-center rounded-[7px] bg-zinc-800 text-sm font-bold text-zinc-200">G</span>
-                    <div>
-                        <div class="text-sm text-zinc-200">Google</div>
-                        <div class="mt-0.5 text-xs text-zinc-500">Not connected</div>
+            @foreach($providers as $p)
+                <div class="mb-3 flex items-center justify-between last:mb-0">
+                    <div class="flex items-center gap-[11px]">
+                        <span class="grid h-[30px] w-[30px] place-items-center rounded-[7px] bg-zinc-800 font-bold text-zinc-200 {{ $p['key'] === 'github' ? 'font-mono text-[13px]' : 'text-sm' }}">{{ $p['key'] === 'github' ? 'GH' : 'G' }}</span>
+                        <div>
+                            <div class="text-sm text-zinc-200">{{ $p['label'] }}</div>
+                            <div class="mt-0.5 text-xs text-zinc-500">{{ $p['account'] ? ($p['account']->email ?? 'Connected') : (! $p['configured'] ? 'Not configured' : 'Not connected') }}</div>
+                        </div>
                     </div>
+                    @if($p['account'])
+                        <form method="POST" action="{{ route('admin.account.connections.disconnect', $p['key']) }}">
+                            @csrf
+                            @method('DELETE')
+                            <button type="submit" class="{{ $btnSecondary }}">Disconnect</button>
+                        </form>
+                    @elseif($p['configured'])
+                        <a href="{{ route('oauth.redirect', $p['key']) }}" class="{{ $btnSecondary }}">Connect</a>
+                    @else
+                        <button type="button" disabled title="Set {{ strtoupper($p['key']) }}_CLIENT_ID and _SECRET in .env" class="{{ $btnSecondaryDisabled }}">Connect</button>
+                    @endif
                 </div>
-                <button type="button" disabled title="Arrives in the next update" class="{{ $btnSecondaryDisabled }}">Connect</button>
-            </div>
-            <div class="flex items-center justify-between">
-                <div class="flex items-center gap-[11px]">
-                    <span class="grid h-[30px] w-[30px] place-items-center rounded-[7px] bg-zinc-800 font-mono text-[13px] font-bold text-zinc-200">GH</span>
-                    <div>
-                        <div class="text-sm text-zinc-200">GitHub</div>
-                        <div class="mt-0.5 text-xs text-zinc-500">Not connected</div>
-                    </div>
-                </div>
-                <button type="button" disabled title="Arrives in the next update" class="{{ $btnSecondaryDisabled }}">Connect</button>
-            </div>
+            @endforeach
         </div>
     </div>
 

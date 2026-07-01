@@ -35,4 +35,19 @@ return [
         ],
     ],
 
+    // SSO for the Account screen (Socialite). Leave the id/secret blank to keep a
+    // provider dormant — its buttons show as "not configured" and the routes refuse
+    // rather than erroring. Register the callback URL shown in docs/SSO-SETUP.md.
+    'google' => [
+        'client_id' => env('GOOGLE_CLIENT_ID'),
+        'client_secret' => env('GOOGLE_CLIENT_SECRET'),
+        'redirect' => env('GOOGLE_REDIRECT_URI', '/oauth/google/callback'),
+    ],
+
+    'github' => [
+        'client_id' => env('GITHUB_CLIENT_ID'),
+        'client_secret' => env('GITHUB_CLIENT_SECRET'),
+        'redirect' => env('GITHUB_REDIRECT_URI', '/oauth/github/callback'),
+    ],
+
 ];

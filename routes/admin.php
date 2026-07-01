@@ -8,8 +8,10 @@ use App\Http\Controllers\Admin\HealthController;
 use App\Http\Controllers\Admin\HealthTestController;
 use App\Http\Controllers\Admin\PronunciationController;
 use App\Http\Controllers\Admin\SettingsController;
+use App\Http\Controllers\Admin\SocialAuthController;
 use App\Http\Controllers\Admin\StudioController;
 use App\Http\Controllers\Admin\StudioProjectController;
+use App\Http\Controllers\Admin\TwoFactorController;
 use App\Http\Controllers\Admin\UserController;
 use App\Http\Controllers\Admin\VoiceController;
 use App\Http\Middleware\EnsureUserIsSuperAdmin;
@@ -31,6 +33,12 @@ Route::put('/account/password', [AccountController::class, 'updatePassword'])->n
 Route::post('/account/avatar', [AccountController::class, 'updateAvatar'])->name('account.avatar');
 Route::delete('/account/avatar', [AccountController::class, 'deleteAvatar'])->name('account.avatar.delete');
 Route::delete('/account', [AccountController::class, 'destroy'])->name('account.destroy');
+// Two-factor (TOTP) setup + connected-account (SSO) management.
+Route::post('/account/two-factor', [TwoFactorController::class, 'enable'])->name('account.2fa.enable');
+Route::post('/account/two-factor/confirm', [TwoFactorController::class, 'confirm'])->name('account.2fa.confirm');
+Route::delete('/account/two-factor', [TwoFactorController::class, 'disable'])->name('account.2fa.disable');
+Route::post('/account/two-factor/recovery-codes', [TwoFactorController::class, 'regenerateRecoveryCodes'])->name('account.2fa.recovery');
+Route::delete('/account/connections/{provider}', [SocialAuthController::class, 'disconnect'])->name('account.connections.disconnect');
 // Streams a user's avatar from the private disk (the bucket has no public URL).
 Route::get('/avatars/{user}', [AccountController::class, 'avatar'])->name('avatars.show');
 

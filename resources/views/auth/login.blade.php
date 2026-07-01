@@ -22,6 +22,11 @@
                     {{ $errors->first() }}
                 </div>
             @endif
+            @if(session('error'))
+                <div class="mt-4 rounded-lg border border-red-500/30 bg-red-500/10 px-3 py-2 text-sm text-red-300">
+                    {{ session('error') }}
+                </div>
+            @endif
 
             <form method="POST" action="{{ route('login.submit') }}" class="mt-5 space-y-4">
                 @csrf
@@ -44,6 +49,24 @@
                     Sign in
                 </button>
             </form>
+
+            @php
+                $ssoProviders = collect(['google' => 'Google', 'github' => 'GitHub'])
+                    ->filter(fn ($label, $key) => filled(config("services.{$key}.client_id")) && filled(config("services.{$key}.client_secret")));
+            @endphp
+            @if($ssoProviders->isNotEmpty())
+                <div class="my-5 flex items-center gap-3 text-xs text-zinc-600">
+                    <span class="h-px flex-1 bg-zinc-800"></span>or<span class="h-px flex-1 bg-zinc-800"></span>
+                </div>
+                <div class="space-y-2">
+                    @foreach($ssoProviders as $key => $label)
+                        <a href="{{ route('oauth.redirect', $key) }}"
+                           class="flex w-full items-center justify-center gap-2 rounded-lg border border-zinc-700 px-4 py-2.5 text-sm text-zinc-200 transition hover:bg-zinc-800">
+                            Continue with {{ $label }}
+                        </a>
+                    @endforeach
+                </div>
+            @endif
         </div>
     </div>
 </body>

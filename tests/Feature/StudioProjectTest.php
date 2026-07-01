@@ -1110,11 +1110,11 @@ class StudioProjectTest extends TestCase
 
         // Re-run the takes migration against the already-generated chunk, as a real
         // deploy would: drop + recreate the table so up()'s backfill runs over the
-        // existing audio (the chunk's audio_path is untouched by the rollback). Five
-        // steps because the takes table is the fifth-newest migration (the native
-        // presets conversion, the project-seal columns, the bundled default voices,
-        // and the account fields migration sit on top of it).
-        Artisan::call('migrate:rollback', ['--step' => 5]);
+        // existing audio (the chunk's audio_path is untouched by the rollback). Six
+        // steps because the takes table is the sixth-newest migration (native presets,
+        // project-seal, bundled default voices, account fields, and the two-factor /
+        // connected-accounts migration all sit on top of it).
+        Artisan::call('migrate:rollback', ['--step' => 6]);
         Artisan::call('migrate', ['--force' => true]);
 
         $takes = $chunk->refresh()->takes()->get();

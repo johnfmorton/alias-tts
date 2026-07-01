@@ -39,12 +39,34 @@ class User extends Authenticatable
             'is_super_admin' => 'boolean',
             'studio_advanced' => 'boolean',
             'last_active_at' => 'datetime',
+            // 2FA material is encrypted at rest; recovery codes are an encrypted array.
+            'two_factor_secret' => 'encrypted',
+            'two_factor_recovery_codes' => 'encrypted:array',
+            'two_factor_confirmed_at' => 'datetime',
         ];
     }
 
     public function isSuperAdmin(): bool
     {
         return (bool) $this->is_super_admin;
+    }
+
+    /** 2FA is active once the user has confirmed a TOTP code against their secret. */
+    public function hasTwoFactorEnabled(): bool
+    {
+        return ! is_null($this->two_factor_confirmed_at);
+    }
+
+    /** A secret has been generated but the confirming code hasn't been entered yet. */
+    public function hasTwoFactorPending(): bool
+    {
+        return ! is_null($this->two_factor_secret) && is_null($this->two_factor_confirmed_at);
+    }
+
+    /** SSO identities linked to this account (Google, GitHub). */
+    public function connectedAccounts(): HasMany
+    {
+        return $this->hasMany(ConnectedAccount::class);
     }
 
     public function isSuspended(): bool

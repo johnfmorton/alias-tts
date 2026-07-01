@@ -1,6 +1,8 @@
 <?php
 
 use App\Http\Controllers\Admin\AuthController;
+use App\Http\Controllers\Admin\SocialAuthController;
+use App\Http\Controllers\Admin\TwoFactorChallengeController;
 use App\Http\Controllers\InvitationController;
 use App\Http\Controllers\MagicLoginController;
 use Illuminate\Support\Facades\Route;
@@ -21,6 +23,17 @@ Route::middleware('guest')->group(function () {
     Route::get('/login', [AuthController::class, 'showLogin'])->name('login');
     Route::post('/login', [AuthController::class, 'login'])->name('login.submit');
 });
+
+// Second login step for 2FA accounts. Session-gated (login.2fa.*), not auth-gated —
+// the user isn't signed in until the code checks out.
+Route::get('/two-factor-challenge', [TwoFactorChallengeController::class, 'show'])->name('two-factor.challenge');
+Route::post('/two-factor-challenge', [TwoFactorChallengeController::class, 'store'])->name('two-factor.verify');
+
+// SSO redirect + callback. One pair serves both intents: an authed user connects a
+// provider; a guest signs in through an already-connected one. Dormant until creds
+// are set (see docs/SSO-SETUP.md).
+Route::get('/oauth/{provider}/redirect', [SocialAuthController::class, 'redirect'])->name('oauth.redirect');
+Route::get('/oauth/{provider}/callback', [SocialAuthController::class, 'callback'])->name('oauth.callback');
 
 Route::post('/logout', [AuthController::class, 'logout'])->middleware('auth')->name('logout');
 

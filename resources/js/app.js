@@ -2062,6 +2062,7 @@ function initAccount() {
     };
     wireReveal('password-toggle', 'password-form', 'password-cancel');
     wireReveal('danger-toggle', 'danger-confirm', 'danger-cancel');
+    wireReveal('twofa-manage-toggle', 'twofa-manage');
 }
 initAccount();
 
