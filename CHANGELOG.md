@@ -6,6 +6,8 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.18.0] - 2026-07-01
+
 ### Added
 - **The Genblaze page is now a self-contained live demo.** "Generate via
   Genblaze" shows a pipeline checklist that lights up **as the run happens** —
