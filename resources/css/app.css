@@ -2,10 +2,31 @@
 
 @source '../../vendor/laravel/framework/src/Illuminate/Pagination/resources/views/*.blade.php';
 @source '../../storage/framework/views/*.php';
+/* app.js sets action-cluster button classes at runtime (reflectActionState) — scan it. */
+@source '../js/**/*.js';
 
 @theme {
     --font-sans: 'Instrument Sans', ui-sans-serif, system-ui, sans-serif, 'Apple Color Emoji', 'Segoe UI Emoji',
         'Segoe UI Symbol', 'Noto Color Emoji';
+    --font-mono: 'SF Mono', ui-monospace, 'SFMono-Regular', Menlo, monospace;
+
+    /*
+     * Design tokens from the Bespoken navigation/Studio redesign handoff. Additive
+     * to Tailwind's default palette — the app's existing zinc/cyan/emerald classes
+     * are untouched; the redesigned surfaces (nav, account, users, studio) build
+     * from these so colors stay pixel-exact and centralized.
+     */
+    --color-accent: #22d3ee; /* brand cyan — primary buttons, active nav, hero player */
+    --color-accent-on: #062326; /* text/icon on a cyan fill */
+    --color-app: #0a0a0a; /* page / nav background */
+    --color-panel: #101014; /* cards, panels, chunk cards */
+    --color-inset: #0c0c0f; /* inputs, inset player wells, stat tiles */
+    --color-menu: #141417; /* dropdown / popover menus */
+    --color-drawer: #121216; /* right-hand detail drawer */
+    --color-sticky: #0e0e12; /* sticky command bar (Studio) */
+    --color-ok: #34d399; /* ready / active / ASR ✓ / seal-enabled */
+    --color-warn: #f5c451; /* suspended / stale / start-over */
+    --color-bad: #ef7a72; /* log out / delete / danger zone */
 }
 
 /*
@@ -22,4 +43,113 @@
 #studio audio.is-playing,
 #studio-project audio.is-playing {
     filter: none;
+}
+
+/*
+ * Custom audio player (design 4A) — one anatomy at three weights so the final
+ * audio reads as the hero and chunk/take players stay quieter. The native <audio>
+ * lives inside as `.aplayer__native` (hidden) and does the actual playback; the JS
+ * (initStudioPlayers) drives the skin from its events.
+ */
+.aplayer {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+}
+.aplayer__native {
+    display: none;
+}
+.aplayer__btn {
+    flex-shrink: 0;
+    display: grid;
+    place-items: center;
+    border-radius: 9999px;
+    cursor: pointer;
+    color: var(--color-accent);
+    transition: filter 0.15s ease;
+}
+.aplayer__icon {
+    width: 0;
+    height: 0;
+    border-style: solid;
+    border-width: 7px 0 7px 12px;
+    border-color: transparent transparent transparent currentColor;
+    margin-left: 3px;
+}
+.aplayer.is-playing .aplayer__icon {
+    width: 11px;
+    height: 13px;
+    border: 0;
+    margin-left: 0;
+    background: linear-gradient(to right, currentColor 0 35%, transparent 35% 65%, currentColor 65% 100%);
+}
+.aplayer__track {
+    position: relative;
+    flex: 1;
+    min-width: 90px;
+    height: 7px;
+    border-radius: 4px;
+    background: rgba(255, 255, 255, 0.12);
+    cursor: pointer;
+}
+.aplayer__fill {
+    position: absolute;
+    inset: 0 auto 0 0;
+    width: 0%;
+    border-radius: 4px;
+    background: var(--color-accent);
+}
+.aplayer__knob {
+    position: absolute;
+    top: 50%;
+    left: 0%;
+    width: 13px;
+    height: 13px;
+    transform: translate(-50%, -50%);
+    border-radius: 9999px;
+    background: var(--color-accent);
+}
+.aplayer__time {
+    flex-shrink: 0;
+    font-family: var(--font-mono);
+    font-size: 13px;
+    color: #a8a8ae;
+    white-space: nowrap;
+}
+
+/* Hero (final audio): filled cyan, biggest. */
+.aplayer--hero .aplayer__btn {
+    width: 44px;
+    height: 44px;
+    background: var(--color-accent);
+    color: var(--color-accent-on);
+}
+.aplayer--hero .aplayer__track {
+    height: 8px;
+}
+
+/* Chunk: cyan outline, medium. */
+.aplayer--chunk .aplayer__btn {
+    width: 40px;
+    height: 40px;
+    border: 1.5px solid rgba(34, 211, 238, 0.55);
+}
+
+/* Take: muted outline, smallest; selected take goes green. */
+.aplayer--take .aplayer__btn {
+    width: 32px;
+    height: 32px;
+    border: 1.5px solid rgba(255, 255, 255, 0.25);
+    color: #c7c7cc;
+}
+.aplayer--take .aplayer__track {
+    height: 6px;
+}
+.aplayer--take.aplayer--selected .aplayer__btn {
+    border-color: rgba(52, 211, 153, 0.6);
+    color: var(--color-ok);
+}
+.aplayer--take.aplayer--selected .aplayer__fill,
+.aplayer--take.aplayer--selected .aplayer__knob {
+    background: var(--color-ok);
 }

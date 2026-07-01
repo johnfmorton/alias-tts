@@ -7,17 +7,18 @@ use Illuminate\Http\Request;
 use Symfony\Component\HttpFoundation\Response;
 
 /**
- * Gate the control panel to admin users. Today the only account is the seeded
- * admin; this is the seam for future role-based, multi-user access.
+ * Gate a route to SuperAdmins only. The control panel at large is open to any
+ * signed-in, active user (see EnsureAccountIsActive); this narrower gate protects
+ * the admin-only surface — today the Users screen, tomorrow audit log / server config.
  */
-class EnsureUserIsAdmin
+class EnsureUserIsSuperAdmin
 {
     public function handle(Request $request, Closure $next): Response
     {
         $user = $request->user();
 
         if (! $user || ! $user->isSuperAdmin()) {
-            abort(403, 'Admin access required.');
+            abort(403, 'SuperAdmin access required.');
         }
 
         return $next($request);

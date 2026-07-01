@@ -51,11 +51,12 @@ class DashboardTest extends TestCase
         $this->assertGuest();
     }
 
-    public function test_non_admin_is_forbidden(): void
+    public function test_non_admin_can_view_the_dashboard(): void
     {
+        // The panel is open to any signed-in, active user (only Users is SuperAdmin-gated).
         $user = User::factory()->create(['is_super_admin' => false]);
 
-        $this->actingAs($user)->get('/admin')->assertForbidden();
+        $this->actingAs($user)->get('/admin')->assertOk();
     }
 
     public function test_admin_can_create_toggle_and_delete_api_key(): void

@@ -1,6 +1,7 @@
 <?php
 
 use App\Http\Controllers\Admin\AuthController;
+use App\Http\Controllers\InvitationController;
 use App\Http\Controllers\MagicLoginController;
 use Illuminate\Support\Facades\Route;
 
@@ -22,3 +23,9 @@ Route::middleware('guest')->group(function () {
 });
 
 Route::post('/logout', [AuthController::class, 'logout'])->middleware('auth')->name('logout');
+
+// Accept an invite / forced reset by setting a password. The GET is signed; a valid
+// signature authorizes this session to POST a new password for that user (see
+// InvitationController). Guest-accessible by design.
+Route::get('/invite/{user}', [InvitationController::class, 'show'])->middleware('signed')->name('invite.accept');
+Route::post('/invite/{user}', [InvitationController::class, 'store'])->name('invite.store');

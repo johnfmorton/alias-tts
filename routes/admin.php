@@ -1,5 +1,6 @@
 <?php
 
+use App\Http\Controllers\Admin\AccountController;
 use App\Http\Controllers\Admin\ApiKeyController;
 use App\Http\Controllers\Admin\DashboardController;
 use App\Http\Controllers\Admin\GenblazeController;
@@ -9,16 +10,44 @@ use App\Http\Controllers\Admin\PronunciationController;
 use App\Http\Controllers\Admin\SettingsController;
 use App\Http\Controllers\Admin\StudioController;
 use App\Http\Controllers\Admin\StudioProjectController;
+use App\Http\Controllers\Admin\UserController;
 use App\Http\Controllers\Admin\VoiceController;
+use App\Http\Middleware\EnsureUserIsSuperAdmin;
 use Illuminate\Support\Facades\Route;
 
 /*
-| Control panel. Registered in bootstrap/app.php behind ['web','auth',EnsureUserIsAdmin]
-| with the '/admin' prefix and 'admin.' name prefix.
+| Control panel. Registered in bootstrap/app.php behind ['web','auth',EnsureAccountIsActive]
+| with the '/admin' prefix and 'admin.' name prefix. Open to any signed-in, active user;
+| SuperAdmin-only routes add EnsureUserIsSuperAdmin per-route.
 */
 
 Route::get('/', [DashboardController::class, 'index'])->name('dashboard');
 Route::post('/reset-api-key', [DashboardController::class, 'resetApiKey'])->name('dashboard.reset-key');
+
+// Account — self-service profile, security, and sign-in. Open to any signed-in user.
+Route::get('/account', [AccountController::class, 'index'])->name('account.index');
+Route::put('/account/profile', [AccountController::class, 'updateProfile'])->name('account.profile');
+Route::put('/account/password', [AccountController::class, 'updatePassword'])->name('account.password');
+Route::post('/account/avatar', [AccountController::class, 'updateAvatar'])->name('account.avatar');
+Route::delete('/account/avatar', [AccountController::class, 'deleteAvatar'])->name('account.avatar.delete');
+Route::delete('/account', [AccountController::class, 'destroy'])->name('account.destroy');
+// Streams a user's avatar from the private disk (the bucket has no public URL).
+Route::get('/avatars/{user}', [AccountController::class, 'avatar'])->name('avatars.show');
+
+// Stop impersonating — in the general group so the impersonated (possibly non-admin) user can return.
+Route::post('/impersonate/leave', [UserController::class, 'leaveImpersonation'])->name('impersonate.leave');
+
+// Users — SuperAdmin only (design 2B). The nav's ADMIN section appears once these exist.
+Route::middleware(EnsureUserIsSuperAdmin::class)->group(function () {
+    Route::get('/users', [UserController::class, 'index'])->name('users.index');
+    Route::post('/users', [UserController::class, 'store'])->name('users.store');
+    Route::post('/users/invite', [UserController::class, 'invite'])->name('users.invite');
+    Route::patch('/users/{user}/role', [UserController::class, 'updateRole'])->name('users.role');
+    Route::post('/users/{user}/suspend', [UserController::class, 'suspend'])->name('users.suspend');
+    Route::post('/users/{user}/force-reset', [UserController::class, 'forceReset'])->name('users.force-reset');
+    Route::post('/users/{user}/impersonate', [UserController::class, 'impersonate'])->name('users.impersonate');
+    Route::delete('/users/{user}', [UserController::class, 'destroy'])->name('users.destroy');
+});
 
 // Settings — service configuration (env-pinned values are read-only).
 Route::get('/settings', [SettingsController::class, 'index'])->name('settings.index');

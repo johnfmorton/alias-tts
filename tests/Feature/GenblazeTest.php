@@ -36,7 +36,7 @@ class GenblazeTest extends TestCase
 
         $this->actingAs(User::factory()->create(['is_super_admin' => false]))
             ->get(route('admin.studio.genblaze'))
-            ->assertForbidden();
+            ->assertOk();
     }
 
     public function test_page_renders_runner_health(): void
@@ -66,10 +66,12 @@ class GenblazeTest extends TestCase
             ->assertOk()
             ->getContent();
 
-        // Genblaze tab active (cyan); Studio tab stays inactive (zinc) even though
-        // its wildcard pattern admin.studio.* would otherwise match this nested route.
-        $this->assertMatchesRegularExpression('#/admin/studio/genblaze"[^>]*text-cyan-400#', $html);
+        // Genblaze is the emphasized DEMO pill (accent-bordered); Studio stays inactive
+        // (zinc, no accent) even though its wildcard admin.studio.* would otherwise match
+        // this nested route — the `except` in the nav config prevents that.
+        $this->assertMatchesRegularExpression('#/admin/studio/genblaze"[^>]*border-accent/40#', $html);
         $this->assertMatchesRegularExpression('#/admin/studio"[^>]*text-zinc-400#', $html);
+        $this->assertDoesNotMatchRegularExpression('#/admin/studio"[^>]*text-accent#', $html);
     }
 
     public function test_run_dispatches_and_status_returns_provenance_with_proxied_play_urls(): void

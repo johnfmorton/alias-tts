@@ -34,3 +34,6 @@ Thumbs.db
 
 # Local working dir for auditioning/cleaning default-voice candidates (not shipped)
 /vctk_candidates_cleaned/
+
+# Design handoff artifacts live outside the repo (like hackathon write-ups).
+/*.zip

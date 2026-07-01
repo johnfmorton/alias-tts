@@ -782,6 +782,8 @@ function initStudioProject() {
     const rebuildBtn = document.getElementById('project-rebuild');
     const previewUrl = root.dataset.previewUrl;
     const insertUrl = root.dataset.insertUrl;
+    const finalPlayer = document.getElementById('project-final-player');
+    let hasFinal = root.dataset.hasFinal === '1';
 
     // Cache-bust so a regenerated chunk / rebuilt final reloads in the player.
     const bust = (url) => url + (url.includes('?') ? '&' : '?') + 't=' + Date.now();
@@ -835,16 +837,48 @@ function initStudioProject() {
         if (displayClass) el.classList.toggle(displayClass, show);
     };
     // Seal is offered only on a clean (ready) final; the badge + receipt show once
-    // sealed. Any edit clears the seal server-side; this mirrors it in the UI.
+    // sealed. Any edit clears the seal server-side; this mirrors it in the UI. The
+    // seal *button* itself is owned by reflectActionState (it stays visible-but-greyed
+    // per the 4B rules), so this only manages the badge + receipt.
     const reflectSeal = () => {
         const ready = projectStatus.textContent.trim() === 'ready';
         if (!ready) isSealed = false; // a stale/draft project is never sealed
-        showEl(sealBtn, ready && !isSealed);
         showEl(receiptLink, isSealed);
         showEl(sealBadge, isSealed, 'flex');
     };
 
-    const setProjectStatus = (status) => { badge(projectStatus, status); reflectSeal(); };
+    // 4B: the action cluster is state-aware — the lit primary names the single next
+    // step, and actions needing a current final stay visible-but-disabled until one
+    // exists. States: not_generated → Generate; stale → Rebuild; ready → Download.
+    const ACT_BASE = 'inline-flex items-center gap-1.5 rounded-[9px] px-4 py-[9px] text-sm transition';
+    const ACT_LOOK = {
+        primary: 'bg-accent font-semibold text-accent-on hover:bg-accent/90',
+        outline: 'border border-accent/35 text-accent hover:bg-accent/[0.08]',
+        seal: 'border border-ok/35 bg-ok/[0.06] text-ok hover:bg-ok/[0.12]',
+        off: 'border border-white/8 text-zinc-600 cursor-not-allowed pointer-events-none',
+    };
+    const look = (el, variant) => { if (el) el.className = ACT_BASE + ' ' + ACT_LOOK[variant]; };
+
+    function reflectActionState() {
+        const status = projectStatus.textContent.trim();
+        const cards = [...root.querySelectorAll('.studio-chunk')];
+        const anyCompleted = cards.some(isChunkCompleted);
+        const anyPending = cards.some((c) => !isChunkCompleted(c));
+        const ready = hasFinal && status === 'ready';
+
+        // Generate-all only matters while chunks remain ungenerated; it leads when
+        // nothing has been generated yet, else it steps down to a secondary. Set the
+        // look first — it rewrites className — then toggle `hidden` so it survives.
+        if (generateAllBtn) {
+            look(generateAllBtn, (! anyCompleted && anyPending) ? 'primary' : 'outline');
+            generateAllBtn.classList.toggle('hidden', !anyPending);
+        }
+        look(rebuildBtn, ready ? 'outline' : (anyCompleted ? 'primary' : 'off'));
+        look(downloadLink, ready ? 'primary' : 'off');
+        look(sealBtn, (ready && ! isSealed) ? 'seal' : 'off');
+    }
+
+    const setProjectStatus = (status) => { badge(projectStatus, status); reflectSeal(); reflectActionState(); };
 
     async function seal() {
         if (!sealBtn) return;
@@ -1011,11 +1045,12 @@ function initStudioProject() {
             });
             if (!res.ok) throw new Error(await errorMessage(res));
             finalAudio.src = bust(finalUrl);
-            finalAudio.classList.remove('hidden');
+            hasFinal = true;
+            finalPlayer?.classList.remove('hidden');
+            document.getElementById('project-final-placeholder')?.remove();
             finalAudio.play().catch(() => {});
-            downloadLink.classList.remove('hidden');
             isSealed = false; // new bytes — the server cleared the seal; offer to re-seal
-            setProjectStatus('ready');
+            setProjectStatus('ready'); // also re-lights the action cluster (Download leads)
             setStatus(finalStatus, '✓ Rebuilt.', 'ok');
         } catch (err) {
             setStatus(finalStatus, `✗ ${err.message}`, 'error');
@@ -1544,7 +1579,61 @@ function initStudioProject() {
         });
     }
 
+    // Overflow ⋯ menu (Start over / Delete / receipt). Same toggle idiom as the nav.
+    const overflowBtn = document.getElementById('project-overflow');
+    const overflowMenu = document.getElementById('project-overflow-menu');
+    if (overflowBtn && overflowMenu) {
+        overflowBtn.addEventListener('click', (e) => { e.stopPropagation(); overflowMenu.classList.toggle('hidden'); });
+        document.addEventListener('click', (e) => {
+            if (!overflowMenu.classList.contains('hidden') && !overflowMenu.contains(e.target) && !overflowBtn.contains(e.target)) {
+                overflowMenu.classList.add('hidden');
+            }
+        });
+    }
+
+    enhanceStudioPlayers(root); // skin the custom players (hero final audio)
+    reflectActionState(); // set the initial action-cluster looks from current state
     refreshSeams();
+}
+
+// Skin a native <audio> as the custom player (design 4A): a wrapper `.aplayer`
+// holds a hidden `.aplayer__native` that does playback; this drives the play
+// button, scrubber fill/knob, and mono timecode from the audio's own events.
+function enhanceStudioPlayers(scope) {
+    (scope || document).querySelectorAll('.aplayer').forEach((el) => {
+        if (el.dataset.enhanced) return;
+        const audio = el.querySelector('.aplayer__native');
+        const btn = el.querySelector('.aplayer__btn');
+        const track = el.querySelector('.aplayer__track');
+        const fill = el.querySelector('.aplayer__fill');
+        const knob = el.querySelector('.aplayer__knob');
+        const time = el.querySelector('.aplayer__time');
+        if (!audio || !btn || !track) return;
+        el.dataset.enhanced = '1';
+
+        const fmt = (s) => (isFinite(s) && s >= 0)
+            ? Math.floor(s / 60) + ':' + String(Math.floor(s % 60)).padStart(2, '0')
+            : '0:00';
+        const sync = () => {
+            const d = audio.duration || 0;
+            const pct = d ? (audio.currentTime / d) * 100 : 0;
+            if (fill) fill.style.width = pct + '%';
+            if (knob) knob.style.left = pct + '%';
+            if (time) time.textContent = fmt(audio.currentTime) + ' / ' + fmt(d);
+        };
+
+        btn.addEventListener('click', () => { audio.paused ? audio.play().catch(() => {}) : audio.pause(); });
+        track.addEventListener('click', (e) => {
+            const r = track.getBoundingClientRect();
+            if (audio.duration) audio.currentTime = ((e.clientX - r.left) / r.width) * audio.duration;
+        });
+        audio.addEventListener('timeupdate', sync);
+        audio.addEventListener('loadedmetadata', sync);
+        audio.addEventListener('play', () => el.classList.add('is-playing'));
+        audio.addEventListener('pause', () => el.classList.remove('is-playing'));
+        audio.addEventListener('ended', () => el.classList.remove('is-playing'));
+        sync();
+    });
 }
 
 initStudioProject();
@@ -1894,3 +1983,89 @@ function initCreateProjectForm() {
     });
 }
 initCreateProjectForm();
+
+// Global-nav account menu: the avatar pill toggles a dropdown; dismiss on outside
+// click or Escape. The menu root is display:block so toggling `hidden` is safe
+// (no co-present flex to fight — see the hidden/display-conflict gotcha).
+function initAccountMenu() {
+    const pill = document.getElementById('account-pill');
+    const menu = document.getElementById('account-menu');
+    if (!pill || !menu) return;
+
+    const isOpen = () => !menu.classList.contains('hidden');
+    const close = () => {
+        menu.classList.add('hidden');
+        pill.setAttribute('aria-expanded', 'false');
+    };
+    const open = () => {
+        menu.classList.remove('hidden');
+        pill.setAttribute('aria-expanded', 'true');
+    };
+
+    pill.addEventListener('click', (e) => {
+        e.stopPropagation();
+        isOpen() ? close() : open();
+    });
+    document.addEventListener('click', (e) => {
+        if (isOpen() && !menu.contains(e.target) && !pill.contains(e.target)) close();
+    });
+    document.addEventListener('keydown', (e) => {
+        if (e.key === 'Escape' && isOpen()) close();
+    });
+}
+initAccountMenu();
+
+// Account screen: "Change photo" opens the file picker and auto-submits on pick;
+// "Change password" and "Delete account" reveal their inline forms.
+function initAccount() {
+    const changeBtn = document.getElementById('avatar-change');
+    const fileInput = document.getElementById('avatar-input');
+    const avatarForm = document.getElementById('avatar-form');
+    if (changeBtn && fileInput && avatarForm) {
+        changeBtn.addEventListener('click', () => fileInput.click());
+        fileInput.addEventListener('change', () => {
+            if (fileInput.files.length) avatarForm.submit();
+        });
+    }
+
+    const wireReveal = (toggleId, panelId, cancelId) => {
+        const toggle = document.getElementById(toggleId);
+        const panel = document.getElementById(panelId);
+        if (!toggle || !panel) return;
+        toggle.addEventListener('click', () => panel.classList.toggle('hidden'));
+        const cancel = cancelId && document.getElementById(cancelId);
+        if (cancel) cancel.addEventListener('click', () => panel.classList.add('hidden'));
+    };
+    wireReveal('password-toggle', 'password-form', 'password-cancel');
+    wireReveal('danger-toggle', 'danger-confirm', 'danger-cancel');
+}
+initAccount();
+
+// Users admin (2B): reveal the invite/create forms and the drawer's delete confirm,
+// and wire the one-time "copy" button for a temp password / invite link.
+function initUsers() {
+    const toggle = (btnId, panelId) => {
+        const btn = document.getElementById(btnId);
+        const panel = document.getElementById(panelId);
+        if (btn && panel) btn.addEventListener('click', () => panel.classList.toggle('hidden'));
+    };
+    toggle('invite-toggle', 'invite-form');
+    toggle('create-toggle', 'create-form');
+    toggle('user-delete-toggle', 'user-delete-confirm');
+
+    const copyBtn = document.querySelector('[data-copy-btn]');
+    const copyInput = document.querySelector('[data-copy]');
+    if (copyBtn && copyInput) {
+        copyBtn.addEventListener('click', async () => {
+            copyInput.select();
+            try {
+                await navigator.clipboard.writeText(copyInput.value);
+            } catch (_) {
+                document.execCommand('copy');
+            }
+            copyBtn.textContent = 'Copied';
+            setTimeout(() => (copyBtn.textContent = 'Copy'), 1500);
+        });
+    }
+}
+initUsers();

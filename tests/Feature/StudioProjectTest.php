@@ -91,7 +91,7 @@ class StudioProjectTest extends TestCase
 
         $this->actingAs(User::factory()->create(['is_super_admin' => false]))
             ->get(route('admin.studio.projects.create'))
-            ->assertForbidden();
+            ->assertOk();
     }
 
     public function test_create_page_preselects_the_built_in_default_voice(): void
@@ -1110,11 +1110,11 @@ class StudioProjectTest extends TestCase
 
         // Re-run the takes migration against the already-generated chunk, as a real
         // deploy would: drop + recreate the table so up()'s backfill runs over the
-        // existing audio (the chunk's audio_path is untouched by the rollback). Four
-        // steps because the takes table is the fourth-newest migration (the native
-        // presets conversion, the project-seal columns, and the bundled default
-        // voices sit on top of it).
-        Artisan::call('migrate:rollback', ['--step' => 4]);
+        // existing audio (the chunk's audio_path is untouched by the rollback). Five
+        // steps because the takes table is the fifth-newest migration (the native
+        // presets conversion, the project-seal columns, the bundled default voices,
+        // and the account fields migration sit on top of it).
+        Artisan::call('migrate:rollback', ['--step' => 5]);
         Artisan::call('migrate', ['--force' => true]);
 
         $takes = $chunk->refresh()->takes()->get();

@@ -34,7 +34,7 @@ class StudioTest extends TestCase
 
         $this->actingAs(User::factory()->create(['is_super_admin' => false]))
             ->get(route('admin.studio.index'))
-            ->assertForbidden();
+            ->assertOk();
     }
 
     public function test_admin_can_open_the_studio_page(): void

@@ -1,6 +1,6 @@
 <?php
 
-use App\Http\Middleware\EnsureUserIsAdmin;
+use App\Http\Middleware\EnsureAccountIsActive;
 use App\Http\Middleware\ValidateInternalSecret;
 use Illuminate\Foundation\Application;
 use Illuminate\Foundation\Configuration\Exceptions;
@@ -25,8 +25,9 @@ return Application::configure(basePath: dirname(__DIR__))
                 ->name('internal.')
                 ->group(base_path('routes/internal.php'));
 
-            // Password-protected control panel.
-            Route::middleware(['web', 'auth', EnsureUserIsAdmin::class])
+            // Password-protected control panel. Open to any signed-in, active user;
+            // the SuperAdmin-only surface (Users) is gated per-route inside admin.php.
+            Route::middleware(['web', 'auth', EnsureAccountIsActive::class])
                 ->prefix('admin')
                 ->name('admin.')
                 ->group(base_path('routes/admin.php'));

@@ -25,13 +25,11 @@ class HealthProviderTestTest extends TestCase
         return User::factory()->create(['is_super_admin' => true]);
     }
 
-    public function test_provider_test_requires_admin(): void
+    public function test_provider_test_requires_authentication(): void
     {
+        // Guests are bounced to login; the panel itself (incl. this billable action)
+        // is open to any signed-in, active user — no longer SuperAdmin-gated.
         $this->post(route('admin.health.test.short'))->assertRedirect(route('login'));
-
-        $this->actingAs(User::factory()->create(['is_super_admin' => false]))
-            ->post(route('admin.health.test.short'))
-            ->assertForbidden();
     }
 
     public function test_short_test_returns_audio(): void

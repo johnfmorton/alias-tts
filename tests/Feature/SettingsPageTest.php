@@ -94,11 +94,12 @@ class SettingsPageTest extends TestCase
         $res->assertSee('API remediation');
     }
 
-    public function test_non_admin_is_forbidden(): void
+    public function test_non_admin_can_view_the_settings_page(): void
     {
+        // The panel is open to any signed-in, active user (only Users is SuperAdmin-gated).
         $this->actingAs(User::factory()->create(['is_super_admin' => false]))
             ->get(route('admin.settings.index'))
-            ->assertForbidden();
+            ->assertOk();
     }
 
     public function test_saving_persists_unlocked_values(): void

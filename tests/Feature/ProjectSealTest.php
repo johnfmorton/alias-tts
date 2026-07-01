@@ -73,16 +73,13 @@ class ProjectSealTest extends TestCase
 
     // ---- Seal ---------------------------------------------------------------
 
-    public function test_seal_requires_admin(): void
+    public function test_seal_requires_authentication(): void
     {
+        // Guests are bounced to login; sealing is open to any signed-in, active user.
         $project = $this->readyProject();
 
         $this->post(route('admin.studio.projects.seal', $project))
             ->assertRedirect(route('login'));
-
-        $this->actingAs(User::factory()->create(['is_super_admin' => false]))
-            ->post(route('admin.studio.projects.seal', $project))
-            ->assertForbidden();
     }
 
     public function test_seal_records_hash_and_approver(): void

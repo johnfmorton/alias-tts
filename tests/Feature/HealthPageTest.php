@@ -29,11 +29,12 @@ class HealthPageTest extends TestCase
         $this->get(route('admin.health'))->assertRedirect(route('login'));
     }
 
-    public function test_health_page_forbidden_for_non_admin(): void
+    public function test_health_page_visible_to_non_admin(): void
     {
+        // The panel is open to any signed-in, active user (only Users is SuperAdmin-gated).
         $this->actingAs(User::factory()->create(['is_super_admin' => false]))
             ->get(route('admin.health'))
-            ->assertForbidden();
+            ->assertOk();
     }
 
     public function test_admin_sees_the_per_check_results(): void

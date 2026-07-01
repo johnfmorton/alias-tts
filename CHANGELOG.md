@@ -6,6 +6,40 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.19.0] - 2026-07-01
+
+### Added
+- **Account screen.** A self-service `/admin/account` where any signed-in user
+  manages their profile (display name, email, avatar), changes their password,
+  and can delete their own account. Avatars live on the private object-storage
+  disk (B2 in prod) and stream through an authenticated proxy — the same pattern
+  as generated audio. (Two-factor and Google/GitHub sign-in are laid out on the
+  page and land in a follow-up.)
+- **Users admin (SuperAdmin only).** A `/admin/users` screen — a table of
+  everyone with access plus a click-in detail drawer — to create users (with a
+  one-time temporary password), invite by email (a signed set-password link),
+  change a user's role, suspend/reactivate, force a password reset, sign in as a
+  user (impersonate, with a persistent banner to return), and delete. Guarded so
+  the last SuperAdmin can't be demoted, suspended, or deleted into a lockout.
+- **Role-gated navigation.** The flat top bar collapses to three primary items
+  (Genblaze Demo, Dashboard, Studio) plus an account menu grouped into Manage /
+  System, with an Admin → Users section shown only to SuperAdmins.
+- **Studio: one pinned command bar.** The project page's action toolbar and the
+  separate "Final audio" card merge into a single sticky, two-row header, so the
+  final audio (now a custom player) is always one tap away as you scroll the
+  chunk list. The action set is state-aware — the lit primary always names the
+  next step (Generate → Rebuild → Download) and Seal stays visibly disabled
+  until a current final exists — and rare/destructive actions (Start over,
+  Delete) move into an overflow menu.
+
+### Changed
+- **The control panel is open to any signed-in user, not just the admin.**
+  Previously every `/admin` page required the super-admin; now any active user
+  can use the panel, only the Users screen is SuperAdmin-gated, and suspended
+  accounts are signed out on their next request. This is the multi-user access
+  model the Users screen manages — the two roles (User and SuperAdmin) map onto
+  the existing `is_super_admin` flag, so there is no separate roles table.
+
 ## [0.18.0] - 2026-07-01
 
 ### Added
