@@ -1865,7 +1865,12 @@ function initGenblaze() {
 
         return [
             pron,
-            ['chunk', 'done', `${chunks.length} segment(s)`],
+            // Single-chunk runs shouldn't leave this step silent — say so explicitly.
+            // Wording mirrors the runner's live 'chunk' ping (orchestrator.py) so the
+            // detail doesn't flicker when finalizeSteps snaps to the provenance.
+            ['chunk', 'done', chunks.length <= 1
+                ? 'no chunking needed — short enough for a single segment'
+                : `split into ${chunks.length} segments`],
             ['generate', 'done', `${chunks.length} chunk(s) · ${data.reroll_count ?? 0} re-roll(s)${trimmed ? ' · ' + trimmed + ' trimmed' : ''}`],
             ['stitch', 'done', `joined ${chunks.length} chunk(s)`],
             ['seal', 'done', seal],

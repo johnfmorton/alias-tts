@@ -159,7 +159,12 @@ class Orchestrator:
         segments = self.client.chunk(text)
         if not segments:
             raise ValueError("No chunks were produced from the input text.")
-        report("chunk", f"{len(segments)} segment(s)")
+        report(
+            "chunk",
+            "no chunking needed — short enough for a single segment"
+            if len(segments) == 1
+            else f"split into {len(segments)} segments",
+        )
 
         total = len(segments)
 

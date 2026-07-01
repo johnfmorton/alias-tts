@@ -6,6 +6,14 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Fixed
+- **Genblaze demo: the Chunk step no longer goes silent for short text.** When
+  the input fits in a single segment (no splitting needed), the pipeline's Chunk
+  step now says so explicitly ("no chunking needed — short enough for a single
+  segment") instead of leaving the step blank. Fixed at the source (the runner's
+  live progress ping) and in the panel's final provenance render, with matching
+  wording so the detail doesn't flicker on completion.
+
 ## [0.20.0] - 2026-07-01
 
 ### Security
