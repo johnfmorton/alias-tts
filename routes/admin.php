@@ -38,6 +38,7 @@ Route::post('/account/two-factor', [TwoFactorController::class, 'enable'])->name
 Route::post('/account/two-factor/confirm', [TwoFactorController::class, 'confirm'])->name('account.2fa.confirm');
 Route::delete('/account/two-factor', [TwoFactorController::class, 'disable'])->name('account.2fa.disable');
 Route::post('/account/two-factor/recovery-codes', [TwoFactorController::class, 'regenerateRecoveryCodes'])->name('account.2fa.recovery');
+Route::post('/account/connections/{provider}', [SocialAuthController::class, 'startConnect'])->name('account.connections.connect');
 Route::delete('/account/connections/{provider}', [SocialAuthController::class, 'disconnect'])->name('account.connections.disconnect');
 // Streams a user's avatar from the private disk (the bucket has no public URL).
 Route::get('/avatars/{user}', [AccountController::class, 'avatar'])->name('avatars.show');

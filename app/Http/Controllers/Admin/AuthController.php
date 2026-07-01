@@ -32,6 +32,13 @@ class AuthController extends Controller
 
         $user = Auth::getLastAttempted();
 
+        // Don't establish a session (or a 2FA challenge) for a suspended account.
+        if ($user->isSuspended()) {
+            return back()
+                ->withErrors(['email' => 'This account has been suspended.'])
+                ->onlyInput('email');
+        }
+
         if ($user->hasTwoFactorEnabled()) {
             $request->session()->put('login.2fa.id', $user->id);
             $request->session()->put('login.2fa.remember', $request->boolean('remember'));

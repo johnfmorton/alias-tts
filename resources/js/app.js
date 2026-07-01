@@ -2063,6 +2063,12 @@ function initAccount() {
     wireReveal('password-toggle', 'password-form', 'password-cancel');
     wireReveal('danger-toggle', 'danger-confirm', 'danger-cancel');
     wireReveal('twofa-manage-toggle', 'twofa-manage');
+
+    // Connect-SSO buttons reveal a per-provider password form (connecting is gated).
+    document.querySelectorAll('.connect-toggle').forEach((btn) => {
+        const target = document.getElementById(btn.dataset.target);
+        if (target) btn.addEventListener('click', () => target.classList.toggle('hidden'));
+    });
 }
 initAccount();
 

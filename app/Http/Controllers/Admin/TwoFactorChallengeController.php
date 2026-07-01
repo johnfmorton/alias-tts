@@ -28,6 +28,9 @@ class TwoFactorChallengeController extends Controller
         return view('auth.two-factor-challenge');
     }
 
+    /** After this many wrong codes, drop the pending login and force step 1 again. */
+    private const MAX_ATTEMPTS = 5;
+
     public function store(Request $request): RedirectResponse
     {
         $request->validate(['code' => ['required', 'string']]);
@@ -35,17 +38,26 @@ class TwoFactorChallengeController extends Controller
         $user = User::find($request->session()->get('login.2fa.id'));
 
         if (! $user || ! $user->hasTwoFactorEnabled()) {
-            $request->session()->forget(['login.2fa.id', 'login.2fa.remember']);
+            return $this->abandon($request);
+        }
 
-            return redirect()->route('login');
+        // A user suspended between step 1 and step 2 must not complete login.
+        if ($user->isSuspended()) {
+            return $this->abandon($request)->with('error', 'This account has been suspended.');
         }
 
         if (! $this->passes($user, trim($request->input('code')))) {
+            // Rate limiting also guards this route (see routes/web.php); this caps
+            // guesses against a single pending login and forces a fresh password entry.
+            if ($request->session()->increment('login.2fa.attempts') >= self::MAX_ATTEMPTS) {
+                return $this->abandon($request)->with('error', 'Too many attempts. Please sign in again.');
+            }
+
             return back()->withErrors(['code' => 'That code was not valid. Try again or use a recovery code.']);
         }
 
         $remember = (bool) $request->session()->get('login.2fa.remember');
-        $request->session()->forget(['login.2fa.id', 'login.2fa.remember']);
+        $this->clearPending($request);
 
         Auth::login($user, $remember);
         $request->session()->regenerate();
@@ -53,6 +65,18 @@ class TwoFactorChallengeController extends Controller
         $home = config('tts.genblaze.runner_url') ? 'admin.studio.genblaze' : 'admin.dashboard';
 
         return redirect()->intended(route($home));
+    }
+
+    private function clearPending(Request $request): void
+    {
+        $request->session()->forget(['login.2fa.id', 'login.2fa.remember', 'login.2fa.attempts']);
+    }
+
+    private function abandon(Request $request): RedirectResponse
+    {
+        $this->clearPending($request);
+
+        return redirect()->route('login');
     }
 
     /** A valid TOTP code, or a one-time recovery code (which is then consumed). */

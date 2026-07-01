@@ -4,6 +4,7 @@ namespace Tests\Feature;
 
 use App\Models\ConnectedAccount;
 use App\Models\User;
+use App\Services\TwoFactorService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Laravel\Socialite\Contracts\Provider;
 use Laravel\Socialite\Contracts\User as SocialiteUser;
@@ -98,6 +99,40 @@ class SocialAuthTest extends TestCase
             ->get(route('oauth.callback', 'google'));
 
         $this->assertAuthenticatedAs($user);
+    }
+
+    public function test_sso_login_still_requires_the_2fa_challenge(): void
+    {
+        $this->configureGoogle();
+        $this->mockSocialite('gid-2fa');
+        $user = User::factory()->create();
+        ConnectedAccount::create(['user_id' => $user->id, 'provider' => 'google', 'provider_id' => 'gid-2fa']);
+        $user->forceFill([
+            'two_factor_secret' => app(TwoFactorService::class)->generateSecret(),
+            'two_factor_confirmed_at' => now(),
+            'two_factor_recovery_codes' => ['aaaa-bbbb'],
+        ])->save();
+
+        $this->withSession(['oauth.intent' => 'login'])
+            ->get(route('oauth.callback', 'google'))
+            ->assertRedirect(route('two-factor.challenge'));
+
+        // SSO proved the identity but the local second factor still gates the session.
+        $this->assertGuest();
+    }
+
+    public function test_connecting_a_provider_requires_the_password(): void
+    {
+        $this->configureGoogle();
+        $user = User::factory()->create(['password' => 'pw']);
+
+        $this->actingAs($user)
+            ->post(route('admin.account.connections.connect', 'google'))
+            ->assertSessionHasErrors('password');
+
+        $this->actingAs($user)
+            ->post(route('admin.account.connections.connect', 'google'), ['password' => 'wrong'])
+            ->assertSessionHasErrors('password');
     }
 
     public function test_sso_login_with_no_linked_account_is_rejected(): void

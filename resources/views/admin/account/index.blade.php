@@ -184,24 +184,39 @@
         <div class="pt-[18px]">
             <div class="mb-3.5 text-sm text-zinc-200">Connected accounts</div>
             @foreach($providers as $p)
-                <div class="mb-3 flex items-center justify-between last:mb-0">
-                    <div class="flex items-center gap-[11px]">
-                        <span class="grid h-[30px] w-[30px] place-items-center rounded-[7px] bg-zinc-800 font-bold text-zinc-200 {{ $p['key'] === 'github' ? 'font-mono text-[13px]' : 'text-sm' }}">{{ $p['key'] === 'github' ? 'GH' : 'G' }}</span>
-                        <div>
-                            <div class="text-sm text-zinc-200">{{ $p['label'] }}</div>
-                            <div class="mt-0.5 text-xs text-zinc-500">{{ $p['account'] ? ($p['account']->email ?? 'Connected') : (! $p['configured'] ? 'Not configured' : 'Not connected') }}</div>
+                <div class="mb-3 last:mb-0">
+                    <div class="flex items-center justify-between">
+                        <div class="flex items-center gap-[11px]">
+                            <span class="grid h-[30px] w-[30px] place-items-center rounded-[7px] bg-zinc-800 font-bold text-zinc-200 {{ $p['key'] === 'github' ? 'font-mono text-[13px]' : 'text-sm' }}">{{ $p['key'] === 'github' ? 'GH' : 'G' }}</span>
+                            <div>
+                                <div class="text-sm text-zinc-200">{{ $p['label'] }}</div>
+                                <div class="mt-0.5 text-xs text-zinc-500">{{ $p['account'] ? ($p['account']->email ?? 'Connected') : (! $p['configured'] ? 'Not configured' : 'Not connected') }}</div>
+                            </div>
                         </div>
+                        @if($p['account'])
+                            <form method="POST" action="{{ route('admin.account.connections.disconnect', $p['key']) }}">
+                                @csrf
+                                @method('DELETE')
+                                <button type="submit" class="{{ $btnSecondary }}">Disconnect</button>
+                            </form>
+                        @elseif($p['configured'])
+                            <button type="button" class="connect-toggle {{ $btnSecondary }}" data-target="connect-{{ $p['key'] }}">Connect</button>
+                        @else
+                            <button type="button" disabled title="Set {{ strtoupper($p['key']) }}_CLIENT_ID and _SECRET in .env" class="{{ $btnSecondaryDisabled }}">Connect</button>
+                        @endif
                     </div>
-                    @if($p['account'])
-                        <form method="POST" action="{{ route('admin.account.connections.disconnect', $p['key']) }}">
-                            @csrf
-                            @method('DELETE')
-                            <button type="submit" class="{{ $btnSecondary }}">Disconnect</button>
-                        </form>
-                    @elseif($p['configured'])
-                        <a href="{{ route('oauth.redirect', $p['key']) }}" class="{{ $btnSecondary }}">Connect</a>
-                    @else
-                        <button type="button" disabled title="Set {{ strtoupper($p['key']) }}_CLIENT_ID and _SECRET in .env" class="{{ $btnSecondaryDisabled }}">Connect</button>
+                    {{-- Connecting adds a sign-in method, so it's password-gated. --}}
+                    @if(! $p['account'] && $p['configured'])
+                        <div id="connect-{{ $p['key'] }}" class="mt-2.5 hidden">
+                            <form method="POST" action="{{ route('admin.account.connections.connect', $p['key']) }}" class="flex flex-wrap items-end gap-2.5">
+                                @csrf
+                                <div class="min-w-[200px] flex-1">
+                                    <label class="mb-[7px] block text-[13px] text-zinc-400">Password — to connect {{ $p['label'] }}</label>
+                                    <input name="password" type="password" autocomplete="current-password" required class="{{ $well }}">
+                                </div>
+                                <button type="submit" class="{{ $btnPrimary }}">Connect {{ $p['label'] }}</button>
+                            </form>
+                        </div>
                     @endif
                 </div>
             @endforeach

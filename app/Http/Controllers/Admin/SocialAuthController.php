@@ -21,6 +21,8 @@ class SocialAuthController extends Controller
 {
     private const PROVIDERS = ['google', 'github'];
 
+    /** Guest starts an SSO sign-in (login page). Connecting is a separate, password-
+     *  gated route — see startConnect() — so this always carries the "login" intent. */
     public function redirect(Request $request, string $provider): RedirectResponse
     {
         $this->assertProvider($provider);
@@ -29,7 +31,30 @@ class SocialAuthController extends Controller
             return $this->notConfigured($provider);
         }
 
-        $request->session()->put('oauth.intent', $request->user() ? 'connect' : 'login');
+        $request->session()->put('oauth.intent', 'login');
+
+        return Socialite::driver($provider)
+            ->redirectUrl(route('oauth.callback', $provider))
+            ->redirect();
+    }
+
+    /**
+     * Signed-in user starts connecting a provider to their account. Adding a sign-in
+     * method is a credential change, so it's gated on the current password — a
+     * session-only attacker can't silently plant an SSO backdoor.
+     */
+    public function startConnect(Request $request, string $provider): RedirectResponse
+    {
+        $this->assertProvider($provider);
+
+        if (! $this->configured($provider)) {
+            return redirect()->route('admin.account.index')
+                ->with('error', ucfirst($provider).' sign-in isn’t configured on this server yet.');
+        }
+
+        $request->validate(['password' => ['required', 'current_password']]);
+
+        $request->session()->put('oauth.intent', 'connect');
 
         return Socialite::driver($provider)
             ->redirectUrl(route('oauth.callback', $provider))
@@ -105,11 +130,24 @@ class SocialAuthController extends Controller
                 ->with('error', 'No account is linked to that '.ucfirst($provider).' sign-in. Connect it from your Account page first, or ask an admin.');
         }
 
-        if ($account->user->isSuspended()) {
+        $user = $account->user;
+
+        if ($user->isSuspended()) {
             return redirect()->route('login')->with('error', 'This account has been suspended.');
         }
 
-        Auth::login($account->user, true);
+        // SSO proves the third-party identity, but a locally-enabled second factor is
+        // independent — require the TOTP challenge too, exactly like password login,
+        // so SSO can't be used as a 2FA-free side door.
+        if ($user->hasTwoFactorEnabled()) {
+            request()->session()->put('login.2fa.id', $user->id);
+            request()->session()->put('login.2fa.remember', false);
+
+            return redirect()->route('two-factor.challenge');
+        }
+
+        // Don't silently create a persistent "remember me" session the user never asked for.
+        Auth::login($user, false);
         request()->session()->regenerate();
 
         $home = config('tts.genblaze.runner_url') ? 'admin.studio.genblaze' : 'admin.dashboard';

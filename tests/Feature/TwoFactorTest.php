@@ -139,6 +139,33 @@ class TwoFactorTest extends TestCase
         $this->get(route('two-factor.challenge'))->assertRedirect(route('login'));
     }
 
+    public function test_a_suspended_account_cannot_complete_password_login(): void
+    {
+        $user = User::factory()->create(['password' => 'pw', 'status' => User::STATUS_SUSPENDED]);
+
+        $this->post(route('login.submit'), ['email' => $user->email, 'password' => 'pw'])
+            ->assertSessionHasErrors('email');
+
+        $this->assertGuest();
+    }
+
+    public function test_too_many_wrong_codes_drops_the_pending_login(): void
+    {
+        $user = User::factory()->create(['password' => 'pw']);
+        $this->enroll($user);
+        $this->post(route('login.submit'), ['email' => $user->email, 'password' => 'pw']);
+
+        // Four wrong codes still return to the challenge; the fifth abandons it.
+        for ($i = 0; $i < 4; $i++) {
+            $this->post(route('two-factor.verify'), ['code' => '000000'])->assertSessionHasErrors('code');
+        }
+        $this->post(route('two-factor.verify'), ['code' => '000000'])->assertRedirect(route('login'));
+
+        // The pending login is gone — back to step one.
+        $this->get(route('two-factor.challenge'))->assertRedirect(route('login'));
+        $this->assertGuest();
+    }
+
     public function test_login_without_2fa_authenticates_normally(): void
     {
         $user = User::factory()->create(['password' => 'pw']);

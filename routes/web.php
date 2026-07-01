@@ -21,13 +21,15 @@ Route::get('/projects/open/{token}', [MagicLoginController::class, 'open'])->nam
 
 Route::middleware('guest')->group(function () {
     Route::get('/login', [AuthController::class, 'showLogin'])->name('login');
-    Route::post('/login', [AuthController::class, 'login'])->name('login.submit');
+    // Throttle password guesses (per IP): 10 tries a minute is plenty for a human.
+    Route::post('/login', [AuthController::class, 'login'])->middleware('throttle:10,1')->name('login.submit');
 });
 
 // Second login step for 2FA accounts. Session-gated (login.2fa.*), not auth-gated —
-// the user isn't signed in until the code checks out.
+// the user isn't signed in until the code checks out. Throttled hard because a
+// 6-digit code is brute-forceable; the controller also caps per-session attempts.
 Route::get('/two-factor-challenge', [TwoFactorChallengeController::class, 'show'])->name('two-factor.challenge');
-Route::post('/two-factor-challenge', [TwoFactorChallengeController::class, 'store'])->name('two-factor.verify');
+Route::post('/two-factor-challenge', [TwoFactorChallengeController::class, 'store'])->middleware('throttle:6,1')->name('two-factor.verify');
 
 // SSO redirect + callback. One pair serves both intents: an authed user connects a
 // provider; a guest signs in through an already-connected one. Dormant until creds
