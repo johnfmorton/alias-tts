@@ -22,6 +22,14 @@ class TwoFactorController extends Controller
     {
         $user = $request->user();
 
+        // Overwriting a *confirmed* secret nulls two_factor_confirmed_at — i.e. it
+        // silently turns 2FA off — so re-enrolling needs the password, exactly like
+        // disable(). (The UI only offers "Set up" while 2FA is off; this guards a
+        // direct POST.) To re-enroll deliberately, disable first, then set up again.
+        if ($user->hasTwoFactorEnabled()) {
+            $request->validate(['password' => ['required', 'current_password']]);
+        }
+
         $user->forceFill([
             'two_factor_secret' => $this->twoFactor->generateSecret(),
             'two_factor_recovery_codes' => null,

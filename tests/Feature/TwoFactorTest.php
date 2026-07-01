@@ -41,6 +41,27 @@ class TwoFactorTest extends TestCase
         $this->assertFalse($user->hasTwoFactorEnabled());
     }
 
+    public function test_re_enrolling_over_confirmed_2fa_requires_the_password(): void
+    {
+        // Overwriting a confirmed secret would turn 2FA off; a direct POST to enable
+        // without the password must be refused (and must not clear the active 2FA).
+        $user = User::factory()->create(['password' => 'pw']);
+        $this->enroll($user);
+
+        $this->actingAs($user)
+            ->post(route('admin.account.2fa.enable'))
+            ->assertSessionHasErrors('password');
+
+        $this->assertTrue($user->refresh()->hasTwoFactorEnabled());
+
+        // With the password, re-enrollment drops back to a pending secret.
+        $this->actingAs($user)
+            ->post(route('admin.account.2fa.enable'), ['password' => 'pw'])
+            ->assertRedirect();
+
+        $this->assertTrue($user->refresh()->hasTwoFactorPending());
+    }
+
     public function test_confirming_with_a_valid_code_enables_and_shows_recovery_codes(): void
     {
         $user = User::factory()->create();
