@@ -56,6 +56,15 @@
     align-items: center;
     gap: 14px;
 }
+/*
+ * `.aplayer` sets display:flex as un-layered CSS, which would otherwise beat
+ * Tailwind's layered `.hidden` (display:none) — so a hidden player (an ungenerated
+ * chunk, the tuning-preview well) would still show. This higher-specificity rule
+ * lets `hidden` win. (See the hidden/display-conflict gotcha.)
+ */
+.aplayer.hidden {
+    display: none;
+}
 .aplayer__native {
     display: none;
 }

@@ -203,8 +203,13 @@
                     <textarea class="chunk-text mt-2 w-full rounded-lg border border-zinc-800 bg-zinc-950 px-3 py-2 text-sm text-zinc-200 focus:border-cyan-500 focus:outline-none focus:ring-2 focus:ring-cyan-500/30"
                               rows="2" data-original="{{ $chunk->text }}">{{ $chunk->text }}</textarea>
 
-                    <audio class="chunk-audio mt-3 w-full {{ $chunk->isCompleted() ? '' : 'hidden' }}" controls
-                           @if($chunk->isCompleted()) src="{{ route('admin.studio.projects.chunks.audio', [$project, $chunk]) }}" @endif></audio>
+                    <div class="aplayer aplayer--chunk mt-3 rounded-[12px] border border-white/8 bg-inset px-3.5 py-2.5 {{ $chunk->isCompleted() ? '' : 'hidden' }}">
+                        <button type="button" class="aplayer__btn" aria-label="Play chunk audio"><span class="aplayer__icon"></span></button>
+                        <div class="aplayer__track"><div class="aplayer__fill"></div><div class="aplayer__knob"></div></div>
+                        <span class="aplayer__time">0:00 / 0:00</span>
+                        <audio class="chunk-audio aplayer__native" preload="metadata"
+                               @if($chunk->isCompleted()) src="{{ route('admin.studio.projects.chunks.audio', [$project, $chunk]) }}" @endif></audio>
+                    </div>
 
                     {{-- Take history + per-chunk tuning override + re-roll (a fresh random take). --}}
                     <details class="chunk-tune mt-3 text-sm text-zinc-400" @if(!empty($chunk->settings) || $chunk->takes->count() > 1) open @endif>
@@ -231,7 +236,12 @@
                             <button type="button" class="chunk-reroll rounded-lg border border-zinc-700 px-3 py-1.5 text-sm hover:bg-zinc-800"
                                     title="Another take of the same text and tuning — use it when the words and settings are right but you want a different delivery.">⟳ Re-roll</button>
                         </div>
-                        <audio class="chunk-tune-audio mt-2 hidden w-full" controls></audio>
+                        <div class="aplayer aplayer--chunk chunk-tune-player mt-2 hidden rounded-[12px] border border-white/8 bg-inset px-3.5 py-2.5">
+                            <button type="button" class="aplayer__btn" aria-label="Play tuning preview"><span class="aplayer__icon"></span></button>
+                            <div class="aplayer__track"><div class="aplayer__fill"></div><div class="aplayer__knob"></div></div>
+                            <span class="aplayer__time">0:00 / 0:00</span>
+                            <audio class="chunk-tune-audio aplayer__native"></audio>
+                        </div>
                         <p class="mt-1.5 text-xs text-zinc-500">Every render is kept in the list above — play any take, <span class="text-zinc-400">Select</span> the one that sounded best, or <span class="text-zinc-400">Delete</span> the duds (older takes are pruned automatically). Blank inherits the project's setting (the value shown in each field). <span class="text-zinc-400">Preview</span> auditions the typed settings (saved as a take, but not selected). Like what you hear? <span class="text-zinc-400">Use this take</span> keeps that exact clip as the chunk's audio. <span class="text-zinc-400">Save tuning</span> only stores the numbers and marks the chunk stale, so <span class="text-zinc-400">Generate</span> (top) renders a fresh take. <span class="text-zinc-400">Re-roll</span> gives you another take of the same text and tuning.</p>
                     </details>
                 </div>
@@ -244,7 +254,12 @@
                         <button type="button" class="seam-preview rounded-full border border-zinc-700 bg-zinc-800 px-4 py-1.5 text-xs font-semibold uppercase tracking-wide text-zinc-300 hover:bg-zinc-700">▶ Preview stitch</button>
                         <span class="h-3 w-px bg-zinc-700"></span>
                         <div class="seam-player mt-1 hidden w-full max-w-2xl">
-                            <audio class="seam-audio w-full" controls></audio>
+                            <div class="aplayer aplayer--chunk rounded-[12px] border border-white/8 bg-inset px-3.5 py-2.5">
+                                <button type="button" class="aplayer__btn" aria-label="Play stitched preview"><span class="aplayer__icon"></span></button>
+                                <div class="aplayer__track"><div class="aplayer__fill"></div><div class="aplayer__knob"></div></div>
+                                <span class="aplayer__time">0:00 / 0:00</span>
+                                <audio class="seam-audio aplayer__native"></audio>
+                            </div>
                             <div class="seam-status mt-1 text-center text-xs text-zinc-400" role="status" aria-live="polite"></div>
                         </div>
                     </div>

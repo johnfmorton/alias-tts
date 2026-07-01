@@ -49,7 +49,9 @@ function setStatus(el, message, kind) {
 function playAudio(audio, blob) {
     if (!audio) return;
     audio.src = URL.createObjectURL(blob);
-    audio.classList.remove('hidden');
+    // Reveal the custom-player wrapper if this audio is skinned (Studio), else the
+    // bare audio element (the stateless inspector/bench players).
+    (audio.closest('.aplayer') || audio).classList.remove('hidden');
     audio.play().catch(() => {});
 }
 
@@ -986,7 +988,7 @@ function initStudioProject() {
             setProjectStatus(data.project_status);
             const audio = card.querySelector('.chunk-audio');
             audio.src = bust(card.dataset.audioUrl);
-            audio.classList.remove('hidden');
+            audio.closest('.aplayer')?.classList.remove('hidden');
             audio.play().catch(() => {});
             endBusy(btn);
             card.querySelector('.chunk-generate').textContent = '▶ Regenerate';
@@ -1110,11 +1112,32 @@ function initStudioProject() {
         li.className = 'chunk-take flex flex-wrap items-center gap-2 rounded-lg border px-2 py-1.5 '
             + (take.selected ? 'border-emerald-600/50 bg-emerald-500/10' : 'border-zinc-800 bg-zinc-950/40');
 
+        // Custom player (take weight): a skinned wrapper around a hidden native
+        // audio. enhanceStudioPlayers() (called by renderTakes) wires it up.
+        const player = document.createElement('div');
+        player.className = 'aplayer aplayer--take min-w-0 flex-1' + (take.selected ? ' aplayer--selected' : '');
+        const playBtn = document.createElement('button');
+        playBtn.type = 'button';
+        playBtn.className = 'aplayer__btn';
+        playBtn.setAttribute('aria-label', 'Play take');
+        const icon = document.createElement('span');
+        icon.className = 'aplayer__icon';
+        playBtn.append(icon);
+        const track = document.createElement('div');
+        track.className = 'aplayer__track';
+        const fill = document.createElement('div');
+        fill.className = 'aplayer__fill';
+        const knob = document.createElement('div');
+        knob.className = 'aplayer__knob';
+        track.append(fill, knob);
+        const time = document.createElement('span');
+        time.className = 'aplayer__time';
+        time.textContent = '0:00 / 0:00';
         const audio = document.createElement('audio');
-        audio.controls = true;
         audio.preload = 'none';
-        audio.className = 'h-8 w-56 max-w-full';
+        audio.className = 'aplayer__native';
         audio.src = take.audio_url;
+        player.append(playBtn, track, time, audio);
 
         const meta = document.createElement('div');
         meta.className = 'flex min-w-0 flex-col text-xs text-zinc-500';
@@ -1148,7 +1171,7 @@ function initStudioProject() {
         deleteBtn.title = take.selected ? 'Select another take before deleting this one.' : 'Delete this take permanently.';
         actions.append(selectBtn, deleteBtn);
 
-        li.append(audio, meta, actions);
+        li.append(player, meta, actions);
         return li;
     }
 
@@ -1165,6 +1188,7 @@ function initStudioProject() {
             return;
         }
         takes.forEach((take) => list.append(takeRow(card, take)));
+        enhanceStudioPlayers(list); // skin the freshly-built take players
     }
 
     async function refreshTakes(card) {
@@ -1188,7 +1212,7 @@ function initStudioProject() {
             setProjectStatus(data.project_status);
             const audio = card.querySelector('.chunk-audio');
             audio.src = bust(card.dataset.audioUrl);
-            audio.classList.remove('hidden');
+            audio.closest('.aplayer')?.classList.remove('hidden');
             card.querySelector('.chunk-generate').textContent = '▶ Regenerate';
             renderTakes(card, data); // rebuilds the list (and detaches btn)
             refreshSeams();
@@ -1350,7 +1374,7 @@ function initStudioProject() {
                 setProjectStatus(data.project_status);
                 const audio = card.querySelector('.chunk-audio');
                 audio.src = bust(card.dataset.audioUrl);
-                audio.classList.remove('hidden');
+                audio.closest('.aplayer')?.classList.remove('hidden');
                 audio.play().catch(() => {});
                 card.querySelector('.chunk-generate').textContent = '▶ Regenerate';
                 invalidatePreview();
