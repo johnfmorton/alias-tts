@@ -37,7 +37,7 @@ class HealthController extends Controller
             'summary' => $summary,
             'deep' => $deep,
             'asrAutoEnabled' => $asrAutoEnabled,
-            'voices' => Voice::orderBy('name')->get(),
+            'voices' => Voice::orderedFor($request->user()->id)->get(),
         ]);
     }
 

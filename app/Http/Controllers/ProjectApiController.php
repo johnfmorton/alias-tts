@@ -39,7 +39,7 @@ class ProjectApiController extends Controller
             return $this->error('An API key is required to create a project.', 401);
         }
 
-        $voice = Voice::resolve((string) $request->input('voice_id'));
+        $voice = Voice::resolveFor((string) $request->input('voice_id'), $apiKey->user_id);
         if (! $voice) {
             return $this->error("A voice with voice_id '{$request->input('voice_id')}' could not be found.", 404);
         }

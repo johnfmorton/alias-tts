@@ -94,19 +94,31 @@ class StudioProjectTest extends TestCase
             ->assertOk();
     }
 
-    public function test_create_page_preselects_the_built_in_default_voice(): void
+    public function test_create_page_lists_the_default_voice_first_and_preselects_it(): void
     {
-        // A cloning voice whose name sorts before "Default voice" would become the
-        // <select>'s silent first-option default; the form must still pre-select
-        // the built-in default voice (seeded by migration) so a new project uses
-        // the built-in default voice.
+        // The pre-selected option must also be the FIRST option — a picker whose
+        // first item is not the selected one reads as a mistake. pickerOrder pins
+        // the built-in default to the top even when a cloning voice sorts before
+        // it alphabetically, and the form still pre-selects it explicitly.
         Voice::create(['slug' => 'aaa', 'name' => 'Aardvark', 'reference_audio_path' => 'voices/aaa.wav']);
 
         $this->actingAs($this->admin())
             ->get(route('admin.studio.projects.create'))
             ->assertOk()
             ->assertSee('value="default" selected', false)
-            ->assertDontSee('value="aaa" selected', false);
+            ->assertDontSee('value="aaa" selected', false)
+            ->assertSeeInOrder(['value="default"', 'value="aaa"'], false);
+    }
+
+    public function test_create_page_links_to_the_voices_panel(): void
+    {
+        Voice::create(['slug' => 'v', 'name' => 'V']);
+
+        $this->actingAs($this->admin())
+            ->get(route('admin.studio.projects.create'))
+            ->assertOk()
+            ->assertSee('Manage voices')
+            ->assertSee(route('admin.voices.index'));
     }
 
     public function test_store_creates_project_with_chunks(): void
@@ -1110,12 +1122,13 @@ class StudioProjectTest extends TestCase
 
         // Re-run the takes migration against the already-generated chunk, as a real
         // deploy would: drop + recreate the table so up()'s backfill runs over the
-        // existing audio (the chunk's audio_path is untouched by the rollback). Ten
-        // steps because the takes table is the tenth-newest migration (native presets,
-        // project-seal, bundled default voices, account fields, two-factor/connected-
-        // accounts, the unowned-api-key reassignment, project ownership, the
-        // magic-login-table drop, and per-user settings all sit on top of it).
-        Artisan::call('migrate:rollback', ['--step' => 10]);
+        // existing audio (the chunk's audio_path is untouched by the rollback).
+        // Eleven steps because the takes table is the eleventh-newest migration
+        // (native presets, project-seal, bundled default voices, account fields,
+        // two-factor/connected-accounts, the unowned-api-key reassignment, project
+        // ownership, the magic-login-table drop, per-user settings, and per-user
+        // voices all sit on top of it).
+        Artisan::call('migrate:rollback', ['--step' => 11]);
         Artisan::call('migrate', ['--force' => true]);
 
         $takes = $chunk->refresh()->takes()->get();

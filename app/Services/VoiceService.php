@@ -33,10 +33,19 @@ class VoiceService
         ?int $seed,
         ?float $stability = null,
         ?float $style = null,
+        ?int $ownerId = null,
     ): Voice {
         $slug = $slug ?: Str::slug($name);
 
-        $attributes = ['name' => $name];
+        // Re-registering YOUR OWN slug updates it, but a slug that exists under
+        // another owner (or a shared built-in) must never be silently taken
+        // over — that would replace someone else's voice reference.
+        $existing = Voice::where('slug', $slug)->first();
+        if ($existing && $existing->user_id !== $ownerId) {
+            throw new RuntimeException("The voice_id '{$slug}' is already in use.");
+        }
+
+        $attributes = ['name' => $name, 'user_id' => $ownerId];
 
         if ($audioBytes !== null) {
             $bytes = $audioBytes;
@@ -201,7 +210,7 @@ class VoiceService
      * as-is (it was already normalized on export). Returns the created/updated
      * voice; an existing voice with the same slug is overwritten.
      */
-    public function import(string $zipBytes): Voice
+    public function import(string $zipBytes, ?int $ownerId = null): Voice
     {
         $tmp = tempnam(sys_get_temp_dir(), 'voice_').'.zip';
         file_put_contents($tmp, $zipBytes);
@@ -245,6 +254,7 @@ class VoiceService
                 ext: $ext,
                 normalize: false,
                 seed: $seed,
+                ownerId: $ownerId,
             );
         } finally {
             @unlink($tmp);

@@ -28,6 +28,7 @@
                         @endforeach
                     </select>
                 </div>
+                <a href="{{ route('admin.voices.index') }}" class="py-2 text-sm text-cyan-400 hover:text-cyan-300">Manage voices →</a>
             </div>
 
             <div class="space-y-2">

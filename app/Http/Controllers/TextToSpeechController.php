@@ -44,7 +44,9 @@ class TextToSpeechController extends Controller
     {
         $apiKey = $request->attributes->get('api_key');
 
-        $voice = Voice::resolve($voice_id);
+        // Scoped to the key owner's voices (+ shared built-ins) — one user's
+        // key can never generate with another user's cloned voice.
+        $voice = Voice::resolveFor($voice_id, $apiKey?->user_id);
         if (! $voice) {
             return $this->error("A voice with voice_id '{$voice_id}' could not be found.", 404);
         }
@@ -81,7 +83,9 @@ class TextToSpeechController extends Controller
     {
         $apiKey = $request->attributes->get('api_key');
 
-        $voice = Voice::resolve($voice_id);
+        // Scoped to the key owner's voices (+ shared built-ins) — one user's
+        // key can never generate with another user's cloned voice.
+        $voice = Voice::resolveFor($voice_id, $apiKey?->user_id);
         if (! $voice) {
             return $this->error("A voice with voice_id '{$voice_id}' could not be found.", 404);
         }

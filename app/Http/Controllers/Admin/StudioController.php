@@ -52,7 +52,7 @@ class StudioController extends Controller
         $user = $request->user();
 
         return view('admin.studio.index', [
-            'voices' => Voice::orderBy('name')->get(),
+            'voices' => Voice::orderedFor($user->id)->get(),
             // Projects are personal; a SuperAdmin sees everyone's, labeled by owner.
             'projects' => TtsProject::withCount('chunks')
                 ->when(! $user->isSuperAdmin(), fn ($q) => $q->where('user_id', $user->id))
@@ -315,10 +315,11 @@ class StudioController extends Controller
     private function resolveVoice(Request $request): ?Voice
     {
         if ($request->filled('voice')) {
-            return Voice::resolve((string) $request->input('voice'));
+            return Voice::resolveFor((string) $request->input('voice'), $request->user()->id);
         }
 
-        return Voice::orderBy('name')->first();
+        // No voice given: fall back to the first of the user's own ordering.
+        return Voice::orderedFor($request->user()->id)->first();
     }
 
     /**
@@ -349,7 +350,7 @@ class StudioController extends Controller
             return $error;
         }
 
-        $voice = Voice::resolve((string) $request->input('voice'));
+        $voice = Voice::resolveFor((string) $request->input('voice'), $request->user()->id);
         if (! $voice) {
             return response()->json(['message' => 'Unknown voice.'], 422);
         }

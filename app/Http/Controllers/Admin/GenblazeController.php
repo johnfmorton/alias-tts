@@ -33,11 +33,15 @@ class GenblazeController extends Controller
         private readonly GenblazeRunStore $runs,
     ) {}
 
-    public function index(): View
+    public function index(Request $request): View
     {
+        // The user's voices + built-ins in their own drag order; pre-select
+        // the first one, same as the New Project form.
+        $voices = Voice::orderedFor($request->user()->id)->get();
+
         return view('admin.studio.genblaze', [
-            'voices' => Voice::orderBy('name')->get(),
-            'defaultVoiceSlug' => Voice::defaultSlug(),
+            'voices' => $voices,
+            'defaultVoiceSlug' => $voices->first()?->slug,
             'health' => $this->runner->health(),
         ]);
     }
@@ -54,7 +58,7 @@ class GenblazeController extends Controller
             return response()->json(['message' => $validator->errors()->first()], 422);
         }
 
-        if (! Voice::resolve((string) $request->input('voice'))) {
+        if (! Voice::resolveFor((string) $request->input('voice'), $request->user()->id)) {
             return response()->json(['message' => 'Unknown voice.'], 422);
         }
 

@@ -2108,3 +2108,69 @@ function initUsers() {
     }
 }
 initUsers();
+
+/* ---------------------------------------------------------------------------
+ * Voices page — drag rows to reorder. The order is per-user and drives every
+ * voice dropdown; the first voice is what New Project pre-selects.
+ * ------------------------------------------------------------------------ */
+function initVoicesReorder() {
+    const tbody = document.getElementById('voices-rows');
+    if (!tbody || !tbody.dataset.orderUrl) return;
+
+    const status = document.getElementById('voices-order-status');
+    let dragging = null;
+
+    const rows = () => [...tbody.querySelectorAll('tr[data-voice-id]')];
+
+    tbody.addEventListener('drop', (e) => e.preventDefault());
+
+    rows().forEach((row) => {
+        const handle = row.querySelector('[data-drag-handle]');
+        if (!handle) return;
+
+        // Only grabbing the handle arms the row, so text selection and the
+        // row's buttons keep working normally.
+        handle.addEventListener('mousedown', () => { row.draggable = true; });
+        row.addEventListener('dragstart', (e) => {
+            dragging = row;
+            e.dataTransfer.effectAllowed = 'move';
+            row.classList.add('opacity-40');
+        });
+        row.addEventListener('dragover', (e) => {
+            if (!dragging || dragging === row) return;
+            e.preventDefault();
+            const rect = row.getBoundingClientRect();
+            const before = e.clientY < rect.top + rect.height / 2;
+            tbody.insertBefore(dragging, before ? row : row.nextSibling);
+        });
+        row.addEventListener('dragend', () => {
+            row.classList.remove('opacity-40');
+            row.draggable = false;
+            if (dragging === row) {
+                dragging = null;
+                saveOrder();
+            }
+        });
+    });
+
+    async function saveOrder() {
+        if (status) status.textContent = 'Saving order…';
+        try {
+            const res = await fetch(tbody.dataset.orderUrl, {
+                method: 'POST',
+                headers: { 'X-CSRF-TOKEN': csrfToken(), 'Accept': 'application/json', 'Content-Type': 'application/json' },
+                body: JSON.stringify({ order: rows().map((r) => r.dataset.voiceId) }),
+            });
+            if (!res.ok) throw new Error(`HTTP ${res.status}`);
+            if (status) {
+                status.textContent = 'Order saved — voice dropdowns now follow it.';
+                setTimeout(() => {
+                    if (status.textContent.startsWith('Order saved')) status.textContent = '';
+                }, 3000);
+            }
+        } catch (err) {
+            if (status) status.textContent = `Couldn’t save the order (${err.message}) — refresh and try again.`;
+        }
+    }
+}
+initVoicesReorder();

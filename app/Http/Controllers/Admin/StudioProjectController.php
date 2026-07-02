@@ -46,15 +46,16 @@ class StudioProjectController extends Controller
         private readonly PronunciationDictionary $dictionary,
     ) {}
 
-    public function create(): View
+    public function create(Request $request): View
     {
+        // The user's own voices + built-ins, in THEIR drag order (Voices page).
+        // The first voice in that order is pre-selected — reordering is how a
+        // user picks their effective default voice.
+        $voices = Voice::orderedFor($request->user()->id)->get();
+
         return view('admin.studio.projects.create', [
-            'voices' => Voice::orderBy('name')->get(),
-            // Pre-select the primary built-in default voice so a new project uses
-            // it unless the user actively picks another — without this the <select>
-            // silently defaults to whichever voice sorts first by name, which
-            // bound new projects to an arbitrary cloning voice.
-            'defaultVoiceSlug' => Voice::defaultSlug(),
+            'voices' => $voices,
+            'defaultVoiceSlug' => $voices->first()?->slug,
         ]);
     }
 
@@ -62,7 +63,7 @@ class StudioProjectController extends Controller
     {
         $data = $request->validate($this->createRules());
 
-        $voice = Voice::resolve($data['voice']);
+        $voice = Voice::resolveFor($data['voice'], $request->user()->id);
         if (! $voice) {
             return back()->withInput()->with('error', 'Unknown voice.');
         }
@@ -84,7 +85,7 @@ class StudioProjectController extends Controller
     {
         $data = $request->validate($this->createRules());
 
-        $voice = Voice::resolve($data['voice']);
+        $voice = Voice::resolveFor($data['voice'], $request->user()->id);
         if (! $voice) {
             return back()->withInput()->with('error', 'Unknown voice.');
         }
@@ -140,7 +141,7 @@ class StudioProjectController extends Controller
             'substitutions.*.match_mode' => ['nullable', 'in:case_sensitive,case_insensitive'],
         ]);
 
-        $voice = Voice::resolve($data['voice']);
+        $voice = Voice::resolveFor($data['voice'], $request->user()->id);
         if (! $voice) {
             return back()->withInput()->with('error', 'Unknown voice.');
         }
@@ -201,7 +202,7 @@ class StudioProjectController extends Controller
         ];
     }
 
-    public function show(TtsProject $project): View
+    public function show(Request $request, TtsProject $project): View
     {
         $project->load('voice');
         $chunks = $project->chunks()->with('takes')->get();
@@ -209,7 +210,7 @@ class StudioProjectController extends Controller
         return view('admin.studio.projects.show', [
             'project' => $project,
             'chunks' => $chunks,
-            'voices' => Voice::orderBy('name')->get(),
+            'voices' => Voice::orderedFor($request->user()->id)->get(),
             // Each chunk's take history, prebuilt so the panel renders without a
             // per-chunk fetch and the JS reuses the same shape it gets from the
             // action endpoints. Keyed by chunk id.
@@ -230,7 +231,7 @@ class StudioProjectController extends Controller
             return response()->json(['message' => $validator->errors()->first()], 422);
         }
 
-        $voice = Voice::resolve((string) $request->input('voice'));
+        $voice = Voice::resolveFor((string) $request->input('voice'), $request->user()->id);
         if (! $voice) {
             return response()->json(['message' => 'Unknown voice.'], 422);
         }
@@ -263,7 +264,7 @@ class StudioProjectController extends Controller
         $slug = trim((string) $request->input('voice'));
         $voice = null;
         if ($slug !== '') {
-            $voice = Voice::resolve($slug);
+            $voice = Voice::resolveFor($slug, $request->user()->id);
             if (! $voice) {
                 return response()->json(['message' => 'Unknown voice.'], 422);
             }

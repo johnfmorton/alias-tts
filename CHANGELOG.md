@@ -6,7 +6,26 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Added
+- **Voices can be reordered — and the order is yours.** Drag the handle on the
+  Voices page to arrange your list (built-ins included). The order drives every
+  voice dropdown in the panel, and the first voice is what New Project
+  pre-selects, so dragging is how you choose your effective default voice. Each
+  user's order is their own.
+- **New Project links to the Voices panel** ("Manage voices →" beside the
+  voice picker).
+
 ### Security
+- **Voices are now per-user.** Custom voices used to be visible to every
+  signed-in user, who could also edit, delete, or export them — and any API
+  key could generate with any voice. A custom voice now belongs to the user
+  who created it: others never see it, the panel guards edit/update/delete
+  behind the owner (or a SuperAdmin), and an API key resolves only its
+  owner's voices plus the shared built-ins. Registering a voice_id that
+  belongs to someone else is refused, so a re-register can no longer replace
+  another user's reference clip. Existing custom voices are assigned to the
+  first SuperAdmin by the migration; a SuperAdmin's Voices page still lists
+  everyone's voices, labeled by owner.
 - **Settings are now per-user.** The Settings page used to write one global
   set of values, so any signed-in user could change ASR QA behavior, API
   project mode, and pronunciation options for the SuperAdmin and every other

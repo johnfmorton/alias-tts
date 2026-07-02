@@ -15,7 +15,7 @@ class DashboardController extends Controller
     public function index(Request $request): View
     {
         $user = $request->user();
-        $voices = Voice::orderBy('name')->get();
+        $voices = Voice::orderedFor($request->user()->id)->get();
         $keyIds = $user->apiKeys()->pluck('id');
 
         $stats = [

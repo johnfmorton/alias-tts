@@ -132,10 +132,10 @@ class HealthTestController extends Controller
     private function resolveVoice(Request $request): ?Voice
     {
         if ($request->filled('voice')) {
-            return Voice::resolve((string) $request->input('voice'));
+            return Voice::resolveFor((string) $request->input('voice'), $request->user()->id);
         }
 
-        return Voice::orderBy('name')->first();
+        return Voice::orderedFor($request->user()->id)->first();
     }
 
     /** Reuse the dashboard's own API key so test generations are attributable. */
