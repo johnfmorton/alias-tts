@@ -3,6 +3,7 @@
 namespace App\Http\Middleware;
 
 use App\Models\ApiKey;
+use App\Support\OpenAiError;
 use Closure;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Cache;
@@ -32,19 +33,23 @@ class RateLimitApiRequests
         if ($currentCount >= $apiKey->rate_limit) {
             $ttl = Cache::get($cacheKey.':ttl');
             $retryAfter = $ttl ? max(1, $ttl - time()) : $windowSeconds;
-
-            return response()->json([
-                'detail' => [
-                    'message' => "Rate limit exceeded: {$apiKey->rate_limit} requests per hour.",
-                    'status' => 429,
-                ],
-                'retry_after' => $retryAfter,
-            ], 429)->withHeaders([
+            $message = "Rate limit exceeded: {$apiKey->rate_limit} requests per hour.";
+            $headers = [
                 'X-RateLimit-Limit' => $apiKey->rate_limit,
                 'X-RateLimit-Remaining' => 0,
                 'X-RateLimit-Reset' => time() + $retryAfter,
                 'Retry-After' => $retryAfter,
-            ]);
+            ];
+
+            // The OpenAI-compatible surface gets the OpenAI error shape.
+            if ($request->routeIs('openai.*')) {
+                return OpenAiError::json($message, 429, code: 'rate_limit_exceeded')->withHeaders($headers);
+            }
+
+            return response()->json([
+                'detail' => ['message' => $message, 'status' => 429],
+                'retry_after' => $retryAfter,
+            ], 429)->withHeaders($headers);
         }
 
         if ($currentCount === 0) {

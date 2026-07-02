@@ -1,5 +1,6 @@
 <?php
 
+use App\Http\Controllers\OpenAiSpeechController;
 use App\Http\Controllers\ProjectApiController;
 use App\Http\Controllers\PronunciationApiController;
 use App\Http\Controllers\TextToSpeechController;
@@ -23,6 +24,13 @@ Route::middleware([ValidateApiKey::class, RateLimitApiRequests::class])->group(f
     // the expensive, generating call, so it stays rate-limited.
     Route::post('/v1/text-to-speech/{voice_id}/jobs', [TextToSpeechController::class, 'queue'])
         ->name('tts.jobs.queue');
+
+    // OpenAI-compatible surface: same SpeechService, OpenAI request/response
+    // shape, so apps that speak OpenAI's TTS API work by swapping the base URL.
+    // The `openai.*` route name is what the shared auth/rate-limit middleware
+    // keys on to emit OpenAI-shaped errors. See docs/OPENAI-COMPAT.md.
+    Route::post('/v1/audio/speech', [OpenAiSpeechController::class, 'store'])
+        ->name('openai.speech');
 });
 
 /*

@@ -19,6 +19,9 @@ Start with the group that matches what you're doing.
 - **[BESPOKEN.md](BESPOKEN.md)** — connecting the Bespoken Craft plugin: the
   ElevenLabs-compatible API plus the Bespoken extensions (async jobs, projects,
   pronunciations).
+- **[OPENAI-COMPAT.md](OPENAI-COMPAT.md)** — the OpenAI-compatible endpoint
+  (`POST /v1/audio/speech`): the same engine spoken in OpenAI's dialect, so any
+  OpenAI-TTS client works by swapping the base URL.
 - **[BESPOKEN-PRONUNCIATION-PREPROCESSOR.md](BESPOKEN-PRONUNCIATION-PREPROCESSOR.md)** —
   the LLM pronunciation pre-processor: detection, review screen, per-user
   dictionary, and the `/v1/pronunciations` read API.
