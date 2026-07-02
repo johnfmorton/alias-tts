@@ -40,7 +40,7 @@
                 @foreach([
                     ['pronounce', 'Pronunciation', 'Genblaze CHAT respelling pass'],
                     ['chunk', 'Chunk', 'Normalize + segment the text'],
-                    ['generate', 'Generate & QA', 'Per chunk: synthesize → Whisper ASR score → re-roll or trim on failure'],
+                    ['generate', 'Generate & QA', 'Per chunk: synthesize → Whisper QA score → re-roll or trim on failure'],
                     ['stitch', 'Stitch', 'Join the chunks with natural gaps'],
                     ['seal', 'Seal + verify', 'SHA-256 provenance manifest'],
                     ['upload', 'Upload → B2', 'Every take + the final written to Backblaze'],

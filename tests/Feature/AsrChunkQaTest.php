@@ -374,7 +374,7 @@ class AsrChunkQaTest extends TestCase
             ->get(route('admin.studio.projects.show', $chunk->project))
             ->assertOk()
             ->assertSee('chunk-asr-badge', escape: false)
-            ->assertSee('ASR: TRUNC');
+            ->assertSee('QA: TRUNC');
     }
 
     public function test_generate_endpoint_returns_the_asr_badge(): void

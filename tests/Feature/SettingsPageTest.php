@@ -143,7 +143,7 @@ class SettingsPageTest extends TestCase
         $res = $this->actingAs($this->admin())->get(route('admin.settings.index'));
 
         $res->assertOk();
-        $res->assertSee('ASR transcript QA');
+        $res->assertSee('Transcript QA');
         $res->assertSee('Studio remediation');
         $res->assertSee('API remediation');
     }

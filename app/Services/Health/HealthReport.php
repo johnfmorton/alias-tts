@@ -238,7 +238,7 @@ class HealthReport
         $docs = (string) config('tts.asr.docs_url') ?: null;
 
         if (! (bool) config('tts.asr.enabled', false)) {
-            $this->add('asr', HealthStatus::Pass, 'ASR transcript QA', 'disabled — set TTS_ASR_ENABLED=true to transcribe and quality-check generated chunks.', $docs);
+            $this->add('asr', HealthStatus::Pass, 'Transcript QA', 'disabled — set TTS_ASR_ENABLED=true to transcribe and quality-check generated chunks.', $docs);
 
             return;
         }
@@ -250,14 +250,14 @@ class HealthReport
             // Keep this actionable: the raw cURL error is noise here (almost always
             // "connection refused" = the daemon isn't running). The setup guide is
             // linked below; `tts:asr:health` shows the underlying connection error.
-            $this->add('asr', HealthStatus::Fail, 'ASR transcript QA', "The tts-asr sidecar at {$url} isn't responding — install and start the daemon (or fix TTS_ASR_URL). Run `php artisan tts:asr:health` for the connection error.", $docs);
+            $this->add('asr', HealthStatus::Fail, 'Transcript QA', "The tts-asr sidecar at {$url} isn't responding — install and start the daemon (or fix TTS_ASR_URL). Run `php artisan tts:asr:health` for the connection error.", $docs);
 
             return;
         }
 
         $body = $health['body'];
         if (($body['status'] ?? '') !== 'ok') {
-            $this->add('asr', HealthStatus::Fail, 'ASR transcript QA', 'The sidecar is running but its model did not load ('.($body['error'] ?? 'unknown').') — check the daemon log and available memory.', $docs);
+            $this->add('asr', HealthStatus::Fail, 'Transcript QA', 'The sidecar is running but its model did not load ('.($body['error'] ?? 'unknown').') — check the daemon log and available memory.', $docs);
 
             return;
         }
@@ -269,7 +269,7 @@ class HealthReport
             $body['faster_whisper_version'] ?? '?',
             $health['latency_ms'] ?? 0,
         );
-        $this->add('asr', HealthStatus::Pass, 'ASR transcript QA', $detail);
+        $this->add('asr', HealthStatus::Pass, 'Transcript QA', $detail);
     }
 
     /**

@@ -108,7 +108,7 @@ class TtsChunk extends Model
         $problems = is_array($report['problems'] ?? null) ? $report['problems'] : [];
         $action = $report['action'] ?? null;
 
-        $text = $ok ? 'ASR ✓' : 'ASR: '.implode(', ', $problems);
+        $text = $ok ? 'QA ✓' : 'QA: '.implode(', ', $problems);
         // Note a take-changing action inline (e.g. a flagged chunk auto-recovered).
         if (is_string($action) && in_array($action, ['rerolled', 'rerolled_unrecovered', 'trimmed', 'trim_failed'], true)) {
             $text .= ' · '.$action;
