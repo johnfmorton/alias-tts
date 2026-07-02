@@ -1,9 +1,11 @@
-# Genblaze Demo Idea — Swappable TTS Backend (Whole-Render)
+# Swappable TTS Backend (Whole-Render) — design note
 
-> **Status:** Proposed — captured for later. **Not scheduled, not started.**
-> One of (at least) two candidate directions for demonstrating Genblaze's value
-> in the hackathon entry. A second, different direction is still to be discussed;
-> this document only records *this* plan so we don't lose it.
+> **Status:** Proposed future feature — captured for later. **Not scheduled,
+> not started.** Worth pursuing because the Genblaze provider layer makes an
+> engine swap nearly free to build: published adapters plug in behind the same
+> Pipeline/Step API we already use, so the cost is a registry and a dropdown,
+> not a new integration. This document records the design so it can be picked
+> up intact.
 
 > **One-sentence summary:** add an admin setting that swaps the entire TTS engine
 > for a render (default = our custom Chatterbox-via-Replicate path; alternative =
@@ -57,15 +59,16 @@ So the rule is **one engine per final file**:
 
 ---
 
-## 3. The critique this plan must answer: make it actually prove Genblaze
+## 3. Why the swap belongs at the Genblaze layer, not the PHP layer
 
-A dropdown that swaps between two TTS SDKs is, by itself, a **Laravel feature** —
-we already have a `TtsProvider` interface (`ReplicateChatterboxProvider`
-implements it); adding an `LmntProvider` beside it and gating on a setting needs
-*zero* Genblaze. Built that way, it demonstrates good PHP design, not Genblaze.
+A dropdown that swaps between two TTS SDKs could be built as a plain **Laravel
+feature** — we already have a `TtsProvider` interface
+(`ReplicateChatterboxProvider` implements it); adding an LMNT implementation
+beside it and gating on a setting needs *zero* Genblaze. But built that way,
+**we** write and maintain every new engine integration ourselves.
 
-To make the same UX a genuine Genblaze demonstration, two things are
-**non-negotiable**:
+Putting the swap at the Genblaze provider layer is what makes the feature
+cheap, and two things follow from that:
 
 1. **The swap lives at the Genblaze provider layer, not the PHP layer.**
    The runner holds a provider registry keyed by backend name; the dropdown value
@@ -75,11 +78,13 @@ To make the same UX a genuine Genblaze demonstration, two things are
 
 2. **The alternative engine is a real off-the-shelf Genblaze adapter.**
    Keep Chatterbox as our **custom** `BespokenChunkProvider`; add LMNT via the
-   **published** `genblaze-lmnt` adapter (`pip install genblaze-lmnt`). The demo
-   then shows a bespoke engine *and* an off-the-shelf engine behind the **same**
-   Pipeline/Step API and the **same** manifest shape — with zero LMNT integration
-   code written by us. That is the "ten adapters, one API" differentiator made
-   concrete (genblaze-core 0.3.2 ships ten provider adapters).
+   **published** `genblaze-lmnt` adapter (`pip install genblaze-lmnt`). That
+   puts a bespoke engine *and* an off-the-shelf engine behind the **same**
+   Pipeline/Step API and the **same** manifest shape — with zero LMNT
+   integration code written by us. This is Genblaze's "ten adapters, one API"
+   design working in our favor (genblaze-core 0.3.2 ships ten provider
+   adapters): each additional engine we might ever want is a `pip install`,
+   not an integration project.
 
 ---
 
@@ -96,9 +101,9 @@ not unique. The Genblaze-specific win is the **audit trail of the swap**:
   querying B2 manifests, and `genblaze-cli`'s replay re-runs any of them from the
   captured params.
 
-Pitch the pairing:
+The two wins, paired:
 
-| Story | What carries it |
+| Value | What carries it |
 |---|---|
 | **Resilience** — one provider abstraction, one config flip, no outage downtime | The provider registry + dropdown |
 | **Auditability / replay** — every file self-describes the engine + params that made it | The Genblaze manifest in B2 |
@@ -132,8 +137,7 @@ Pitch the pairing:
 - **`genblaze-lmnt`:** `pip install` into `.venv-genblaze`; wire its provider into
   the registry; enroll the reference sample → `voice_id`.
 - **`genblaze-cli`:** `pip install genblaze-cli` into `.venv-genblaze` (not
-  currently installed) for the manifest extract / verify / replay part of the
-  demo.
+  currently installed) for manifest extract / verify / replay.
 - **Manifest:** verify/surface `backend` (recorded today as the step's `provider`
   field) and the per-backend `voice_id` / params in the recorded step params so
   they are SHA-covered and replayable.
@@ -151,7 +155,7 @@ Pitch the pairing:
 ## 7. Open questions
 
 - Is LMNT the right second engine, or do we want an ordered set
-  (e.g. `[lmnt, elevenlabs]`) to show three cloning engines off one sample?
+  (e.g. `[lmnt, elevenlabs]`) offering several cloning engines off one sample?
 - Per-render vs. a global default-with-override: where does the setting live
   (system default, per-project, or both)?
 - Do we ever want to *re-render an existing project* under a new backend (explicit
@@ -161,6 +165,11 @@ Pitch the pairing:
 
 ## 8. Why this is parked
 
-We like this direction, but there is a **second, entirely different** way to
-demonstrate Genblaze that we want to evaluate first. This document exists so we can
-pick it back up intact after that discussion. **Do not implement yet.**
+Nothing is wrong with the idea — it's parked on priority, not merit. Other
+Genblaze-layer work (the pronunciation pre-processor, live pipeline progress)
+shipped first, and this feature has no forcing deadline: the current
+Chatterbox-via-Replicate path works well today. The case for eventually
+building it stands on its own — resilience (an outage becomes a settings
+change, not an incident) and auditability (every file self-describes the
+engine that made it), at the low cost the Genblaze provider layer enables.
+Revisit §5's open questions before starting. **Do not implement yet.**

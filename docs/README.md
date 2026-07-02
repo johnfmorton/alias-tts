@@ -30,6 +30,7 @@ Start with the group that matches what you're doing.
 - **[STUDIO-TUNING.md](STUDIO-TUNING.md)** — the voice-tuning design and its
   implementation history; the current settings-resolution chain lives in
   `VoiceSettingsResolver` / `ChatterboxTuning`.
-- **[GENBLAZE-BACKEND-SWAP.md](GENBLAZE-BACKEND-SWAP.md)** — *parked design
-  note, not built:* a swappable TTS backend behind the Genblaze provider
-  registry, kept for the provenance-driven design reasoning.
+- **[GENBLAZE-BACKEND-SWAP.md](GENBLAZE-BACKEND-SWAP.md)** — *future feature,
+  not built yet:* swap the whole TTS engine per render at the Genblaze provider
+  layer — cheap to add because published adapters share one API; parked on
+  priority, not merit.
