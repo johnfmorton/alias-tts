@@ -4,6 +4,20 @@ All notable changes to this project are documented in this file. The format is
 based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this
 project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.24.0] - 2026-07-02
+
+### Added
+- **OpenAI-compatible text-to-speech endpoint (`POST /v1/audio/speech`).** Apps
+  that speak OpenAI's TTS API now work against Bespoken by swapping only the base
+  URL and key — a thin adapter over the same engine, voices, cache, and audio
+  pipeline the ElevenLabs surface uses. Authenticate with a Bespoken key via
+  `Authorization: Bearer`; `voice` is a Bespoken voice slug (with an optional
+  `openai_voice_aliases` config map for OpenAI's fixed preset names). Errors use
+  the OpenAI `{"error":{…}}` shape. Supported formats are `mp3` and `wav` (`pcm`
+  returns a WAV container); streaming, `opus`/`aac`/`flac`, and `speed`/
+  `instructions` are not supported yet. Full support contract in
+  [docs/OPENAI-COMPAT.md](docs/OPENAI-COMPAT.md).
+
 ## [0.23.1] - 2026-07-02
 
 ### Changed
