@@ -4,6 +4,26 @@ All notable changes to this project are documented in this file. The format is
 based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this
 project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.23.1] - 2026-07-02
+
+### Changed
+- **The per-chunk quality-check badges now read "QA" instead of "ASR."** The
+  acronym was jargon; "QA" reads as what it does — a per-chunk quality check.
+  The badge text, the Studio explainer (now expanded as "quality assurance"
+  while still noting it works by transcribing with speech recognition), and the
+  Settings and Health labels all use the new wording. Nothing functional
+  changed — the underlying transcript-QA behavior and its configuration are the
+  same.
+- **The dashboard's connection panel is no longer plugin-specific.** It now
+  leads with "Connect your app" and explains that Bespoken speaks the
+  ElevenLabs v1 API, so any ElevenLabs-compatible app works — with the Bespoken
+  Craft CMS plugin named as one example rather than the whole audience.
+
+### Fixed
+- **Renaming a Studio project works again.** After the project header was
+  reworked to drop its `<h1>`, the Rename button threw a JavaScript error and
+  did nothing; it now resolves the title element correctly and renames in place.
+
 ## [0.23.0] - 2026-07-02
 
 ### Added
