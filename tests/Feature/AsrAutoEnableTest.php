@@ -2,8 +2,8 @@
 
 namespace Tests\Feature;
 
-use App\Models\Setting;
 use App\Models\User;
+use App\Models\UserSetting;
 use App\Services\Asr\AsrAutoEnabler;
 use App\Services\Settings\SettingsManager;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -13,9 +13,11 @@ use Tests\TestCase;
 
 /**
  * "ASR transcript QA defaults on if available": the master switch ships off, but
- * the admin health surfaces (health page / tts:doctor) flip it on the first time
- * they see the Whisper sidecar healthy — unless the admin has pinned it in .env
- * or saved a choice. See {@see AsrAutoEnabler}.
+ * the admin health surfaces flip it on the first time they see the Whisper
+ * sidecar healthy — per user, since settings are per-user: the health page
+ * enables it for the visiting user, `tts:doctor` for every user without an
+ * explicit choice. Never when it's pinned in .env or the user already chose.
+ * See {@see AsrAutoEnabler}.
  */
 class AsrAutoEnableTest extends TestCase
 {
@@ -62,81 +64,98 @@ class AsrAutoEnableTest extends TestCase
         config(['settings.managed' => $managed]);
     }
 
-    public function test_it_enables_when_the_sidecar_is_healthy_and_unset(): void
+    private function row(User $user): ?UserSetting
+    {
+        return UserSetting::where('user_id', $user->id)->where('key', 'tts.asr.enabled')->first();
+    }
+
+    public function test_it_enables_for_the_user_when_the_sidecar_is_healthy_and_unset(): void
     {
         $this->fakeSidecar();
+        $user = User::factory()->create();
 
-        $this->assertTrue($this->enabler()->attempt());
+        $this->assertTrue($this->enabler()->attempt($user->id));
         $this->assertTrue(config('tts.asr.enabled'));
-        $this->assertTrue(Setting::find('tts.asr.enabled')->value); // persisted; admin can flip it off
+        $this->assertTrue($this->row($user)->value); // persisted; the user can flip it off
     }
 
     public function test_it_is_a_no_op_when_already_enabled(): void
     {
         config(['tts.asr.enabled' => true]);
         Http::fake();
+        $user = User::factory()->create();
 
-        $this->assertFalse($this->enabler()->attempt());
-        $this->assertNull(Setting::find('tts.asr.enabled')); // nothing written
-        Http::assertNothingSent();                           // and the sidecar was never probed
+        $this->assertFalse($this->enabler()->attempt($user->id));
+        $this->assertNull($this->row($user)); // nothing written
+        Http::assertNothingSent();            // and the sidecar was never probed
     }
 
-    public function test_it_respects_an_admin_who_saved_it_off(): void
+    public function test_it_respects_a_user_who_saved_it_off(): void
     {
-        Setting::create(['key' => 'tts.asr.enabled', 'value' => false]);
-        $this->fakeSidecar(); // healthy — but the admin already chose
+        $user = User::factory()->create();
+        UserSetting::create(['user_id' => $user->id, 'key' => 'tts.asr.enabled', 'value' => false]);
+        $this->fakeSidecar(); // healthy — but the user already chose
 
-        $this->assertFalse($this->enabler()->attempt());
+        $this->assertFalse($this->enabler()->attempt($user->id));
         $this->assertFalse((bool) config('tts.asr.enabled'));
-        $this->assertFalse(Setting::find('tts.asr.enabled')->value); // unchanged
+        $this->assertFalse($this->row($user)->value); // unchanged
     }
 
     public function test_it_respects_an_env_pinned_switch(): void
     {
         $this->setLocked('tts.asr.enabled', true);
         $this->fakeSidecar();
+        $user = User::factory()->create();
 
-        $this->assertFalse($this->enabler()->attempt());
-        $this->assertNull(Setting::find('tts.asr.enabled')); // .env is read-only; never written to DB
+        $this->assertFalse($this->enabler()->attempt($user->id));
+        $this->assertNull($this->row($user)); // .env is read-only; never written to DB
     }
 
     public function test_it_does_nothing_when_the_sidecar_is_unreachable(): void
     {
         $this->fakeSidecar(http: 500);
+        $user = User::factory()->create();
 
-        $this->assertFalse($this->enabler()->attempt());
+        $this->assertFalse($this->enabler()->attempt($user->id));
         $this->assertFalse((bool) config('tts.asr.enabled'));
-        $this->assertNull(Setting::find('tts.asr.enabled'));
+        $this->assertNull($this->row($user));
     }
 
     public function test_it_does_nothing_when_the_model_is_not_loaded(): void
     {
         $this->fakeSidecar(status: 'loading'); // up, but the model has not loaded
+        $user = User::factory()->create();
 
-        $this->assertFalse($this->enabler()->attempt());
-        $this->assertNull(Setting::find('tts.asr.enabled'));
+        $this->assertFalse($this->enabler()->attempt($user->id));
+        $this->assertNull($this->row($user));
     }
 
-    public function test_the_health_page_auto_enables_and_shows_a_notice(): void
+    public function test_the_health_page_auto_enables_for_the_visitor_and_shows_a_notice(): void
     {
         $this->fakeSidecar();
         $admin = User::factory()->create(['is_super_admin' => true]);
+        $bystander = User::factory()->create();
 
         $this->actingAs($admin)
             ->get(route('admin.health'))
             ->assertOk()
             ->assertSee('turned on automatically');
 
-        $this->assertTrue(Setting::find('tts.asr.enabled')->value);
+        $this->assertTrue($this->row($admin)->value);
+        $this->assertNull($this->row($bystander)); // only the visitor, not everyone
     }
 
-    public function test_tts_doctor_auto_enables(): void
+    public function test_tts_doctor_auto_enables_for_every_undecided_user(): void
     {
         $this->fakeSidecar();
+        $undecided = User::factory()->create();
+        $optedOut = User::factory()->create();
+        UserSetting::create(['user_id' => $optedOut->id, 'key' => 'tts.asr.enabled', 'value' => false]);
 
         $this->artisan('tts:doctor')
-            ->expectsOutputToContain('ASR transcript QA enabled automatically');
+            ->expectsOutputToContain('ASR transcript QA enabled automatically for 1 user(s)');
 
-        $this->assertTrue(Setting::find('tts.asr.enabled')->value);
+        $this->assertTrue($this->row($undecided)->value);
+        $this->assertFalse($this->row($optedOut)->value); // their explicit "off" stands
     }
 }

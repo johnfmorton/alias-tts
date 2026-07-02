@@ -4,6 +4,7 @@ namespace App\Jobs;
 
 use App\Enums\SpeechStatus;
 use App\Models\Speech;
+use App\Services\Settings\SettingsManager;
 use App\Services\SpeechService;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
@@ -45,6 +46,10 @@ class GenerateSpeechJob implements ShouldQueue
         if (! $speech || $speech->status === SpeechStatus::Completed) {
             return;
         }
+
+        // Run under the requesting key owner's settings (settings are per-user);
+        // null (keyless record) resets this worker to the .env/config defaults.
+        app(SettingsManager::class)->applyForUser($speech->apiKey?->user_id);
 
         $service->process($speech, $this->seed);
     }

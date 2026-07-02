@@ -6,6 +6,7 @@ use App\Services\Genblaze\GenblazeRunnerClient;
 use App\Services\Genblaze\GenblazeRunStore;
 use App\Services\Pronunciation\PronunciationDetector;
 use App\Services\Pronunciation\PronunciationSubstituter;
+use App\Services\Settings\SettingsManager;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Bus\Dispatchable;
@@ -46,6 +47,9 @@ class RunGenblazeJob implements ShouldQueue
         PronunciationSubstituter $substituter,
     ): void {
         $store->markRunning($this->runId);
+
+        // Run under the dispatching user's settings (settings are per-user).
+        app(SettingsManager::class)->applyForUser($this->userId);
 
         try {
             // Genblaze CHAT pronunciation pass — always on for this judge-facing

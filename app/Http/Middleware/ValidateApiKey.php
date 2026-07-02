@@ -3,6 +3,7 @@
 namespace App\Http\Middleware;
 
 use App\Models\ApiKey;
+use App\Services\Settings\SettingsManager;
 use Closure;
 use Illuminate\Http\Request;
 use Symfony\Component\HttpFoundation\Response;
@@ -32,6 +33,10 @@ class ValidateApiKey
         }
 
         $request->attributes->set('api_key', $apiKey);
+
+        // The request runs under the key OWNER's saved settings (ASR QA,
+        // api_project_mode, …) — settings are per-user, never instance-wide.
+        app(SettingsManager::class)->applyForUser($apiKey->user_id);
 
         return $next($request);
     }

@@ -1,5 +1,6 @@
 <?php
 
+use App\Http\Middleware\ApplyUserSettings;
 use App\Http\Middleware\EnsureAccountIsActive;
 use App\Http\Middleware\ValidateInternalSecret;
 use Illuminate\Foundation\Application;
@@ -27,7 +28,9 @@ return Application::configure(basePath: dirname(__DIR__))
 
             // Password-protected control panel. Open to any signed-in, active user;
             // the SuperAdmin-only surface (Users) is gated per-route inside admin.php.
-            Route::middleware(['web', 'auth', EnsureAccountIsActive::class])
+            // ApplyUserSettings overlays the signed-in user's saved settings onto
+            // config so the whole panel runs under THEIR preferences.
+            Route::middleware(['web', 'auth', EnsureAccountIsActive::class, ApplyUserSettings::class])
                 ->prefix('admin')
                 ->name('admin.')
                 ->group(base_path('routes/admin.php'));

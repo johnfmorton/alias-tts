@@ -16,10 +16,10 @@ class HealthController extends Controller
     public function index(Request $request, HealthReport $report, AsrAutoEnabler $asrAutoEnabler): View
     {
         // "ASR defaults on if available": if the Whisper sidecar is reachable and
-        // the admin hasn't chosen, turn QA on now (before the report runs, so it
-        // shows as enabled). Probing only happens on this admin page, never during
-        // generation.
-        $asrAutoEnabled = $asrAutoEnabler->attempt();
+        // the visiting user hasn't chosen, turn QA on for THEM now (before the
+        // report runs, so it shows as enabled). Probing only happens on this
+        // admin page, never during generation.
+        $asrAutoEnabled = $asrAutoEnabler->attempt($request->user()->id);
 
         // ?deep=1 also makes live calls (validate the Replicate token, probe the
         // queue) — same as `php artisan tts:doctor --deep`.

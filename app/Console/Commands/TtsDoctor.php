@@ -24,9 +24,10 @@ class TtsDoctor extends Command
     public function handle(HealthReport $report, AsrAutoEnabler $asrAutoEnabler): int
     {
         // "ASR defaults on if available": flip transcript QA on if the sidecar is
-        // reachable and the admin hasn't chosen, so the report below reflects it.
-        if ($asrAutoEnabler->attempt()) {
-            $this->info('ASR transcript QA enabled automatically — the Whisper sidecar is reachable.');
+        // reachable — for every user who hasn't made an explicit choice, since
+        // settings are per-user and the console has no signed-in user.
+        if (($enabled = $asrAutoEnabler->attemptForAllUsers()) > 0) {
+            $this->info("ASR transcript QA enabled automatically for {$enabled} user(s) — the Whisper sidecar is reachable.");
         }
 
         $results = $report->run((bool) $this->option('deep'));

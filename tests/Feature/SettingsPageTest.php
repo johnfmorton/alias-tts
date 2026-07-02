@@ -2,17 +2,18 @@
 
 namespace Tests\Feature;
 
-use App\Models\Setting;
 use App\Models\User;
+use App\Models\UserSetting;
 use App\Services\Asr\AsrClient;
 use App\Services\Settings\SettingsManager;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
 
 /**
- * The admin Settings page + its resolver. Precedence is
- * .env (locked) → DB override → config default; the DB layer is merged onto
- * config at boot and never overrides an env-pinned key.
+ * The Settings page + its resolver. Settings are PER USER: precedence is
+ * .env (locked, instance-wide) → the user's DB override → config default; one
+ * user's overrides are merged onto config only for their own requests/jobs and
+ * never leak to anyone else.
  */
 class SettingsPageTest extends TestCase
 {
@@ -21,6 +22,11 @@ class SettingsPageTest extends TestCase
     private function admin(): User
     {
         return User::factory()->create(['is_super_admin' => true]);
+    }
+
+    private function user(): User
+    {
+        return User::factory()->create(['is_super_admin' => false]);
     }
 
     /** Force a managed key's `locked` flag for the duration of a test. */
@@ -53,12 +59,18 @@ class SettingsPageTest extends TestCase
         ], $overrides);
     }
 
-    public function test_db_override_is_layered_onto_config_for_an_unlocked_key(): void
+    private function row(User $user, string $key): ?UserSetting
     {
-        $this->setLocked('tts.asr.api_action', false);
-        Setting::create(['key' => 'tts.asr.api_action', 'value' => 'auto']);
+        return UserSetting::where('user_id', $user->id)->where('key', $key)->first();
+    }
 
-        (new SettingsManager)->applyToConfig();
+    public function test_a_users_override_is_layered_onto_config_for_an_unlocked_key(): void
+    {
+        $user = $this->user();
+        $this->setLocked('tts.asr.api_action', false);
+        UserSetting::create(['user_id' => $user->id, 'key' => 'tts.asr.api_action', 'value' => 'auto']);
+
+        (new SettingsManager)->applyForUser($user->id);
 
         $this->assertSame('auto', config('tts.asr.api_action'));
         $this->assertSame('auto', app(AsrClient::class)->apiAction());
@@ -66,13 +78,55 @@ class SettingsPageTest extends TestCase
 
     public function test_a_locked_key_is_never_overridden_by_the_db(): void
     {
+        $user = $this->user();
         config(['tts.asr.enabled' => true]);              // the env value
         $this->setLocked('tts.asr.enabled', true);
-        Setting::create(['key' => 'tts.asr.enabled', 'value' => false]); // stale DB row
+        UserSetting::create(['user_id' => $user->id, 'key' => 'tts.asr.enabled', 'value' => false]); // stale DB row
 
-        (new SettingsManager)->applyToConfig();
+        (new SettingsManager)->applyForUser($user->id);
 
         $this->assertTrue(config('tts.asr.enabled'));     // .env wins, DB ignored
+    }
+
+    public function test_one_users_settings_never_apply_to_another_user(): void
+    {
+        // The regression: a user's saved settings used to be global and changed
+        // behavior for the SuperAdmin and everyone else.
+        $user = $this->user();
+        $admin = $this->admin();
+        config(['tts.asr.api_action' => 'auto']);
+        $this->setLocked('tts.asr.api_action', false);
+        UserSetting::create(['user_id' => $user->id, 'key' => 'tts.asr.api_action', 'value' => 'log']);
+
+        $manager = new SettingsManager;
+
+        $manager->applyForUser($user->id);
+        $this->assertSame('log', config('tts.asr.api_action'));   // their own request
+
+        $manager->applyForUser($admin->id);
+        $this->assertSame('auto', config('tts.asr.api_action'));  // untouched for the admin
+    }
+
+    public function test_apply_resets_to_defaults_between_users_in_one_process(): void
+    {
+        // A queue worker serves many users from one process — user A's overlay
+        // must not leak into user B's job.
+        $a = $this->user();
+        $b = $this->user();
+        config(['tts.asr.max_rerolls' => 2]);
+        $this->setLocked('tts.asr.max_rerolls', false);
+        UserSetting::create(['user_id' => $a->id, 'key' => 'tts.asr.max_rerolls', 'value' => 5]);
+
+        $manager = new SettingsManager;
+
+        $manager->applyForUser($a->id);
+        $this->assertSame(5, config('tts.asr.max_rerolls'));
+
+        $manager->applyForUser($b->id);
+        $this->assertSame(2, config('tts.asr.max_rerolls'));
+
+        $manager->applyForUser(null); // no user context → pristine defaults
+        $this->assertSame(2, config('tts.asr.max_rerolls'));
     }
 
     public function test_display_value_resolves_the_inherit_chain(): void
@@ -97,17 +151,20 @@ class SettingsPageTest extends TestCase
     public function test_non_admin_can_view_the_settings_page(): void
     {
         // The panel is open to any signed-in, active user (only Users is SuperAdmin-gated).
-        $this->actingAs(User::factory()->create(['is_super_admin' => false]))
+        $this->actingAs($this->user())
             ->get(route('admin.settings.index'))
             ->assertOk();
     }
 
-    public function test_saving_persists_unlocked_values(): void
+    public function test_saving_persists_unlocked_values_for_the_saving_user_only(): void
     {
         config(['tts.asr.enabled' => true]);
         $this->setLocked('tts.asr.enabled', true); // mirror prod: master switch in .env
 
-        $this->actingAs($this->admin())
+        $admin = $this->admin();
+        $other = $this->user();
+
+        $this->actingAs($admin)
             ->put(route('admin.settings.update'), $this->validPayload([
                 'tts_asr_api_action' => 'auto',
                 'tts_asr_max_rerolls' => 3,
@@ -115,14 +172,34 @@ class SettingsPageTest extends TestCase
             ->assertRedirect(route('admin.settings.index'))
             ->assertSessionHas('success');
 
-        $this->assertSame('auto', Setting::find('tts.asr.api_action')->value);
-        $this->assertSame('log', Setting::find('tts.asr.studio_action')->value);
-        $this->assertSame(3, Setting::find('tts.asr.max_rerolls')->value);
-        $this->assertNull(Setting::find('tts.asr.enabled')); // locked → never written
+        $this->assertSame('auto', $this->row($admin, 'tts.asr.api_action')->value);
+        $this->assertSame('log', $this->row($admin, 'tts.asr.studio_action')->value);
+        $this->assertSame(3, $this->row($admin, 'tts.asr.max_rerolls')->value);
+        $this->assertNull($this->row($admin, 'tts.asr.enabled')); // locked → never written
 
-        // A fresh boot applies the saved values to config.
-        (new SettingsManager)->applyToConfig();
+        // Scoped to the saving user — nothing was written for anyone else.
+        $this->assertSame(0, UserSetting::where('user_id', $other->id)->count());
+
+        // A fresh boot applies the saved values for that user.
+        (new SettingsManager)->applyForUser($admin->id);
         $this->assertSame('auto', config('tts.asr.api_action'));
+    }
+
+    public function test_each_admin_request_runs_under_the_signed_in_users_settings(): void
+    {
+        // End-to-end through the ApplyUserSettings middleware: the same panel
+        // page runs under different effective config per signed-in user.
+        config(['tts.asr.max_rerolls' => 2]);
+        $this->setLocked('tts.asr.max_rerolls', false);
+        $user = $this->user();
+        $admin = $this->admin();
+        UserSetting::create(['user_id' => $user->id, 'key' => 'tts.asr.max_rerolls', 'value' => 5]);
+
+        $this->actingAs($admin)->get(route('admin.settings.index'))->assertOk();
+        $this->assertSame(2, config('tts.asr.max_rerolls')); // the other user's 5 is nowhere
+
+        $this->actingAs($user)->get(route('admin.settings.index'))->assertOk();
+        $this->assertSame(5, config('tts.asr.max_rerolls')); // their own page, their own value
     }
 
     public function test_validation_rejects_an_out_of_range_value(): void
@@ -130,13 +207,15 @@ class SettingsPageTest extends TestCase
         config(['tts.asr.enabled' => true]);
         $this->setLocked('tts.asr.enabled', true);
 
-        $this->actingAs($this->admin())
+        $admin = $this->admin();
+
+        $this->actingAs($admin)
             ->put(route('admin.settings.update'), $this->validPayload([
                 'tts_asr_max_rerolls' => 99, // > max 5
             ]))
             ->assertSessionHasErrors('tts_asr_max_rerolls');
 
-        $this->assertNull(Setting::find('tts.asr.max_rerolls'));
+        $this->assertNull($this->row($admin, 'tts.asr.max_rerolls'));
     }
 
     public function test_a_locked_key_cannot_be_changed_through_a_post(): void
@@ -144,13 +223,15 @@ class SettingsPageTest extends TestCase
         config(['tts.asr.enabled' => true]);
         $this->setLocked('tts.asr.enabled', true);
 
-        $this->actingAs($this->admin())
+        $admin = $this->admin();
+
+        $this->actingAs($admin)
             ->put(route('admin.settings.update'), $this->validPayload([
                 'tts_asr_enabled' => '0', // attempt to flip the locked master switch off
             ]));
 
-        $this->assertNull(Setting::find('tts.asr.enabled')); // never written
-        $this->assertTrue(config('tts.asr.enabled'));        // still on
+        $this->assertNull($this->row($admin, 'tts.asr.enabled')); // never written
+        $this->assertTrue(config('tts.asr.enabled'));              // still on
     }
 
     public function test_pronunciation_group_renders(): void
@@ -167,13 +248,15 @@ class SettingsPageTest extends TestCase
         config(['tts.asr.enabled' => true]);
         $this->setLocked('tts.asr.enabled', true);
 
-        $this->actingAs($this->admin())
+        $admin = $this->admin();
+
+        $this->actingAs($admin)
             ->put(route('admin.settings.update'), $this->validPayload([
                 'tts_pronunciation_llm_provider' => 'openai',
             ]))
             ->assertRedirect(route('admin.settings.index'))
             ->assertSessionHas('success');
 
-        $this->assertSame('openai', Setting::find('tts.pronunciation.llm_provider')->value);
+        $this->assertSame('openai', $this->row($admin, 'tts.pronunciation.llm_provider')->value);
     }
 }

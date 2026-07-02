@@ -1,4 +1,4 @@
-<x-layout title="Settings" description="Service configuration. Values pinned in your .env file are shown read-only.">
+<x-layout title="Settings" description="Your settings — they apply only to your account and your API keys. Values pinned in the server's .env file are instance-wide and shown read-only.">
     <form method="POST" action="{{ route('admin.settings.update') }}" class="max-w-2xl space-y-6">
         @csrf
         @method('PUT')

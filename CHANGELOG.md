@@ -6,6 +6,19 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Security
+- **Settings are now per-user.** The Settings page used to write one global
+  set of values, so any signed-in user could change ASR QA behavior, API
+  project mode, and pronunciation options for the SuperAdmin and every other
+  user. Each user now has their own settings, applied only to their panel
+  session, their API keys' requests, and their queued generations; a queue
+  worker resets between jobs so one user's values never bleed into another's.
+  Values pinned in `.env` remain instance-wide and read-only. The migration
+  hands the old global values to SuperAdmins; regular users start from the
+  server defaults, the same as any new user. ASR QA's "defaults on if
+  available" also became per-user: the health page enables it for the visitor,
+  `tts:doctor` for every user who hasn't chosen.
+
 ### Changed
 - **The sealed receipt now verifies itself.** The receipt .zip's
   `receipt.html` embeds the drop-to-verify widget directly — the sealed

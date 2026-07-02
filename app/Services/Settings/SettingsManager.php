@@ -2,25 +2,37 @@
 
 namespace App\Services\Settings;
 
-use App\Models\Setting;
+use App\Models\UserSetting;
 use App\Services\Asr\AsrAutoEnabler;
 use Illuminate\Support\Facades\Schema;
 use Throwable;
 
 /**
- * Resolves and persists UI-managed settings. Precedence:
+ * Resolves and persists UI-managed settings, scoped PER USER. Precedence:
  *
- *     .env (locked, read-only in UI)  →  DB override (editable)  →  config default
+ *     .env (locked, read-only in UI)  →  the user's DB override  →  config default
  *
  * The registry + the cache-safe `locked` flags live in config/settings.php. This
- * service layers DB overrides onto runtime config at boot ({@see applyToConfig()})
- * so every existing config() read transparently reflects saved settings, and the
- * admin page reads/writes through {@see groupedForView()} / {@see save()}.
+ * service layers ONE user's overrides onto runtime config for the duration of
+ * that user's request or queue job ({@see applyForUser()}) so every existing
+ * config() read transparently reflects THAT user's settings. Callers:
+ *
+ *   - admin panel: ApplyUserSettings middleware (the signed-in user)
+ *   - /v1 API:     ValidateApiKey middleware (the key's owner)
+ *   - queue jobs:  GenerateSpeechJob / RunGenblazeJob (the owning user)
+ *   - no user (console, unauthenticated): pristine .env/config defaults
+ *
+ * Before each overlay the managed keys are reset to a baseline captured from
+ * pristine config, so a long-lived queue worker never leaks user A's settings
+ * into user B's job.
  */
 class SettingsManager
 {
-    /** @var array<string, mixed>|null per-instance cache of DB overrides (path => value) */
-    private ?array $overrides = null;
+    /** @var array<int, array<string, mixed>> per-user cache of DB overrides (path => value) */
+    private array $overrides = [];
+
+    /** @var array<string, mixed>|null pristine config values for the managed keys */
+    private ?array $baseline = null;
 
     /**
      * The managed-settings registry, keyed by config path.
@@ -32,63 +44,81 @@ class SettingsManager
         return (array) config('settings.managed', []);
     }
 
-    /** Is this key pinned in .env (and therefore read-only in the UI)? */
+    /** Is this key pinned in .env (and therefore read-only in the UI, for everyone)? */
     public function isLocked(string $configPath): bool
     {
         return (bool) ($this->managed()[$configPath]['locked'] ?? false);
     }
 
     /**
-     * Has someone made a deliberate choice for this key — pinned it in .env
-     * (locked) or saved a DB override — as opposed to it still riding the config
-     * default? Lets a feature auto-default itself exactly once without ever
-     * overriding an admin's explicit decision (see {@see AsrAutoEnabler}).
+     * Has a deliberate choice been made for this key FOR THIS USER — pinned in
+     * .env (locked, instance-wide) or saved as their override — as opposed to it
+     * still riding the config default? Lets a feature auto-default itself exactly
+     * once per user without ever overriding an explicit decision (see
+     * {@see AsrAutoEnabler}).
      */
-    public function isExplicitlySet(string $configPath): bool
+    public function isExplicitlySetFor(?int $userId, string $configPath): bool
     {
-        return $this->isLocked($configPath) || array_key_exists($configPath, $this->overrides());
+        return $this->isLocked($configPath)
+            || array_key_exists($configPath, $this->overridesFor($userId));
     }
 
     /**
-     * DB overrides keyed by config path. Loaded once per instance; empty (and
-     * never throwing) if the table doesn't exist yet — a fresh install or a boot
-     * mid-migration must not break.
+     * One user's DB overrides keyed by config path. Loaded once per instance per
+     * user; empty (and never throwing) if the table doesn't exist yet — a fresh
+     * install or a boot mid-migration must not break.
      *
      * @return array<string, mixed>
      */
-    public function overrides(): array
+    public function overridesFor(?int $userId): array
     {
-        if ($this->overrides !== null) {
-            return $this->overrides;
+        if ($userId === null) {
+            return [];
+        }
+
+        if (isset($this->overrides[$userId])) {
+            return $this->overrides[$userId];
         }
 
         try {
-            if (! Schema::hasTable('settings')) {
-                return $this->overrides = [];
+            if (! Schema::hasTable('user_settings')) {
+                return $this->overrides[$userId] = [];
             }
 
-            return $this->overrides = Setting::all()
-                ->mapWithKeys(fn (Setting $s): array => [$s->key => $s->value])
+            return $this->overrides[$userId] = UserSetting::query()
+                ->where('user_id', $userId)
+                ->get()
+                ->mapWithKeys(fn (UserSetting $s): array => [$s->key => $s->value])
                 ->all();
         } catch (Throwable) {
-            return $this->overrides = [];
+            return $this->overrides[$userId] = [];
         }
     }
 
     /**
-     * Layer DB overrides onto runtime config for every managed key NOT pinned in
-     * .env. After this runs, config('tts.asr.*') (and the AsrClient accessors)
-     * reflect the saved settings, so no call site needs to know about this layer.
-     * Env-locked keys are never touched — .env always wins.
+     * Layer ONE user's overrides onto runtime config for every managed key NOT
+     * pinned in .env. Managed keys are first reset to the pristine baseline, so
+     * switching users (requests in one worker, jobs in one queue process) always
+     * starts clean. `null` resets to pure .env/config defaults.
      */
-    public function applyToConfig(): void
+    public function applyForUser(?int $userId): void
     {
         $managed = $this->managed();
 
-        foreach ($this->overrides() as $configPath => $value) {
+        // Snapshot pristine config once per process, before the first overlay.
+        if ($this->baseline === null) {
+            $this->baseline = [];
+            foreach (array_keys($managed) as $configPath) {
+                $this->baseline[$configPath] = config($configPath);
+            }
+        }
+
+        config($this->baseline);
+
+        foreach ($this->overridesFor($userId) as $configPath => $value) {
             $entry = $managed[$configPath] ?? null;
             if ($entry === null || ($entry['locked'] ?? false)) {
-                continue;
+                continue; // .env always wins
             }
 
             config([$configPath => $value]);
@@ -97,14 +127,16 @@ class SettingsManager
 
     /**
      * The value to show (and edit) in the form: the env value when locked, else
-     * the saved DB value, else the config default — resolving the `inherits` chain
-     * for the per-path action keys (which are null until explicitly set).
+     * the user's saved value, else the config default — resolving the `inherits`
+     * chain for the per-path action keys (which are null until explicitly set).
+     * Assumes {@see applyForUser()} already ran for the viewing user (the admin
+     * middleware guarantees it).
      */
     public function displayValue(string $configPath): mixed
     {
         $entry = $this->managed()[$configPath] ?? null;
 
-        // config() already reflects env (locked) and the boot-merged DB value.
+        // config() already reflects env (locked) and the user's merged overrides.
         $value = config($configPath);
         if ($value !== null || $entry === null) {
             return $value;
@@ -114,12 +146,13 @@ class SettingsManager
     }
 
     /**
-     * Persist submitted values for the UNLOCKED managed keys only. Locked keys are
-     * silently skipped — defensive, since the form renders them read-only anyway.
+     * Persist submitted values for the UNLOCKED managed keys only, scoped to one
+     * user. Locked keys are silently skipped — defensive, since the form renders
+     * them read-only anyway.
      *
      * @param  array<string, mixed>  $values  keyed by config path
      */
-    public function save(array $values): void
+    public function saveFor(int $userId, array $values): void
     {
         $managed = $this->managed();
 
@@ -129,13 +162,13 @@ class SettingsManager
                 continue;
             }
 
-            Setting::query()->updateOrCreate(
-                ['key' => $configPath],
+            UserSetting::query()->updateOrCreate(
+                ['user_id' => $userId, 'key' => $configPath],
                 ['value' => $this->coerce((string) $entry['type'], $value)],
             );
         }
 
-        $this->overrides = null; // bust the cache so a later read sees the writes
+        unset($this->overrides[$userId]); // bust the cache so a later read sees the writes
     }
 
     /** Cast a submitted form value to its registry type before storage. */
@@ -151,7 +184,8 @@ class SettingsManager
 
     /**
      * The registry grouped for the view, each field decorated with its HTML field
-     * name, current value and lock state.
+     * name, current value and lock state. Values reflect the user applied by
+     * {@see applyForUser()}.
      *
      * @return array<string, list<array<string, mixed>>>
      */

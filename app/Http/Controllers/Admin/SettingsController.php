@@ -38,7 +38,7 @@ class SettingsController extends Controller
             }
         }
 
-        $this->settings->save($values);
+        $this->settings->saveFor($request->user()->id, $values);
 
         return redirect()->route('admin.settings.index')->with('success', 'Settings saved.');
     }
