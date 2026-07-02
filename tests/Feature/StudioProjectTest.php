@@ -183,7 +183,7 @@ class StudioProjectTest extends TestCase
             ->get(route('admin.studio.projects.show', $project))
             ->assertOk()
             ->assertSee($project->title)
-            ->assertSee('Rebuild final')
+            ->assertSee('Build final')
             ->assertSee($project->chunks()->first()->text);
     }
 

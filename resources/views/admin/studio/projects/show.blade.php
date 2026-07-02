@@ -38,9 +38,9 @@
                     <p class="mt-1 text-red-200/90">The provider reported: <span class="font-mono text-xs">{{ $project->failure_reason }}</span></p>
                 @endif
                 @if(! is_null($project->failed_chunk_index))
-                    <p class="mt-1 text-red-200/80">Generation failed at chunk #{{ $project->failed_chunk_index + 1 }} — edit that sentence, generate the chunks, and rebuild.</p>
+                    <p class="mt-1 text-red-200/80">Generation failed at chunk #{{ $project->failed_chunk_index + 1 }} — edit that sentence, generate the chunks, and build the final.</p>
                 @else
-                    <p class="mt-1 text-red-200/80">Edit the text as needed, then generate the chunks and rebuild.</p>
+                    <p class="mt-1 text-red-200/80">Edit the text as needed, then generate the chunks and build the final.</p>
                 @endif
             </div>
         @endif
@@ -86,27 +86,32 @@
                     <audio id="project-final-audio" class="aplayer__native" preload="metadata" @if($hasFinal) src="{{ route('admin.studio.projects.audio', $project) }}" @endif></audio>
                 </div>
                 @unless($hasFinal)
-                    <div id="project-final-placeholder" class="min-w-[300px] flex-1 text-sm text-zinc-600">No final audio yet — generate the chunks, then rebuild to stitch.</div>
+                    <div id="project-final-placeholder" class="min-w-[300px] flex-1 text-sm text-zinc-600">No final audio yet — generate the chunks, then build the final.</div>
                 @endunless
 
                 {{-- Action cluster. Looks (primary / outline / disabled) are set by
                      reflectActionState() in app.js from the current project state. --}}
                 <div class="flex flex-wrap items-center gap-2">
-                    <button type="button" id="project-generate-all" class="inline-flex items-center gap-1.5 rounded-[9px] px-4 py-[9px] text-sm transition">▶ Generate all remaining</button>
-                    <a id="project-download" href="{{ route('admin.studio.projects.audio', $project) }}" download class="inline-flex items-center gap-1.5 rounded-[9px] px-4 py-[9px] text-sm transition">↓ Download</a>
-                    <button type="button" id="project-rebuild" class="inline-flex items-center gap-1.5 rounded-[9px] px-4 py-[9px] text-sm transition">↻ Rebuild final</button>
+                    <button type="button" id="project-generate-all" class="inline-flex items-center gap-1.5 rounded-[9px] px-4 py-[9px] text-sm transition">▶ Generate remaining</button>
+                    <button type="button" id="project-rebuild" class="inline-flex items-center gap-1.5 rounded-[9px] px-4 py-[9px] text-sm transition">↻ Build final</button>
+                    {{-- Draft download (bare final audio) — hidden once approved; the
+                         approved-version package below supersedes it. --}}
+                    <a id="project-download" href="{{ route('admin.studio.projects.audio', $project) }}" download class="inline-flex items-center gap-1.5 rounded-[9px] px-4 py-[9px] text-sm transition">↓ Download draft version</a>
+                    {{-- Approve ⇆ approved-download share one slot: "Approve as final" shows
+                         until approved, then the approved-version download replaces it in
+                         place as the primary action (toggled by reflectActionState). --}}
                     <button type="button" id="project-seal"
-                            title="Freeze this final as the approved cut and record who approved it. Editing the project afterward clears the seal."
-                            class="inline-flex items-center gap-1.5 rounded-[9px] px-4 py-[9px] text-sm transition">🔒 Seal as final</button>
+                            title="Approve this cut as the final deliverable and record who approved it. Editing the project afterward clears the approval."
+                            class="inline-flex items-center gap-1.5 rounded-[9px] px-4 py-[9px] text-sm transition">🔒 Approve as final</button>
+                    <a id="project-receipt" href="{{ route('admin.studio.projects.receipt', $project) }}" download
+                       title="Download the approved version (.zip): the final audio, a provenance report, and an offline drag-to-verify page."
+                       class="inline-flex items-center gap-1.5 rounded-[9px] px-4 py-[9px] text-sm transition {{ $project->isSealed() ? '' : 'hidden' }}">⤓ Download approved version</a>
 
                     {{-- Overflow: rare + destructive actions (design turn 3) --}}
                     <div class="relative">
                         <button type="button" id="project-overflow" aria-label="More actions"
                                 class="grid h-[38px] w-[38px] place-items-center rounded-[9px] border border-white/14 text-lg text-zinc-300 hover:bg-white/[0.04]">⋯</button>
                         <div id="project-overflow-menu" class="absolute top-[44px] right-0 z-40 hidden w-56 rounded-[12px] border border-white/10 bg-menu p-1.5 shadow-[0_20px_40px_-12px_rgba(0,0,0,0.7)]">
-                            <a id="project-receipt" href="{{ route('admin.studio.projects.receipt', $project) }}" download
-                               title="Download a verifiable receipt (.zip): the final, a provenance report, and an offline verify page."
-                               class="block rounded-lg px-3 py-2 text-sm text-ok hover:bg-white/[0.04] {{ $project->isSealed() ? '' : 'hidden' }}">⤓ Download receipt (.zip)</a>
                             <a href="{{ route('admin.studio.projects.edit', $project) }}"
                                class="block rounded-lg px-3 py-2 text-sm text-zinc-300 hover:bg-white/[0.04]">↺ Start over</a>
                             <form method="POST" action="{{ route('admin.studio.projects.destroy', $project) }}"
@@ -120,10 +125,10 @@
                 </div>
             </div>
 
-            {{-- Sealed-final badge + status line (toggled in JS; see initStudioProject) --}}
+            {{-- Approved-final badge + status line (toggled in JS; see initStudioProject) --}}
             <div id="project-seal-badge" data-sha256="{{ $project->final_sha256 }}"
                  class="mt-3 flex flex-wrap items-center gap-x-3 gap-y-1 rounded-lg border border-ok/30 bg-ok/10 px-3 py-2 text-sm text-ok {{ $project->isSealed() ? '' : 'hidden' }}">
-                <span class="font-medium">✓ Sealed final<span id="project-seal-approver">{{ $project->isSealed() ? ' — approved by '.$project->sealApprover() : '' }}</span><span id="project-seal-when">{{ $project->isSealed() ? ' · '.optional($project->sealed_at)->toDayDateTimeString() : '' }}</span></span>
+                <span class="font-medium">✓ Approved final<span id="project-seal-approver">{{ $project->isSealed() ? ' — approved by '.$project->sealApprover() : '' }}</span><span id="project-seal-when">{{ $project->isSealed() ? ' · '.optional($project->sealed_at)->toDayDateTimeString() : '' }}</span></span>
                 <span id="project-seal-hash" class="font-mono text-xs text-ok/80">{{ $project->isSealed() ? substr((string) $project->final_sha256, 0, 12) : '' }}</span>
                 <button type="button" id="project-seal-copy"
                         class="rounded-md border border-ok/50 px-2 py-0.5 text-xs text-ok hover:bg-ok/20">Copy verify link</button>

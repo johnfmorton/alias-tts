@@ -839,20 +839,20 @@ function initStudioProject() {
         el.classList.toggle('hidden', !show);
         if (displayClass) el.classList.toggle(displayClass, show);
     };
-    // Seal is offered only on a clean (ready) final; the badge + receipt show once
-    // sealed. Any edit clears the seal server-side; this mirrors it in the UI. The
-    // seal *button* itself is owned by reflectActionState (it stays visible-but-greyed
-    // per the 4B rules), so this only manages the badge + receipt.
+    // Seal is offered only on a clean (ready) final; the badge shows once sealed.
+    // Any edit clears the seal server-side; this mirrors it in the UI. The seal
+    // *button* and its receipt replacement live in the action cluster and are owned
+    // by reflectActionState, so this only manages the badge.
     const reflectSeal = () => {
         const ready = projectStatus.textContent.trim() === 'ready';
         if (!ready) isSealed = false; // a stale/draft project is never sealed
-        showEl(receiptLink, isSealed);
         showEl(sealBadge, isSealed, 'flex');
     };
 
     // 4B: the action cluster is state-aware — the lit primary names the single next
     // step, and actions needing a current final stay visible-but-disabled until one
-    // exists. States: not_generated → Generate; stale → Rebuild; ready → Download.
+    // exists. States: not_generated → Generate; stale → Build final; ready → Download
+    // draft / Approve; approved → Download approved version.
     const ACT_BASE = 'inline-flex items-center gap-1.5 rounded-[9px] px-4 py-[9px] text-sm transition';
     const ACT_LOOK = {
         primary: 'bg-accent font-semibold text-accent-on hover:bg-accent/90',
@@ -870,22 +870,38 @@ function initStudioProject() {
         const ready = hasFinal && status === 'ready';
 
         // Generate-all only matters while chunks remain ungenerated; it leads when
-        // nothing has been generated yet, else it steps down to a secondary. Set the
-        // look first — it rewrites className — then toggle `hidden` so it survives.
+        // nothing has been generated yet, else it steps down to a secondary. look()
+        // rewrites className with ACT_BASE (which carries `inline-flex`), so hiding
+        // must clear inline-flex too — a lone `hidden` loses to it. showEl toggles
+        // both, so re-adding a chunk (→ anyPending) brings the button back.
         if (generateAllBtn) {
             look(generateAllBtn, (! anyCompleted && anyPending) ? 'primary' : 'outline');
-            generateAllBtn.classList.toggle('hidden', !anyPending);
+            showEl(generateAllBtn, anyPending, 'inline-flex');
         }
         look(rebuildBtn, ready ? 'outline' : (anyCompleted ? 'primary' : 'off'));
+
+        // The draft download (bare final audio) is offered until the project is
+        // approved; then the approved-version package supersedes it, so it hides.
         look(downloadLink, ready ? 'primary' : 'off');
+        showEl(downloadLink, ! isSealed, 'inline-flex');
+
+        // Approve ⇆ approved-download share one slot. "Approve as final" stays visible
+        // (lit when a clean final exists, greyed otherwise) until the project is
+        // approved; then it's replaced in place by the approved-version download,
+        // which becomes the primary action.
         look(sealBtn, (ready && ! isSealed) ? 'seal' : 'off');
+        showEl(sealBtn, ! isSealed, 'inline-flex');
+        if (receiptLink) {
+            look(receiptLink, 'primary');
+            showEl(receiptLink, isSealed, 'inline-flex');
+        }
     }
 
     const setProjectStatus = (status) => { badge(projectStatus, status); reflectSeal(); reflectActionState(); };
 
     async function seal() {
         if (!sealBtn) return;
-        startBusy(sealBtn, 'Sealing…');
+        startBusy(sealBtn, 'Approving…');
         try {
             const res = await fetch(sealUrl, {
                 method: 'POST',
@@ -900,7 +916,10 @@ function initStudioProject() {
             if (sealWhenEl) sealWhenEl.textContent = data.sealed_at_human ? ' · ' + data.sealed_at_human : '';
             if (sealHashEl) sealHashEl.textContent = data.short || '';
             reflectSeal();
-            setStatus(finalStatus, '✓ Sealed as the approved final.', 'ok');
+            reflectActionState(); // swap Approve for the approved-version download
+            // The green "Approved final" badge is the confirmation — don't echo it
+            // in the status line. Clear any prior message (e.g. a build result).
+            setStatus(finalStatus, '', 'ok');
         } catch (err) {
             setStatus(finalStatus, `✗ ${err.message}`, 'error');
         } finally {
@@ -1010,7 +1029,7 @@ function initStudioProject() {
         const cards = [...root.querySelectorAll('.studio-chunk')]
             .filter((c) => c.querySelector('.chunk-status').textContent.trim() !== 'completed');
         if (!cards.length) {
-            setStatus(finalStatus, 'Every chunk is already generated — rebuild to stitch.', 'ok');
+            setStatus(finalStatus, 'Every chunk is already generated — build the final to stitch.', 'ok');
             return;
         }
         startBusy(generateAllBtn, 'Generating…');
@@ -1034,8 +1053,8 @@ function initStudioProject() {
         }
         endBusy(generateAllBtn);
         setStatus(finalStatus, failed
-            ? `✗ ${failed} chunk(s) failed — retry them, then rebuild.`
-            : `✓ All ${done} chunk(s) generated — rebuild to stitch.`, failed ? 'error' : 'ok');
+            ? `✗ ${failed} chunk(s) failed — retry them, then build the final.`
+            : `✓ All ${done} chunk(s) generated — build the final to stitch.`, failed ? 'error' : 'ok');
     }
 
     async function rebuild() {

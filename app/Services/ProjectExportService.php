@@ -38,7 +38,10 @@ class ProjectExportService
         $project->loadMissing('voice', 'chunks.takes', 'chunks.voice');
 
         $ext = pathinfo((string) $project->final_audio_path, PATHINFO_EXTENSION) ?: 'mp3';
-        $finalName = 'final.'.$ext;
+        // Name the audio to match the .zip and the folder it unzips to (e.g.
+        // love-what-you-do-sealed-bbe2014e.mp3) rather than a bare "final.mp3".
+        // This name flows into receipt.html and the manifest too.
+        $finalName = $project->sealedBaseName().'.'.$ext;
 
         $chunks = $this->chunkRows($project);
         $manifest = $this->manifest($project, $finalName, $chunks);

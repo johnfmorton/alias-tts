@@ -9,6 +9,7 @@ use Illuminate\Database\Eloquent\Concerns\HasUuids;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Support\Str;
 
 /**
  * An editable text-to-speech project: the source text, its normalized form, and
@@ -103,5 +104,18 @@ class TtsProject extends Model
     public function sealApprover(): ?string
     {
         return $this->sealed_by_name ?: $this->sealed_by_email;
+    }
+
+    /**
+     * Shared base name (no extension) for the approved-version downloads: the
+     * project slug + "sealed" + the byte-hash fingerprint, e.g.
+     * `love-what-you-do-sealed-bbe2014e`. The receipt .zip, the folder it unzips
+     * to, and the audio file inside it all build on this so they read as a set.
+     */
+    public function sealedBaseName(): string
+    {
+        $fingerprint = substr((string) $this->final_sha256, 0, 8);
+
+        return Str::slug($this->title ?: 'project').'-sealed-'.$fingerprint;
     }
 }

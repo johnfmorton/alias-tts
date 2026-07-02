@@ -4,6 +4,32 @@ All notable changes to this project are documented in this file. The format is
 based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this
 project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Changed
+- **The project action bar reads as a draft→approved progression.** The
+  top-of-project buttons were reordered and renamed: *Generate remaining* (was
+  "Generate all remaining"), *Build final* (was "Rebuild final" — nothing to
+  rebuild on the first stitch), *Download draft version* (was "Download"), and
+  *Approve as final* (was "Seal as final"). Approving now swaps that button in
+  place for a primary *Download approved version* — the full package (audio +
+  provenance + offline verify page), promoted out of the ⋯ overflow menu — while
+  the draft download hides, so there's one clear download whose label always
+  says which version you're getting. The sealed badge and its copy now read
+  "Approved" to match (routes and stored fields are unchanged).
+- **The approved package names its audio for the project.** The audio inside the
+  receipt `.zip` is now `‹project›-sealed-‹fingerprint›.mp3` (matching the `.zip`
+  and the folder it unzips to) instead of a bare `final.mp3`; the receipt page
+  and the manifest reference the same name.
+
+### Fixed
+- **"Generate remaining" hides once every chunk is generated.** A CSS
+  `hidden`/`inline-flex` conflict had left it visible on fully-generated
+  projects; it now disappears when nothing is pending and reappears if you
+  insert a new chunk.
+- **No duplicate approval confirmation.** Approving a project no longer prints an
+  "Approved as the final" status line beneath the badge that already says so.
+
 ## [0.22.0] - 2026-07-02
 
 ### Changed

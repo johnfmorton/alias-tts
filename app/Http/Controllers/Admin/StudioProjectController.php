@@ -705,10 +705,9 @@ class StudioProjectController extends Controller
             return response()->json(['message' => 'Receipt failed: '.$e->getMessage()], 502);
         }
 
-        // Same content fingerprint as the audio download, so the receipt for a
-        // given approved cut has a stable, distinct name.
-        $fingerprint = substr((string) $project->final_sha256, 0, 8);
-        $filename = Str::slug($project->title ?: 'project').'-sealed-'.$fingerprint.'.zip';
+        // Shared base name so the .zip, the folder it unzips to, and the audio
+        // inside all read as a set (love-what-you-do-sealed-bbe2014e.*).
+        $filename = $project->sealedBaseName().'.zip';
 
         return response($zip, 200)
             ->header('Content-Type', 'application/zip')

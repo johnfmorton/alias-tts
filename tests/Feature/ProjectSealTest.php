@@ -60,6 +60,12 @@ class ProjectSealTest extends TestCase
         return pathinfo((string) $project->final_audio_path, PATHINFO_EXTENSION) ?: 'mp3';
     }
 
+    /** The in-zip audio name after sealing — matches the .zip and its folder. */
+    private function sealedAudioName(TtsProject $project): string
+    {
+        return $project->refresh()->sealedBaseName().'.'.$this->finalExt($project);
+    }
+
     /** Open the receipt bytes as a zip; returns the opened archive (caller closes). */
     private function openZip(string $bytes): ZipArchive
     {
@@ -204,7 +210,7 @@ class ProjectSealTest extends TestCase
         $this->assertStringStartsWith('PK', $bytes);
 
         $zip = $this->openZip($bytes);
-        foreach (['receipt.html', 'manifest.json', 'final.'.$this->finalExt($project)] as $name) {
+        foreach (['receipt.html', 'manifest.json', $this->sealedAudioName($project)] as $name) {
             $entry = $zip->getFromName($name);
             $this->assertNotFalse($entry, "missing zip entry: {$name}");
             $this->assertNotSame('', $entry, "empty zip entry: {$name}");
@@ -212,6 +218,11 @@ class ProjectSealTest extends TestCase
         // The verifier lives inside receipt.html now — no separate page to
         // mistake for the receipt.
         $this->assertFalse($zip->getFromName('verify.html'));
+
+        // The audio is named for the project + fingerprint (matching the .zip and
+        // its folder), not a bare "final.mp3".
+        $this->assertSame('my-project-sealed-'.substr((string) $project->final_sha256, 0, 8).'.'.$this->finalExt($project), $this->sealedAudioName($project));
+        $this->assertFalse($zip->getFromName('final.'.$this->finalExt($project)), 'audio must not be the bare final.<ext>');
         $zip->close();
     }
 
@@ -231,6 +242,9 @@ class ProjectSealTest extends TestCase
         $sha = $project->refresh()->final_sha256;
         $this->assertStringContainsString("var expect = '{$sha}'", $receipt);
         $this->assertStringContainsString('id="drop"', $receipt);
+        // The page names the audio it verifies — the same project+fingerprint name
+        // as the file in the zip, so the instructions point at the real filename.
+        $this->assertStringContainsString($this->sealedAudioName($project), $receipt);
     }
 
     public function test_receipt_manifest_hash_matches_the_embedded_final(): void
@@ -243,7 +257,7 @@ class ProjectSealTest extends TestCase
         $zip = $this->openZip($res->getContent());
 
         $manifest = json_decode($zip->getFromName('manifest.json'), true);
-        $final = $zip->getFromName('final.'.$this->finalExt($project));
+        $final = $zip->getFromName($this->sealedAudioName($project));
         $zip->close();
 
         $this->assertSame($manifest['seal']['final_sha256'], hash('sha256', $final));
@@ -302,7 +316,7 @@ class ProjectSealTest extends TestCase
 
         $res = $this->actingAs($admin)->get(route('admin.studio.projects.receipt', $project));
         $zip = $this->openZip($res->getContent());
-        $final = $zip->getFromName('final.'.$this->finalExt($project));
+        $final = $zip->getFromName($this->sealedAudioName($project));
         $zip->close();
 
         $this->assertSame($sealedHash, hash('sha256', $final), 'receipt must ship the sealed snapshot, not the live file');
@@ -363,7 +377,7 @@ class ProjectSealTest extends TestCase
         $this->actingAs($this->admin())
             ->get(route('admin.studio.projects.show', $project))
             ->assertOk()
-            ->assertSee('Seal as final')
+            ->assertSee('Approve as final')
             // The approver/hash are server-rendered only once sealed.
             ->assertDontSee('approved by');
     }
