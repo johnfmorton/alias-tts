@@ -1700,10 +1700,13 @@ function initGenblaze() {
     const statusEl = document.getElementById('gb-status');
     const result = document.getElementById('gb-result');
     const finalAudio = document.getElementById('gb-final-audio');
+    const finalPlayer = document.getElementById('gb-final-player');
     const finalUrl = document.getElementById('gb-final-url');
     const manifestEl = document.getElementById('gb-manifest');
     const rerollsEl = document.getElementById('gb-rerolls');
     const chunksEl = document.getElementById('gb-chunks');
+
+    enhanceStudioPlayers(root); // skin the final-audio player (same hero transport as Studio)
 
     const el = (tag, cls, text) => {
         const node = document.createElement(tag);
@@ -1721,7 +1724,7 @@ function initGenblaze() {
         const finalSrc = data.final_play_url || data.final_url;
         if (finalSrc) {
             finalAudio.src = httpOnly(finalSrc);
-            finalAudio.classList.remove('hidden');
+            finalPlayer.classList.remove('hidden');
         }
         if (data.final_url) {
             finalUrl.textContent = data.final_url;

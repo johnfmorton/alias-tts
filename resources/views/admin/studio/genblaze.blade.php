@@ -91,7 +91,14 @@
                     <span id="gb-rerolls" class="inline-flex rounded-md border border-zinc-700 bg-zinc-800 px-2 py-0.5 text-xs text-zinc-300"></span>
                 </div>
 
-                <audio id="gb-final-audio" controls class="hidden w-full"></audio>
+                {{-- Final audio in the same hero player skin as the Studio project page
+                     (aplayer, design 4A); enhanceStudioPlayers() in app.js drives it. --}}
+                <div id="gb-final-player" class="aplayer aplayer--hero hidden">
+                    <button type="button" class="aplayer__btn" aria-label="Play or pause the final audio"><span class="aplayer__icon"></span></button>
+                    <div class="aplayer__track"><div class="aplayer__fill"></div><div class="aplayer__knob"></div></div>
+                    <span class="aplayer__time">0:00 / 0:00</span>
+                    <audio id="gb-final-audio" class="aplayer__native" preload="metadata"></audio>
+                </div>
                 <div class="space-y-1 text-xs text-zinc-500">
                     <div>final: <a id="gb-final-url" href="#" target="_blank" rel="noopener" class="break-all font-mono text-cyan-400 hover:underline"></a></div>
                     <div>manifest: <span id="gb-manifest" class="break-all font-mono text-zinc-400"></span><span id="gb-manifest-verified" class="ml-2 hidden rounded-md border px-1.5 py-0.5 text-xs"></span></div>
