@@ -17,6 +17,7 @@ use App\Services\VoiceService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Validator;
+use Illuminate\Validation\Rule;
 use Illuminate\View\View;
 use Symfony\Component\HttpFoundation\Response;
 use Throwable;
@@ -59,17 +60,19 @@ class StudioController extends Controller
                 ->when($user->isSuperAdmin(), fn ($q) => $q->with('user:id,name'))
                 ->latest()
                 ->get(),
-            'presets' => TuningPreset::orderBy('name')->get(),
         ]);
     }
 
     /**
-     * Save a named exaggeration/cfg_weight preset for reuse in the tuning bench.
+     * Save a named exaggeration/cfg_weight preset for reuse in the tuning bench
+     * and the project/chunk delivery pickers. Presets are personal: the name only
+     * has to be unique within the signed-in user's own set.
      */
     public function storePreset(Request $request): JsonResponse
     {
         if ($error = $this->validationError($request, [
-            'name' => ['required', 'string', 'max:60', 'unique:tuning_presets,name'],
+            'name' => ['required', 'string', 'max:60',
+                Rule::unique('tuning_presets', 'name')->where('user_id', $request->user()->id)],
             'exaggeration' => ['nullable', 'numeric', 'between:0.25,2'],
             'cfg_weight' => ['nullable', 'numeric', 'between:0.2,1'],
         ])) {
@@ -77,6 +80,7 @@ class StudioController extends Controller
         }
 
         $preset = TuningPreset::create([
+            'user_id' => $request->user()->id,
             'name' => trim((string) $request->input('name')),
             'exaggeration' => $request->filled('exaggeration') ? (float) $request->input('exaggeration') : null,
             'cfg_weight' => $request->filled('cfg_weight') ? (float) $request->input('cfg_weight') : null,
@@ -93,8 +97,13 @@ class StudioController extends Controller
         ]);
     }
 
-    public function destroyPreset(TuningPreset $preset): JsonResponse
+    public function destroyPreset(Request $request, TuningPreset $preset): JsonResponse
     {
+        // Personal: another user's preset is as good as nonexistent.
+        if ($preset->user_id !== $request->user()->id && ! $request->user()->isSuperAdmin()) {
+            return response()->json(['message' => 'Unknown preset.'], 404);
+        }
+
         $preset->delete();
 
         return response()->json(['ok' => true]);
@@ -353,6 +362,15 @@ class StudioController extends Controller
         $voice = Voice::resolveFor((string) $request->input('voice'), $request->user()->id);
         if (! $voice) {
             return response()->json(['message' => 'Unknown voice.'], 422);
+        }
+
+        // Shared voices (the built-ins) sound the same for every user — writing
+        // tuning onto one would change what everyone hears. Same rule as the
+        // voice edit form; the escape hatch is "Duplicate" on the Voices page.
+        if (! $voice->isManagedBy($request->user())) {
+            return response()->json([
+                'message' => "\"{$voice->name}\" is shared with every user. Duplicate it on the Voices page to tune your own copy.",
+            ], 403);
         }
 
         $voices->saveTuning($voice, $this->overrides($request));

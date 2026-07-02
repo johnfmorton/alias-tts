@@ -43,7 +43,7 @@ class HealthTestController extends Controller
 
         try {
             $speech = $this->speechService->synthesize(
-                apiKey: $this->dashboardKey(),
+                apiKey: ApiKey::dashboardFor($request->user()->id),
                 voice: $voice,
                 text: self::SHORT_TEXT,
                 settings: config('tts.default_voice_settings'),
@@ -79,7 +79,7 @@ class HealthTestController extends Controller
 
         try {
             $speech = $this->speechService->queueSynthesis(
-                apiKey: $this->dashboardKey(),
+                apiKey: ApiKey::dashboardFor($request->user()->id),
                 voice: $voice,
                 text: $this->longText(),
                 settings: config('tts.default_voice_settings'),
@@ -100,9 +100,9 @@ class HealthTestController extends Controller
         return response()->json($this->payload($speech), $speech->isCompleted() ? 200 : 202);
     }
 
-    public function status(string $id): JsonResponse
+    public function status(Request $request, string $id): JsonResponse
     {
-        $speech = $this->findTestSpeech($id);
+        $speech = $this->findTestSpeech($request, $id);
         if (! $speech) {
             return response()->json(['message' => 'Test job not found.'], 404);
         }
@@ -112,7 +112,7 @@ class HealthTestController extends Controller
 
     public function audio(Request $request, string $id): Response
     {
-        $speech = $this->findTestSpeech($id);
+        $speech = $this->findTestSpeech($request, $id);
         if (! $speech) {
             return response()->json(['message' => 'Test job not found.'], 404);
         }
@@ -138,16 +138,15 @@ class HealthTestController extends Controller
         return Voice::orderedFor($request->user()->id)->first();
     }
 
-    /** Reuse the dashboard's own API key so test generations are attributable. */
-    private function dashboardKey(): ApiKey
+    /**
+     * Test jobs run under the CLICKING user's own dashboard key
+     * ({@see ApiKey::dashboardFor}), so these endpoints only ever serve that
+     * user's own test speech — never arbitrary speech, and never another
+     * user's tests.
+     */
+    private function findTestSpeech(Request $request, string $id): ?Speech
     {
-        return ApiKey::firstWhere('name', 'dashboard') ?? ApiKey::generate('dashboard');
-    }
-
-    /** Test jobs are scoped to the dashboard key, so these endpoints never serve arbitrary speech. */
-    private function findTestSpeech(string $id): ?Speech
-    {
-        $key = ApiKey::firstWhere('name', 'dashboard');
+        $key = ApiKey::where('name', 'dashboard')->where('user_id', $request->user()->id)->first();
 
         return $key
             ? Speech::query()->where('id', $id)->where('api_key_id', $key->id)->first()

@@ -4,6 +4,20 @@
 > **Phases 0–3 are all implemented and test-verified 2026-06-19** (Phases 0–2
 > also had a live UI walkthrough). The plan is fully built.
 >
+> **Update (post-v0.21.0):** The tuning surfaces were reorganized around the
+> voice. The **A/B bench and named presets moved from the Studio Inspector to
+> the voice EDIT page** ("Tune by ear" — `admin/voices/{voice}/edit`), which is
+> also where creation now lands; the Add-a-voice form carries no tuning fields
+> at all, and the voice forms speak the native knobs. The Inspector keeps only
+> the transient per-preview knobs behind the Advanced toggle. Presets became
+> **per-user** (`tuning_presets.user_id`) and gained two apply points: a
+> "Delivery" pick on the New Project form (resolved server-side into the
+> project's settings snapshot) and an "Apply preset" pick in each chunk's
+> Takes & tuning panel (fills the knobs client-side). Tuning a SHARED voice
+> (the built-ins) is SuperAdmin-only everywhere, including the bench's
+> "save to voice defaults"; regular users get a **Duplicate** action on the
+> Voices page that clones clip + tuning into a voice they own.
+>
 > **Update (v0.15.0):** The Studio surfaces (per-chunk panel, single-shot
 > inspector, A/B bench, named presets) now speak Chatterbox's **native** knobs —
 > **Exaggeration** (0.25–2.0) and **CFG/Pace** (0.2–1.0) — as slider + number +

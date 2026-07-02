@@ -28,6 +28,18 @@
                         @endforeach
                     </select>
                 </div>
+                @if($presets->isNotEmpty())
+                    <div>
+                        <label for="preset" class="mb-1.5 block text-sm text-zinc-400">Delivery <span class="text-zinc-600">(optional)</span></label>
+                        <select id="preset" name="preset" class="rounded-lg border border-zinc-700 bg-zinc-950 px-3 py-2 text-sm"
+                                title="A preset saved from a voice's tuning bench — seeds this project's tuning; the voice's own defaults apply when left as-is">
+                            <option value="" selected>Voice default</option>
+                            @foreach($presets as $preset)
+                                <option value="{{ $preset->id }}">{{ $preset->name }}</option>
+                            @endforeach
+                        </select>
+                    </div>
+                @endif
                 <a href="{{ route('admin.voices.index') }}" class="py-2 text-sm text-cyan-400 hover:text-cyan-300">Manage voices →</a>
             </div>
 

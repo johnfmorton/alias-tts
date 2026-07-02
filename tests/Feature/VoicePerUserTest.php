@@ -116,6 +116,80 @@ class VoicePerUserTest extends TestCase
         $this->actingAs($this->admin())->get(route('admin.voices.edit', $voice))->assertOk();
     }
 
+    public function test_bench_tuning_cannot_be_saved_onto_a_shared_voice_by_a_regular_user(): void
+    {
+        // The Studio bench's "save to voice defaults" follows the same rule as
+        // the edit form: a shared voice sounds the same for everyone, so only a
+        // SuperAdmin may retune it.
+        $voice = $this->voiceFor(null, 'shared-voice');
+
+        $this->actingAs($this->user())
+            ->postJson(route('admin.studio.voice-defaults'), ['voice' => 'shared-voice', 'exaggeration' => 1.8])
+            ->assertForbidden();
+        $this->assertNull($voice->refresh()->settings);
+
+        $this->actingAs($this->admin())
+            ->postJson(route('admin.studio.voice-defaults'), ['voice' => 'shared-voice', 'exaggeration' => 1.8])
+            ->assertOk();
+        $this->assertSame(1.8, $voice->refresh()->settings['exaggeration']);
+    }
+
+    public function test_bench_tuning_saves_onto_your_own_voice(): void
+    {
+        $me = $this->user();
+        $this->voiceFor($me, 'mine');
+
+        $this->actingAs($me)
+            ->postJson(route('admin.studio.voice-defaults'), ['voice' => 'mine', 'exaggeration' => 1.2, 'cfg_weight' => 0.7])
+            ->assertOk();
+
+        $settings = Voice::firstWhere('slug', 'mine')->settings;
+        $this->assertSame(1.2, $settings['exaggeration']);
+        $this->assertSame(0.7, $settings['cfg_weight']);
+    }
+
+    public function test_duplicate_clones_a_shared_voice_into_an_owned_tunable_copy(): void
+    {
+        $me = $this->user();
+        $voice = $this->voiceFor(null, 'shared-voice');
+        $voice->update(['settings' => ['exaggeration' => 0.9, 'seed' => 7]]);
+        Storage::disk('local')->put('voices/shared-voice.wav', 'clip-bytes');
+
+        $this->actingAs($me)->post(route('admin.voices.duplicate', $voice))
+            ->assertRedirect();
+
+        $copy = Voice::firstWhere('slug', 'shared-voice-copy');
+        $this->assertSame($me->id, $copy->user_id);
+        $this->assertSame('Shared-voice copy', $copy->name);
+        $this->assertSame(['exaggeration' => 0.9, 'seed' => 7], $copy->settings);
+        $this->assertSame('clip-bytes', Storage::disk('local')->get('voices/shared-voice-copy.wav'));
+
+        // The original is untouched, and the copy IS tunable by its owner.
+        $this->assertSame(['exaggeration' => 0.9, 'seed' => 7], $voice->refresh()->settings);
+        $this->actingAs($me)
+            ->postJson(route('admin.studio.voice-defaults'), ['voice' => 'shared-voice-copy', 'cfg_weight' => 0.5])
+            ->assertOk();
+    }
+
+    public function test_duplicate_slugs_increment_on_collision(): void
+    {
+        $me = $this->user();
+        $voice = $this->voiceFor(null, 'shared-voice');
+
+        $this->actingAs($me)->post(route('admin.voices.duplicate', $voice));
+        $this->actingAs($me)->post(route('admin.voices.duplicate', $voice));
+
+        $this->assertNotNull(Voice::firstWhere('slug', 'shared-voice-copy'));
+        $this->assertNotNull(Voice::firstWhere('slug', 'shared-voice-copy-2'));
+    }
+
+    public function test_duplicating_an_invisible_voice_is_a_404(): void
+    {
+        $voice = $this->voiceFor($this->user(), 'theirs');
+
+        $this->actingAs($this->user())->post(route('admin.voices.duplicate', $voice))->assertNotFound();
+    }
+
     public function test_the_owner_can_edit_their_own_voice(): void
     {
         $me = $this->user();
@@ -128,11 +202,14 @@ class VoicePerUserTest extends TestCase
     {
         $me = $this->user();
 
-        $this->actingAs($me)->post(route('admin.voices.store'), [
+        $res = $this->actingAs($me)->post(route('admin.voices.store'), [
             'name' => 'My narrator',
-        ])->assertRedirect(route('admin.voices.index'));
+        ]);
 
-        $this->assertSame($me->id, Voice::firstWhere('slug', 'my-narrator')->user_id);
+        $voice = Voice::firstWhere('slug', 'my-narrator');
+        $this->assertSame($me->id, $voice->user_id);
+        // Creation lands on the edit page — tuning by ear lives there.
+        $res->assertRedirect(route('admin.voices.edit', $voice));
     }
 
     public function test_registering_an_existing_slug_of_another_owner_is_refused(): void

@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Http\Requests\StoreVoiceRequest;
 use App\Http\Requests\UpdateVoiceRequest;
 use App\Models\ApiKey;
+use App\Models\TuningPreset;
 use App\Models\Voice;
 use App\Services\SpeechService;
 use App\Services\VoiceService;
@@ -94,8 +95,6 @@ class VoiceController extends Controller
                 ext: $file?->getClientOriginalExtension(),
                 normalize: (bool) config('tts.normalize_reference') && ! $request->boolean('raw'),
                 seed: $request->filled('seed') ? (int) $request->input('seed') : null,
-                stability: $request->filled('stability') ? (float) $request->input('stability') : null,
-                style: $request->filled('style') ? (float) $request->input('style') : null,
                 ownerId: $request->user()->id,
             );
         } catch (Throwable $e) {
@@ -104,15 +103,20 @@ class VoiceController extends Controller
                 ->with('error', $e->getMessage());
         }
 
-        return redirect()->route('admin.voices.index')
-            ->with('success', "Voice '{$voice->slug}' saved.");
+        // Land on the edit page: tuning lives there now, so the natural next
+        // step after saving a clip is to hear it and dial in the defaults.
+        return redirect()->route('admin.voices.edit', $voice)
+            ->with('success', "Voice '{$voice->slug}' saved — tune it by ear below.");
     }
 
     public function edit(Request $request, Voice $voice): View
     {
         abort_unless($voice->isManagedBy($request->user()), 403);
 
-        return view('admin.voices.edit', compact('voice'));
+        return view('admin.voices.edit', [
+            'voice' => $voice,
+            'presets' => TuningPreset::forUser($request->user()->id)->orderBy('name')->get(),
+        ]);
     }
 
     public function update(UpdateVoiceRequest $request, Voice $voice): RedirectResponse
@@ -129,8 +133,8 @@ class VoiceController extends Controller
             ext: $file?->getClientOriginalExtension(),
             normalize: (bool) config('tts.normalize_reference') && ! $request->boolean('raw'),
             seed: $request->filled('seed') ? (int) $request->input('seed') : null,
-            stability: $request->filled('stability') ? (float) $request->input('stability') : null,
-            style: $request->filled('style') ? (float) $request->input('style') : null,
+            exaggeration: $request->filled('exaggeration') ? (float) $request->input('exaggeration') : null,
+            cfgWeight: $request->filled('cfg_weight') ? (float) $request->input('cfg_weight') : null,
         );
 
         return redirect()->route('admin.voices.index')
@@ -145,7 +149,7 @@ class VoiceController extends Controller
     {
         abort_unless($voice->isVisibleTo($request->user()), 404);
 
-        $apiKey = ApiKey::firstWhere('name', 'dashboard') ?? ApiKey::generate('dashboard');
+        $apiKey = ApiKey::dashboardFor($request->user()->id);
 
         try {
             $speech = $this->speechService->synthesize(
@@ -170,6 +174,20 @@ class VoiceController extends Controller
 
         return response($this->speechService->audioBytes($speech), 200)
             ->header('Content-Type', $speech->mime_type ?: 'audio/mpeg');
+    }
+
+    /**
+     * Clone a visible voice (typically a shared built-in) into one the signed-in
+     * user owns and can rename/retune freely. Lands on the copy's edit page.
+     */
+    public function duplicate(Request $request, Voice $voice): RedirectResponse
+    {
+        abort_unless($voice->isVisibleTo($request->user()), 404);
+
+        $copy = $this->voices->duplicate($voice, $request->user()->id);
+
+        return redirect()->route('admin.voices.edit', $copy)
+            ->with('success', "Voice '{$copy->slug}' created — it's yours to rename and tune.");
     }
 
     public function export(Request $request, Voice $voice): Response

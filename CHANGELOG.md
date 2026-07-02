@@ -4,6 +4,55 @@ All notable changes to this project are documented in this file. The format is
 based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this
 project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Changed
+- **Voice tuning now lives with the voice.** The A/B tuning bench and named
+  presets moved from the Studio Inspector to the voice edit page as a "Tune by
+  ear" section: hear the voice read a sample line at different settings (row
+  one is the voice's current defaults), pick the winner, and save it as the
+  voice's defaults — the preview gap the old edit form never closed. Creating
+  a voice now lands on that page, the Add-a-voice form dropped its tuning
+  fields entirely, and both voice forms now speak Chatterbox's native knobs
+  (Exaggeration, CFG/Pace) instead of the abstract Stability/Style pair, so
+  every tuning surface uses one vocabulary. The Inspector keeps its transient
+  per-preview knobs, now labeled as such, with a pointer to the voice page.
+- **Presets are per-user and actually applicable.** Tuning presets belong to
+  the user who saved them (existing ones go to the first SuperAdmin), preset
+  names only need to be unique within your own set, and nobody can delete
+  yours. They also gained the two places you'd want to use them: a "Delivery"
+  pick on the New Project form that seeds the project's tuning, and an "Apply
+  preset" pick in each chunk's Takes & tuning panel that fills the knobs for
+  that one line — an "excited" or "languid" read per piece without minting
+  voice variants.
+
+### Added
+- **Duplicate a voice.** Every voice row on the Voices page gained a
+  Duplicate action that clones the reference clip and tuning into a voice you
+  own — the sanctioned way to get a tunable personal copy of a shared
+  built-in.
+
+### Changed
+- **Panel test generations run as the user who clicks.** The Voices "Test"
+  button and the health page's provider tests used one shared API key named
+  "dashboard" (created unowned), so every user's test ran under — and was
+  attributed to — whoever happened to own that key, and any signed-in user
+  could poll another user's test audio by id. Each user now gets their own
+  dashboard key on first use, and the health-test status/audio endpoints only
+  serve the initiating user's tests. An old shared "dashboard" key is left
+  untouched; deactivate it from the API keys page if one lingers.
+
+### Security
+- **The tuning bench can no longer retune a shared voice for everyone.** The
+  bench's "save to voice defaults" endpoint skipped the shared-voice rule the
+  edit form enforces, so any user could write tuning onto a built-in voice and
+  change what every user (and their API calls) hears. It now requires the same
+  ownership as the edit form; regular users are pointed at Duplicate instead.
+
+### Deploy
+- Run `php artisan migrate` — adds `tuning_presets.user_id` (existing presets
+  are assigned to the first SuperAdmin) and makes preset names unique per user.
+
 ## [0.21.0] - 2026-07-02
 
 ### Added

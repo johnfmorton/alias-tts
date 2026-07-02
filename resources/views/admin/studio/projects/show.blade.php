@@ -221,6 +221,18 @@
                         <ul class="chunk-takes mt-2 space-y-1.5"></ul>
 
                         <div class="mt-3 flex flex-wrap items-end gap-3">
+                            @if($presets->isNotEmpty())
+                                {{-- Fills the two knobs below with a named preset's values;
+                                     nothing is saved until "Save tuning" / a preview is kept. --}}
+                                <label class="flex flex-col gap-1 text-xs text-zinc-500">Preset
+                                    <select class="chunk-preset rounded-lg border border-zinc-700 bg-zinc-950 px-2 py-1.5 text-sm text-zinc-300">
+                                        <option value="" selected>Apply…</option>
+                                        @foreach($presets as $preset)
+                                            <option value="{{ $preset->id }}" data-exaggeration="{{ $preset->exaggeration }}" data-cfg="{{ $preset->cfg_weight }}">{{ $preset->name }}</option>
+                                        @endforeach
+                                    </select>
+                                </label>
+                            @endif
                             <x-tuning-knob knob="exaggeration" label="Exaggeration" hint="neutral 0.5"
                                            :min="0.25" :max="2" :step="0.05"
                                            :value="$chunk->settings['exaggeration'] ?? ''" :placeholder="$inheritExaggeration"

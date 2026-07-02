@@ -74,9 +74,12 @@ class VoiceService
     }
 
     /**
-     * Update an existing voice — rename its voice_id (slug), name, default seed,
-     * and optionally replace the reference clip. When the slug changes without a
-     * replacement clip, the stored reference is moved to match the new slug.
+     * Update an existing voice — rename its voice_id (slug), name, default seed
+     * and tuning, and optionally replace the reference clip. When the slug changes
+     * without a replacement clip, the stored reference is moved to match the new
+     * slug. Tuning is written in Chatterbox's native form (exaggeration /
+     * cfg_weight); saving through here drops any legacy ElevenLabs-style twin so
+     * a cleared knob can't resurface through the old key.
      */
     public function update(
         Voice $voice,
@@ -86,8 +89,8 @@ class VoiceService
         ?string $ext,
         bool $normalize,
         ?int $seed,
-        ?float $stability = null,
-        ?float $style = null,
+        ?float $exaggeration = null,
+        ?float $cfgWeight = null,
     ): Voice {
         $disk = Storage::disk(config('tts.storage_disk'));
         $referencePath = $voice->reference_audio_path;
@@ -115,12 +118,20 @@ class VoiceService
         }
 
         $settings = is_array($voice->settings) ? $voice->settings : [];
-        foreach (['seed' => $seed, 'stability' => $stability, 'style' => $style] as $key => $value) {
+        if ($seed !== null) {
+            $settings['seed'] = $seed;
+        } else {
+            unset($settings['seed']);
+        }
+
+        $twin = ['exaggeration' => 'style', 'cfg_weight' => 'stability'];
+        foreach (['exaggeration' => $exaggeration, 'cfg_weight' => $cfgWeight] as $key => $value) {
             if ($value !== null) {
                 $settings[$key] = $value;
             } else {
                 unset($settings[$key]);
             }
+            unset($settings[$twin[$key]]);
         }
 
         $voice->update([
@@ -131,6 +142,37 @@ class VoiceService
         ]);
 
         return $voice;
+    }
+
+    /**
+     * Clone a voice into one the given user owns: same reference clip (copied
+     * byte-for-byte, no re-normalization) and same settings (tuning + seed), under
+     * a fresh slug. This is how a user gets a tunable copy of a shared built-in —
+     * the shared row stays untouched for everyone else.
+     */
+    public function duplicate(Voice $source, int $ownerId): Voice
+    {
+        $base = $source->slug.'-copy';
+        $slug = $base;
+        for ($i = 2; Voice::where('slug', $slug)->exists(); $i++) {
+            $slug = $base.'-'.$i;
+        }
+
+        $attributes = [
+            'name' => $source->name.' copy',
+            'user_id' => $ownerId,
+            'settings' => $source->settings,
+        ];
+
+        $disk = Storage::disk(config('tts.storage_disk'));
+        if ($source->reference_audio_path && $disk->exists($source->reference_audio_path)) {
+            $extension = strtolower(pathinfo($source->reference_audio_path, PATHINFO_EXTENSION)) ?: 'wav';
+            $path = config('tts.reference_path').'/'.$slug.'.'.$extension;
+            $disk->copy($source->reference_audio_path, $path);
+            $attributes['reference_audio_path'] = $path;
+        }
+
+        return Voice::create(['slug' => $slug] + $attributes);
     }
 
     /**

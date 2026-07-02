@@ -7,6 +7,7 @@
         <input type="hidden" name="text" value="{{ $params['text'] }}">
         <input type="hidden" name="voice" value="{{ $params['voice'] }}">
         @if($params['seed'] !== null)<input type="hidden" name="seed" value="{{ $params['seed'] }}">@endif
+        @if($params['preset'] !== null)<input type="hidden" name="preset" value="{{ $params['preset'] }}">@endif
         @if($params['exaggeration'] !== null)<input type="hidden" name="exaggeration" value="{{ $params['exaggeration'] }}">@endif
         @if($params['cfg_weight'] !== null)<input type="hidden" name="cfg_weight" value="{{ $params['cfg_weight'] }}">@endif
 

@@ -126,27 +126,27 @@ class DefaultVoiceTest extends TestCase
 
     public function test_admin_can_create_a_voice_without_a_reference_clip(): void
     {
-        $this->actingAs($this->admin())
-            ->post(route('admin.voices.store'), ['name' => 'No Clip'])
-            ->assertRedirect(route('admin.voices.index'));
+        $res = $this->actingAs($this->admin())
+            ->post(route('admin.voices.store'), ['name' => 'No Clip']);
 
         $voice = Voice::firstWhere('name', 'No Clip');
         $this->assertNotNull($voice);
         $this->assertNull($voice->reference_audio_path);
+        $res->assertRedirect(route('admin.voices.edit', $voice));
     }
 
     public function test_admin_can_still_create_a_voice_with_a_reference_clip(): void
     {
-        $this->actingAs($this->admin())
+        $res = $this->actingAs($this->admin())
             ->post(route('admin.voices.store'), [
                 'name' => 'With Clip',
                 'audio' => UploadedFile::fake()->create('ref.wav', 64, 'audio/wav'),
                 'raw' => '1', // skip ffmpeg normalization in the test
-            ])
-            ->assertRedirect(route('admin.voices.index'));
+            ]);
 
         $voice = Voice::firstWhere('name', 'With Clip');
         $this->assertNotNull($voice);
         $this->assertNotNull($voice->reference_audio_path);
+        $res->assertRedirect(route('admin.voices.edit', $voice));
     }
 }

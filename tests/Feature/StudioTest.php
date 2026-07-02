@@ -108,25 +108,51 @@ class StudioTest extends TestCase
 
     public function test_tuning_preset_rejects_duplicate_name_and_bad_range(): void
     {
-        TuningPreset::create(['name' => 'Energetic', 'exaggeration' => 1.6, 'cfg_weight' => 0.3]);
+        $admin = $this->admin();
+        TuningPreset::create(['user_id' => $admin->id, 'name' => 'Energetic', 'exaggeration' => 1.6, 'cfg_weight' => 0.3]);
 
-        $this->actingAs($this->admin())
+        $this->actingAs($admin)
             ->postJson(route('admin.studio.presets.store'), ['name' => 'Energetic', 'exaggeration' => 1.0])
             ->assertStatus(422);
 
-        $this->actingAs($this->admin())
+        $this->actingAs($admin)
             ->postJson(route('admin.studio.presets.store'), ['name' => 'Too loud', 'exaggeration' => 5])
             ->assertStatus(422);
     }
 
-    public function test_studio_page_renders_existing_presets(): void
+    public function test_presets_are_per_user(): void
     {
+        $alice = User::factory()->create(['is_super_admin' => false]);
+        $bob = User::factory()->create(['is_super_admin' => false]);
+
+        $this->actingAs($alice)
+            ->post(route('admin.studio.presets.store'), ['name' => 'Excited', 'exaggeration' => 1.6])
+            ->assertOk();
+        $preset = TuningPreset::firstWhere('name', 'Excited');
+        $this->assertSame($alice->id, $preset->user_id);
+
+        // The name only has to be unique within one user's set…
+        $this->actingAs($bob)
+            ->post(route('admin.studio.presets.store'), ['name' => 'Excited', 'exaggeration' => 0.6])
+            ->assertOk();
+
+        // …and another user's preset can't be deleted (it reads as nonexistent).
+        $this->actingAs($bob)
+            ->deleteJson(route('admin.studio.presets.destroy', $preset))
+            ->assertNotFound();
+        $this->assertNotNull($preset->fresh());
+    }
+
+    public function test_studio_page_no_longer_renders_presets(): void
+    {
+        // Presets moved with the A/B bench to the voice edit page — the
+        // Inspector keeps only the transient per-preview knobs.
         TuningPreset::create(['name' => 'Calm narration', 'exaggeration' => 0.95, 'cfg_weight' => 0.8]);
 
         $this->actingAs($this->admin())
             ->get(route('admin.studio.index'))
             ->assertOk()
-            ->assertSee('Calm narration');
+            ->assertDontSee('Calm narration');
     }
 
     public function test_preview_normalizes_and_makes_no_provider_call(): void

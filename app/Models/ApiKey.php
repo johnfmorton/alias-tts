@@ -52,6 +52,18 @@ class ApiKey extends Model
             ->first();
     }
 
+    /**
+     * The user's own panel key (named "dashboard"), created on first use.
+     * Panel-initiated generations (voice Test, health tests) run under the
+     * CLICKING user's key, so per-user settings and usage attribution apply to
+     * them — never to whoever happened to own a shared key by that name.
+     */
+    public static function dashboardFor(int $userId): self
+    {
+        return self::where('name', 'dashboard')->where('user_id', $userId)->first()
+            ?? self::generate('dashboard', null, $userId);
+    }
+
     public static function generate(string $name, ?int $rateLimit = null, ?int $userId = null): self
     {
         return self::create([

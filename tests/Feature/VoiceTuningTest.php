@@ -2,6 +2,7 @@
 
 namespace Tests\Feature;
 
+use App\Models\TuningPreset;
 use App\Models\User;
 use App\Models\Voice;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -9,9 +10,11 @@ use Illuminate\Support\Facades\Storage;
 use Tests\TestCase;
 
 /**
- * Phase 1a of docs/STUDIO-TUNING.md: stability/style are first-class voice
+ * Phase 1a of docs/STUDIO-TUNING.md: tuning knobs are first-class voice
  * defaults, settable from the dashboard and the console. (Phase 0 already wired
- * them to propagate to generation via VoiceSettingsResolver.)
+ * them to propagate to generation via VoiceSettingsResolver.) The edit form
+ * speaks Chatterbox's native exaggeration/cfg_weight; the voice:create console
+ * command still accepts the ElevenLabs-style --stability/--style for /v1 parity.
  */
 class VoiceTuningTest extends TestCase
 {
@@ -38,14 +41,14 @@ class VoiceTuningTest extends TestCase
             ->put(route('admin.voices.update', $voice), [
                 'name' => 'John',
                 'slug' => 'john',
-                'stability' => 0.8,
-                'style' => 0.3,
+                'exaggeration' => 1.2,
+                'cfg_weight' => 0.8,
             ])
             ->assertRedirect(route('admin.voices.index'));
 
         $settings = $voice->refresh()->settings;
-        $this->assertSame(0.8, $settings['stability']);
-        $this->assertSame(0.3, $settings['style']);
+        $this->assertSame(1.2, $settings['exaggeration']);
+        $this->assertSame(0.8, $settings['cfg_weight']);
     }
 
     public function test_clearing_tuning_fields_removes_them(): void
@@ -53,21 +56,100 @@ class VoiceTuningTest extends TestCase
         $voice = Voice::create([
             'slug' => 'john',
             'name' => 'John',
-            'settings' => ['stability' => 0.8, 'style' => 0.3, 'seed' => 42],
+            'settings' => ['exaggeration' => 1.2, 'cfg_weight' => 0.8, 'seed' => 42],
         ]);
 
         $this->actingAs($this->admin())
             ->put(route('admin.voices.update', $voice), [
                 'name' => 'John',
                 'slug' => 'john',
-                'seed' => 42, // keep the seed; drop stability/style
+                'seed' => 42, // keep the seed; drop the tuning
             ])
             ->assertRedirect(route('admin.voices.index'));
 
         $settings = $voice->refresh()->settings;
+        $this->assertArrayNotHasKey('exaggeration', $settings);
+        $this->assertArrayNotHasKey('cfg_weight', $settings);
+        $this->assertSame(42, $settings['seed']);
+    }
+
+    public function test_saving_drops_legacy_elevenlabs_style_keys(): void
+    {
+        // A voice tuned before v0.15.0 carries stability/style. Saving through
+        // the edit form rewrites tuning in native form only — including when a
+        // knob is cleared, so the legacy value can't resurface via the resolver.
+        $voice = Voice::create([
+            'slug' => 'john',
+            'name' => 'John',
+            'settings' => ['stability' => 0.8, 'style' => 0.3],
+        ]);
+
+        $this->actingAs($this->admin())
+            ->put(route('admin.voices.update', $voice), [
+                'name' => 'John',
+                'slug' => 'john',
+                'exaggeration' => 0.95, // cfg_weight left blank => cleared
+            ])
+            ->assertRedirect(route('admin.voices.index'));
+
+        $settings = $voice->refresh()->settings;
+        $this->assertSame(0.95, $settings['exaggeration']);
         $this->assertArrayNotHasKey('stability', $settings);
         $this->assertArrayNotHasKey('style', $settings);
-        $this->assertSame(42, $settings['seed']);
+        $this->assertArrayNotHasKey('cfg_weight', $settings);
+    }
+
+    public function test_edit_form_shows_legacy_tuning_as_its_native_equivalent(): void
+    {
+        // stability 0.8 => cfg_weight 0.8; style 0.3 => exaggeration 0.95.
+        $voice = Voice::create([
+            'slug' => 'john',
+            'name' => 'John',
+            'settings' => ['stability' => 0.8, 'style' => 0.3],
+        ]);
+
+        $this->actingAs($this->admin())
+            ->get(route('admin.voices.edit', $voice))
+            ->assertOk()
+            ->assertSee('value="0.95"', false)
+            ->assertSee('value="0.8"', false);
+    }
+
+    public function test_voice_edit_page_hosts_the_tuning_bench(): void
+    {
+        $admin = $this->admin();
+        TuningPreset::create(['user_id' => $admin->id, 'name' => 'Calm narration', 'exaggeration' => 0.95, 'cfg_weight' => 0.8]);
+        $voice = Voice::create(['slug' => 'john', 'name' => 'John']);
+
+        $this->actingAs($admin)
+            ->get(route('admin.voices.edit', $voice))
+            ->assertOk()
+            ->assertSee('Tune by ear')
+            ->assertSee('Save pick as voice defaults')
+            ->assertSee('Calm narration');
+    }
+
+    public function test_voice_edit_page_shows_only_your_presets(): void
+    {
+        $me = User::factory()->create(['is_super_admin' => false]);
+        $other = User::factory()->create(['is_super_admin' => false]);
+        TuningPreset::create(['user_id' => $me->id, 'name' => 'My warm read', 'exaggeration' => 0.8]);
+        TuningPreset::create(['user_id' => $other->id, 'name' => 'Their fast read', 'cfg_weight' => 0.3]);
+        $voice = Voice::create(['user_id' => $me->id, 'slug' => 'mine', 'name' => 'Mine']);
+
+        $this->actingAs($me)->get(route('admin.voices.edit', $voice))
+            ->assertOk()
+            ->assertSee('My warm read')
+            ->assertDontSee('Their fast read');
+    }
+
+    public function test_the_inspector_no_longer_hosts_the_bench(): void
+    {
+        $this->actingAs($this->admin())
+            ->get(route('admin.studio.index'))
+            ->assertOk()
+            ->assertDontSee('Tuning bench')
+            ->assertSee('per-preview knobs');
     }
 
     public function test_update_rejects_out_of_range_tuning(): void
@@ -78,9 +160,9 @@ class VoiceTuningTest extends TestCase
             ->put(route('admin.voices.update', $voice), [
                 'name' => 'John',
                 'slug' => 'john',
-                'stability' => 1.5,
+                'exaggeration' => 3,
             ])
-            ->assertSessionHasErrors('stability');
+            ->assertSessionHasErrors('exaggeration');
     }
 
     public function test_voice_create_command_stores_tuning_defaults(): void

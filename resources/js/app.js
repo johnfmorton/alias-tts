@@ -488,7 +488,8 @@ function initStudio() {
 initStudio();
 
 // ---------------------------------------------------------------------------
-// Studio "Advanced tuning" toggle (per-user, persisted) + A/B tuning bench.
+// Studio "Advanced tuning" toggle (per-user, persisted) — reveals the
+// per-preview knobs. The A/B bench lives on the voice edit page (below).
 // ---------------------------------------------------------------------------
 function initStudioAdvancedToggle() {
     const root = document.getElementById('studio');
@@ -508,21 +509,23 @@ function initStudioAdvancedToggle() {
 }
 initStudioAdvancedToggle();
 
-function initStudioBench() {
-    const bench = document.getElementById('studio-bench');
-    const root = document.getElementById('studio');
-    if (!bench || !root) return;
-
-    const synthUrl = root.dataset.synthesizeUrl;
+// ---------------------------------------------------------------------------
+// A/B tuning bench (voice edit page): audition ONE voice at several settings,
+// pick the winner, save it as that voice's defaults. The bench root carries the
+// voice slug and endpoints as data attributes; presets are named knob pairs
+// reusable on any voice's bench.
+// ---------------------------------------------------------------------------
+function initTuningBench(bench) {
+    const synthUrl = bench.dataset.synthesizeUrl;
     const saveUrl = bench.dataset.voiceDefaultsUrl;
+    const voice = bench.dataset.voice;
     const els = {
-        text: document.getElementById('studio-text'),
-        voice: document.getElementById('studio-voice'),
-        rows: document.getElementById('studio-bench-rows'),
-        addBtn: document.getElementById('studio-bench-add'),
-        genBtn: document.getElementById('studio-bench-generate'),
-        saveBtn: document.getElementById('studio-bench-save'),
-        status: document.getElementById('studio-bench-status'),
+        text: bench.querySelector('.bench-text'),
+        rows: bench.querySelector('.bench-rows'),
+        addBtn: bench.querySelector('.bench-add'),
+        genBtn: bench.querySelector('.bench-generate'),
+        saveBtn: bench.querySelector('.bench-save'),
+        status: bench.querySelector('.bench-status'),
     };
 
     const rows = [];
@@ -542,13 +545,12 @@ function initStudioBench() {
         return wrap;
     };
 
-    // The bench body for one candidate row: the text above, the voice, and this
-    // row's native knobs. Returns null when there's no text to synthesize.
+    // The bench body for one candidate row: the sample line, the bench's voice,
+    // and this row's native knobs. Returns null when there's no text to synthesize.
     const rowBody = (state) => {
         const text = els.text.value.trim();
         if (!text) return null;
-        const body = new URLSearchParams({ text });
-        if (els.voice?.value) body.set('voice', els.voice.value);
+        const body = new URLSearchParams({ text, voice });
         if (state.exagIn.value !== '') body.set('exaggeration', state.exagIn.value);
         if (state.cfgIn.value !== '') body.set('cfg_weight', state.cfgIn.value);
         return body;
@@ -586,7 +588,7 @@ function initStudioBench() {
         li.className = 'flex flex-wrap items-center gap-2 rounded-lg border border-zinc-800 bg-zinc-950/40 p-2';
 
         const pick = document.createElement('input');
-        Object.assign(pick, { type: 'radio', name: 'studio-bench-pick', title: 'Pick this setting to save' });
+        Object.assign(pick, { type: 'radio', name: 'bench-pick', title: 'Pick this setting to save' });
         pick.className = 'accent-emerald-500';
 
         const exagIn = knob(exaggeration, '0.5', '0.25', '2');
@@ -625,7 +627,7 @@ function initStudioBench() {
     }
 
     async function generateAll() {
-        if (!els.text.value.trim()) { setStatus(els.status, 'Paste some text first.', 'error'); return; }
+        if (!els.text.value.trim()) { setStatus(els.status, 'Type a sample line first.', 'error'); return; }
         startBusy(els.genBtn, 'Generating…');
         try {
             // Sequential — the provider is rate-limited; load each without autoplay
@@ -640,8 +642,7 @@ function initStudioBench() {
     async function savePick() {
         const picked = rows.find((s) => s.pick.checked);
         if (!picked) { setStatus(els.status, 'Pick a setting first.', 'error'); return; }
-        if (!els.voice?.value) { setStatus(els.status, 'Select a voice first.', 'error'); return; }
-        const body = new URLSearchParams({ voice: els.voice.value });
+        const body = new URLSearchParams({ voice });
         if (picked.exagIn.value !== '') body.set('exaggeration', picked.exagIn.value);
         if (picked.cfgIn.value !== '') body.set('cfg_weight', picked.cfgIn.value);
         startBusy(els.saveBtn, 'Saving…');
@@ -667,14 +668,14 @@ function initStudioBench() {
 
     // --- Named presets (3b): apply adds a pre-filled row; ✕ deletes; save the
     // picked row's values as a new named preset. ---
-    const presetsBar = document.getElementById('studio-presets');
+    const presetsBar = bench.querySelector('.bench-presets');
     if (presetsBar) {
         const storeUrl = presetsBar.dataset.storeUrl;
-        const emptyHint = document.getElementById('studio-preset-empty');
-        const presetSaveBtn = document.getElementById('studio-preset-save');
+        const emptyHint = bench.querySelector('.bench-preset-empty');
+        const presetSaveBtn = bench.querySelector('.bench-preset-save');
 
         const refreshEmpty = () =>
-            emptyHint?.classList.toggle('hidden', presetsBar.querySelectorAll('.studio-preset').length > 0);
+            emptyHint?.classList.toggle('hidden', presetsBar.querySelectorAll('.bench-preset').length > 0);
 
         const wireChip = (chip) => {
             chip.querySelector('.preset-apply').addEventListener('click', () =>
@@ -697,7 +698,7 @@ function initStudioBench() {
 
         const addChip = (preset) => {
             const chip = document.createElement('span');
-            chip.className = 'studio-preset inline-flex items-center gap-1 rounded-full border border-zinc-700 bg-zinc-800 py-0.5 pl-2.5 pr-1.5 text-xs';
+            chip.className = 'bench-preset inline-flex items-center gap-1 rounded-full border border-zinc-700 bg-zinc-800 py-0.5 pl-2.5 pr-1.5 text-xs';
             chip.dataset.id = preset.id;
             chip.dataset.exaggeration = preset.exaggeration ?? '';
             chip.dataset.cfg = preset.cfg_weight ?? '';
@@ -716,7 +717,7 @@ function initStudioBench() {
             refreshEmpty();
         };
 
-        presetsBar.querySelectorAll('.studio-preset').forEach(wireChip);
+        presetsBar.querySelectorAll('.bench-preset').forEach(wireChip);
 
         presetSaveBtn?.addEventListener('click', async () => {
             const picked = rows.find((s) => s.pick.checked);
@@ -745,12 +746,12 @@ function initStudioBench() {
         });
     }
 
-    // Seed with the neutral default and a steadier/more-expressive example
-    // (exaggeration 0.95, cfg/pace 0.80).
-    addRow(0.5, 0.5);
+    // Seed row one with the voice's CURRENT defaults (blank = inherit the
+    // system default) and row two with a more-expressive contrast to compare.
+    addRow(bench.dataset.exaggeration || null, bench.dataset.cfg || null);
     addRow(0.95, 0.8);
 }
-initStudioBench();
+document.querySelectorAll('.tuning-bench').forEach(initTuningBench);
 
 // ---------------------------------------------------------------------------
 // Studio project editor: regenerate one chunk, rebuild the stitched final.
@@ -1422,6 +1423,20 @@ function initStudioProject() {
         card.querySelector('.chunk-cfg').addEventListener('input', invalidatePreview);
         card.querySelector('.chunk-text').addEventListener('input', invalidatePreview);
         card.querySelector('.chunk-voice').addEventListener('change', invalidatePreview);
+
+        // "Apply preset" fills the two knobs (dispatching input so the sliders
+        // sync and the preview invalidates); nothing persists until Save tuning.
+        card.querySelector('.chunk-preset')?.addEventListener('change', (e) => {
+            const opt = e.target.selectedOptions[0];
+            if (!opt || !opt.value) return;
+            [['exaggeration', '.chunk-exaggeration'], ['cfg', '.chunk-cfg']].forEach(([key, sel]) => {
+                if (opt.dataset[key] === '') return;
+                const input = card.querySelector(sel);
+                input.value = opt.dataset[key];
+                input.dispatchEvent(new Event('input', { bubbles: true }));
+            });
+            e.target.value = ''; // rest back on "Apply…" so it reads as an action
+        });
 
         // Track dirty state as the user types; Revert restores the saved text.
         card.querySelector('.chunk-text').addEventListener('input', () => setDirty(card, isDirty(card)));

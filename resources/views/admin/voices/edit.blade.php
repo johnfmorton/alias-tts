@@ -16,23 +16,33 @@
         {{-- Seed is intentionally not surfaced — a fixed seed doesn't guarantee an
              identical take. Preserve any existing value so editing doesn't wipe it. --}}
         <input type="hidden" name="seed" value="{{ old('seed', $voice->settings['seed'] ?? '') }}">
+        @php
+            // The form speaks Chatterbox's native knobs. A voice saved before
+            // v0.15.0 may still carry the ElevenLabs-style pair — show its native
+            // equivalent (saving rewrites it in native form); show blank when the
+            // voice has no default for that knob at all.
+            $tuning = is_array($voice->settings) ? $voice->settings : [];
+            $native = \App\Services\Tts\ChatterboxTuning::resolveNative($tuning);
+            $exagValue = isset($tuning['exaggeration']) || isset($tuning['style']) ? $native['exaggeration'] : '';
+            $cfgValue = isset($tuning['cfg_weight']) || isset($tuning['stability']) ? $native['cfg_weight'] : '';
+        @endphp
         <div>
             <span class="mb-1.5 block text-sm font-medium">Default tuning <span class="text-zinc-500">(optional)</span></span>
             <div class="flex gap-3">
                 <label class="flex-1">
-                    <span class="mb-1 block text-xs text-zinc-500">Stability (0–1)</span>
-                    <input id="stability" name="stability" type="number" step="0.05" min="0" max="1"
-                           value="{{ old('stability', $voice->settings['stability'] ?? '') }}" placeholder="0.5"
+                    <span class="mb-1 block text-xs text-zinc-500">Exaggeration (0.25–2, neutral 0.5)</span>
+                    <input id="exaggeration" name="exaggeration" type="number" step="0.05" min="0.25" max="2"
+                           value="{{ old('exaggeration', $exagValue) }}" placeholder="0.5"
                            class="w-full rounded-lg border border-zinc-700 bg-zinc-900 px-3 py-2 text-sm focus:border-cyan-500 focus:outline-none focus:ring-2 focus:ring-cyan-500/30">
                 </label>
                 <label class="flex-1">
-                    <span class="mb-1 block text-xs text-zinc-500">Style (0–1)</span>
-                    <input id="style" name="style" type="number" step="0.05" min="0" max="1"
-                           value="{{ old('style', $voice->settings['style'] ?? '') }}" placeholder="0.0"
+                    <span class="mb-1 block text-xs text-zinc-500">CFG / Pace (0.2–1, neutral 0.5)</span>
+                    <input id="cfg_weight" name="cfg_weight" type="number" step="0.05" min="0.2" max="1"
+                           value="{{ old('cfg_weight', $cfgValue) }}" placeholder="0.5"
                            class="w-full rounded-lg border border-zinc-700 bg-zinc-900 px-3 py-2 text-sm focus:border-cyan-500 focus:outline-none focus:ring-2 focus:ring-cyan-500/30">
                 </label>
             </div>
-            <p class="mt-1.5 text-xs text-zinc-500">Used when a request doesn't set its own. Higher stability = steadier pacing; higher style = more animated. Blank uses the system defaults — tune by ear in <a class="text-cyan-400 hover:underline" href="{{ route('admin.studio.index') }}">Studio</a>.</p>
+            <p class="mt-1.5 text-xs text-zinc-500">Used when a request doesn't set its own. Higher exaggeration = more animated delivery; lower CFG/Pace = quicker, looser pacing. Blank uses the system defaults.</p>
         </div>
         <div>
             <label for="audio" class="mb-1.5 block text-sm font-medium">Replace reference clip <span class="text-zinc-500">(optional)</span></label>
@@ -49,4 +59,6 @@
             <a href="{{ route('admin.voices.index') }}" class="text-sm text-zinc-400 hover:text-zinc-200">Cancel</a>
         </div>
     </form>
+
+    @include('admin.voices._tuning_bench', ['voice' => $voice, 'presets' => $presets])
 </x-layout>

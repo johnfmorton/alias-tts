@@ -8,6 +8,7 @@ use App\Http\Controllers\Controller;
 use App\Models\TtsChunk;
 use App\Models\TtsChunkTake;
 use App\Models\TtsProject;
+use App\Models\TuningPreset;
 use App\Models\Voice;
 use App\Services\ProjectExportService;
 use App\Services\ProjectService;
@@ -56,6 +57,9 @@ class StudioProjectController extends Controller
         return view('admin.studio.projects.create', [
             'voices' => $voices,
             'defaultVoiceSlug' => $voices->first()?->slug,
+            // The user's named tuning presets, offered as an optional "delivery"
+            // pick that seeds this project's tuning.
+            'presets' => TuningPreset::forUser($request->user()->id)->orderBy('name')->get(),
         ]);
     }
 
@@ -117,6 +121,7 @@ class StudioProjectController extends Controller
                 'text' => $data['text'],
                 'voice' => $data['voice'],
                 'seed' => $data['seed'] ?? null,
+                'preset' => $data['preset'] ?? null,
                 'exaggeration' => $data['exaggeration'] ?? null,
                 'cfg_weight' => $data['cfg_weight'] ?? null,
             ],
@@ -197,6 +202,7 @@ class StudioProjectController extends Controller
             'text' => ['required', 'string', 'max:'.(int) config('tts.max_async_text_length', 40000)],
             'voice' => ['required', 'string'],
             'seed' => ['nullable', 'integer'],
+            'preset' => ['nullable', 'integer'],
             'exaggeration' => ['nullable', 'numeric', 'between:0.25,2'],
             'cfg_weight' => ['nullable', 'numeric', 'between:0.2,1'],
         ];
@@ -211,6 +217,9 @@ class StudioProjectController extends Controller
             'project' => $project,
             'chunks' => $chunks,
             'voices' => Voice::orderedFor($request->user()->id)->get(),
+            // Named presets for the per-chunk "apply preset" pick (fills the
+            // chunk's knobs client-side; saving still goes through Save tuning).
+            'presets' => TuningPreset::forUser($request->user()->id)->orderBy('name')->get(),
             // Each chunk's take history, prebuilt so the panel renders without a
             // per-chunk fetch and the JS reuses the same shape it gets from the
             // action endpoints. Keyed by chunk id.
@@ -821,14 +830,27 @@ class StudioProjectController extends Controller
     /**
      * Resolve the project's stored settings snapshot through the shared
      * {@see VoiceSettingsResolver} (config defaults -> voice defaults -> the
-     * native knobs chosen at creation). Seed is tracked on the project column, so
-     * the resolver deliberately leaves it out.
+     * delivery preset / native knobs chosen at creation). Seed is tracked on the
+     * project column, so the resolver deliberately leaves it out.
      *
      * @return array<string, mixed>
      */
     private function settings(Request $request, Voice $voice): array
     {
         $overrides = [];
+
+        // A chosen delivery preset seeds the knobs; explicit knob values still
+        // win over it. A preset id the user doesn't own resolves to nothing.
+        if ($request->filled('preset')) {
+            $preset = TuningPreset::forUser($request->user()->id)->find($request->input('preset'));
+            if ($preset?->exaggeration !== null) {
+                $overrides['exaggeration'] = $preset->exaggeration;
+            }
+            if ($preset?->cfg_weight !== null) {
+                $overrides['cfg_weight'] = $preset->cfg_weight;
+            }
+        }
+
         foreach (['exaggeration', 'cfg_weight'] as $knob) {
             if ($request->filled($knob)) {
                 $overrides[$knob] = (float) $request->input($knob);

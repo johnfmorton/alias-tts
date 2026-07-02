@@ -74,11 +74,12 @@
             </div>
 
             {{-- Advanced tuning: a per-user toggle (off by default) reveals the
-                 Chatterbox knobs and the A/B tuning bench. --}}
+                 Chatterbox knobs. These shape THIS preview only — a voice's saved
+                 sound is tuned (A/B bench, presets) on its edit page. --}}
             <label class="mt-4 inline-flex cursor-pointer items-center gap-2 text-sm text-zinc-300">
                 <input id="studio-advanced-toggle" type="checkbox" @checked(auth()->user()->studio_advanced)
                        class="rounded border-zinc-700 bg-zinc-900 text-cyan-500 focus:ring-cyan-500/30">
-                Advanced tuning <span class="text-xs text-zinc-500">— knobs &amp; A/B bench</span>
+                Advanced tuning <span class="text-xs text-zinc-500">— per-preview knobs</span>
             </label>
 
             <div id="studio-advanced" @unless(auth()->user()->studio_advanced) class="hidden" @endunless>
@@ -89,46 +90,11 @@
                     <x-tuning-knob knob="cfg_weight" label="CFG / Pace"
                                    :min="0.2" :max="1" :step="0.05" placeholder="0.50" inputClass="studio-cfg" class="w-48" />
                 </div>
-
-                {{-- A/B tuning bench: hear the text above at several settings, pick the
-                     best, save it as the selected voice's defaults. --}}
-                <div id="studio-bench" class="mt-3 rounded-xl border border-zinc-800 bg-zinc-900/50 p-4"
-                     data-voice-defaults-url="{{ route('admin.studio.voice-defaults') }}">
-                    <div class="flex flex-wrap items-start justify-between gap-3">
-                        <div>
-                            <h3 class="text-sm font-semibold text-zinc-200">Tuning bench</h3>
-                            <p class="mt-0.5 text-xs text-zinc-500">Hear the text above at different settings, then save the best to the voice. Higher exaggeration = more animated delivery; lower CFG/Pace = quicker, looser pacing.</p>
-                        </div>
-                        <button type="button" id="studio-bench-add"
-                                class="rounded-lg border border-zinc-700 px-3 py-1.5 text-xs hover:bg-zinc-800">+ Add setting</button>
-                    </div>
-
-                    {{-- Named presets (3b): click a name to add a pre-filled row; ✕ deletes. --}}
-                    <div id="studio-presets" class="mt-3 flex flex-wrap items-center gap-2"
-                         data-store-url="{{ route('admin.studio.presets.store') }}">
-                        <span class="text-xs text-zinc-500">Presets:</span>
-                        @foreach($presets as $preset)
-                            <span class="studio-preset inline-flex items-center gap-1 rounded-full border border-zinc-700 bg-zinc-800 py-0.5 pl-2.5 pr-1.5 text-xs"
-                                  data-id="{{ $preset->id }}" data-exaggeration="{{ $preset->exaggeration }}" data-cfg="{{ $preset->cfg_weight }}">
-                                <button type="button" class="preset-apply text-zinc-200 hover:text-cyan-300">{{ $preset->name }}</button>
-                                <button type="button" class="preset-delete text-zinc-500 hover:text-red-300" title="Delete preset" aria-label="Delete preset">✕</button>
-                            </span>
-                        @endforeach
-                        <span id="studio-preset-empty" class="text-xs text-zinc-600 @unless($presets->isEmpty()) hidden @endunless">none yet</span>
-                        <button type="button" id="studio-preset-save"
-                                class="rounded-full border border-zinc-700 px-2.5 py-0.5 text-xs text-zinc-400 hover:bg-zinc-800">＋ Save pick as preset</button>
-                    </div>
-
-                    <ol id="studio-bench-rows" class="mt-3 space-y-2"></ol>
-
-                    <div class="mt-3 flex flex-wrap items-center gap-2">
-                        <button type="button" id="studio-bench-generate" @disabled($voices->isEmpty())
-                                class="rounded-lg border border-cyan-700/50 bg-cyan-500/10 px-3 py-2 text-sm text-cyan-300 hover:bg-cyan-500/20 disabled:opacity-40">▶ Generate all</button>
-                        <button type="button" id="studio-bench-save" @disabled($voices->isEmpty())
-                                class="rounded-lg border border-emerald-700/50 bg-emerald-500/10 px-3 py-2 text-sm text-emerald-300 hover:bg-emerald-500/20 disabled:opacity-40">Save pick to voice defaults</button>
-                    </div>
-                    <div id="studio-bench-status" class="mt-2 text-sm text-zinc-400" role="status" aria-live="polite"></div>
-                </div>
+                <p class="mt-2 text-xs text-zinc-500">
+                    These knobs shape this preview only — nothing is saved. Like what you hear?
+                    Make it the voice's default sound with the tuning bench on
+                    <a class="text-cyan-400 hover:underline" href="{{ route('admin.voices.index') }}">its edit page</a>.
+                </p>
             </div>
 
             <div id="studio-status" class="mt-3 text-sm text-zinc-400" role="status" aria-live="polite"></div>

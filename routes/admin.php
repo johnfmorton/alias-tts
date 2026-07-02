@@ -157,6 +157,7 @@ Route::post('/voices/import', [VoiceController::class, 'import'])->name('voices.
 Route::post('/voices/order', [VoiceController::class, 'order'])->name('voices.order');
 Route::get('/voices/{voice}/edit', [VoiceController::class, 'edit'])->name('voices.edit');
 Route::put('/voices/{voice}', [VoiceController::class, 'update'])->name('voices.update');
+Route::post('/voices/{voice}/duplicate', [VoiceController::class, 'duplicate'])->name('voices.duplicate');
 Route::get('/voices/{voice}/export', [VoiceController::class, 'export'])->name('voices.export');
 Route::post('/voices/{voice}/test', [VoiceController::class, 'test'])->name('voices.test');
 Route::delete('/voices/{voice}', [VoiceController::class, 'destroy'])->name('voices.destroy');

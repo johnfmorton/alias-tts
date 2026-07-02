@@ -2,6 +2,7 @@
 
 namespace Tests\Feature;
 
+use App\Models\ApiKey;
 use App\Models\User;
 use App\Models\Voice;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -56,22 +57,52 @@ class HealthProviderTestTest extends TestCase
     public function test_long_test_completes_inline_and_serves_audio(): void
     {
         // QUEUE_CONNECTION=sync in tests, so the queued job runs during dispatch.
+        // One admin throughout: tests run under the CLICKING user's own dashboard
+        // key, so only the initiator can poll their test.
         Voice::create(['slug' => 'v', 'name' => 'V']);
+        $admin = $this->admin();
 
-        $queued = $this->actingAs($this->admin())->post(route('admin.health.test.long'));
+        $queued = $this->actingAs($admin)->post(route('admin.health.test.long'));
         $queued->assertOk()->assertJsonPath('status', 'completed');
 
         $id = $queued->json('id');
 
-        $this->actingAs($this->admin())
+        $this->actingAs($admin)
             ->getJson(route('admin.health.test.status', ['id' => $id]))
             ->assertOk()
             ->assertJsonPath('status', 'completed');
 
-        $audio = $this->actingAs($this->admin())->get(route('admin.health.test.audio', ['id' => $id]));
+        $audio = $this->actingAs($admin)->get(route('admin.health.test.audio', ['id' => $id]));
         $audio->assertOk();
         $this->assertStringStartsWith('audio/mpeg', (string) $audio->headers->get('content-type'));
         $this->assertNotEmpty($audio->getContent());
+    }
+
+    public function test_the_dashboard_key_is_per_user(): void
+    {
+        Voice::create(['slug' => 'v', 'name' => 'V']);
+        $alice = $this->admin();
+        $bob = $this->admin();
+
+        $this->actingAs($alice)->post(route('admin.health.test.short'))->assertOk();
+        $this->actingAs($bob)->post(route('admin.health.test.short'))->assertOk();
+
+        $keys = ApiKey::where('name', 'dashboard')->get();
+        $this->assertCount(2, $keys);
+        $this->assertEqualsCanonicalizing([$alice->id, $bob->id], $keys->pluck('user_id')->all());
+    }
+
+    public function test_another_user_cannot_poll_your_test_speech(): void
+    {
+        Voice::create(['slug' => 'v', 'name' => 'V']);
+
+        $id = $this->actingAs($this->admin())
+            ->post(route('admin.health.test.long'))
+            ->json('id');
+
+        $this->actingAs($this->admin()) // a different user
+            ->getJson(route('admin.health.test.status', ['id' => $id]))
+            ->assertStatus(404);
     }
 
     public function test_long_test_accepts_a_specific_voice(): void

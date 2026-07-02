@@ -83,14 +83,16 @@ class DashboardTest extends TestCase
         $admin = $this->admin();
         $file = UploadedFile::fake()->createWithContent('ref.wav', $this->silentWav(0.3));
 
-        $this->actingAs($admin)->post(route('admin.voices.store'), [
+        $res = $this->actingAs($admin)->post(route('admin.voices.store'), [
             'name' => 'Test Voice',
             'slug' => 'test-voice',
             'audio' => $file,
-        ])->assertRedirect(route('admin.voices.index'));
+        ]);
 
         $voice = Voice::firstWhere('slug', 'test-voice');
         $this->assertNotNull($voice);
+        // Creation lands on the edit page — tuning by ear lives there.
+        $res->assertRedirect(route('admin.voices.edit', $voice));
         $this->assertNotNull($voice->reference_audio_path);
         Storage::disk('local')->assertExists($voice->reference_audio_path);
 

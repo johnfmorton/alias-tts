@@ -20,8 +20,6 @@ class StoreVoiceRequest extends FormRequest
             // Optional: a voice with no reference clip uses Chatterbox's native voice.
             'audio' => ['nullable', 'file', 'mimes:wav,mp3,m4a,aac,ogg,flac', 'max:20480', new AudioOnlyUpload], // 20 MB
             'seed' => ['nullable', 'integer'],
-            'stability' => ['nullable', 'numeric', 'between:0,1'],
-            'style' => ['nullable', 'numeric', 'between:0,1'],
             'raw' => ['sometimes', 'boolean'],
         ];
     }

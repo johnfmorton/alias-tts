@@ -5,6 +5,7 @@ namespace Tests\Feature;
 use App\Enums\ChunkStatus;
 use App\Enums\ProjectStatus;
 use App\Models\TtsProject;
+use App\Models\TuningPreset;
 use App\Models\User;
 use App\Models\Voice;
 use App\Services\ProjectService;
@@ -137,6 +138,41 @@ class StudioProjectTest extends TestCase
         $this->assertCount(2, $project->chunks);
         $this->assertSame(ProjectStatus::Draft, $project->status);
         $this->assertSame(ChunkStatus::Pending, $project->chunks->first()->status);
+    }
+
+    public function test_a_delivery_preset_seeds_the_projects_tuning(): void
+    {
+        $admin = $this->admin();
+        Voice::create(['slug' => 'v', 'name' => 'V']);
+        $preset = TuningPreset::create(['user_id' => $admin->id, 'name' => 'Excited', 'exaggeration' => 1.6, 'cfg_weight' => 0.9]);
+
+        $this->actingAs($admin)->post(route('admin.studio.projects.store'), [
+            'title' => 'Doc',
+            'voice' => 'v',
+            'preset' => $preset->id,
+            'text' => 'A single paragraph that is comfortably long enough to chunk.',
+        ]);
+
+        $settings = TtsProject::firstWhere('title', 'Doc')->settings;
+        $this->assertSame(1.6, $settings['exaggeration']);
+        $this->assertSame(0.9, $settings['cfg_weight']);
+    }
+
+    public function test_another_users_preset_id_is_ignored(): void
+    {
+        $admin = $this->admin();
+        $other = User::factory()->create(['is_super_admin' => false]);
+        Voice::create(['slug' => 'v', 'name' => 'V']);
+        $preset = TuningPreset::create(['user_id' => $other->id, 'name' => 'Theirs', 'exaggeration' => 1.6]);
+
+        $this->actingAs($admin)->post(route('admin.studio.projects.store'), [
+            'title' => 'Doc',
+            'voice' => 'v',
+            'preset' => $preset->id,
+            'text' => 'A single paragraph that is comfortably long enough to chunk.',
+        ]);
+
+        $this->assertArrayNotHasKey('exaggeration', TtsProject::firstWhere('title', 'Doc')->settings);
     }
 
     public function test_editor_page_renders(): void
@@ -1123,12 +1159,12 @@ class StudioProjectTest extends TestCase
         // Re-run the takes migration against the already-generated chunk, as a real
         // deploy would: drop + recreate the table so up()'s backfill runs over the
         // existing audio (the chunk's audio_path is untouched by the rollback).
-        // Eleven steps because the takes table is the eleventh-newest migration
+        // Twelve steps because the takes table is the twelfth-newest migration
         // (native presets, project-seal, bundled default voices, account fields,
         // two-factor/connected-accounts, the unowned-api-key reassignment, project
-        // ownership, the magic-login-table drop, per-user settings, and per-user
-        // voices all sit on top of it).
-        Artisan::call('migrate:rollback', ['--step' => 11]);
+        // ownership, the magic-login-table drop, per-user settings, per-user
+        // voices, and per-user presets all sit on top of it).
+        Artisan::call('migrate:rollback', ['--step' => 12]);
         Artisan::call('migrate', ['--force' => true]);
 
         $takes = $chunk->refresh()->takes()->get();
