@@ -869,6 +869,18 @@ class ProjectService
     }
 
     /**
+     * Drop an approval the user made by mistake, at their explicit request. Clears
+     * the seal (snapshot + columns) but leaves the final audio, so the project
+     * stays Ready and can be edited or re-approved. A no-op when already unsealed.
+     */
+    public function unseal(TtsProject $project): TtsProject
+    {
+        $this->clearSeal($project);
+
+        return $project->refresh();
+    }
+
+    /**
      * Drop a project's seal: delete the frozen snapshot and null the seal columns.
      * A no-op when unsealed. Called whenever the audio changes (edit/rebuild/reset)
      * so a stale "approved" claim can never outlive the bytes it pointed at.

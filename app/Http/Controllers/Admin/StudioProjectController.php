@@ -690,6 +690,26 @@ class StudioProjectController extends Controller
     }
 
     /**
+     * Drop an approval made by mistake: clear the seal but keep the final audio, so
+     * the project stays Ready and can be re-approved. AJAX (JSON) like seal().
+     */
+    public function unseal(TtsProject $project): JsonResponse
+    {
+        try {
+            $this->projects->unseal($project);
+        } catch (Throwable $e) {
+            report($e);
+
+            return response()->json(['message' => 'Unapprove failed: '.$e->getMessage()], 502);
+        }
+
+        return response()->json([
+            'ok' => true,
+            'project_status' => $project->status->value,
+        ]);
+    }
+
+    /**
      * Download the verifiable receipt .zip (final + provenance + offline verifier)
      * for a sealed project.
      */

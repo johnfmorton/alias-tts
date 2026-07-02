@@ -6,6 +6,12 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Added
+- **Unapprove.** An approval made by accident can be undone: the project's ⋯
+  menu gains an "Unapprove" item (shown only while approved) that clears the
+  approval and returns the project to its editable, re-approvable state. The
+  final audio is untouched, so you can re-approve the same cut in one click.
+
 ### Changed
 - **The project action bar reads as a draft→approved progression.** The
   top-of-project buttons were reordered and renamed: *Generate remaining* (was
@@ -21,6 +27,13 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   receipt `.zip` is now `‹project›-sealed-‹fingerprint›.mp3` (matching the `.zip`
   and the folder it unzips to) instead of a bare `final.mp3`; the receipt page
   and the manifest reference the same name.
+- **The receipt reads "Approved."** The provenance receipt page — title, banner,
+  and labels — now says "Approved final" instead of "Sealed," matching the rest
+  of the app.
+- **The receipt's provenance table was rebuilt.** It dropped the Seed and Source
+  columns (seed is no longer surfaced in the app; both remain in
+  `manifest.json`) and switched to a fixed layout, so the long source hash and QA
+  notes wrap inside their columns instead of overflowing the page.
 
 ### Fixed
 - **"Generate remaining" hides once every chunk is generated.** A CSS

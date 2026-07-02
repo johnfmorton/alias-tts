@@ -177,6 +177,36 @@ class ProjectSealTest extends TestCase
         $this->assertFalse($project->refresh()->isSealed());
     }
 
+    public function test_unseal_drops_an_approval_made_by_mistake(): void
+    {
+        $admin = $this->admin();
+        $project = $this->readyProject();
+        $this->actingAs($admin)->postJson(route('admin.studio.projects.seal', $project))->assertOk();
+        $snapshot = $project->refresh()->sealed_audio_path;
+        $this->assertTrue($project->isSealed());
+
+        $this->actingAs($admin)
+            ->deleteJson(route('admin.studio.projects.unseal', $project))
+            ->assertOk()
+            ->assertJsonPath('project_status', 'ready');
+
+        $project->refresh();
+        $this->assertFalse($project->isSealed());
+        $this->assertNull($project->sealed_at);
+        $this->assertNull($project->final_sha256);
+        // The audio itself survives — the project can be edited or re-approved.
+        $this->assertSame(ProjectStatus::Ready, $project->status);
+        Storage::disk('local')->assertMissing($snapshot);
+    }
+
+    public function test_unseal_requires_authentication(): void
+    {
+        $project = $this->readyProject();
+
+        $this->delete(route('admin.studio.projects.unseal', $project))
+            ->assertRedirect(route('login'));
+    }
+
     // ---- Receipt ------------------------------------------------------------
 
     public function test_receipt_requires_admin(): void

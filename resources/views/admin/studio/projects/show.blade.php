@@ -22,6 +22,7 @@
          data-voice-url="{{ route('admin.studio.projects.voice', $project) }}"
          data-insert-url="{{ route('admin.studio.projects.chunks.store', $project) }}"
          data-seal-url="{{ route('admin.studio.projects.seal', $project) }}"
+         data-unseal-url="{{ route('admin.studio.projects.unseal', $project) }}"
          data-receipt-url="{{ route('admin.studio.projects.receipt', $project) }}"
          data-verify-base="{{ route('verify') }}"
          data-generate-pace-ms="{{ (int) config('tts.studio_generate_pace_ms', 800) }}">
@@ -112,6 +113,11 @@
                         <button type="button" id="project-overflow" aria-label="More actions"
                                 class="grid h-[38px] w-[38px] place-items-center rounded-[9px] border border-white/14 text-lg text-zinc-300 hover:bg-white/[0.04]">⋯</button>
                         <div id="project-overflow-menu" class="absolute top-[44px] right-0 z-40 hidden w-56 rounded-[12px] border border-white/10 bg-menu p-1.5 shadow-[0_20px_40px_-12px_rgba(0,0,0,0.7)]">
+                            {{-- Undo an approval made by mistake. Shown only while approved
+                                 (block/hidden toggled together — never left both — by reflectSeal). --}}
+                            <button type="button" id="project-unseal"
+                                    title="Remove the approval so you can edit or re-approve. The audio is kept."
+                                    class="w-full rounded-lg px-3 py-2 text-left text-sm text-zinc-300 hover:bg-white/[0.04] {{ $project->isSealed() ? 'block' : 'hidden' }}">↺ Unapprove</button>
                             <a href="{{ route('admin.studio.projects.edit', $project) }}"
                                class="block rounded-lg px-3 py-2 text-sm text-zinc-300 hover:bg-white/[0.04]">↺ Start over</a>
                             <form method="POST" action="{{ route('admin.studio.projects.destroy', $project) }}"

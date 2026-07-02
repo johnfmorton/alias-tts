@@ -819,8 +819,10 @@ function initStudioProject() {
     };
     // ---- Seal as final ------------------------------------------------------
     const sealUrl = root.dataset.sealUrl;
+    const unsealUrl = root.dataset.unsealUrl;
     const verifyBase = root.dataset.verifyBase;
     const sealBtn = document.getElementById('project-seal');
+    const unsealBtn = document.getElementById('project-unseal');
     const receiptLink = document.getElementById('project-receipt');
     const sealBadge = document.getElementById('project-seal-badge');
     const sealApproverEl = document.getElementById('project-seal-approver');
@@ -847,6 +849,8 @@ function initStudioProject() {
         const ready = projectStatus.textContent.trim() === 'ready';
         if (!ready) isSealed = false; // a stale/draft project is never sealed
         showEl(sealBadge, isSealed, 'flex');
+        // "Unapprove" (overflow menu) is offered only while approved.
+        showEl(unsealBtn, isSealed, 'block');
     };
 
     // 4B: the action cluster is state-aware — the lit primary names the single next
@@ -928,6 +932,34 @@ function initStudioProject() {
     }
 
     sealBtn?.addEventListener('click', seal);
+
+    // Undo an approval made by mistake. Clears the seal server-side; the audio is
+    // untouched, so the project stays Ready and the cluster swaps back to Approve.
+    async function unseal() {
+        if (!unsealUrl) return;
+        // Close the ⋯ menu the item lives in (declared later in this scope; the
+        // click only fires after init, so it's initialized by then).
+        overflowMenu?.classList.add('hidden');
+        try {
+            const res = await fetch(unsealUrl, {
+                method: 'DELETE',
+                headers: { 'X-CSRF-TOKEN': csrfToken(), 'Accept': 'application/json' },
+            });
+            if (!res.ok) throw new Error(await errorMessage(res));
+            isSealed = false;
+            const data = await res.json().catch(() => ({}));
+            // Re-lights the cluster (draft download + Approve return) and hides the
+            // badge + Unapprove. Unlike approving, there's no persistent badge left
+            // to confirm it, so a brief status line is warranted here.
+            setProjectStatus(data.project_status || 'ready');
+            setStatus(finalStatus, '✓ Approval removed — you can edit or re-approve.', 'ok');
+        } catch (err) {
+            setStatus(finalStatus, `✗ ${err.message}`, 'error');
+        }
+    }
+
+    unsealBtn?.addEventListener('click', unseal);
+
     sealCopyBtn?.addEventListener('click', async () => {
         if (!verifyUrl) return;
         try {

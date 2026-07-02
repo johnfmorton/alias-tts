@@ -9,9 +9,9 @@ use RuntimeException;
 use ZipArchive;
 
 /**
- * Builds the "sealed final" receipt: a portable .zip containing the frozen
+ * Builds the "approved final" receipt: a portable .zip containing the frozen
  * approved audio, a human-readable provenance receipt with an embedded offline
- * verifier (the sealed hash is baked into the page — no #expect= link needed),
+ * verifier (the approved hash is baked into the page — no #expect= link needed),
  * and a machine-readable manifest. Unzip it, open receipt.html with no network,
  * drop the audio on it, and it confirms the bytes are untouched.
  *

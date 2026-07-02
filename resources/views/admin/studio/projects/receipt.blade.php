@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Sealed final receipt — {{ $project->title }}</title>
+<title>Approved final receipt — {{ $project->title }}</title>
 <style>
   * { box-sizing: border-box; }
   body { margin: 0; font: 15px/1.55 ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; color: #18181b; background: #fff; }
@@ -39,11 +39,12 @@
   .hashes .lbl { color: #71717a; display: block; }
   .hashes .mono { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; word-break: break-all; }
   h2 { font-size: 1.05rem; margin: 2rem 0 .75rem; }
-  table { width: 100%; border-collapse: collapse; font-size: .85rem; }
-  th, td { text-align: left; vertical-align: top; padding: .55rem .6rem; border-bottom: 1px solid #e4e4e7; }
+  /* Fixed layout + wrapping so long cells (the SHA and the QA summary) stay inside
+     their columns instead of blowing the table past the page width. */
+  table { width: 100%; border-collapse: collapse; font-size: .85rem; table-layout: fixed; }
+  th, td { text-align: left; vertical-align: top; padding: .55rem .6rem; border-bottom: 1px solid #e4e4e7; overflow-wrap: anywhere; }
   th { color: #71717a; font-weight: 600; border-bottom: 2px solid #d4d4d8; }
-  td.num { white-space: nowrap; color: #52525b; }
-  .script { min-width: 16rem; }
+  td.num { color: #52525b; }
   .chash { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: .72rem; color: #71717a; word-break: break-all; }
   .muted { color: #71717a; font-size: .82rem; }
   footer { margin-top: 2.5rem; color: #a1a1aa; font-size: .8rem; }
@@ -52,14 +53,14 @@
 </head>
 <body>
 <main>
-  <h1>Sealed final receipt</h1>
+  <h1>Approved final receipt</h1>
   <p class="sub">{{ $project->title }}</p>
 
   <div class="seal">
-    <div class="ok">✓ Sealed as the approved final</div>
+    <div class="ok">✓ Approved as the final</div>
     <dl>
       <dt>Approved by</dt><dd>{{ $project->sealApprover() ?? '—' }}</dd>
-      <dt>Sealed</dt><dd>{{ optional($project->sealed_at)->toDayDateTimeString() ?? '—' }}</dd>
+      <dt>Approved on</dt><dd>{{ optional($project->sealed_at)->toDayDateTimeString() ?? '—' }}</dd>
       <dt>File</dt><dd>{{ $finalName }} @if($project->final_bytes)· {{ number_format($project->final_bytes) }} bytes @endif @if($project->mime_type)· {{ $project->mime_type }}@endif</dd>
       <dt>Voice</dt><dd>{{ $manifest['project']['voice'] ?? '—' }}</dd>
       <dt>SHA-256</dt><dd class="hash">{{ $project->final_sha256 }}</dd>
@@ -77,35 +78,39 @@
         <div class="hashes" id="hashes"></div>
       </div>
       <p>Verifying re-computes the file's fingerprint <em>on your device</em> — nothing is uploaded —
-         and compares it to the sealed SHA-256 above. Works fully offline.</p>
+         and compares it to the approved SHA-256 above. Works fully offline.</p>
     </div>
   </div>
 
   <h2>How it was made — {{ count($chunks) }} chunk{{ count($chunks) === 1 ? '' : 's' }}</h2>
   <table>
+    <colgroup>
+      <col style="width:4%">
+      <col style="width:34%">
+      <col style="width:14%">
+      <col style="width:7%">
+      <col style="width:25%">
+      <col style="width:16%">
+    </colgroup>
     <thead>
       <tr>
         <th>#</th>
-        <th class="script">Script</th>
+        <th>Script</th>
         <th>Voice</th>
-        <th>Seed</th>
-        <th>Source</th>
         <th>Takes</th>
         <th>QA</th>
-        <th>Source audio SHA-256<br><span class="muted">(pre-trim / pre-stitch)</span></th>
+        <th>Source SHA-256<br><span class="muted">(pre-trim / pre-stitch)</span></th>
       </tr>
     </thead>
     <tbody>
       @foreach($chunks as $row)
         <tr>
           <td class="num">{{ $row['position'] + 1 }}</td>
-          <td class="script">{{ $row['text'] }}</td>
+          <td>{{ $row['text'] }}</td>
           <td class="num">
             {{ $row['voice'] ?? '—' }}
             @if($row['voice_inherited'])<br><span class="muted">project default</span>@endif
           </td>
-          <td class="num">{{ $row['seed'] ?? '—' }}</td>
-          <td class="num">{{ $row['source'] ?? '—' }}</td>
           <td class="num">{{ $row['attempts'] }}</td>
           <td class="num">
             @if($row['asr_score'] !== null){{ $row['asr_score'] }}@else—@endif
@@ -139,7 +144,7 @@
     var detail = document.getElementById('detail');
     var hashes = document.getElementById('hashes');
 
-    // The sealed byte hash, baked in when this receipt was exported — the same
+    // The approved byte hash, baked in when this receipt was exported — the same
     // value printed in the SHA-256 row above and in manifest.json.
     var expect = '{{ $project->final_sha256 }}'.toLowerCase();
 
@@ -184,11 +189,11 @@
       }
 
       if (hex === expect) {
-        show('match', '✅ Match — this is the approved final', 'These bytes are identical to the file that was sealed. It has not been edited or re-exported.');
+        show('match', '✅ Match — this is the approved final', 'These bytes are identical to the file that was approved. It has not been edited or re-exported.');
       } else {
         show('nomatch', '❌ No match', 'This file is NOT the approved final — it has been edited, re-exported, or is a different file.');
       }
-      row('Expected (sealed fingerprint)', expect);
+      row('Expected (approved fingerprint)', expect);
       row('Computed (your file)', hex);
     }
 
