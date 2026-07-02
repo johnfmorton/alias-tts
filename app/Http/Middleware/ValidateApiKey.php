@@ -4,6 +4,7 @@ namespace App\Http\Middleware;
 
 use App\Models\ApiKey;
 use App\Services\Settings\SettingsManager;
+use App\Support\OpenAiError;
 use Closure;
 use Illuminate\Http\Request;
 use Symfony\Component\HttpFoundation\Response;
@@ -19,17 +20,17 @@ class ValidateApiKey
             ?? $request->bearerToken();
 
         if (! $apiKeyHeader) {
-            return $this->error('An API key is required. Provide it in the xi-api-key header.', 401);
+            return $this->error($request, 'An API key is required. Provide it in the xi-api-key header.', 401);
         }
 
         $apiKey = ApiKey::where('key', $apiKeyHeader)->first();
 
         if (! $apiKey) {
-            return $this->error('The provided API key is not valid.', 401);
+            return $this->error($request, 'The provided API key is not valid.', 401);
         }
 
         if (! $apiKey->is_active) {
-            return $this->error('This API key has been deactivated.', 403);
+            return $this->error($request, 'This API key has been deactivated.', 403);
         }
 
         $request->attributes->set('api_key', $apiKey);
@@ -42,11 +43,16 @@ class ValidateApiKey
     }
 
     /**
-     * Errors use the ElevenLabs shape {"detail":{"message":...}} so clients
-     * such as the Bespoken Craft plugin surface a clean message.
+     * Errors use the ElevenLabs shape {"detail":{"message":...}} so clients such
+     * as the Bespoken Craft plugin surface a clean message — except on the
+     * OpenAI-compatible surface (`openai.*` routes), which gets the OpenAI shape.
      */
-    private function error(string $message, int $status): Response
+    private function error(Request $request, string $message, int $status): Response
     {
+        if ($request->routeIs('openai.*')) {
+            return OpenAiError::json($message, $status, code: $status === 401 ? 'invalid_api_key' : null);
+        }
+
         return response()->json(['detail' => ['message' => $message, 'status' => $status]], $status);
     }
 }

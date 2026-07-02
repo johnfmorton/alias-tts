@@ -42,6 +42,17 @@ return [
     'default_voice_slug' => env('TTS_DEFAULT_VOICE_SLUG', 'default'),
     'default_voice_female_slug' => env('TTS_DEFAULT_VOICE_FEMALE_SLUG', 'default-female'),
 
+    // OpenAI-compatible endpoint (POST /v1/audio/speech). OpenAI clients send a
+    // `voice` from a fixed preset list (alloy, echo, nova, shimmer, …), whereas
+    // Bespoken has arbitrary voice slugs and cloned voices. The `voice` field is
+    // treated as a Bespoken slug by default; map OpenAI's preset names to your own
+    // voices here so a stock OpenAI client resolves to a real voice. Unlisted
+    // names pass through unchanged. See docs/OPENAI-COMPAT.md.
+    'openai_voice_aliases' => [
+        // 'alloy' => 'default',
+        // 'nova'  => 'default-female',
+    ],
+
     /*
     |--------------------------------------------------------------------------
     | Internal pipeline API
