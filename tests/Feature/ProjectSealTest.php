@@ -204,12 +204,33 @@ class ProjectSealTest extends TestCase
         $this->assertStringStartsWith('PK', $bytes);
 
         $zip = $this->openZip($bytes);
-        foreach (['receipt.html', 'manifest.json', 'verify.html', 'final.'.$this->finalExt($project)] as $name) {
+        foreach (['receipt.html', 'manifest.json', 'final.'.$this->finalExt($project)] as $name) {
             $entry = $zip->getFromName($name);
             $this->assertNotFalse($entry, "missing zip entry: {$name}");
             $this->assertNotSame('', $entry, "empty zip entry: {$name}");
         }
+        // The verifier lives inside receipt.html now — no separate page to
+        // mistake for the receipt.
+        $this->assertFalse($zip->getFromName('verify.html'));
         $zip->close();
+    }
+
+    public function test_receipt_page_has_the_verifier_with_the_sealed_hash_baked_in(): void
+    {
+        $admin = $this->admin();
+        $project = $this->readyProject();
+        $this->actingAs($admin)->postJson(route('admin.studio.projects.seal', $project))->assertOk();
+
+        $res = $this->actingAs($admin)->get(route('admin.studio.projects.receipt', $project));
+        $zip = $this->openZip($res->getContent());
+        $receipt = $zip->getFromName('receipt.html');
+        $zip->close();
+
+        // The receipt itself is the verifier: a drop zone plus the sealed hash
+        // baked into its script, so opening receipt.html offline just works.
+        $sha = $project->refresh()->final_sha256;
+        $this->assertStringContainsString("var expect = '{$sha}'", $receipt);
+        $this->assertStringContainsString('id="drop"', $receipt);
     }
 
     public function test_receipt_manifest_hash_matches_the_embedded_final(): void
@@ -293,12 +314,12 @@ class ProjectSealTest extends TestCase
         app(ProjectService::class)->seal($project, $this->admin());
 
         $zip = $this->openZip(app(ProjectExportService::class)->buildReceiptZip($project));
-        $verify = $zip->getFromName('verify.html');
+        $receipt = $zip->getFromName('receipt.html');
         $zip->close();
 
-        $this->assertStringContainsString('crypto.subtle.digest', $verify);
-        $this->assertStringNotContainsString('@vite', $verify);
-        $this->assertStringNotContainsString('<script src', $verify);
+        $this->assertStringContainsString('crypto.subtle.digest', $receipt);
+        $this->assertStringNotContainsString('@vite', $receipt);
+        $this->assertStringNotContainsString('<script src', $receipt);
     }
 
     // ---- Download filenames -------------------------------------------------

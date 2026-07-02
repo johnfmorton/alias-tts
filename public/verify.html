@@ -113,7 +113,7 @@
       // file://. On plain http to a LAN IP it's undefined — tell the user how to
       // get a real answer (open the receipt's local copy) instead of failing mute.
       if (!window.crypto || !crypto.subtle) {
-        show('warn', 'Can’t verify here', 'This browser only exposes secure hashing over HTTPS or from a local file. Open the verify.html included in the receipt .zip directly (double-click it) and drop the file there.');
+        show('warn', 'Can’t verify here', 'This browser only exposes secure hashing over HTTPS or from a local file. Open the receipt.html included in the receipt .zip directly (double-click it) and use the verify box there.');
         return;
       }
       show('info', 'Checking…', file.name);

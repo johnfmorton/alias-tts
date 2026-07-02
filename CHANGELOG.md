@@ -6,6 +6,19 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Changed
+- **The sealed receipt now verifies itself.** The receipt .zip's
+  `receipt.html` embeds the drop-to-verify widget directly — the sealed
+  SHA-256 is baked into the page, so double-clicking the receipt and dropping
+  the audio on it confirms the file offline, with nothing to configure. The
+  zip no longer ships a separate `verify.html`, which invited opening the
+  verifier without the expected fingerprint and answered "nothing to compare
+  against." The hosted `/verify` page (used by "Copy verify link") is
+  unchanged.
+- **Genblaze demo: the final audio plays in the Studio hero player.** The
+  demo's bare `<audio>` element is reskinned with the same transport used on
+  the Studio project page.
+
 ### Fixed
 - **Genblaze demo: the Chunk step no longer goes silent for short text.** When
   the input fits in a single segment (no splitting needed), the pipeline's Chunk

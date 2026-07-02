@@ -10,9 +10,10 @@ use ZipArchive;
 
 /**
  * Builds the "sealed final" receipt: a portable .zip containing the frozen
- * approved audio, a human-readable provenance receipt, a machine-readable
- * manifest, and an offline verify page. The receipt is self-verifying — unzip it
- * and open verify.html with no network and it confirms the audio is untouched.
+ * approved audio, a human-readable provenance receipt with an embedded offline
+ * verifier (the sealed hash is baked into the page — no #expect= link needed),
+ * and a machine-readable manifest. Unzip it, open receipt.html with no network,
+ * drop the audio on it, and it confirms the bytes are untouched.
  *
  * Modeled on {@see VoiceService::export()}. The load-bearing value is the byte
  * SHA-256 of the SEALED snapshot (computed at seal time, persisted on the
@@ -49,8 +50,6 @@ class ProjectExportService
             'finalName' => $finalName,
         ])->render();
 
-        $verifyHtml = @file_get_contents(public_path('verify.html'));
-
         $tmp = tempnam(sys_get_temp_dir(), 'receipt_').'.zip';
 
         try {
@@ -61,10 +60,6 @@ class ProjectExportService
             $zip->addFromString($finalName, $bytes);
             $zip->addFromString('receipt.html', $receiptHtml);
             $zip->addFromString('manifest.json', json_encode($manifest, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES));
-            // Ship the verifier so the unzipped folder proves itself offline.
-            if ($verifyHtml !== false) {
-                $zip->addFromString('verify.html', $verifyHtml);
-            }
             $zip->close();
 
             return (string) file_get_contents($tmp);
