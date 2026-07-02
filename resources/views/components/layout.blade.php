@@ -51,6 +51,9 @@
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <meta name="csrf-token" content="{{ csrf_token() }}">
     <title>{{ $title }} — Bespoken TTS</title>
+    <link rel="icon" href="{{ asset('favicon.ico') }}" sizes="32x32">
+    <link rel="icon" href="{{ asset('bespoken-icon.svg') }}" type="image/svg+xml">
+    <link rel="apple-touch-icon" href="{{ asset('apple-touch-icon.png') }}">
     @vite(['resources/css/app.css', 'resources/js/app.js'])
 </head>
 <body class="h-full bg-app text-zinc-100 antialiased">
@@ -68,7 +71,7 @@
             <div class="mx-auto flex h-[74px] max-w-5xl items-center gap-5 px-4 sm:px-8">
                 {{-- Logo + wordmark --}}
                 <a href="{{ route('admin.dashboard') }}" class="flex shrink-0 items-center gap-3 whitespace-nowrap">
-                    <span class="grid h-[38px] w-[38px] place-items-center rounded-[10px] bg-accent text-[20px] font-extrabold text-accent-on">B</span>
+                    <img src="{{ asset('bespoken-icon-on-dark.svg') }}" alt="" class="h-[38px] w-[38px]">
                     <span class="text-[20px] font-bold tracking-[-0.3px] text-zinc-100">Bespoken TTS</span>
                 </a>
 

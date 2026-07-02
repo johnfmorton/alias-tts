@@ -4,11 +4,14 @@
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>Bespoken TTS — self-hosted, ElevenLabs-compatible text-to-speech</title>
+    <link rel="icon" href="{{ asset('favicon.ico') }}" sizes="32x32">
+    <link rel="icon" href="{{ asset('bespoken-icon.svg') }}" type="image/svg+xml">
+    <link rel="apple-touch-icon" href="{{ asset('apple-touch-icon.png') }}">
     @vite(['resources/css/app.css'])
 </head>
 <body class="h-full bg-zinc-950 text-zinc-100 antialiased">
     <div class="mx-auto flex min-h-full max-w-2xl flex-col items-center justify-center px-6 py-16 text-center">
-        <span class="grid h-12 w-12 place-items-center rounded-xl bg-cyan-500 text-lg font-bold text-zinc-950">B</span>
+        <img src="{{ asset('bespoken-icon-on-dark.svg') }}" alt="" class="h-12 w-12">
         <h1 class="mt-6 text-3xl font-semibold tracking-tight sm:text-4xl">Bespoken TTS</h1>
         <p class="mt-4 text-balance text-zinc-400">
             A self-hosted, ElevenLabs-compatible text-to-speech service with voice cloning —

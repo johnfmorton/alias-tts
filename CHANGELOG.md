@@ -31,6 +31,13 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   Duplicate action that clones the reference clip and tuning into a voice you
   own — the sanctioned way to get a tunable personal copy of a shared
   built-in.
+- **The real Bespoken mark, everywhere.** The waveform icon replaces the
+  placeholder "B" tile in the panel header, the auth pages, and the landing
+  page, and it's now the favicon too — a crisp SVG for modern browsers, a
+  real multi-size `favicon.ico` (the shipped one was an empty file), and an
+  `apple-touch-icon` for home screens. In-page logos use a lightened
+  on-dark variant of the mark so the deep-blue bars stay legible on the
+  black UI; the favicon keeps the original brand colors.
 
 ### Changed
 - **Panel test generations run as the user who clicks.** The Voices "Test"

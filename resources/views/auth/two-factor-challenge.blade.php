@@ -4,12 +4,15 @@
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>Two-factor — Bespoken TTS</title>
+    <link rel="icon" href="{{ asset('favicon.ico') }}" sizes="32x32">
+    <link rel="icon" href="{{ asset('bespoken-icon.svg') }}" type="image/svg+xml">
+    <link rel="apple-touch-icon" href="{{ asset('apple-touch-icon.png') }}">
     @vite(['resources/css/app.css'])
 </head>
 <body class="h-full bg-app text-zinc-100 antialiased">
     <div class="mx-auto flex min-h-full max-w-sm flex-col justify-center px-6 py-12">
         <a href="{{ route('landing') }}" class="mb-8 flex items-center justify-center gap-2 font-semibold">
-            <span class="grid h-8 w-8 place-items-center rounded-md bg-accent text-sm font-bold text-accent-on">B</span>
+            <img src="{{ asset('bespoken-icon-on-dark.svg') }}" alt="" class="h-8 w-8">
             Bespoken TTS
         </a>
 
