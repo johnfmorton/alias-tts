@@ -21,10 +21,14 @@
 > **Update (v0.15.0):** The Studio surfaces (per-chunk panel, single-shot
 > inspector, A/B bench, named presets) now speak Chatterbox's **native** knobs —
 > **Exaggeration** (0.25–2.0) and **CFG/Pace** (0.2–1.0) — as slider + number +
-> reset, not the abstract 0–1 Stability/Style fields below. The mapping is
-> unchanged and lives in one place, `App\Services\Tts\ChatterboxTuning`
-> (mirrored by `initTuningKnobs()` in app.js): `cfg_weight = clamp(stability,
-> 0.2, 1.0)`, `exaggeration = clamp(0.5 + style·1.5, 0.25, 2.0)`. The resolver and
+> reset, not the abstract 0–1 Stability/Style fields below. The Phase-3a derived
+> readout is gone with them — the knobs *are* `cfg_weight`/`exaggeration` now, so
+> there is nothing to derive. The mapping is unchanged and lives in exactly one
+> place, `App\Services\Tts\ChatterboxTuning`: `cfg_weight = clamp(stability,
+> 0.2, 1.0)`, `exaggeration = clamp(0.5 + style·1.5, 0.25, 2.0)`. (No JS mirror of
+> the formula exists anymore; what the JS/Blade knob widgets duplicate is the
+> knob **ranges/defaults** — the app.js bench rows, the `x-tuning-knob`
+> component, and `saveVoiceDefaults` validation — keep those in sync.) The resolver and
 > provider accept BOTH key forms — **native wins**, EL is the fallback — so the
 > public `/v1` API stays ElevenLabs-compatible (it still sends stability/style;
 > the provider derives native). When the Studio writes a native knob it drops the
@@ -46,7 +50,11 @@ The goal is a **three-scope tuning model with one resolution chain** — tune a
 
 ## The crux: three divergent resolution paths today
 
-Settings are resolved three different ways right now, and they disagree on whether
+*(Historical design context — this describes the pre-Phase-0 code, kept for the
+rationale. All three paths now resolve through `VoiceSettingsResolver`; see the
+updates above and the current citations in the bullets below.)*
+
+Settings were resolved three different ways, and they disagreed on whether
 a voice's own `stability`/`style` defaults apply:
 
 | Path | Resolution order | Voice's stability/style applied? |
@@ -55,18 +63,21 @@ a voice's own `stability`/`style` defaults apply:
 | **Studio Inspector** | request → voice → config | ✅ |
 | **Studio Projects** | `project.settings` + `project.seed` | partial |
 
-Evidence:
+Evidence (pre-Phase-0 behavior; citations updated to where the code lives now):
 
-- **API path** — `TextToSpeechRequest::voiceSettings()`
-  (`app/Http/Requests/TextToSpeechRequest.php:54`) merges the request over
-  `config('tts.default_voice_settings')` and never consults `voice->settings`.
-  Only `seed` pulls from the voice, via `SpeechService::resolveSeed()`
-  (`app/Services/SpeechService.php:175`).
-- **Inspector** — `StudioController::settings()`
-  (`app/Http/Controllers/Admin/StudioController.php:271`) explicitly overlays
-  `voice->settings` on top of config defaults, then per-request knobs.
-- **Projects** — `ProjectService::providerSettings()`
-  (`app/Services/ProjectService.php:398`) uses the project's stored `settings`
+- **API path** — `TextToSpeechRequest::voiceSettings()` merged the request over
+  `config('tts.default_voice_settings')` and never consulted `voice->settings`.
+  Only `seed` pulled from the voice, via `SpeechService::resolveSeed()` (now
+  `app/Services/SpeechService.php:336`). Since Phase 0 the method is
+  `voiceSettingOverrides()` (`app/Http/Requests/TextToSpeechRequest.php:60`),
+  returns only the keys the client explicitly sent, and delegates layering to
+  `VoiceSettingsResolver`.
+- **Inspector** — `StudioController::settings()` explicitly overlaid
+  `voice->settings` on top of config defaults, then per-request knobs. Now
+  (`app/Http/Controllers/Admin/StudioController.php:389`) it delegates to the
+  shared `VoiceSettingsResolver`.
+- **Projects** — `ProjectService::providerSettings()` (now
+  `app/Services/ProjectService.php:977`) uses the project's stored `settings`
   snapshot plus its `seed` column.
 
 This divergence is *the* reason the full vision needs a foundation step. If
@@ -75,6 +86,9 @@ This divergence is *the* reason the full vision needs a foundation step. If
 hears.
 
 ## The unified resolution chain
+
+*(Design as written 2026-06-19 — implemented in Phase 0 as
+`App\Services\Tts\VoiceSettingsResolver`.)*
 
 One resolver, highest-precedence-defined value wins:
 
@@ -189,14 +203,17 @@ PROJECT: "Episode 12 intro"
   dedicated per-chunk A/B preview was not built — tune → regenerate → listen, or
   re-roll, covers it; could revisit in Phase 3.)
 - **Phase 3 (optional)** — **DONE, test-verified 2026-06-19.** (3a) live
-  `cfg_weight`/`exaggeration` readout next to the knobs and each bench row;
-  (3b) global named tuning presets (`tuning_presets` table) — apply one to add a
-  pre-filled bench row, save the picked row as a preset, delete; (3c) per-chunk
+  `cfg_weight`/`exaggeration` readout next to the knobs and each bench row
+  *(retired in v0.15.0 — the knobs went native, so there's nothing to derive)*;
+  (3b) named tuning presets (`tuning_presets` table) — apply one to add a
+  pre-filled bench row, save the picked row as a preset, delete *(global at
+  first; **per-user** since migration `2026_07_02_000003`)*; (3c) per-chunk
   **A/B preview** — a "Preview" button auditions the typed stability/style
   transiently (no persist) so you can compare against the chunk's current audio
-  before committing. Tests in `StudioTest` / `StudioProjectTest`. (Preset *apply*
-  is bench-only for now; voice-edit / per-chunk preset dropdowns are an easy
-  follow-up.)
+  before committing. Tests in `StudioTest` / `StudioProjectTest`. (The "preset
+  apply is bench-only" caveat that used to sit here is superseded — see the
+  post-v0.21.0 update at the top: presets now also apply from the New Project
+  form's "Delivery" pick and each chunk's Takes & tuning panel.)
 
 ## Decisions — resolved 2026-06-19
 
@@ -219,12 +236,17 @@ PROJECT: "Episode 12 intro"
 
 ## Reference: how a knob reaches the model
 
-For context when designing labels and ranges — the Replicate/Chatterbox provider
-maps the ElevenLabs-style `0..1` values onto Chatterbox's own knobs
-(`app/Services/Tts/ReplicateChatterboxProvider.php:63`):
+For context when designing labels and ranges — the mapping from the
+ElevenLabs-style `0..1` values onto Chatterbox's own knobs lives in
+`App\Services\Tts\ChatterboxTuning`; the provider calls
+`ChatterboxTuning::resolveNative()`
+(`app/Services/Tts/ReplicateChatterboxProvider.php:69`), and explicit native
+keys win over the EL-derived values:
 
 - `stability` → `cfg_weight`, clamped `[0.2, 1.0]` — higher = steadier pacing.
 - `style` → `exaggeration = 0.5 + style × 1.5`, clamped `[0.25, 2.0]` — higher =
   more animated delivery.
+- an explicit `cfg_weight` / `exaggeration` in the settings map is used as-is
+  (clamped), and the EL twin is ignored.
 - `similarity_boost` / `use_speaker_boost` are accepted and cached but **not**
   consumed by the provider.

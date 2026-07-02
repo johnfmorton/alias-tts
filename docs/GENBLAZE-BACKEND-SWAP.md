@@ -16,8 +16,9 @@
 
 A dropdown in the admin settings selects the TTS backend for a render:
 
-- **Default:** our existing custom solution (Bespoken → `/v1/internal/generate`
-  → `ReplicateChatterboxProvider` → Replicate / Chatterbox). Unchanged; it works
+- **Default:** our existing custom solution (the Genblaze runner's
+  `BespokenChunkProvider` → `/v1/internal/generate` →
+  `ReplicateChatterboxProvider` → Replicate / Chatterbox). Unchanged; it works
   well today.
 - **Alternative(s):** a second engine — e.g. **LMNT** — reachable through a real
   off-the-shelf Genblaze adapter (`genblaze-lmnt`).
@@ -46,7 +47,11 @@ So the rule is **one engine per final file**:
   how the Chatterbox path behaves today, so there is **no new seam risk**.
 - Swapping the backend on an existing project behaves like our existing
   **"switch a project's voice → mark chunks stale"** rule: it forces a re-render
-  rather than blending engines. Reuse that invalidation pattern.
+  rather than blending engines. Reuse that invalidation pattern — with one
+  adjustment: `changeVoice` deliberately stales only chunks that *inherit* the
+  project voice (`whereNull('voice_id')`), but a backend swap changes the engine
+  for **every** chunk, so the backend-swap variant must drop that filter or it
+  would leave per-chunk-voice chunks un-staled and violate this section's rule.
 - This is also the honest answer to "won't the listener notice?": *within* any
   single deliverable, never.
 
@@ -73,8 +78,8 @@ To make the same UX a genuine Genblaze demonstration, two things are
    **published** `genblaze-lmnt` adapter (`pip install genblaze-lmnt`). The demo
    then shows a bespoke engine *and* an off-the-shelf engine behind the **same**
    Pipeline/Step API and the **same** manifest shape — with zero LMNT integration
-   code written by us. That is the "eleven adapters, one API" differentiator made
-   concrete.
+   code written by us. That is the "ten adapters, one API" differentiator made
+   concrete (genblaze-core 0.3.2 ships ten provider adapters).
 
 ---
 
@@ -83,11 +88,12 @@ To make the same UX a genuine Genblaze demonstration, two things are
 The resilience story ("Replicate down → flip to LMNT → keep shipping") is good but
 not unique. The Genblaze-specific win is the **audit trail of the swap**:
 
-- Every render's manifest records `backend`, `voice`, `params`, `timestamp`,
-  all SHA-256-covered in B2.
+- Every render's manifest already records the engine per step — the step's
+  `provider` field, alongside `model` (the voice), `seed`, `params`, and run
+  timestamps — all SHA-256-covered in B2.
 - Six months later you can answer **"which of my N audio files were produced by
   the fallback engine during the Replicate outage, and can I reproduce them?"** by
-  querying B2 manifests, and `genblaze replay` re-runs any of them from the
+  querying B2 manifests, and `genblaze-cli`'s replay re-runs any of them from the
   captured params.
 
 Pitch the pairing:
@@ -116,19 +122,29 @@ Pitch the pairing:
 ## 6. Concrete components to change (future checklist — not started)
 
 - **Runner:** a provider registry keyed by backend name
-  (`{"chatterbox": BespokenChunkProvider(...), "lmnt": LmntProvider(...)}`); the
-  orchestrator selects the provider object per render instead of hard-coding
-  `self.chunk_provider`.
+  (`{"chatterbox": BespokenChunkProvider(...), "lmnt": …}` — the `lmnt` entry is
+  the `genblaze-lmnt` adapter's provider class; exact class name unverified until
+  the package is installed). The orchestrator selects the provider object per
+  render instead of hard-coding `self.chunk_provider`. Alternatively, build the
+  registry from genblaze-core's entry-point discovery
+  (`genblaze_core.providers.registry.discover_providers()`) instead of a
+  hand-keyed dict.
 - **`genblaze-lmnt`:** `pip install` into `.venv-genblaze`; wire its provider into
   the registry; enroll the reference sample → `voice_id`.
-- **Manifest:** ensure `backend` (and the per-backend `voice_id` / params) land in
-  the recorded step params so they are SHA-covered and replayable.
+- **`genblaze-cli`:** `pip install genblaze-cli` into `.venv-genblaze` (not
+  currently installed) for the manifest extract / verify / replay part of the
+  demo.
+- **Manifest:** verify/surface `backend` (recorded today as the step's `provider`
+  field) and the per-backend `voice_id` / params in the recorded step params so
+  they are SHA-covered and replayable.
 - **PHP → runner:** thread a `backend` field from the Studio dropdown through
   `GenblazeController` → `GenblazeRunnerClient` → the runner's `/run` payload.
 - **Settings UI:** the admin dropdown (default `chatterbox`), plus the
   backend+voice pairing/validation.
 - **Staleness:** reuse the existing project-voice-switch invalidation so changing a
-  project's backend marks its chunks stale and forces a re-render.
+  project's backend marks its chunks stale and forces a re-render — but drop
+  `changeVoice`'s `whereNull('voice_id')` filter for backend swaps (see §2): every
+  chunk changes engine, including those with an explicit per-chunk voice.
 
 ---
 

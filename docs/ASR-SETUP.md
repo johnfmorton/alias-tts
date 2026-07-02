@@ -9,6 +9,7 @@ Chatterbox failure modes the DSP tail-trim **cannot**:
 | **Truncation** | model stops before finishing the sentence | there is no artifact — the audio just ends short | `tail_cov` (transcript never reaches the end of the script) |
 | **Speech-like / "ghostly singing" tail** | a sung/babbled tail after the words end | it looks like speech (loud, high/variable ZCR) | `trail_s` (audio continues past the last recognized word) |
 | **Mid-stream pause** | a long silent gap mid-chunk | not at the tail | `max_gap_s` (large gap between two words) |
+| **No speech at all** (`NOSPEECH`) | the take is noise or near-silence — no recognizable words | the audio can still carry energy, so it doesn't read as silence | empty transcript |
 | **Loud short tail** (`TAILNOISE`) | a brief but loud "swoosh" right after the last word | too **short** to trip `trail_s`, too loud/aperiodic for the DSP tail detector | tail **energy** — peak dBFS past the word's natural release, **and louder than the chunk's own speech** |
 | **Boundary hum** (`BNDNOISE`) | a tonal low-frequency hum filling a sentence/comma gap | too **short** to trip `max_gap_s`; genuinely quiet, so energy alone can't see it | boundary-gap **energy + ZCR** — a punctuation-boundary gap that is not-silent **and** low-frequency |
 
@@ -148,10 +149,20 @@ sh -c 'ASR_MODEL=base exec /home/forge/<your-site>/asr-sidecar/.venv/bin/uvicorn
 
 ## Enable it in the Laravel app
 
-You usually don't have to: the admin **health page** (and `php artisan tts:doctor`)
-turn transcript QA on automatically the first time they find the sidecar reachable,
+The easy path: the admin **health page** (and `php artisan tts:doctor`) turn
+transcript QA on automatically the first time they find the sidecar reachable,
 saving it as an editable setting. So once the daemon is up, open **Admin → Health**
 once and ASR flips on. Pin or save a choice yourself and the auto-enable steps aside.
+
+Two things to know about the auto-enable:
+
+- **It's a per-user setting, not `.env`.** The Health page enables ASR only for
+  the user who visited it (`tts:doctor` sweeps all users). Settings on `/v1`
+  calls resolve from the **API-key owner**, so ASR can be on for the admin who
+  opened Health while another user's API calls still run with it off. Pin
+  `TTS_ASR_ENABLED=true` in `.env` to make it instance-wide.
+- **Console commands never load per-user settings**, so the DB auto-enable is
+  invisible to `tts:asr:health` — see "Verify the installation" below.
 
 To pin it explicitly instead (port must match the daemon), add to the site's `.env`
 and `php artisan config:cache`:
@@ -168,8 +179,8 @@ TTS_ASR_API_ACTION=log
 ```
 
 Confirm the migration that adds `tts_chunks.asr_score` / `asr_report` has run
-(the admin Studio path persists verdicts to these columns; the `/v1` API path
-only logs, so it's safe regardless):
+(the admin Studio path persists verdicts to these columns; the `/v1` path never
+writes them — its flagged segments go to the app log — so it's safe regardless):
 
 ```bash
 cd /home/forge/<your-site>/current
@@ -188,6 +199,13 @@ A healthy install prints the loaded model + version, transcribes the bundled
 fixture, and reports `Self-test PASSED`. It exits non-zero on failure, so you can
 gate a deploy on it. The same status (without the transcription self-test) also
 appears on the admin **Health** page and in `php artisan tts:doctor`.
+
+> **If you relied on the Health-page auto-enable, pin `TTS_ASR_ENABLED=true` in
+> `.env` (then `php artisan config:cache`) before running this.** The
+> auto-enable stores a per-user setting that console commands never load, so
+> without the pin `tts:asr:health` reports "ASR is disabled
+> (TTS_ASR_ENABLED=false)" and exits **without testing anything**. If you'd
+> rather not pin it, verify on the admin **Health** page instead.
 
 ## Updating the sidecar after a deploy
 
@@ -244,7 +262,7 @@ TTS_ASR_STUDIO_ACTION=log   # default (inherits TTS_ASR_ACTION)
 TTS_ASR_API_ACTION=auto     # default
 ```
 
-> **Latency on the synchronous endpoint.** On `POST /v1/text-to-speech/{voice}` the
+> **Latency on the synchronous endpoint.** On `POST /v1/text-to-speech/{voice_id}` the
 > QA + any re-rolls run inline before the response, so they add to the request time
 > (bounded by `max_text_length`). For long text prefer the async jobs endpoint
 > (`.../jobs`) — it runs the *same* QA in the queue worker, off the request budget.

@@ -43,7 +43,10 @@ Once a term is approved into the dictionary, step 2 never pays for it again.
 ## 1. Detection system prompt
 
 Send this as the system / instruction message. Keep it stable so it can be
-prompt-cached (cache hits bill at ~10% of input rate on Claude and Gemini).
+prompt-cached (cache hits bill at ~10% of input rate on Claude; Gemini also
+discounts cached tokens). The canonical copy lives in code as
+`DETECTION_SYSTEM_PROMPT` in `genblaze-runner/genblaze_runner/pronounce.py` —
+this block mirrors it:
 
 ```text
 You are a pronunciation pre-processor for a text-to-speech (TTS) pipeline.
@@ -76,16 +79,24 @@ Flag a term only if a typical TTS voice would likely get it wrong:
 ## Respelling rules
 - Use plain ASCII that reads naturally when spoken aloud. No IPA.
 - Letter-by-letter initialisms: separate lowercase letters
-  → "DDEV" => "dee dev",  "SQL" => "ess cue ell"
+  -> "DDEV" => "dee dev",  "SQL" => "ess cue ell"
 - Word-style terms: respell with spaces/hyphens to guide syllables
-  → "nginx" => "engine X",  "kubectl" => "cube control",  "Caddy" => "kaddy"
+  -> "nginx" => "engine ex",  "kubectl" => "cube control",  "Caddy" => "kaddy"
+- Avoid gratuitous capitals: Chatterbox reads a lone capital as emphasis, so
+  prefer "engine ex" over "engine X".
 - Change only what is needed for correct pronunciation; keep it minimal.
 - Copy the `term` field VERBATIM from the input (exact casing and characters)
   so a literal match succeeds downstream.
 
 ## Output
-Return ONLY valid JSON matching the schema below — no markdown, no code fences,
-no commentary. If nothing needs changing, return {"substitutions": []}.
+Return ONLY valid JSON of EXACTLY this shape — no markdown, no code fences, no
+commentary. Use these exact field names:
+{"substitutions": [{"term": "DDEV", "phonetic": "dee dev", "category": "initialism", "confidence": "high", "note": "spelled-out letters"}]}
+- "phonetic" is the spoken respelling (use the key "phonetic", not "respelling").
+- "category" is one of: initialism, acronym, tech_name, proper_noun, symbol_version, jargon.
+- "confidence" is one of: high, medium, low.
+- "note" is optional.
+If nothing needs changing, return {"substitutions": []}.
 ```
 
 > Enable the provider's JSON / structured-output mode if available, and set
@@ -150,7 +161,7 @@ PostgreSQL under the hood and works great alongside your existing Docker setup.
 {
   "substitutions": [
     { "term": "DDEV", "phonetic": "dee dev", "category": "initialism", "confidence": "high", "note": "Spelled-out letters" },
-    { "term": "nginx", "phonetic": "engine X", "category": "tech_name", "confidence": "high" },
+    { "term": "nginx", "phonetic": "engine ex", "category": "tech_name", "confidence": "high" },
     { "term": "PostgreSQL", "phonetic": "post gres Q L", "category": "tech_name", "confidence": "medium", "note": "Commonly said post-gres-Q-L" }
   ]
 }
@@ -196,6 +207,11 @@ Order and boundary handling matter:
   (`\b` is ASCII-word-boundary; if you flag terms with leading symbols like
   `.env`, those need a custom boundary instead of `\b`.)
 
+- The shipped service-side implementation uses `(?<!\w)…(?!\w)` lookaround
+  boundaries instead of `\b`, which handles symbol-edged terms like `.env`
+  without a special case — see `App\Services\Pronunciation\PronunciationSubstituter`
+  before copying the pattern above.
+
 ---
 
 ## 6. Persistent dictionary schema
@@ -229,14 +245,16 @@ Store per-user (and optionally a shared global seed list).
 
 ## 7. Model & settings
 
-Since GenBlaze has the strength of making the switch between LLM providers very easy, this is a perfect place to use it to demonstrate the power of the Genblaze. The admin user can define multiple providers and switch between them in the interface, or, as the settings already work, if a chosen provider is set in the .env, that will be shown in the settings but as a display only value. 
+Genblaze makes switching LLM providers easy, and this feature is a natural
+demonstration of that strength. An admin picks the provider in Settings; if the
+provider is pinned via `.env`, Settings shows it as a display-only value.
 
-Here are some options for the providers.
+Provider guidance:
 
 - **Tier:** budget / Flash class. This is a detection + transform task, not
   reasoning — a frontier model is overkill.
 - **Candidates:** Claude Haiku 4.5 (strong at not over-editing + clean JSON),
-  Gemini 2.5 Flash / 3.1 Flash-Lite (cheapest, good free tier), GPT-5.4-nano.
+  `gemini-2.5-flash` (cheap, good free tier), `gpt-5-nano`.
   Local Ollama (Gemma) is viable for zero per-call cost once the prompt is
   tightly constrained — validate JSON output carefully.
 - **Temperature:** 0–0.3 for stable, repeatable maps.
@@ -264,11 +282,12 @@ hold a per-engine form if an SSML/IPA-capable backend is added.
 
 ## Implementation status (built 2026-06-25, behind `TTS_PRONUNCIATION_ENABLED`, default off)
 
-Built on `feat/genblaze-b2`; full PHP suite green (318 tests) + runner pytest (8).
+Built on `feat/genblaze-b2` (since merged to `main`); full PHP suite green
+(318 tests at the time) + runner pytest (8).
 
 - **Detection = a Genblaze CHAT step in the runner.** Default provider is
   **Replicate's LLMs wrapped as a custom Genblaze chat provider**
-  (`genblaze_runner/providers/replicate_chat.py`) — reusing `REPLICATE_API_TOKEN`,
+  (`genblaze-runner/genblaze_runner/providers/replicate_chat.py`) — reusing `REPLICATE_API_TOKEN`,
   behind the same `chat()` interface as the off-the-shelf adapters, so swapping to
   **Gemini / OpenAI** (off-the-shelf `genblaze-google`/`genblaze-openai`) or
   **Anthropic** (another custom provider, tool-use) is a Settings change with no

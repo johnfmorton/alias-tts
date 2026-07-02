@@ -7,8 +7,10 @@ namespace App\Services\Tts;
  * (stability / style) the public /v1 API speaks onto Chatterbox's native knobs
  * (cfg_weight / exaggeration). Shared by {@see ReplicateChatterboxProvider} (which
  * sends them to the model), the Studio panel's inherited-value display, and the
- * takes list, so the formula can never drift between PHP call sites. The JS mirror
- * lives in resources/js/app.js — keep the two in sync.
+ * takes list, so the formula can never drift between PHP call sites. The formula
+ * lives ONLY here — there is no JS mirror; the JS/Blade knob widgets duplicate
+ * just the knob ranges/defaults (app.js bench rows, the x-tuning-knob component)
+ * — keep those in sync with the clamps below.
  *
  *   cfg_weight   in [0.2, 1.0]  — higher stability => steadier pacing.
  *   exaggeration in [0.25, 2.0] — style 0 => 0.5 (neutral), style 1 => 2.0.

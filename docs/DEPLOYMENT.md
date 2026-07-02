@@ -1,8 +1,12 @@
 # Deployment
 
-Bespoken TTS is a standard Laravel app — it runs anywhere Laravel runs. The only
+Bespoken TTS is a standard Laravel app — it runs anywhere Laravel runs. The
 extras beyond a normal Laravel deploy are **ffmpeg** (audio normalization +
-format conversion) and a one-time **Node build** of the dashboard assets.
+format conversion), a one-time **Node build** of the dashboard assets, and two
+Python sidecars: the **Genblaze runner** (whole-render orchestration +
+provenance — part of a standard install, see
+[GENBLAZE-SETUP.md](GENBLAZE-SETUP.md)) and the **Whisper ASR sidecar** (the
+audio quality gate, see [ASR-SETUP.md](ASR-SETUP.md)).
 
 ## Requirements
 
@@ -11,6 +15,7 @@ format conversion) and a one-time **Node build** of the dashboard assets.
 - A database — MySQL/MariaDB recommended in production (SQLite also works)
 - **ffmpeg** on the server
 - **Node 20+** and npm (to build the dashboard)
+- **Python 3.11+** for the two sidecars (Genblaze runner + Whisper ASR)
 - A **Replicate API token** for real generation (or run with `TTS_PROVIDER=fake`)
 
 ---
@@ -155,15 +160,17 @@ just that the task is registered.
 
 **Queue worker (required only for async long-text generation).** The synchronous
 endpoints need no worker. The async endpoints
-(`POST /v1/text-to-speech/{voice}/jobs` + poll) hand generation to a queued
+(`POST /v1/text-to-speech/{voice_id}/jobs` + poll) hand generation to a queued
 `GenerateSpeechJob`, which lifts the ~300s synchronous ceiling for long articles.
 With the default `QUEUE_CONNECTION=database`, run a worker (Forge: **Processes →
 Background processes → Add background process**, or `php artisan queue:work` under a
 supervisor):
 
 ```
-php8.4 artisan queue:work --queue=default --sleep=3 --tries=1
+php artisan queue:work --queue=default --sleep=3 --tries=1
 ```
+
+(On Forge, use the site's PHP binary if several are installed, e.g. `php8.3`.)
 
 - **Worker `--timeout` is optional.** `GenerateSpeechJob` pins its own timeout
   (`TTS_ASYNC_TIMEOUT`, default 1800s), and Laravel uses the job's timeout over the
@@ -192,18 +199,6 @@ scheduler heartbeat is missing/stale, flags any stale backlog in the `jobs` tabl
 and (with `--deep`) FAILs if no worker drains its probe job within
 `TTS_DOCTOR_QUEUE_PROBE_TIMEOUT` (default 10s). It exits non-zero on any FAIL, so it
 works as a deploy-script / CI gate — run `--deep` *after* the worker is up.
-
----
-
-## Notes
-
-- **Config caching:** Forge's default deploy runs `artisan optimize`, which caches
-  config and skips loading `.env` at runtime — so `env()`-based code (the
-  `AdminSeeder`) won't see values. Create the admin with `admin:create`
-  (argument-based). The Replicate token is read into cached config at deploy time,
-  so generation is unaffected.
-- **Storage & background jobs:** see **[Storage: local vs S3](#storage-local-vs-s3)**
-  below and step 8 (scheduler + queue worker) above.
 
 ---
 

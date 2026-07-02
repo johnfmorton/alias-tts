@@ -193,6 +193,11 @@ seams, or fixing one sentence in a long piece without regenerating the whole fil
   stitch across a seam, then rebuild and download the final MP3. Edited chunks are
   marked stale so you can see what needs regenerating. (Chunk reordering isn't
   supported yet.)
+- **Generate via Genblaze** — hand a whole render to the Genblaze runner,
+  which orchestrates chunk → generate → ASR-score → re-roll → stitch and
+  archives every take plus a verifiable provenance manifest to a Backblaze B2
+  bucket. The runner is a companion sidecar every full install should set
+  up — see **[docs/GENBLAZE-SETUP.md](docs/GENBLAZE-SETUP.md)**.
 
 ## Audio quality checks (ASR)
 
