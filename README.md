@@ -13,6 +13,9 @@ generation is delegated to a pay-per-use GPU on [Replicate](https://replicate.co
 running **[Chatterbox](https://replicate.com/resemble-ai/chatterbox)** (MIT
 licensed, zero-shot voice cloning from a short reference clip).
 
+Full documentation lives in **[docs/](docs/README.md)** — setup, integration,
+and internals, grouped by audience.
+
 ## Why run your own?
 
 If you use the Bespoken plugin with ElevenLabs today, this gives you an

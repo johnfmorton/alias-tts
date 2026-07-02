@@ -101,7 +101,7 @@ uses when talking to a Bespoken TTS server (same `xi-api-key` auth):
   button: opens the entry's text as an editable Studio project on the server.
 - **`GET /v1/pronunciations`** — read-only sync of the per-user pronunciation
   dictionary (see
-  [bespoken-pronunciation-preprocessor.md](bespoken-pronunciation-preprocessor.md)).
+  [BESPOKEN-PRONUNCIATION-PREPROCESSOR.md](BESPOKEN-PRONUNCIATION-PREPROCESSOR.md)).
 
 ## 5. Switching back to ElevenLabs
 
