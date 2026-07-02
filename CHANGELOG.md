@@ -39,6 +39,13 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   `tts:doctor` for every user who hasn't chosen.
 
 ### Changed
+- **Clearer Settings help text.** The Detection LLM provider help now names
+  all four options — "anthropic" was a valid (and prod-deployed) choice the
+  text didn't mention — and says which API key each one needs. The
+  pronunciation pre-processor help now mentions that approved respellings
+  persist to your pronunciation dictionary, the ASR QA master switch describes
+  what turning it on actually does, and the PAUSE/TRUNC threshold wording was
+  tightened.
 - **The sealed receipt now verifies itself.** The receipt .zip's
   `receipt.html` embeds the drop-to-verify widget directly — the sealed
   SHA-256 is baked into the page, so double-clicking the receipt and dropping

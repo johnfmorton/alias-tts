@@ -30,7 +30,7 @@ $keys = [
         'env' => 'TTS_ASR_ENABLED',
         'type' => 'bool',
         'label' => 'ASR transcript QA',
-        'help' => 'Master switch. When off, generated audio is never transcribed or scored and no badges appear.',
+        'help' => 'Master switch. When on, each generated chunk is transcribed by the local Whisper sidecar and scored for truncation, stray tails, long pauses, and boundary noise; flagged chunks are badged and can be auto-remediated. When off, audio is never transcribed or scored and no badges appear.',
     ],
     [
         'group' => 'asr',
@@ -86,7 +86,7 @@ $keys = [
         'max' => 10,
         'advanced' => true,
         'label' => 'PAUSE threshold — max inter-word gap (s)',
-        'help' => 'Largest gap between two recognized words above this is flagged PAUSE.',
+        'help' => 'A gap between two recognized words longer than this is flagged PAUSE.',
     ],
     [
         'group' => 'asr',
@@ -98,7 +98,7 @@ $keys = [
         'max' => 1,
         'advanced' => true,
         'label' => 'TRUNC threshold — min coverage',
-        'help' => 'The transcript must reach at least this far into the source text, else the take is flagged TRUNC. 0–1.',
+        'help' => 'The transcript must reach at least this far into the source text (0–1), else the take is flagged TRUNC (speech cut off early).',
     ],
     [
         'group' => 'asr',
@@ -201,7 +201,7 @@ $keys = [
         'env' => 'TTS_PRONUNCIATION_ENABLED',
         'type' => 'bool',
         'label' => 'Pronunciation pre-processor',
-        'help' => 'Insert a review screen before chunking that suggests phonetic respellings for likely-mispronounced terms ("DDEV" => "dee dev"). Off by default; degrades safely when the runner or LLM is unavailable.',
+        'help' => 'Adds a review step before chunking that suggests phonetic respellings for likely-mispronounced terms ("DDEV" => "dee dev"). Approved respellings are saved to your pronunciation dictionary and reapplied automatically. Degrades safely: if the Genblaze runner or its LLM is unavailable, generation continues without suggestions.',
     ],
     [
         'group' => 'pronunciation',
@@ -211,7 +211,7 @@ $keys = [
         'type' => 'enum',
         'options' => ['replicate', 'gemini', 'openai', 'anthropic'],
         'label' => 'Detection LLM provider',
-        'help' => 'Which Genblaze chat provider detects mispronounced terms. "replicate" reuses your Replicate token (wrapped as a Genblaze chat provider); "gemini"/"openai" are off-the-shelf adapters. Set TTS_PRONUNCIATION_LLM_PROVIDER in .env to lock the choice.',
+        'help' => 'Which Genblaze chat provider detects mispronounced terms. "replicate" reuses your existing Replicate token; "anthropic", "gemini", and "openai" call those APIs directly and need their own key (ANTHROPIC_API_KEY, GEMINI_API_KEY, OPENAI_API_KEY) in the runner\'s environment. The health page shows whether the chosen provider is ready.',
     ],
 ];
 
