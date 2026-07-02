@@ -1547,7 +1547,7 @@ function initStudioProject() {
     const titleInput = document.getElementById('project-title-input');
     const renameSave = document.getElementById('project-rename-save');
     const renameCancel = document.getElementById('project-rename-cancel');
-    const heading = document.querySelector('h1');
+    const heading = document.getElementById('project-title-label') || document.querySelector('h1');
 
     function openRename() {
         titleInput.value = heading.textContent.trim();
