@@ -39,7 +39,7 @@ return [
     |
     */
 
-    'source_url' => env('APP_SOURCE_URL', 'https://github.com/johnfmorton/bespoken-tts-service'),
+    'source_url' => env('APP_SOURCE_URL', 'https://github.com/johnfmorton/mimic-tts-service'),
 
     /*
     |--------------------------------------------------------------------------

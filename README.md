@@ -1,9 +1,9 @@
-# Bespoken TTS Service
+# Mimic TTS Service
 
 **Your own self-hosted, ElevenLabs-compatible text-to-speech server — a drop-in
 voice backend for the [Bespoken Craft CMS plugin](https://github.com/johnfmorton/craft-bespoken).**
 
-![CI](https://github.com/johnfmorton/bespoken-tts-service/actions/workflows/ci.yml/badge.svg)
+![CI](https://github.com/johnfmorton/mimic-tts-service/actions/workflows/ci.yml/badge.svg)
 
 This is a Laravel app that speaks the ElevenLabs HTTP API. Point the
 Bespoken plugin (or any ElevenLabs client) at it by changing only the **base URL**
@@ -238,7 +238,7 @@ php artisan apikey:list
 # Voices
 php artisan voice:create "<Name>" [audio] [--slug=] [--raw] [--seed=]
 php artisan voice:list
-php artisan voice:export <slug> [--output=path]        # -> <slug>.bespoken-voice.zip
+php artisan voice:export <slug> [--output=path]        # -> <slug>.mimic-voice.zip
 php artisan voice:import <file.zip>
 
 # Maintenance
@@ -277,7 +277,7 @@ provider/token, the queue, and the scheduler are all healthy. See
 
 ## Bespoken Craft plugin
 
-Point the plugin at this service: set its **Bespoken TTS service** base URL to
+Point the plugin at this service: set its **Mimic TTS service** base URL to
 your domain, the `xi-api-key` to an `apikey:create` key, and a `voice_id` that
 matches a registered voice slug. See **[docs/BESPOKEN.md](docs/BESPOKEN.md)** for
 the full step-by-step integration guide.

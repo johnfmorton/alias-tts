@@ -1,4 +1,4 @@
-"""Compliance + unit tests for the Bespoken Genblaze providers.
+"""Compliance + unit tests for the Mimic Genblaze providers.
 
 Each provider gets the full ``ProviderComplianceTests`` suite against a fake
 (no-network) client, plus targeted behaviour checks. The QA/Stitch providers
@@ -16,13 +16,13 @@ from genblaze_core.models.asset import Asset
 from genblaze_core.models.step import Step
 from genblaze_core.testing import ProviderComplianceTests
 
-from genblaze_bespoken import (
-    BespokenChunkProvider,
-    BespokenQAProvider,
-    BespokenStitchProvider,
-    BespokenTTSProvider,
+from genblaze_mimic import (
+    MimicChunkProvider,
+    MimicQAProvider,
+    MimicStitchProvider,
+    MimicTTSProvider,
 )
-from genblaze_bespoken._client import TtsResult
+from genblaze_mimic._client import TtsResult
 
 # Canned audio blobs — content is irrelevant; only that bytes round-trip.
 _FAKE_MP3 = b"ID3\x03\x00\x00\x00\x00\x00\x00" + b"\xff\xfb\x90\x00" + b"\x00" * 64
@@ -38,8 +38,8 @@ _OK_VERDICT = {
 }
 
 
-class FakeBespokenClient:
-    """Stand-in for :class:`BespokenClient` covering every method, no network."""
+class FakeMimicClient:
+    """Stand-in for :class:`MimicClient` covering every method, no network."""
 
     def __init__(self, *, content_type: str = "audio/mpeg", audio: bytes = _FAKE_MP3,
                  wav: bytes = _FAKE_WAV, verdict: dict | None = None) -> None:
@@ -71,7 +71,7 @@ class FakeBespokenClient:
 
 
 def _tmpdir() -> str:
-    return tempfile.mkdtemp(prefix="gbz-bespoken-")
+    return tempfile.mkdtemp(prefix="gbz-mimic-")
 
 
 def _wav_input_asset(tmp: str, *, break_after: str = "sentence") -> Asset:
@@ -91,62 +91,62 @@ def _wav_input_asset(tmp: str, *, break_after: str = "sentence") -> Asset:
 # --------------------------------------------------------------------------
 
 
-class TestBespokenTTSCompliance(ProviderComplianceTests):
+class TestMimicTTSCompliance(ProviderComplianceTests):
     expects_cost = False
 
     def make_provider(self):
-        return BespokenTTSProvider(client=FakeBespokenClient(), output_dir=_tmpdir())
+        return MimicTTSProvider(client=FakeMimicClient(), output_dir=_tmpdir())
 
     def make_step(self) -> Step:
-        return Step(provider="bespoken-tts", model="default", prompt="Hello from Bespoken.")
+        return Step(provider="mimic-tts", model="default", prompt="Hello from Mimic.")
 
     def constructor_kwargs_for_probe_cache_test(self) -> dict:
-        return {"client": FakeBespokenClient(), "output_dir": _tmpdir()}
+        return {"client": FakeMimicClient(), "output_dir": _tmpdir()}
 
 
-class TestBespokenChunkCompliance(ProviderComplianceTests):
+class TestMimicChunkCompliance(ProviderComplianceTests):
     expects_cost = False
 
     def make_provider(self):
-        return BespokenChunkProvider(client=FakeBespokenClient(), output_dir=_tmpdir())
+        return MimicChunkProvider(client=FakeMimicClient(), output_dir=_tmpdir())
 
     def make_step(self) -> Step:
-        return Step(provider="bespoken-chunk", model="default", prompt="One chunk.")
+        return Step(provider="mimic-chunk", model="default", prompt="One chunk.")
 
     def constructor_kwargs_for_probe_cache_test(self) -> dict:
-        return {"client": FakeBespokenClient(), "output_dir": _tmpdir()}
+        return {"client": FakeMimicClient(), "output_dir": _tmpdir()}
 
 
-class TestBespokenQACompliance(ProviderComplianceTests):
+class TestMimicQACompliance(ProviderComplianceTests):
     expects_cost = False
 
     def make_provider(self):
-        return BespokenQAProvider(client=FakeBespokenClient(), output_dir=_tmpdir())
+        return MimicQAProvider(client=FakeMimicClient(), output_dir=_tmpdir())
 
     def make_step(self) -> Step:
-        step = Step(provider="bespoken-qa", model="qa", prompt="Hello there.")
+        step = Step(provider="mimic-qa", model="qa", prompt="Hello there.")
         step.inputs = [_wav_input_asset(_tmpdir())]
         step.params = {"source_text": "Hello there."}
         return step
 
     def constructor_kwargs_for_probe_cache_test(self) -> dict:
-        return {"client": FakeBespokenClient(), "output_dir": _tmpdir()}
+        return {"client": FakeMimicClient(), "output_dir": _tmpdir()}
 
 
-class TestBespokenStitchCompliance(ProviderComplianceTests):
+class TestMimicStitchCompliance(ProviderComplianceTests):
     expects_cost = False
 
     def make_provider(self):
-        return BespokenStitchProvider(client=FakeBespokenClient(), output_dir=_tmpdir())
+        return MimicStitchProvider(client=FakeMimicClient(), output_dir=_tmpdir())
 
     def make_step(self) -> Step:
-        step = Step(provider="bespoken-stitch", model="concat", prompt=None)
+        step = Step(provider="mimic-stitch", model="concat", prompt=None)
         step.inputs = [_wav_input_asset(_tmpdir())]
         step.params = {"output_format": "mp3_44100_128"}
         return step
 
     def constructor_kwargs_for_probe_cache_test(self) -> dict:
-        return {"client": FakeBespokenClient(), "output_dir": _tmpdir()}
+        return {"client": FakeMimicClient(), "output_dir": _tmpdir()}
 
 
 # --------------------------------------------------------------------------
@@ -155,9 +155,9 @@ class TestBespokenStitchCompliance(ProviderComplianceTests):
 
 
 def test_tts_generate_writes_audio_asset_with_metadata(tmp_path):
-    fake = FakeBespokenClient()
-    provider = BespokenTTSProvider(client=fake, output_dir=tmp_path)
-    out = provider.invoke(Step(provider="bespoken-tts", model="v", prompt="Hi.", seed=7))
+    fake = FakeMimicClient()
+    provider = MimicTTSProvider(client=fake, output_dir=tmp_path)
+    out = provider.invoke(Step(provider="mimic-tts", model="v", prompt="Hi.", seed=7))
     asset = out.assets[0]
     assert asset.url.startswith("file://")
     assert asset.media_type == "audio/mpeg"
@@ -168,9 +168,9 @@ def test_tts_generate_writes_audio_asset_with_metadata(tmp_path):
 
 
 def test_chunk_generate_returns_wav_and_passes_seed(tmp_path):
-    fake = FakeBespokenClient()
-    provider = BespokenChunkProvider(client=fake, output_dir=tmp_path)
-    out = provider.invoke(Step(provider="bespoken-chunk", model="v", prompt="One.", seed=11))
+    fake = FakeMimicClient()
+    provider = MimicChunkProvider(client=fake, output_dir=tmp_path)
+    out = provider.invoke(Step(provider="mimic-chunk", model="v", prompt="One.", seed=11))
     asset = out.assets[0]
     assert asset.media_type == "audio/wav"
     assert asset.audio.codec == "pcm_s16le"
@@ -178,10 +178,10 @@ def test_chunk_generate_returns_wav_and_passes_seed(tmp_path):
 
 
 def test_qa_records_verdict_in_metadata_and_json_asset(tmp_path):
-    fake = FakeBespokenClient(verdict={"available": True, "ok": False, "problems": ["TRUNC"],
+    fake = FakeMimicClient(verdict={"available": True, "ok": False, "problems": ["TRUNC"],
                                        "score": 0.6, "trim_at_ms": None})
-    provider = BespokenQAProvider(client=fake, output_dir=tmp_path)
-    step = Step(provider="bespoken-qa", model="qa", prompt="x")
+    provider = MimicQAProvider(client=fake, output_dir=tmp_path)
+    step = Step(provider="mimic-qa", model="qa", prompt="x")
     step.inputs = [_wav_input_asset(str(tmp_path))]
     step.params = {"source_text": "the full source"}
 
@@ -192,9 +192,9 @@ def test_qa_records_verdict_in_metadata_and_json_asset(tmp_path):
 
 
 def test_stitch_reads_inputs_and_forwards_break_after(tmp_path):
-    fake = FakeBespokenClient()
-    provider = BespokenStitchProvider(client=fake, output_dir=tmp_path)
-    step = Step(provider="bespoken-stitch", model="concat")
+    fake = FakeMimicClient()
+    provider = MimicStitchProvider(client=fake, output_dir=tmp_path)
+    step = Step(provider="mimic-stitch", model="concat")
     step.inputs = [
         _wav_input_asset(str(tmp_path / "a"), break_after="sentence"),
         _wav_input_asset(str(tmp_path / "b"), break_after="paragraph"),

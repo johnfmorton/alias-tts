@@ -15,16 +15,16 @@ use Throwable;
 /**
  * OpenAI-compatible text-to-speech endpoint — a thin adapter over the SAME
  * {@see SpeechService} the ElevenLabs surface uses, so an app written against
- * OpenAI's `POST /v1/audio/speech` works against Bespoken by only swapping the
+ * OpenAI's `POST /v1/audio/speech` works against Mimic by only swapping the
  * base URL.
  *
  *   POST /v1/audio/speech
- *   header: Authorization: Bearer <bespoken api key>   (xi-api-key also works)
+ *   header: Authorization: Bearer <mimic api key>   (xi-api-key also works)
  *   body:   { model, input, voice, response_format?, speed?, instructions? }
  *
- * Translation to Bespoken's synthesis call:
+ * Translation to Mimic's synthesis call:
  *   input           -> text
- *   voice           -> a Bespoken voice SLUG (passthrough; OpenAI's fixed preset
+ *   voice           -> a Mimic voice SLUG (passthrough; OpenAI's fixed preset
  *                      names like "alloy" can be mapped to a chosen voice via
  *                      config('tts.openai_voice_aliases'))
  *   response_format -> an ElevenLabs output_format token (mp3/wav/pcm)
@@ -88,7 +88,7 @@ class OpenAiSpeechController extends Controller
     }
 
     /**
-     * Map an OpenAI `voice` value to a Bespoken voice slug. Passthrough by default
+     * Map an OpenAI `voice` value to a Mimic voice slug. Passthrough by default
      * (treat it as a slug); an operator can map OpenAI's fixed preset names to
      * their own voices via config('tts.openai_voice_aliases').
      */

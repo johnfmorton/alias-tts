@@ -123,7 +123,7 @@ class ProjectExportService
     {
         return [
             'version' => 1,
-            'kind' => 'bespoken-seal-receipt',
+            'kind' => 'mimic-seal-receipt',
             'project' => [
                 'id' => $project->id,
                 'title' => $project->title,

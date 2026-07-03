@@ -6,7 +6,7 @@
         {{-- Runner liveness --}}
         @if($up)
             <div class="mb-6 rounded-lg border border-emerald-500/30 bg-emerald-500/10 px-4 py-2 text-sm text-emerald-300">
-                Runner up — Bespoken <span class="font-mono">{{ $health['body']['bespoken'] ?? '?' }}</span>,
+                Runner up — Mimic <span class="font-mono">{{ $health['body']['mimic'] ?? $health['body']['bespoken'] ?? '?' }}</span>,
                 B2 {{ ($health['body']['b2'] ?? false) ? 'connected' : 'not configured' }}.
             </div>
         @else

@@ -125,7 +125,7 @@ class GenblazeController extends Controller
         $headers = [];
         if ($request->boolean('download')) {
             $ext = str_ends_with($key, '.wav') ? 'wav' : 'mp3';
-            $headers['Content-Disposition'] = 'attachment; filename="bespoken-sealed-final.'.$ext.'"';
+            $headers['Content-Disposition'] = 'attachment; filename="mimic-sealed-final.'.$ext.'"';
         }
 
         return $this->rangedAudio((string) $disk->get($key), $mime, $request, $headers);

@@ -1,4 +1,4 @@
-"""``BespokenStitchProvider`` — Posture B: concatenate ordered chunk audio into
+"""``MimicStitchProvider`` — Posture B: concatenate ordered chunk audio into
 the final output via ``POST /v1/internal/stitch``.
 
 Genblaze has no built-in audio concat (``FFmpegCompositor`` muxes video), so
@@ -24,21 +24,21 @@ from genblaze_core.providers.base import (
 )
 from genblaze_core.runnable.config import RunnableConfig
 
-from genblaze_bespoken._assets import read_asset_bytes, write_audio_asset
-from genblaze_bespoken._client import BespokenClient
-from genblaze_bespoken._errors import classify_exception
-from genblaze_bespoken._formats import format_meta
+from genblaze_mimic._assets import read_asset_bytes, write_audio_asset
+from genblaze_mimic._client import MimicClient
+from genblaze_mimic._errors import classify_exception
+from genblaze_mimic._formats import format_meta
 
 
-class BespokenStitchProvider(SyncProvider):
-    """Concatenate chunk audio into a single final track via Bespoken."""
+class MimicStitchProvider(SyncProvider):
+    """Concatenate chunk audio into a single final track via Mimic."""
 
-    name = "bespoken-stitch"
+    name = "mimic-stitch"
 
     def __init__(
         self,
         *,
-        client: BespokenClient | None = None,
+        client: MimicClient | None = None,
         base_url: str | None = None,
         api_key: str | None = None,
         internal_secret: str | None = None,
@@ -47,7 +47,7 @@ class BespokenStitchProvider(SyncProvider):
         **kwargs,
     ) -> None:
         super().__init__(**kwargs)
-        self._client = client or BespokenClient(
+        self._client = client or MimicClient(
             base_url=base_url, api_key=api_key, internal_secret=internal_secret, timeout=timeout
         )
         self._output_dir = Path(output_dir or os.getenv("GENBLAZE_OUTPUT_DIR") or tempfile.gettempdir())

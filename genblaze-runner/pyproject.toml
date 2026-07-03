@@ -5,12 +5,12 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "genblaze-runner"
 version = "0.1.0"
-description = "Genblaze-owned orchestrator for the Bespoken TTS pipeline (chunk -> generate -> ASR re-roll -> stitch) with Backblaze B2 provenance."
+description = "Genblaze-owned orchestrator for the Mimic TTS pipeline (chunk -> generate -> ASR re-roll -> stitch) with Backblaze B2 provenance."
 readme = "README.md"
 requires-python = ">=3.11"
 license = { text = "MIT" }
-# NOTE: genblaze-bespoken is a sibling editable install, not on PyPI:
-#   pip install -e ../connectors/genblaze-bespoken
+# NOTE: genblaze-mimic is a sibling editable install, not on PyPI:
+#   pip install -e ../connectors/genblaze-mimic
 dependencies = [
     "genblaze-core>=0.3,<0.4",
     "genblaze-s3>=0.3,<0.4",

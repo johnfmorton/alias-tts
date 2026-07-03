@@ -10,7 +10,7 @@ use Illuminate\Http\Exceptions\HttpResponseException;
 
 /**
  * Validates the OpenAI `POST /v1/audio/speech` body. Field names mirror OpenAI's
- * so an OpenAI-SDK client works unchanged; the translation to Bespoken's internal
+ * so an OpenAI-SDK client works unchanged; the translation to Mimic's internal
  * synthesis call happens in {@see OpenAiSpeechController}.
  */
 class OpenAiSpeechRequest extends FormRequest
@@ -25,7 +25,7 @@ class OpenAiSpeechRequest extends FormRequest
         return [
             'input' => ['required', 'string', 'max:'.(int) config('tts.max_text_length')],
             'voice' => ['required', 'string', 'max:128'],
-            // OpenAI requires `model`, but Bespoken's configured provider decides
+            // OpenAI requires `model`, but Mimic's configured provider decides
             // the model — accept any value and ignore it.
             'model' => ['sometimes', 'nullable', 'string', 'max:128'],
             // Only the formats AudioConverter can produce today. opus/aac/flac are

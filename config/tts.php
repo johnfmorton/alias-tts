@@ -44,8 +44,8 @@ return [
 
     // OpenAI-compatible endpoint (POST /v1/audio/speech). OpenAI clients send a
     // `voice` from a fixed preset list (alloy, echo, nova, shimmer, …), whereas
-    // Bespoken has arbitrary voice slugs and cloned voices. The `voice` field is
-    // treated as a Bespoken slug by default; map OpenAI's preset names to your own
+    // Mimic has arbitrary voice slugs and cloned voices. The `voice` field is
+    // treated as a Mimic slug by default; map OpenAI's preset names to your own
     // voices here so a stock OpenAI client resolves to a real voice. Unlisted
     // names pass through unchanged. See docs/OPENAI-COMPAT.md.
     'openai_voice_aliases' => [
@@ -422,7 +422,7 @@ return [
         'language' => env('TTS_ASR_LANGUAGE', 'en'),
         // Setup guide surfaced (as a link) by the health page / tts:doctor when
         // ASR is enabled but not yet reachable. Override for a fork.
-        'docs_url' => env('TTS_ASR_DOCS_URL', 'https://github.com/johnfmorton/bespoken-tts-service/blob/main/docs/ASR-SETUP.md'),
+        'docs_url' => env('TTS_ASR_DOCS_URL', 'https://github.com/johnfmorton/mimic-tts-service/blob/main/docs/ASR-SETUP.md'),
         // 'log' = score + record only (no action). 'auto' = also remediate a bad
         // verdict: re-roll TRUNC/PAUSE/NOSPEECH (fresh seed, up to max_rerolls,
         // keeping the best-coverage take) and precise-trim a TAIL-only chunk at

@@ -4,7 +4,7 @@ from urllib.parse import urlparse
 
 import boto3
 
-from genblaze_bespoken._assets import _parse_b2_s3_url, read_asset_bytes, write_audio_asset
+from genblaze_mimic._assets import _parse_b2_s3_url, read_asset_bytes, write_audio_asset
 
 
 def test_parse_b2_s3_url_path_style():
@@ -56,7 +56,7 @@ def test_b2_url_uses_authenticated_get_when_creds_present(monkeypatch):
 def test_b2_url_falls_back_to_plain_get_without_creds(monkeypatch):
     monkeypatch.delenv("B2_KEY_ID", raising=False)
     monkeypatch.delenv("B2_APP_KEY", raising=False)
-    import genblaze_bespoken._assets as assets
+    import genblaze_mimic._assets as assets
 
     class _Resp:
         content = b"public-bytes"

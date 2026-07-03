@@ -50,9 +50,9 @@
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <meta name="csrf-token" content="{{ csrf_token() }}">
-    <title>{{ $title }} — Bespoken TTS</title>
+    <title>{{ $title }} — Mimic TTS</title>
     <link rel="icon" href="{{ asset('favicon.ico') }}" sizes="32x32">
-    <link rel="icon" href="{{ asset('bespoken-icon.svg') }}" type="image/svg+xml">
+    <link rel="icon" href="{{ asset('mimic-icon.svg') }}" type="image/svg+xml">
     <link rel="apple-touch-icon" href="{{ asset('apple-touch-icon.png') }}">
     @vite(['resources/css/app.css', 'resources/js/app.js'])
 </head>
@@ -71,8 +71,8 @@
             <div class="mx-auto flex h-[74px] max-w-5xl items-center gap-5 px-4 sm:px-8">
                 {{-- Logo + wordmark --}}
                 <a href="{{ route('admin.dashboard') }}" class="flex shrink-0 items-center gap-3 whitespace-nowrap">
-                    <img src="{{ asset('bespoken-icon-on-dark.svg') }}" alt="" class="h-[38px] w-[38px]">
-                    <span class="text-[20px] font-bold tracking-[-0.3px] text-zinc-100">Bespoken TTS</span>
+                    <img src="{{ asset('mimic-icon-on-dark.svg') }}" alt="" class="h-[38px] w-[38px]">
+                    <span class="text-[20px] font-bold tracking-[-0.3px] text-zinc-100">Mimic TTS</span>
                 </a>
 
                 {{-- Primary nav — three flat destinations --}}
@@ -196,7 +196,7 @@
         @auth
             <footer class="border-t border-zinc-800 bg-zinc-900/40">
                 <div class="mx-auto flex w-full max-w-5xl items-center justify-between px-4 py-4 text-xs text-zinc-500">
-                    <span>Bespoken TTS</span>
+                    <span>Mimic TTS</span>
                     @php
                         $sourceUrl = config('app.source_url');
                         $releaseUrl = $sourceUrl ? rtrim($sourceUrl, '/').'/releases/tag/v'.config('app.version') : null;
