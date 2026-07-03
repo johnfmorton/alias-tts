@@ -98,11 +98,10 @@ $RESTART_QUEUES()
 
 Two things to know with this script:
 
-- It runs `artisan optimize`, which **caches config** — so `env()` reads outside
-  config files (the `AdminSeeder`) won't resolve. Create the admin with
-  `admin:create` (next step), not the env seeder. The Replicate token is read
-  into cached config at deploy time, so generation is unaffected. (All routes are
-  controller/view-based, so `route:cache` inside `optimize` is safe.)
+- It runs `artisan optimize`, which **caches config**. `ADMIN_EMAIL` /
+  `ADMIN_PASSWORD` and the Replicate token are read through config, so they're
+  baked in at deploy time and `admin:create` (next step) works as-is. (All
+  routes are controller/view-based, so `route:cache` inside `optimize` is safe.)
 - With atomic releases, ensure **`storage` is one of the site's linked/shared
   directories** (Forge's default) so uploaded voice clips and generated audio in
   `storage/app/private` persist across deploys. `.env` is already shared by Forge.
@@ -116,10 +115,11 @@ lines after `composer install` and make sure `php artisan migrate --force` runs.
 - Click **Deploy Now** (runs composer, builds assets, migrates).
 - Create the dashboard login once (command runner / SSH):
   ```bash
-  php artisan admin:create you@example.com
+  php artisan admin:create
   ```
-  (or, if `ADMIN_EMAIL`/`ADMIN_PASSWORD` are set **and** config is not cached,
-  `php artisan db:seed --class=AdminSeeder --force`).
+  With `ADMIN_EMAIL` / `ADMIN_PASSWORD` set in the environment (step 3) the bare
+  command needs no arguments; otherwise pass the email
+  (`admin:create you@example.com`) and it prompts for a password.
 
 ### 6. SSL + timeouts
 - Enable **Let's Encrypt** SSL for the domain.

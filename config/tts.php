@@ -15,6 +15,21 @@ return [
 
     /*
     |--------------------------------------------------------------------------
+    | Bootstrap admin
+    |--------------------------------------------------------------------------
+    |
+    | First-login credentials for `admin:create` (bare) and AdminSeeder. Read
+    | through config — NOT env() at call time — so they still resolve after
+    | `artisan optimize` caches the config on deploy.
+    |
+    */
+    'admin' => [
+        'email' => env('ADMIN_EMAIL'),
+        'password' => env('ADMIN_PASSWORD'),
+    ],
+
+    /*
+    |--------------------------------------------------------------------------
     | Defaults
     |--------------------------------------------------------------------------
     |

@@ -6,6 +6,18 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Fixed
+- **Bare `php artisan admin:create` no longer dead-ends a fresh install.**
+  Following `.env.example` (set `ADMIN_EMAIL` / `ADMIN_PASSWORD`, run the
+  command with no arguments) used to fail with `Not enough arguments (missing:
+  "email")`. The command now falls back to those variables — read through
+  config, so they still resolve after the deploy's `artisan optimize` caches
+  config (the same trap that silently broke the `AdminSeeder` path on
+  production) — prompts interactively for anything still missing, and fails
+  with the exact remedy in the message when run non-interactively. The
+  `.env.example` also now notes that `FILESYSTEM_DISK` is unused by this app —
+  storage is selected with `TTS_STORAGE_DISK`.
+
 ### Added
 - **`tts:doctor` now checks the Genblaze runner.** A dedicated "Genblaze
   runner" health check (CLI and the dashboard Health page): unset
