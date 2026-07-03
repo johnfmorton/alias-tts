@@ -20,13 +20,16 @@ ENV_FILE="$SITE/current/.env"
 export PYTHONPATH="$SITE/current/genblaze-runner:$SITE/current/connectors/genblaze-mimic"
 
 # Pull shared values from Laravel's .env so each is defined exactly once:
-# the LLM key(s) (/pronounce), B2_* (provenance sink), TTS_INTERNAL_SECRET +
-# APP_URL (callback to /v1/internal/*), and TTS_STORAGE_ROOT (shared-bucket
-# subfolder — the runner reads it directly and uploads under
-# <root>/genblaze/ to match the app).
+# the LLM key(s) (/pronounce); the app's object-storage config AWS_* (the
+# provenance sink — any S3 provider, same bucket the app uses); TTS_INTERNAL_SECRET
+# + APP_URL (callback to /v1/internal/*); and TTS_STORAGE_ROOT (shared-bucket
+# subfolder — the runner reads it directly and uploads under <root>/genblaze/ to
+# match the app). Legacy B2_* are still sourced as a fallback for an older setup.
+# Order matters: B2_* lines appear before AWS_* in .env, so an
+# AWS_ACCESS_KEY_ID="${B2_KEY_ID}" style alias interpolates correctly here.
 set -a
 # shellcheck disable=SC1090
-. <(grep -E '^(REPLICATE_API_TOKEN|ANTHROPIC_API_KEY|GEMINI_API_KEY|OPENAI_API_KEY|B2_KEY_ID|B2_APP_KEY|B2_BUCKET|B2_REGION|B2_PUBLIC_URL_BASE|TTS_INTERNAL_SECRET|TTS_STORAGE_ROOT|APP_URL)=' "$ENV_FILE")
+. <(grep -E '^(REPLICATE_API_TOKEN|ANTHROPIC_API_KEY|GEMINI_API_KEY|OPENAI_API_KEY|B2_KEY_ID|B2_APP_KEY|B2_BUCKET|B2_REGION|B2_PUBLIC_URL_BASE|AWS_ACCESS_KEY_ID|AWS_SECRET_ACCESS_KEY|AWS_BUCKET|AWS_DEFAULT_REGION|AWS_ENDPOINT|AWS_URL|TTS_INTERNAL_SECRET|TTS_STORAGE_ROOT|APP_URL)=' "$ENV_FILE")
 set +a
 
 export MIMIC_INTERNAL_SECRET="${TTS_INTERNAL_SECRET:-}"

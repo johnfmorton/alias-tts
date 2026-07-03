@@ -82,9 +82,10 @@ TTS_ASR_ENABLED=true                       # optional: enables the re-roll quali
 | `MIMIC_BASE_URL` | The app's URL (`https://tts.example.com`, or `https://tts.ddev.site` locally) |
 | `MIMIC_INTERNAL_SECRET` | Must equal the app's `TTS_INTERNAL_SECRET` |
 | `MIMIC_API_KEY` | Optional — only for the standalone TTS provider (Posture A); the orchestrated run authenticates everything with the internal secret |
-| `B2_KEY_ID` / `B2_APP_KEY` | The application key pair from the B2 console |
-| `B2_BUCKET` / `B2_REGION` | Bucket name + region from the endpoint (e.g. `us-west-004`) |
-| `B2_PUBLIC_URL_BASE` | Optional: base URL for object links if you front the bucket |
+| `AWS_BUCKET` / `AWS_ENDPOINT` / `AWS_DEFAULT_REGION` | **Provenance storage — the app's own `AWS_*` config.** The runner writes to the SAME bucket the app uses, on **any S3 provider**: leave `AWS_ENDPOINT` blank for AWS S3, or set it for B2 / R2 / MinIO (matches the app's `.env`). |
+| `AWS_ACCESS_KEY_ID` / `AWS_SECRET_ACCESS_KEY` | Storage credentials (read/write/delete/list on the bucket) |
+| `AWS_URL` | Optional: public URL base for object links if you front the bucket |
+| `B2_KEY_ID` / `B2_APP_KEY` / `B2_BUCKET` / `B2_REGION` / `B2_PUBLIC_URL_BASE` | **Legacy** Backblaze-only fallback, used only when the `AWS_*` block above is unset. New installs should use `AWS_*`. |
 | `TTS_STORAGE_ROOT` | Optional: the app's shared-bucket subfolder — uploads go under `<root>/genblaze/` so both sides agree (read directly; `MIMIC_STORAGE_ROOT` overrides) |
 | `GENBLAZE_MAX_CONCURRENCY` | Parallel chunk generations (default `2`; use `1` if Replicate throttles) |
 | `GENBLAZE_MAX_REROLLS` | Re-roll budget per chunk (default `3`) |
@@ -144,6 +145,14 @@ curl http://127.0.0.1:8800/health
 
 ## Production
 
+> **This is a long-running daemon, NOT a cron job.** The script starts a
+> `uvicorn` server that must stay up continuously, so run it as a **Forge
+> Background Process** (site → **Processes → Background processes → Add**) — or
+> any supervisor-managed program — with autostart + autorestart. Do **not** put
+> it in the Scheduler / crontab: that would spawn a new server every minute.
+> (The scheduler cron is a separate thing, for `speech:cleanup`; see
+> [DEPLOYMENT.md §8](DEPLOYMENT.md).)
+
 The runner is one more persistent process next to the queue worker and the
 Whisper sidecar — a Forge **daemon**, or anything supervisor-shaped. The
 recipe below assumes Forge's atomic (zero-downtime) releases, where the live
@@ -173,10 +182,11 @@ cp $SITE/current/genblaze-runner/run-genblaze.sh.example /home/forge/your-site/r
 ```
 
 Rather than duplicating secrets, the prototype **sources the shared values
-straight from the site's `.env`** (the B2 keys, `TTS_INTERNAL_SECRET`,
-`APP_URL`, the pronunciation LLM key, and `TTS_STORAGE_ROOT` if you scope the
-bucket) — so each value is defined exactly once and panel edits to the `.env`
-carry over on the next daemon restart:
+straight from the site's `.env`** (the app's `AWS_*` storage config for the
+provenance sink, `TTS_INTERNAL_SECRET`, `APP_URL`, the pronunciation LLM key,
+and `TTS_STORAGE_ROOT` if you scope the bucket) — so each value is defined
+exactly once and panel edits to the `.env` carry over on the next daemon
+restart:
 
 ```bash
 #!/usr/bin/env bash
@@ -188,7 +198,7 @@ ENV_FILE="$SITE/current/.env"
 export PYTHONPATH="$SITE/current/genblaze-runner:$SITE/current/connectors/genblaze-mimic"
 
 set -a
-. <(grep -E '^(REPLICATE_API_TOKEN|ANTHROPIC_API_KEY|GEMINI_API_KEY|OPENAI_API_KEY|B2_KEY_ID|B2_APP_KEY|B2_BUCKET|B2_REGION|B2_PUBLIC_URL_BASE|TTS_INTERNAL_SECRET|TTS_STORAGE_ROOT|APP_URL)=' "$ENV_FILE")
+. <(grep -E '^(REPLICATE_API_TOKEN|ANTHROPIC_API_KEY|GEMINI_API_KEY|OPENAI_API_KEY|B2_KEY_ID|B2_APP_KEY|B2_BUCKET|B2_REGION|B2_PUBLIC_URL_BASE|AWS_ACCESS_KEY_ID|AWS_SECRET_ACCESS_KEY|AWS_BUCKET|AWS_DEFAULT_REGION|AWS_ENDPOINT|AWS_URL|TTS_INTERNAL_SECRET|TTS_STORAGE_ROOT|APP_URL)=' "$ENV_FILE")
 set +a
 
 export MIMIC_INTERNAL_SECRET="${TTS_INTERNAL_SECRET:-}"
@@ -198,9 +208,12 @@ export GENBLAZE_MAX_CONCURRENCY=1      # conservative — avoids Replicate burst
 exec "$SITE/runner-venv/bin/uvicorn" genblaze_runner.app:app --host 127.0.0.1 --port 8800
 ```
 
-`chmod +x` it, then add the daemon (command = the script, directory = the site
-root). The runner binds to localhost only; its `MIMIC_BASE_URL` loops out
-through the public HTTPS URL, which is fine.
+The runner reads the app's `AWS_*` storage config directly, so it writes
+provenance to the **same bucket the app uses, on any S3 provider** — no separate
+storage setup. (The legacy `B2_*` names are still sourced as a fallback for an
+older install.) `chmod +x` it, then add the daemon (command = the script,
+directory = the site root). The runner binds to localhost only; its
+`MIMIC_BASE_URL` loops out through the public HTTPS URL, which is fine.
 
 **3. Restart on deploy** — uvicorn loads code at start, so restart the runner
 daemon after any deploy that touches its Python code (Forge's daemon panel,
@@ -208,12 +221,12 @@ or a restart line in the deploy script).
 
 **4. Verify:** run `php artisan tts:doctor` — its **Genblaze runner** check
 confirms the runner responds, the internal secret is set, the storage roots
-agree, the callback URL matches the app, and the B2 sink is on (same checks on
-the dashboard's Health page). For a deeper probe, `curl
+agree, the callback URL matches the app, and the storage sink is on (same checks
+on the dashboard's Health page). For a deeper probe, `curl
 http://127.0.0.1:8800/health` on the server, then run the smoke
 (`source runner-venv/bin/activate`, export the same env, and
 `python -m genblaze_runner.smoke`) and confirm new objects under
-`genblaze/runs/...` in the B2 console. In Studio, **Generate via Genblaze**
+`genblaze/runs/...` in your bucket. In Studio, **Generate via Genblaze**
 appears once `TTS_GENBLAZE_RUNNER_URL` is set.
 
 ## Troubleshooting

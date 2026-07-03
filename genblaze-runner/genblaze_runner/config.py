@@ -27,14 +27,28 @@ def _normalize_b2_region(raw: str | None) -> str | None:
 
 @dataclass
 class RunnerConfig:
-    """Where the runner finds Mimic and Backblaze B2, plus orchestration knobs."""
+    """Where the runner finds Mimic and its object storage, plus orchestration
+    knobs. Provenance storage is provider-agnostic: it reads the app's own
+    ``AWS_*`` config (any S3-compatible provider — AWS S3, B2, R2, MinIO, …) so
+    the runner writes to the SAME bucket with a single source of truth, and falls
+    back to the legacy ``B2_*`` vars for a daemon whose env predates this."""
 
     mimic_base_url: str = "http://localhost"
     mimic_internal_secret: str = ""
     output_dir: str | None = None
 
-    # Backblaze B2 (provenance store). When b2_bucket is empty the runner uses no
-    # sink — fine for local dev / tests, where assets stay as local file:// URLs.
+    # Provider-agnostic S3 config, mirrored from the app's AWS_* env. s3_endpoint
+    # blank => AWS S3; set it for B2 / R2 / MinIO / etc. (matches AWS_ENDPOINT).
+    s3_bucket: str | None = None
+    s3_endpoint: str | None = None
+    s3_region: str | None = None
+    s3_access_key_id: str | None = None
+    s3_secret_access_key: str | None = None
+    s3_public_url_base: str | None = None
+
+    # Legacy Backblaze B2 provenance store — fallback when AWS_* is not set.
+    # When neither an s3_bucket nor a b2_bucket is configured the runner uses no
+    # sink (assets stay as local file:// URLs — fine for local dev / tests).
     b2_bucket: str | None = None
     b2_region: str | None = None
     b2_public_url_base: str | None = None
@@ -55,6 +69,15 @@ class RunnerConfig:
             mimic_base_url=os.getenv("MIMIC_BASE_URL") or os.getenv("BESPOKEN_BASE_URL", "http://localhost"),
             mimic_internal_secret=os.getenv("MIMIC_INTERNAL_SECRET") or os.getenv("BESPOKEN_INTERNAL_SECRET", ""),
             output_dir=os.getenv("GENBLAZE_OUTPUT_DIR"),
+            # The app's storage config, read directly so a wrapper that sources
+            # the site's .env needs no mapping. Endpoint/region/keys/bucket all
+            # come from the same AWS_* names Laravel uses.
+            s3_bucket=os.getenv("AWS_BUCKET") or None,
+            s3_endpoint=os.getenv("AWS_ENDPOINT") or None,
+            s3_region=(os.getenv("AWS_DEFAULT_REGION") or "").strip() or None,
+            s3_access_key_id=os.getenv("AWS_ACCESS_KEY_ID") or None,
+            s3_secret_access_key=os.getenv("AWS_SECRET_ACCESS_KEY") or None,
+            s3_public_url_base=os.getenv("AWS_URL") or None,
             b2_bucket=os.getenv("B2_BUCKET") or None,
             b2_region=_normalize_b2_region(os.getenv("B2_REGION")),
             b2_public_url_base=os.getenv("B2_PUBLIC_URL_BASE") or None,

@@ -343,7 +343,7 @@ class HealthReport
         }
 
         if (! (bool) ($body['b2'] ?? false)) {
-            $this->add('genblaze', HealthStatus::Warn, 'Genblaze runner', "up at {$url}, but no B2 bucket is configured (B2_BUCKET) — runs work, but provenance stays on the runner's local disk instead of the bucket (add B2_* to run-genblaze.sh).", $docs);
+            $this->add('genblaze', HealthStatus::Warn, 'Genblaze runner', "up at {$url}, but no object-storage bucket is configured (AWS_BUCKET / B2_BUCKET) — runs work, but provenance stays on the runner's local disk instead of the bucket (source the storage vars in run-genblaze.sh).", $docs);
 
             return;
         }

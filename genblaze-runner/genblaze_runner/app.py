@@ -42,7 +42,10 @@ def health() -> dict:
     return {
         "status": "ok",
         "mimic": _config.mimic_base_url,
-        "b2": bool(_config.b2_bucket),
+        # "is a provenance sink configured?" — true for either the AWS_* (any S3
+        # provider) or the legacy B2_* path. Named "b2" for back-compat with the
+        # app's health check.
+        "b2": bool(_config.s3_bucket or _config.b2_bucket),
         # Reported so the app's tts:doctor can flag a shared-bucket subfolder
         # disagreement (uploads and the provenance proxy must use the same root).
         "storage_root": _config.storage_root,

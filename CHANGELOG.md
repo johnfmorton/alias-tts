@@ -7,6 +7,16 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 ## [Unreleased]
 
 ### Changed
+- **The Genblaze runner's provenance storage is now provider-agnostic.** It
+  reads the app's own `AWS_*` config (bucket, endpoint, region, keys) and writes
+  provenance to the **same bucket the app uses, on any S3-compatible provider**
+  (AWS S3, Backblaze B2, Cloudflare R2, …) — a blank `AWS_ENDPOINT` means AWS S3,
+  a set one means B2/R2/MinIO. Previously it was Backblaze-only (`B2_*` +
+  `for_backblaze`), so a non-B2 install had a runner that uploaded nothing, and
+  even a B2 install had to bridge two disjoint config sets. The legacy `B2_*`
+  vars remain a fallback. `run-genblaze.sh.example` and GENBLAZE-SETUP.md are
+  updated, and the setup guide now states plainly that the runner is a
+  long-running background process (not a cron job).
 - **`tts:doctor` / Health treat the Genblaze runner as integral, with louder,
   actionable guidance.** An unconfigured runner is now a **WARN** (was a silent
   green PASS) explaining that it powers the pronunciation pre-processor and the
