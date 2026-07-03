@@ -25,7 +25,7 @@ audio quality gate, see [ASR-SETUP.md](ASR-SETUP.md)).
 ### 1. Create the site
 On **Install a Laravel application**:
 
-- **Repository:** `johnfmorton/bespoken-tts-service` · **Branch:** `main`
+- **Repository:** `johnfmorton/mimic-tts-service` · **Branch:** `main`
 - **Connect to database:** on → **Create a new database** (Forge injects `DB_*`)
 - **Install Composer dependencies:** on
 - **Generate a site deploy key:** off — your connected GitHub account owns the
@@ -250,8 +250,8 @@ reachable.
 
 The same steps by hand on any host:
 ```bash
-git clone https://github.com/johnfmorton/bespoken-tts-service.git
-cd bespoken-tts-service
+git clone https://github.com/johnfmorton/mimic-tts-service.git
+cd mimic-tts-service
 composer install --no-dev --optimize-autoloader
 cp .env.example .env && php artisan key:generate
 # edit .env: APP_URL, DB_*, TTS_PROVIDER, REPLICATE_API_TOKEN, ADMIN_*

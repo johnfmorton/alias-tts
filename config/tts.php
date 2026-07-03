@@ -422,7 +422,7 @@ return [
         'language' => env('TTS_ASR_LANGUAGE', 'en'),
         // Setup guide surfaced (as a link) by the health page / tts:doctor when
         // ASR is enabled but not yet reachable. Override for a fork.
-        'docs_url' => env('TTS_ASR_DOCS_URL', 'https://github.com/johnfmorton/bespoken-tts-service/blob/main/docs/ASR-SETUP.md'),
+        'docs_url' => env('TTS_ASR_DOCS_URL', 'https://github.com/johnfmorton/mimic-tts-service/blob/main/docs/ASR-SETUP.md'),
         // 'log' = score + record only (no action). 'auto' = also remediate a bad
         // verdict: re-roll TRUNC/PAUSE/NOSPEECH (fresh seed, up to max_rerolls,
         // keeping the best-coverage take) and precise-trim a TAIL-only chunk at
