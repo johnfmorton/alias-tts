@@ -1,9 +1,9 @@
 #!/bin/sh
 set -e
-# The runner expects BESPOKEN_* names; derive them from the Laravel .env that the
+# The runner expects MIMIC_* names; derive them from the Laravel .env that the
 # compose env_file loads (TTS_INTERNAL_SECRET), and default the base URL to the
 # DDEV web service. Only the /run path needs these — /pronounce just needs
 # REPLICATE_API_TOKEN (also loaded from .env).
-export BESPOKEN_INTERNAL_SECRET="${BESPOKEN_INTERNAL_SECRET:-$TTS_INTERNAL_SECRET}"
-export BESPOKEN_BASE_URL="${BESPOKEN_BASE_URL:-http://web}"
+export MIMIC_INTERNAL_SECRET="${MIMIC_INTERNAL_SECRET:-$TTS_INTERNAL_SECRET}"
+export MIMIC_BASE_URL="${MIMIC_BASE_URL:-http://web}"
 exec "$@"

@@ -41,7 +41,7 @@ class GenblazeTest extends TestCase
 
     public function test_page_renders_runner_health(): void
     {
-        Http::fake(['runner.test/health' => Http::response(['status' => 'ok', 'bespoken' => 'https://tts.ddev.site', 'b2' => true])]);
+        Http::fake(['runner.test/health' => Http::response(['status' => 'ok', 'mimic' => 'https://tts.ddev.site', 'b2' => true])]);
         Voice::create(['slug' => 'v', 'name' => 'V']);
 
         $this->actingAs($this->admin())
@@ -58,7 +58,7 @@ class GenblazeTest extends TestCase
 
     public function test_genblaze_page_highlights_only_the_genblaze_nav_tab(): void
     {
-        Http::fake(['runner.test/health' => Http::response(['status' => 'ok', 'bespoken' => 'x', 'b2' => true])]);
+        Http::fake(['runner.test/health' => Http::response(['status' => 'ok', 'mimic' => 'x', 'b2' => true])]);
         Voice::create(['slug' => 'v', 'name' => 'V']);
 
         $html = $this->actingAs($this->admin())

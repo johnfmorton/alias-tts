@@ -41,7 +41,7 @@ class PronounceRequest(BaseModel):
 def health() -> dict:
     return {
         "status": "ok",
-        "bespoken": _config.bespoken_base_url,
+        "mimic": _config.mimic_base_url,
         "b2": bool(_config.b2_bucket),
         "pronounce": pronounce.available_providers(),
     }

@@ -1,7 +1,7 @@
-"""Map Bespoken / httpx failures to a Genblaze :class:`ProviderErrorCode`.
+"""Map Mimic / httpx failures to a Genblaze :class:`ProviderErrorCode`.
 
 The codes drive Genblaze's retry policy: TIMEOUT / RATE_LIMIT / SERVER_ERROR
-are retried; AUTH_FAILURE / INVALID_INPUT / CONTENT_POLICY are not. Bespoken
+are retried; AUTH_FAILURE / INVALID_INPUT / CONTENT_POLICY are not. Mimic
 already does its own 429/GPU-fault backoff internally, but surfacing the right
 code lets the pipeline layer make sensible decisions too.
 """
@@ -14,7 +14,7 @@ from genblaze_core.models.enums import ProviderErrorCode
 
 
 def classify_status(status: int) -> ProviderErrorCode:
-    """Classify an HTTP status code from the Bespoken API."""
+    """Classify an HTTP status code from the Mimic API."""
     if status == 429:
         return ProviderErrorCode.RATE_LIMIT
     if status in (401, 403):

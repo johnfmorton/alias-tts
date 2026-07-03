@@ -36,7 +36,7 @@ def write_audio_asset(
     sample_rate: int | None = None,
 ) -> Asset:
     """Persist ``audio`` to a temp file and return a ``file://`` audio asset."""
-    path = Path(output_dir) / f"bespoken-{step_id or uuid.uuid4().hex}.{ext}"
+    path = Path(output_dir) / f"mimic-{step_id or uuid.uuid4().hex}.{ext}"
     path.write_bytes(audio)
     asset = Asset(url=_file_url(path), media_type=mime)
     asset.size_bytes = len(audio)
@@ -47,7 +47,7 @@ def write_audio_asset(
 
 def write_json_asset(output_dir: str | Path, step_id: str | None, blob: bytes) -> Asset:
     """Persist a JSON ``blob`` to a temp file and return a ``file://`` asset."""
-    path = Path(output_dir) / f"bespoken-{step_id or uuid.uuid4().hex}.json"
+    path = Path(output_dir) / f"mimic-{step_id or uuid.uuid4().hex}.json"
     path.write_bytes(blob)
     asset = Asset(url=_file_url(path), media_type="application/json")
     asset.size_bytes = len(blob)

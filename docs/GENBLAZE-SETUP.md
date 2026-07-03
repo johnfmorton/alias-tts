@@ -79,15 +79,20 @@ TTS_ASR_ENABLED=true                       # optional: enables the re-roll quali
 
 | Variable | Meaning |
 |---|---|
-| `BESPOKEN_BASE_URL` | The app's URL (`https://tts.example.com`, or `https://tts.ddev.site` locally) |
-| `BESPOKEN_INTERNAL_SECRET` | Must equal the app's `TTS_INTERNAL_SECRET` |
-| `BESPOKEN_API_KEY` | A dashboard API key (sent as the `xi-api-key` header) |
+| `MIMIC_BASE_URL` | The app's URL (`https://tts.example.com`, or `https://tts.ddev.site` locally) |
+| `MIMIC_INTERNAL_SECRET` | Must equal the app's `TTS_INTERNAL_SECRET` |
+| `MIMIC_API_KEY` | A dashboard API key (sent as the `xi-api-key` header) |
 | `B2_KEY_ID` / `B2_APP_KEY` | The application key pair from the B2 console |
 | `B2_BUCKET` / `B2_REGION` | Bucket name + region from the endpoint (e.g. `us-west-004`) |
 | `B2_PUBLIC_URL_BASE` | Optional: base URL for object links if you front the bucket |
 | `GENBLAZE_MAX_CONCURRENCY` | Parallel chunk generations (default `2`; use `1` if Replicate throttles) |
 | `GENBLAZE_MAX_REROLLS` | Re-roll budget per chunk (default `3`) |
 | `GENBLAZE_OUTPUT_DIR` | Local temp dir for audio before upload (default: system temp) |
+
+> **Renamed from `BESPOKEN_*`.** The runner still reads the old
+> `BESPOKEN_BASE_URL` / `BESPOKEN_INTERNAL_SECRET` / `BESPOKEN_API_KEY` names as a
+> fallback, so an existing daemon keeps working — but set the `MIMIC_*` names and
+> drop the old ones when convenient.
 
 ## Run it locally
 
@@ -97,7 +102,7 @@ virtualenv (from the repo root):
 ```bash
 python3 -m venv .venv-genblaze
 source .venv-genblaze/bin/activate
-pip install -e connectors/genblaze-bespoken -e genblaze-runner
+pip install -e connectors/genblaze-mimic -e genblaze-runner
 ```
 
 **Offline self-test first** — no accounts, no app, proves the install:
@@ -150,7 +155,7 @@ so it survives deploys:
 ```bash
 cd /home/forge/your-site
 python3 -m venv runner-venv
-runner-venv/bin/pip install ./current/connectors/genblaze-bespoken ./current/genblaze-runner
+runner-venv/bin/pip install ./current/connectors/genblaze-mimic ./current/genblaze-runner
 ```
 
 This pulls the Python dependencies into `runner-venv`. The wrapper below puts
@@ -165,10 +170,10 @@ gets its env from a small launcher, e.g. `/home/forge/your-site/run-genblaze.sh`
 #!/usr/bin/env bash
 set -e
 SITE=/home/forge/your-site
-export PYTHONPATH="$SITE/current/genblaze-runner:$SITE/current/connectors/genblaze-bespoken"
-export BESPOKEN_BASE_URL="https://your-domain.com"      # public HTTPS URL (real cert)
-export BESPOKEN_INTERNAL_SECRET="<same as TTS_INTERNAL_SECRET>"
-export BESPOKEN_API_KEY="<a dashboard API key>"
+export PYTHONPATH="$SITE/current/genblaze-runner:$SITE/current/connectors/genblaze-mimic"
+export MIMIC_BASE_URL="https://your-domain.com"      # public HTTPS URL (real cert)
+export MIMIC_INTERNAL_SECRET="<same as TTS_INTERNAL_SECRET>"
+export MIMIC_API_KEY="<a dashboard API key>"
 export B2_BUCKET="..." B2_KEY_ID="..." B2_APP_KEY="..." B2_REGION="us-west-004"
 export GENBLAZE_MAX_CONCURRENCY=1
 # Pronunciation pre-processor only — key(s) for the runner's LLM provider:
@@ -178,7 +183,7 @@ exec "$SITE/runner-venv/bin/uvicorn" genblaze_runner.app:app \
 ```
 
 `chmod +x` it, then add the daemon (command = the script, directory = the site
-root). The runner binds to localhost only; its `BESPOKEN_BASE_URL` loops out
+root). The runner binds to localhost only; its `MIMIC_BASE_URL` loops out
 through the public HTTPS URL, which is fine.
 
 **3. Restart on deploy** — uvicorn loads code at start, so restart the runner
@@ -198,7 +203,7 @@ appears once `TTS_GENBLAZE_RUNNER_URL` is set.
 | `No module named genblaze_runner` | Venv not activated, or the editable installs were skipped. |
 | SSL error against `tts.ddev.site` | DDEV cert not trusted by Python — use the `SSL_CERT_FILE` bundle above, or run against a deployed site. |
 | `/v1/internal/...` → 503 "disabled" | `TTS_INTERNAL_SECRET` is empty in the app's env. Set it and restart/redeploy. |
-| `/v1/internal/...` → 403 | Runner's `BESPOKEN_INTERNAL_SECRET` ≠ app's `TTS_INTERNAL_SECRET`. |
+| `/v1/internal/...` → 403 | Runner's `MIMIC_INTERNAL_SECRET` ≠ app's `TTS_INTERNAL_SECRET`. |
 | Every chunk scores `{"available": false}` | ASR is off or the Whisper sidecar isn't running — see [ASR-SETUP.md](ASR-SETUP.md). |
 | B2 auth error | `B2_REGION` doesn't match the bucket's endpoint, or the app key isn't scoped to that bucket. |
 | Provenance audio won't play in Studio | The app's `s3` disk isn't pointed at the B2 bucket (the proxy streams through it). |

@@ -1,4 +1,4 @@
-"""Genblaze runner — orchestrates Bespoken TTS through Genblaze pipelines."""
+"""Genblaze runner — orchestrates Mimic TTS through Genblaze pipelines."""
 
 from genblaze_runner.orchestrator import ChunkResult, Orchestrator, ProjectResult
 
