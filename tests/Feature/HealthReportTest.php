@@ -146,12 +146,28 @@ class HealthReportTest extends TestCase
         $this->assertSame(HealthStatus::Pass, $this->resultFor('queue_timing')->status);
     }
 
-    public function test_genblaze_passes_as_not_configured_without_a_runner_url(): void
+    public function test_genblaze_warns_with_setup_steps_when_not_configured(): void
     {
+        // Genblaze is integral, so an absent runner is a strident WARN (not a
+        // cheerful pass) that names the exact env var and links the setup guide.
         $genblaze = $this->resultFor('genblaze');
 
-        $this->assertSame(HealthStatus::Pass, $genblaze->status);
-        $this->assertStringContainsString('TTS_GENBLAZE_RUNNER_URL', $genblaze->detail);
+        $this->assertSame(HealthStatus::Warn, $genblaze->status);
+        $this->assertStringContainsString('TTS_GENBLAZE_RUNNER_URL=http://127.0.0.1:8800', $genblaze->detail);
+        $this->assertNotNull($genblaze->helpUrl); // renders the "Setup guide" link on the Health page
+    }
+
+    public function test_pronunciation_warns_loudly_with_the_fix_when_the_runner_is_down(): void
+    {
+        config(['tts.pronunciation.enabled' => true]); // on, but no runner configured in the test env
+
+        $p = $this->resultFor('pronunciation');
+
+        $this->assertSame(HealthStatus::Warn, $p->status);
+        $this->assertStringContainsString('silently skipped', $p->detail);          // strident
+        $this->assertStringContainsString('TTS_GENBLAZE_RUNNER_URL', $p->detail);    // the fix
+        $this->assertStringContainsString('TTS_PRONUNCIATION_ENABLED=false', $p->detail); // the off-switch
+        $this->assertNotNull($p->helpUrl);
     }
 
     public function test_genblaze_fails_when_the_configured_runner_is_unreachable(): void

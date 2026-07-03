@@ -116,6 +116,7 @@ return [
     'genblaze' => [
         'runner_url' => rtrim((string) env('TTS_GENBLAZE_RUNNER_URL', ''), '/'),
         'timeout' => (int) env('TTS_GENBLAZE_TIMEOUT', 600),
+        'docs_url' => env('TTS_GENBLAZE_DOCS_URL', 'https://github.com/johnfmorton/mimic-tts/blob/main/docs/GENBLAZE-SETUP.md'),
     ],
 
     /*

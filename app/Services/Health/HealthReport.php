@@ -274,18 +274,19 @@ class HealthReport
     }
 
     /**
-     * The optional Genblaze runner (drives the Studio "Generate via Genblaze"
-     * page; the pronunciation pre-processor rides the same daemon). Not
-     * configured is a clean pass — the page hides. But configured-and-broken
-     * FAILS loudly: without this check a dead runner only surfaces as a broken
-     * Studio page after everything else reports green.
+     * The Genblaze runner — an INTEGRAL background daemon: it drives the
+     * pronunciation pre-processor and the QA-gated "Generate via Genblaze"
+     * pipeline. So "not configured" is a WARN (with the exact steps to enable
+     * it), not a cheerful pass; configured-and-broken FAILS loudly. Every row
+     * carries the Setup guide link so the fix is one click away.
      */
     private function checkGenblaze(): void
     {
+        $docs = (string) config('tts.genblaze.docs_url') ?: null;
         $client = app(GenblazeRunnerClient::class);
 
         if (! $client->configured()) {
-            $this->add('genblaze', HealthStatus::Pass, 'Genblaze runner', 'not configured — set TTS_GENBLAZE_RUNNER_URL to enable the Studio "Generate via Genblaze" page (see docs/GENBLAZE-SETUP.md).');
+            $this->add('genblaze', HealthStatus::Warn, 'Genblaze runner', 'not running — this daemon powers the pronunciation pre-processor and the QA-gated "Generate via Genblaze" pipeline, so both features are currently OFF. To enable: install the runner and add its Forge daemon (Setup guide below), then set TTS_GENBLAZE_RUNNER_URL=http://127.0.0.1:8800 in the site environment.', $docs);
 
             return;
         }
@@ -294,7 +295,7 @@ class HealthReport
         $health = $client->health();
 
         if (! ($health['reachable'] ?? false)) {
-            $this->add('genblaze', HealthStatus::Fail, 'Genblaze runner', "the runner at {$url} isn't responding (".($health['error'] ?? 'unknown').') — start the daemon (docs/GENBLAZE-SETUP.md), or unset TTS_GENBLAZE_RUNNER_URL to hide the Studio page.');
+            $this->add('genblaze', HealthStatus::Fail, 'Genblaze runner', "configured (TTS_GENBLAZE_RUNNER_URL={$url}) but the daemon isn't responding (".($health['error'] ?? 'unknown').") — start it in Forge → Daemons; confirm with `curl {$url}/health` on the server (Setup guide below).", $docs);
 
             return;
         }
@@ -305,7 +306,7 @@ class HealthReport
         // is mounted only when the shared secret is set — without it every run
         // fails mid-pipeline even though the runner itself looks healthy.
         if ((string) config('tts.internal.secret') === '') {
-            $this->add('genblaze', HealthStatus::Fail, 'Genblaze runner', 'the runner is up, but TTS_INTERNAL_SECRET is empty so its /v1/internal/* callbacks are disabled (503) — set the secret in the app\'s .env and MIMIC_INTERNAL_SECRET in the runner\'s environment.');
+            $this->add('genblaze', HealthStatus::Fail, 'Genblaze runner', 'the daemon is up, but TTS_INTERNAL_SECRET is empty so its /v1/internal/* callbacks are disabled (503) and every run fails mid-pipeline — set TTS_INTERNAL_SECRET in the app\'s .env and the matching MIMIC_INTERNAL_SECRET in the runner\'s environment, then restart the daemon.', $docs);
 
             return;
         }
@@ -317,17 +318,17 @@ class HealthReport
         $runnerRoot = array_key_exists('storage_root', $body) ? trim((string) ($body['storage_root'] ?? ''), '/') : null;
 
         if ($runnerRoot === null && $appRoot !== '') {
-            $this->add('genblaze', HealthStatus::Fail, 'Genblaze runner', "the app scopes storage under \"{$appRoot}/\" (TTS_STORAGE_ROOT), but the runner predates storage-root support — redeploy and restart the runner daemon.");
+            $this->add('genblaze', HealthStatus::Fail, 'Genblaze runner', "the app scopes storage under \"{$appRoot}/\" (TTS_STORAGE_ROOT), but the runner predates storage-root support — redeploy and restart the runner daemon.", $docs);
 
             return;
         }
 
         if ($runnerRoot !== null && $runnerRoot !== $appRoot) {
             $this->add('genblaze', HealthStatus::Fail, 'Genblaze runner', sprintf(
-                'storage root mismatch — the app reads under %s but the runner uploads under %s, so provenance playback will 404. Make TTS_STORAGE_ROOT agree on both sides (the run-genblaze.sh wrapper sources it from the site\'s .env).',
+                'storage root mismatch — the app reads under %s but the runner uploads under %s, so provenance playback will 404. Make TTS_STORAGE_ROOT agree on both sides (the run-genblaze.sh wrapper sources it from the site\'s .env), then restart the daemon.',
                 $appRoot === '' ? 'the bucket top level' : "\"{$appRoot}/\"",
                 $runnerRoot === '' ? 'the bucket top level' : "\"{$runnerRoot}/\"",
-            ));
+            ), $docs);
 
             return;
         }
@@ -336,13 +337,13 @@ class HealthReport
         $mimic = rtrim((string) ($body['mimic'] ?? ''), '/');
         $appUrl = rtrim((string) config('app.url'), '/');
         if ($mimic !== '' && $appUrl !== '' && $mimic !== $appUrl) {
-            $this->add('genblaze', HealthStatus::Warn, 'Genblaze runner', "up at {$url}, but its callbacks target {$mimic} while this app is {$appUrl} — fix MIMIC_BASE_URL in the runner's environment if runs stall.");
+            $this->add('genblaze', HealthStatus::Warn, 'Genblaze runner', "up at {$url}, but its callbacks target {$mimic} while this app is {$appUrl} — fix MIMIC_BASE_URL in the runner's environment if runs stall.", $docs);
 
             return;
         }
 
         if (! (bool) ($body['b2'] ?? false)) {
-            $this->add('genblaze', HealthStatus::Warn, 'Genblaze runner', "up at {$url}, but no B2 bucket is configured (B2_BUCKET) — runs work, provenance stays on the runner's local disk instead of the bucket.");
+            $this->add('genblaze', HealthStatus::Warn, 'Genblaze runner', "up at {$url}, but no B2 bucket is configured (B2_BUCKET) — runs work, but provenance stays on the runner's local disk instead of the bucket (add B2_* to run-genblaze.sh).", $docs);
 
             return;
         }
@@ -356,13 +357,16 @@ class HealthReport
     }
 
     /**
-     * The optional pronunciation pre-processor. Off by default; when enabled,
-     * reads the Genblaze runner's /health to confirm the selected chat provider
-     * is importable + keyed. Degrade-safe by design, so a misconfiguration only
-     * warns — detection is skipped and projects still continue to chunking.
+     * The pronunciation pre-processor — a core feature (on by default in
+     * production) that runs its detection through the Genblaze runner's chat
+     * provider. Degrade-safe (a missing runner skips detection rather than
+     * failing the generation), so it warns — but loudly, with the exact fix and
+     * the off-switch, plus the Setup guide link.
      */
     private function checkPronunciation(): void
     {
+        $docs = (string) config('tts.genblaze.docs_url') ?: null;
+
         if (! (bool) config('tts.pronunciation.enabled', false)) {
             $this->add('pronunciation', HealthStatus::Pass, 'Pronunciation pre-processor', 'disabled — set TTS_PRONUNCIATION_ENABLED=true to suggest phonetic respellings before chunking.');
 
@@ -373,7 +377,7 @@ class HealthReport
         $health = app(GenblazeRunnerClient::class)->health();
 
         if (! ($health['reachable'] ?? false)) {
-            $this->add('pronunciation', HealthStatus::Warn, 'Pronunciation pre-processor', 'enabled, but the Genblaze runner is unreachable ('.($health['error'] ?? 'no runner URL').') — detection is skipped and projects continue to chunking.');
+            $this->add('pronunciation', HealthStatus::Warn, 'Pronunciation pre-processor', 'ON, but the Genblaze runner it depends on is unreachable ('.($health['error'] ?? 'TTS_GENBLAZE_RUNNER_URL not set').'), so respelling detection is silently skipped on every generation. Fix: stand up the runner daemon and set TTS_GENBLAZE_RUNNER_URL (Setup guide below) — or set TTS_PRONUNCIATION_ENABLED=false if you don\'t want this feature.', $docs);
 
             return;
         }
@@ -381,13 +385,13 @@ class HealthReport
         $status = (array) (($health['body']['pronounce'] ?? [])[$provider] ?? []);
 
         if (! ($status['importable'] ?? false)) {
-            $this->add('pronunciation', HealthStatus::Warn, 'Pronunciation pre-processor', "enabled, but provider \"{$provider}\" has no installed chat adapter in the runner — install it (`pip install -e '.[pronounce]'`) or pick another provider in Settings.");
+            $this->add('pronunciation', HealthStatus::Warn, 'Pronunciation pre-processor', "ON, but provider \"{$provider}\" has no installed chat adapter in the runner, so detection is skipped — install it (`pip install -e '.[pronounce]'` in the runner venv) or pick another provider in Settings.", $docs);
 
             return;
         }
 
         if (! ($status['keyed'] ?? false)) {
-            $this->add('pronunciation', HealthStatus::Warn, 'Pronunciation pre-processor', "enabled via \"{$provider}\", but its API key isn't set in the runner environment.");
+            $this->add('pronunciation', HealthStatus::Warn, 'Pronunciation pre-processor', "ON via \"{$provider}\", but its API key isn't set in the runner's environment, so detection is skipped — add the provider's key (e.g. ANTHROPIC_API_KEY) to run-genblaze.sh and restart the daemon.", $docs);
 
             return;
         }

@@ -161,7 +161,26 @@ Visit `https://your-domain.com/`, log in, then:
   are configurable via `TTS_DEFAULT_VOICE_SLUG` / `TTS_DEFAULT_VOICE_FEMALE_SLUG`.
 - The **Dashboard** shows copy-paste connection details for the Bespoken plugin.
 
-### 8. Background processing — scheduler & queue worker
+### 8. Background processes
+
+A fully-featured install runs up to four background processes. **Every one is
+reported by the Health page and `php artisan tts:doctor`** — a missing or broken
+process shows up as the named check below with the exact fix, so the dashboard is
+the source of truth for "what's actually running."
+
+| Process | Command / where | Powers | Health check | Required? |
+|---|---|---|---|---|
+| **Scheduler cron** | `php artisan schedule:run` every minute (Forge → **Scheduler**) | `speech:cleanup` + liveness heartbeat | Scheduler | Yes |
+| **Queue worker** | `php artisan queue:work database` (Forge → **Background processes**) | async `/v1/.../jobs` + the Genblaze run job | Queue | Yes for async (else `QUEUE_CONNECTION=sync`) |
+| **Genblaze runner** | uvicorn `:8800` daemon — see [GENBLAZE-SETUP.md](GENBLAZE-SETUP.md) | pronunciation pre-processor + "Generate via Genblaze" pipeline | Genblaze runner, Pronunciation | Core |
+| **Whisper ASR sidecar** | uvicorn `:8765` daemon — see [ASR-SETUP.md](ASR-SETUP.md) | Transcript QA (chunk scoring + auto re-roll/trim) | Transcript QA | Optional (`TTS_ASR_ENABLED`) |
+
+The two Python sidecars are added the same way as the queue worker (Forge →
+**Background processes**) but each runs its own virtualenv; follow their setup
+guides. A process you don't run is reported honestly — the ASR sidecar shows a
+clean "disabled" PASS when `TTS_ASR_ENABLED` is off, whereas the Genblaze runner
+(a core feature) shows a WARN with setup steps when it isn't running. The
+scheduler and queue worker are detailed next.
 
 **Scheduler (required for automatic cleanup).** Generated audio expires after
 `TTS_TTL_HOURS` (default 30 days); `speech:cleanup` deletes expired rows and their

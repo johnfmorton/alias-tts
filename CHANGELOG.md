@@ -4,6 +4,21 @@ All notable changes to this project are documented in this file. The format is
 based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this
 project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Changed
+- **`tts:doctor` / Health treat the Genblaze runner as integral, with louder,
+  actionable guidance.** An unconfigured runner is now a **WARN** (was a silent
+  green PASS) explaining that it powers the pronunciation pre-processor and the
+  QA-gated "Generate via Genblaze" pipeline, with the exact steps to enable it.
+  The pronunciation warning is likewise stronger — it states detection is
+  silently skipped and gives both the fix and the off-switch
+  (`TTS_PRONUNCIATION_ENABLED=false`). Every Genblaze/pronunciation row now
+  links a **Setup guide** (new `TTS_GENBLAZE_DOCS_URL`). DEPLOYMENT.md gains a
+  "Background processes at a glance" table mapping each daemon (scheduler, queue
+  worker, Genblaze runner, Whisper ASR sidecar) to the Health check that reports
+  it. `tts:doctor` still exits non-zero only on a hard FAIL.
+
 ## [0.27.0] - 2026-07-03
 
 ### Added
