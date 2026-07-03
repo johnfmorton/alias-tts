@@ -31,7 +31,7 @@
             @case('enum')
                 <select id="{{ $name }}" name="{{ $name }}" {{ $disabled }} class="{{ $input }}">
                     @foreach($f['options'] as $opt)
-                        <option value="{{ $opt }}" @selected((string) $value === $opt)>{{ $opt }}</option>
+                        <option value="{{ $opt }}" @selected((string) $value === $opt)>{{ $f['option_labels'][$opt] ?? $opt }}</option>
                     @endforeach
                 </select>
                 @break

@@ -4,6 +4,22 @@ All notable changes to this project are documented in this file. The format is
 based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this
 project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+- **Per-user "Final audio format" setting (MP3 or uncompressed WAV).** A new
+  "Audio output" section on the Settings page lets each user choose the format
+  their projects build to: the default MP3 (44.1 kHz, 128 kbps) or uncompressed
+  WAV (44.1 kHz, 16-bit) for editing and archival. The choice applies to
+  projects created from then on — panel "New project" and `POST /v1/projects`
+  without an explicit `output_format` — and is stamped at creation, so existing
+  projects keep their format. Direct `/v1/text-to-speech` calls are deliberately
+  unaffected (clients like the Bespoken plugin rely on the fixed MP3 default);
+  an explicit `output_format` on any API request still wins. Managed-settings
+  enum options can now carry human-readable labels in the registry
+  (`option_labels`), so the dropdown reads "WAV — 44.1 kHz, 16-bit
+  (uncompressed)" rather than `wav_44100`.
+
 ## [0.24.0] - 2026-07-02
 
 ### Added

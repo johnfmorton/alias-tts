@@ -7,6 +7,7 @@ use App\Enums\ProjectStatus;
 use App\Models\TtsProject;
 use App\Models\TuningPreset;
 use App\Models\User;
+use App\Models\UserSetting;
 use App\Models\Voice;
 use App\Services\ProjectService;
 use App\Services\Tts\FakeTtsProvider;
@@ -138,6 +139,36 @@ class StudioProjectTest extends TestCase
         $this->assertCount(2, $project->chunks);
         $this->assertSame(ProjectStatus::Draft, $project->status);
         $this->assertSame(ChunkStatus::Pending, $project->chunks->first()->status);
+    }
+
+    public function test_store_uses_the_users_project_output_format_setting(): void
+    {
+        // End-to-end through the ApplyUserSettings middleware: the per-user
+        // "Final audio format" setting decides a new project's output_format.
+        $admin = $this->admin();
+        Voice::create(['slug' => 'v', 'name' => 'V']);
+        UserSetting::create(['user_id' => $admin->id, 'key' => 'tts.project_output_format', 'value' => 'wav_44100']);
+
+        $this->actingAs($admin)->post(route('admin.studio.projects.store'), [
+            'title' => 'Wav doc',
+            'voice' => 'v',
+            'text' => 'A single paragraph that is comfortably long enough to chunk.',
+        ]);
+
+        $this->assertSame('wav_44100', TtsProject::firstWhere('title', 'Wav doc')->output_format);
+    }
+
+    public function test_store_defaults_to_mp3_without_a_format_setting(): void
+    {
+        Voice::create(['slug' => 'v', 'name' => 'V']);
+
+        $this->actingAs($this->admin())->post(route('admin.studio.projects.store'), [
+            'title' => 'Mp3 doc',
+            'voice' => 'v',
+            'text' => 'A single paragraph that is comfortably long enough to chunk.',
+        ]);
+
+        $this->assertSame('mp3_44100_128', TtsProject::firstWhere('title', 'Mp3 doc')->output_format);
     }
 
     public function test_a_delivery_preset_seeds_the_projects_tuning(): void

@@ -56,6 +56,7 @@ class SettingsPageTest extends TestCase
             'tts_asr_boundary_zcr_max_hz' => 1500,
             'tts_api_project_mode' => 'never',
             'tts_pronunciation_llm_provider' => 'gemini',
+            'tts_project_output_format' => 'mp3_44100_128',
         ], $overrides);
     }
 
@@ -232,6 +233,49 @@ class SettingsPageTest extends TestCase
 
         $this->assertNull($this->row($admin, 'tts.asr.enabled')); // never written
         $this->assertTrue(config('tts.asr.enabled'));              // still on
+    }
+
+    public function test_audio_output_group_renders_with_friendly_format_labels(): void
+    {
+        $res = $this->actingAs($this->admin())->get(route('admin.settings.index'));
+
+        $res->assertOk();
+        $res->assertSee('Audio output');
+        $res->assertSee('Final audio format');
+        $res->assertSee('WAV — 44.1 kHz, 16-bit (uncompressed)');
+    }
+
+    public function test_saving_persists_the_project_output_format(): void
+    {
+        config(['tts.asr.enabled' => true]);
+        $this->setLocked('tts.asr.enabled', true);
+
+        $user = $this->user();
+
+        $this->actingAs($user)
+            ->put(route('admin.settings.update'), $this->validPayload([
+                'tts_project_output_format' => 'wav_44100',
+            ]))
+            ->assertRedirect(route('admin.settings.index'))
+            ->assertSessionHas('success');
+
+        $this->assertSame('wav_44100', $this->row($user, 'tts.project_output_format')->value);
+    }
+
+    public function test_an_unknown_output_format_is_rejected(): void
+    {
+        config(['tts.asr.enabled' => true]);
+        $this->setLocked('tts.asr.enabled', true);
+
+        $admin = $this->admin();
+
+        $this->actingAs($admin)
+            ->put(route('admin.settings.update'), $this->validPayload([
+                'tts_project_output_format' => 'ogg_48000', // not an offered option
+            ]))
+            ->assertSessionHasErrors('tts_project_output_format');
+
+        $this->assertNull($this->row($admin, 'tts.project_output_format'));
     }
 
     public function test_pronunciation_group_renders(): void

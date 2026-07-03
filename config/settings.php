@@ -24,6 +24,21 @@
 
 $keys = [
     [
+        'group' => 'audio',
+        'key' => 'project_output_format',
+        'config' => 'tts.project_output_format',
+        'env' => 'TTS_PROJECT_OUTPUT_FORMAT',
+        'type' => 'enum',
+        'options' => ['mp3_44100_128', 'wav_44100'],
+        'option_labels' => [
+            'mp3_44100_128' => 'MP3 — 44.1 kHz, 128 kbps (compressed)',
+            'wav_44100' => 'WAV — 44.1 kHz, 16-bit (uncompressed)',
+        ],
+        'inherits' => 'tts.default_output_format',
+        'label' => 'Final audio format',
+        'help' => 'Format of the final audio file your projects build. MP3 suits most uses; WAV is uncompressed (roughly ten times larger) for editing or archival. Applies to projects you create from now on — an existing project keeps the format it was created with. Direct /v1/text-to-speech calls (including the Bespoken plugin) are unaffected and stay MP3 unless the request asks otherwise.',
+    ],
+    [
         'group' => 'asr',
         'key' => 'enabled',
         'config' => 'tts.asr.enabled',

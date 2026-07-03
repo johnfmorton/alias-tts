@@ -11,6 +11,20 @@ namespace App\Http\Requests;
  */
 class CreateProjectRequest extends TextToSpeechRequest
 {
+    /**
+     * Projects prefer the key owner's per-user project format (see
+     * tts.project_output_format); the sync /v1/text-to-speech default stays
+     * untouched so plugin audio is never affected. An explicit output_format
+     * in the request still wins.
+     */
+    public function outputFormat(): string
+    {
+        return (string) ($this->input('output_format')
+            ?: $this->query('output_format')
+            ?: config('tts.project_output_format')
+            ?: config('tts.default_output_format'));
+    }
+
     public function rules(): array
     {
         return [

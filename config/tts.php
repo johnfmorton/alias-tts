@@ -26,6 +26,13 @@ return [
     */
     'default_model_id' => env('TTS_DEFAULT_MODEL_ID', 'chatterbox'),
     'default_output_format' => env('TTS_DEFAULT_OUTPUT_FORMAT', 'mp3_44100_128'),
+
+    // Format for PROJECT final builds only (panel "New project" and
+    // POST /v1/projects without an explicit output_format). Kept separate from
+    // default_output_format so a user choosing WAV never changes what the
+    // plugin's /v1/text-to-speech calls get. Null falls back to the default
+    // above; UI-managed per user (see config/settings.php).
+    'project_output_format' => env('TTS_PROJECT_OUTPUT_FORMAT'),
     'default_voice_settings' => [
         'stability' => 0.5,
         'similarity_boost' => 0.75,
