@@ -33,6 +33,13 @@ return [
     // request and an admin issues a signed reset link from the Users page.
     'support_email' => env('TTS_SUPPORT_EMAIL'),
 
+    // Proxy IPs/CIDRs (comma-separated, or "*" for any upstream) whose
+    // X-Forwarded-* headers to trust when running behind a TLS-terminating proxy
+    // like Cloudflare — so the app sees the real client IP and https scheme.
+    // Null (default) trusts none. Read at request time by
+    // App\Http\Middleware\TrustProxies, so it is safe under a cached config.
+    'trusted_proxies' => env('TRUSTED_PROXIES'),
+
     /*
     |--------------------------------------------------------------------------
     | Defaults

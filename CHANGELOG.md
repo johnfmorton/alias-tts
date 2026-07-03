@@ -4,6 +4,21 @@ All notable changes to this project are documented in this file. The format is
 based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this
 project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+- **Trust configurable reverse proxies (`TRUSTED_PROXIES`).** When the app runs
+  behind a TLS-terminating proxy or CDN (Cloudflare, a load balancer, nginx),
+  set `TRUSTED_PROXIES` so it reads the real visitor IP — used by the per-IP
+  login rate-limiter and logs — and the true https scheme from the proxy's
+  `X-Forwarded-*` headers instead of the proxy's own. Opt-in and safe by
+  default: unset trusts nothing (correct for a directly-exposed install); `*`
+  trusts any upstream (lock the origin firewall to the proxy's IPs), or give a
+  comma-separated IP/CIDR list. The trusted list is read at request time, so it
+  resolves correctly under a cached production config. `.env.example` and
+  DEPLOYMENT.md also now document `SESSION_SECURE_COOKIE` and the Cloudflare
+  "Full (strict)" origin-certificate setup.
+
 ## [0.26.0] - 2026-07-03
 
 ### Fixed

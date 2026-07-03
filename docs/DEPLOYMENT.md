@@ -128,6 +128,27 @@ lines after `composer install` and make sure `php artisan migrate --force` runs.
   - nginx: `fastcgi_read_timeout 120;`
   - PHP: `max_execution_time = 120`
 
+#### Behind Cloudflare or another reverse proxy
+
+If a CDN/proxy terminates TLS in front of the app (Cloudflare, a load balancer),
+set two things so the origin behaves correctly:
+
+- **`TRUSTED_PROXIES`** — so the app reads the real visitor IP (the per-IP login
+  rate-limiter and logs depend on it) and the true https scheme from the proxy's
+  `X-Forwarded-*` headers. Use `TRUSTED_PROXIES=*` **only** if the origin accepts
+  traffic solely from the proxy — lock the server firewall to the proxy's IP
+  ranges (for Cloudflare, its [published IPs](https://www.cloudflare.com/ips/));
+  otherwise a client hitting the origin directly could spoof its IP/scheme. A
+  comma-separated IP/CIDR list is the stricter alternative. Forge's own
+  `*.on-forge.com` domains are trusted automatically.
+- **`SESSION_SECURE_COOKIE=true`** — safe once TLS is end-to-end.
+
+For **Cloudflare specifically**, use SSL/TLS mode **Full (strict)** with a
+Cloudflare **Origin Certificate** installed on the origin (Forge → site → SSL →
+Install Existing Certificate). Avoid **Flexible** mode: it terminates TLS at
+Cloudflare and talks HTTP to the origin, which both leaves that hop unencrypted
+and — once the origin also forces HTTPS — causes an infinite redirect loop.
+
 ### 7. First use
 Visit `https://your-domain.com/`, log in, then:
 - **API Keys → New key** (copy it).

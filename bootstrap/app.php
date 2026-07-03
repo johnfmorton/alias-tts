@@ -2,10 +2,12 @@
 
 use App\Http\Middleware\ApplyUserSettings;
 use App\Http\Middleware\EnsureAccountIsActive;
+use App\Http\Middleware\TrustProxies;
 use App\Http\Middleware\ValidateInternalSecret;
 use Illuminate\Foundation\Application;
 use Illuminate\Foundation\Configuration\Exceptions;
 use Illuminate\Foundation\Configuration\Middleware;
+use Illuminate\Http\Middleware\TrustProxies as BaseTrustProxies;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Route;
 
@@ -37,6 +39,15 @@ return Application::configure(basePath: dirname(__DIR__))
         },
     )
     ->withMiddleware(function (Middleware $middleware): void {
+        // Honor X-Forwarded-* from a trusted proxy (Cloudflare / LB / nginx). The
+        // subclass reads the trusted list from config at request time — safe under
+        // a cached config, unlike reading env()/config() in this closure, which
+        // runs before the framework loads configuration. See the middleware.
+        $middleware->replace(
+            BaseTrustProxies::class,
+            TrustProxies::class,
+        );
+
         $middleware->redirectGuestsTo(fn () => route('login'));
         // Already-authenticated users hitting a guest route (e.g. /login) land on the
         // headline Genblaze page when it's live, else the dashboard.
