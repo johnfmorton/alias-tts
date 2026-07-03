@@ -75,7 +75,7 @@
                class="rounded-lg bg-[#22d3ee] px-5 py-2.5 text-sm font-semibold text-[#062326] transition hover:brightness-110">
                 Open dashboard
             </a>
-            <a href="https://github.com/johnfmorton/mimic-tts-service"
+            <a href="https://github.com/johnfmorton/mimic-tts"
                class="rounded-lg border border-zinc-700 px-5 py-2.5 text-sm font-medium text-zinc-300 transition hover:border-zinc-500 hover:bg-white/5">
                 View on GitHub
             </a>

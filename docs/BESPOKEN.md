@@ -10,7 +10,7 @@ in your self-hosted cloned voice instead of using ElevenLabs.
 
 ## Prerequisites
 
-- **mimic-tts-service deployed** (see [DEPLOYMENT.md](DEPLOYMENT.md)) with an
+- **mimic-tts deployed** (see [DEPLOYMENT.md](DEPLOYMENT.md)) with an
   **API key** (Dashboard → API Keys). Two built-in voices (`default`,
   `default-female`) ship out of the box, so no voice setup is required to get
   started — add your own cloned voice (Dashboard → Voices) when you want the

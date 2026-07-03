@@ -3,7 +3,7 @@
 **Your own self-hosted, ElevenLabs-compatible text-to-speech server — a drop-in
 voice backend for the [Bespoken Craft CMS plugin](https://github.com/johnfmorton/craft-bespoken).**
 
-![CI](https://github.com/johnfmorton/mimic-tts-service/actions/workflows/ci.yml/badge.svg)
+![CI](https://github.com/johnfmorton/mimic-tts/actions/workflows/ci.yml/badge.svg)
 
 This is a Laravel app that speaks the ElevenLabs HTTP API. Point the
 Bespoken plugin (or any ElevenLabs client) at it by changing only the **base URL**
