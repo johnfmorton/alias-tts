@@ -1,6 +1,6 @@
 # Deployment
 
-Bespoken TTS is a standard Laravel app — it runs anywhere Laravel runs. The
+Mimic TTS is a standard Laravel app — it runs anywhere Laravel runs. The
 extras beyond a normal Laravel deploy are **ffmpeg** (audio normalization +
 format conversion), a one-time **Node build** of the dashboard assets, and two
 Python sidecars: the **Genblaze runner** (whole-render orchestration +

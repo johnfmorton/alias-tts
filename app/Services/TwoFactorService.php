@@ -34,7 +34,7 @@ class TwoFactorService
     public function qrSvg(User $user, string $secret): string
     {
         $uri = $this->google2fa->getQRCodeUrl(
-            config('app.name', 'Bespoken TTS'),
+            config('app.name', 'Mimic TTS'),
             $user->email,
             $secret,
         );

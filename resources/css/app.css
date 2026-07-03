@@ -11,7 +11,7 @@
     --font-mono: 'SF Mono', ui-monospace, 'SFMono-Regular', Menlo, monospace;
 
     /*
-     * Design tokens from the Bespoken navigation/Studio redesign handoff. Additive
+     * Design tokens from the Mimic navigation/Studio redesign handoff. Additive
      * to Tailwind's default palette — the app's existing zinc/cyan/emerald classes
      * are untouched; the redesigned surfaces (nav, account, users, studio) build
      * from these so colors stay pixel-exact and centralized.

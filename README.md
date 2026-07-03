@@ -1,4 +1,4 @@
-# Bespoken TTS Service
+# Mimic TTS Service
 
 **Your own self-hosted, ElevenLabs-compatible text-to-speech server — a drop-in
 voice backend for the [Bespoken Craft CMS plugin](https://github.com/johnfmorton/craft-bespoken).**
@@ -277,7 +277,7 @@ provider/token, the queue, and the scheduler are all healthy. See
 
 ## Bespoken Craft plugin
 
-Point the plugin at this service: set its **Bespoken TTS service** base URL to
+Point the plugin at this service: set its **Mimic TTS service** base URL to
 your domain, the `xi-api-key` to an `apikey:create` key, and a `voice_id` that
 matches a registered voice slug. See **[docs/BESPOKEN.md](docs/BESPOKEN.md)** for
 the full step-by-step integration guide.

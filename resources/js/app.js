@@ -1579,7 +1579,7 @@ function initStudioProject() {
             if (!res.ok) throw new Error(await errorMessage(res));
             const data = await res.json();
             heading.textContent = data.title;
-            document.title = `${data.title} — Bespoken TTS`;
+            document.title = `${data.title} — Mimic TTS`;
             closeRename();
             setStatus(finalStatus, '✓ Renamed.', 'ok');
         } catch (err) {
@@ -1615,7 +1615,7 @@ function initStudioProject() {
                 const data = await res.json();
                 if (data.title && heading) {
                     heading.textContent = data.title;
-                    document.title = `${data.title} — Bespoken TTS`;
+                    document.title = `${data.title} — Mimic TTS`;
                 }
                 document.getElementById('project-failure-notice')?.remove();
                 setStatus(finalStatus, '✓ Cleared the API-failure flag — this is now a regular project.', 'ok');

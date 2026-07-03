@@ -10,7 +10,7 @@ verifiable provenance manifest** to a **Backblaze B2** bucket. It powers:
   generation workflow (and the post-login landing page once
   `TTS_GENBLAZE_RUNNER_URL` is set), and
 - the **pronunciation pre-processor**'s LLM step (`POST /pronounce`) — see
-  [BESPOKEN-PRONUNCIATION-PREPROCESSOR.md](BESPOKEN-PRONUNCIATION-PREPROCESSOR.md).
+  [MIMIC-PRONUNCIATION-PREPROCESSOR.md](MIMIC-PRONUNCIATION-PREPROCESSOR.md).
 
 The bare `/v1` API runs without it, but the app as designed —
 provenance-tracked renders, QA-gated re-rolls, pronunciation review — expects
@@ -21,7 +21,7 @@ the runner. Treat this as part of a standard install, not an add-on.
 ```
         ┌────────────────────────── one server ──────────────────────────────┐
         │                                                                    │
-        │   Bespoken (Laravel) ────────────► /v1/internal/* (chunk/generate/ │
+        │   Mimic (Laravel) ───────────────► /v1/internal/* (chunk/generate/ │
         │     │                                   score/trim/stitch)        │
         │     ├─ queue worker         (daemon)          ▲                    │
         │     ├─ Whisper ASR sidecar  (daemon :8765) ◄──┤ orchestrated by    │

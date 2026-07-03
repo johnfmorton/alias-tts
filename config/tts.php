@@ -44,8 +44,8 @@ return [
 
     // OpenAI-compatible endpoint (POST /v1/audio/speech). OpenAI clients send a
     // `voice` from a fixed preset list (alloy, echo, nova, shimmer, …), whereas
-    // Bespoken has arbitrary voice slugs and cloned voices. The `voice` field is
-    // treated as a Bespoken slug by default; map OpenAI's preset names to your own
+    // Mimic has arbitrary voice slugs and cloned voices. The `voice` field is
+    // treated as a Mimic slug by default; map OpenAI's preset names to your own
     // voices here so a stock OpenAI client resolves to a real voice. Unlisted
     // names pass through unchanged. See docs/OPENAI-COMPAT.md.
     'openai_voice_aliases' => [
