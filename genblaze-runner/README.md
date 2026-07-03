@@ -20,6 +20,7 @@ pip install -e ".[dev]"
 | `MIMIC_BASE_URL` | Base URL of the running Mimic service |
 | `MIMIC_INTERNAL_SECRET` | Shared secret for `/v1/internal/*` (`X-Internal-Secret`) |
 | `B2_BUCKET` / `B2_KEY_ID` / `B2_APP_KEY` / `B2_REGION` | Backblaze B2 provenance store (omit `B2_BUCKET` to run sink-less) |
+| `TTS_STORAGE_ROOT` | Optional shared-bucket subfolder — uploads go under `<root>/genblaze/` to match the app (read directly from the app's env name; `MIMIC_STORAGE_ROOT` overrides) |
 | `GENBLAZE_OUTPUT_DIR` | Local temp dir for audio before B2 upload |
 | `GENBLAZE_MAX_REROLLS` / `GENBLAZE_MAX_CONCURRENCY` | Orchestration knobs |
 

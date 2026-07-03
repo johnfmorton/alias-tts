@@ -1,0 +1,36 @@
+#!/usr/bin/env bash
+#
+# Launcher for the Genblaze runner daemon. Forge daemons (and supervisor
+# processes generally) don't read the site's .env, so this wrapper sources the
+# shared values from it and starts uvicorn.
+#
+# Setup (see docs/GENBLAZE-SETUP.md for the full walkthrough):
+#   1. Copy this file OUTSIDE the release path so deploys don't overwrite it:
+#        cp genblaze-runner/run-genblaze.sh.example /home/forge/your-site/run-genblaze.sh
+#   2. Edit SITE below, then `chmod +x run-genblaze.sh`.
+#   3. Add a Forge daemon: command = the script, directory = the site root.
+#      Restart the daemon after any deploy that touches the runner's Python code.
+set -e
+
+SITE=/home/forge/your-site
+ENV_FILE="$SITE/current/.env"
+
+# Live package code via the `current` symlink — a normal deploy updates the
+# runner without reinstalling (re-run pip only when dependencies change).
+export PYTHONPATH="$SITE/current/genblaze-runner:$SITE/current/connectors/genblaze-mimic"
+
+# Pull shared values from Laravel's .env so each is defined exactly once:
+# the LLM key(s) (/pronounce), B2_* (provenance sink), TTS_INTERNAL_SECRET +
+# APP_URL (callback to /v1/internal/*), and TTS_STORAGE_ROOT (shared-bucket
+# subfolder — the runner reads it directly and uploads under
+# <root>/genblaze/ to match the app).
+set -a
+# shellcheck disable=SC1090
+. <(grep -E '^(REPLICATE_API_TOKEN|ANTHROPIC_API_KEY|GEMINI_API_KEY|OPENAI_API_KEY|B2_KEY_ID|B2_APP_KEY|B2_BUCKET|B2_REGION|B2_PUBLIC_URL_BASE|TTS_INTERNAL_SECRET|TTS_STORAGE_ROOT|APP_URL)=' "$ENV_FILE")
+set +a
+
+export MIMIC_INTERNAL_SECRET="${TTS_INTERNAL_SECRET:-}"
+export MIMIC_BASE_URL="${APP_URL:-}"   # must be the public HTTPS URL (real cert)
+export GENBLAZE_MAX_CONCURRENCY=1      # conservative — avoids Replicate burst limits
+
+exec "$SITE/runner-venv/bin/uvicorn" genblaze_runner.app:app --host 127.0.0.1 --port 8800

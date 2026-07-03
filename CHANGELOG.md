@@ -12,9 +12,14 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   to a subfolder of the storage disk, so several apps can safely share one S3/B2
   bucket. The prefix is applied at the disk layer — database rows keep their
   relative paths — so adopting it on an existing install only means moving the
-  objects in the bucket and setting the variable. The Genblaze provenance proxy
-  understands prefixed runner URLs; the runner itself needs the matching prefix
-  in its own environment.
+  objects in the bucket and setting the variable. The Genblaze runner honors the
+  same root (uploading provenance under `<root>/genblaze/`), reading
+  `TTS_STORAGE_ROOT` directly from its own environment; the app's provenance
+  proxy understands the prefixed runner URLs. A tracked
+  `genblaze-runner/run-genblaze.sh.example` wrapper prototype sources these
+  shared values straight from the site's `.env`, so secrets and the storage root
+  are defined once, and `MIMIC_API_KEY` is documented as optional (orchestrated
+  runs authenticate through the internal secret).
 - **Orphan-file sweep for `speech:cleanup` (`--orphans`).** Removes files under
   the speech storage path that no database row references — leftovers from
   crashed jobs or rows deleted outside the app. The sweep never leaves that

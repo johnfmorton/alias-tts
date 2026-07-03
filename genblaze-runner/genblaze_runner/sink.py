@@ -8,6 +8,13 @@ from genblaze_s3 import S3StorageBackend
 from genblaze_runner.config import RunnerConfig
 
 
+def sink_prefix(storage_root: str | None) -> str:
+    """The bucket prefix all uploads live under: ``genblaze``, nested inside the
+    app's shared-bucket subfolder (``TTS_STORAGE_ROOT``) when one is set. Must
+    match where the app's provenance proxy looks (its s3 disk root + genblaze/)."""
+    return f"{storage_root}/genblaze" if storage_root else "genblaze"
+
+
 def build_sink(config: RunnerConfig):
     """Return an :class:`ObjectStorageSink` backed by Backblaze B2, or ``None``
     when no bucket is configured (assets then stay as local ``file://`` URLs).
@@ -23,4 +30,4 @@ def build_sink(config: RunnerConfig):
         region=config.b2_region or None,
         public_url_base=config.b2_public_url_base or None,
     )
-    return ObjectStorageSink(backend, prefix="genblaze", key_strategy=KeyStrategy.HIERARCHICAL)
+    return ObjectStorageSink(backend, prefix=sink_prefix(config.storage_root), key_strategy=KeyStrategy.HIERARCHICAL)

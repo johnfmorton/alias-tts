@@ -11,8 +11,8 @@
 | disk-relative paths, so setting or changing the root never rewrites data —
 | but any EXISTING objects must be moved to the new location in the bucket
 | yourself (e.g. `rclone move b2:bucket/speech b2:bucket/myroot/speech`).
-| The Genblaze runner uploads with its own client and needs the matching
-| prefix set in ITS environment.
+| The Genblaze runner uploads with its own client and reads TTS_STORAGE_ROOT
+| from its own environment (the run-genblaze.sh wrapper sources it).
 |
 */
 $storageRoot = trim((string) env('TTS_STORAGE_ROOT', ''), '/');

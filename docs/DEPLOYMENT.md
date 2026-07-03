@@ -245,10 +245,13 @@ applied at the disk layer — database rows keep their relative paths — so you
 adopt it on an existing install by moving the objects in the bucket (e.g.
 `rclone move b2:bucket/speech b2:bucket/myapp/speech`, and the same for
 `voices/`, `avatars/`, `genblaze/`) and setting the variable in the same
-maintenance window. Two things it does not cover: the **Genblaze runner**
-uploads with its own B2 client, so give the runner the matching prefix in its
-environment; and an S3 **lifecycle rule** you may have on `speech/` should move
-to `myapp/speech/`.
+maintenance window. Two things to check when adopting it: the **Genblaze runner**
+uploads with its own B2 client and reads `TTS_STORAGE_ROOT` from its own
+process environment — the `run-genblaze.sh` wrapper in
+[docs/GENBLAZE-SETUP.md](GENBLAZE-SETUP.md) already sources it from the site's
+`.env` (an older wrapper just needs `TTS_STORAGE_ROOT` added to its grep list);
+and an S3 **lifecycle rule** you may have on `speech/` should move to
+`myapp/speech/`.
 
 **Cleanup works the same on S3.** All storage goes through Laravel's disk
 abstraction, so `speech:cleanup` (and the daily schedule) delete expired audio

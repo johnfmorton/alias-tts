@@ -6,6 +6,14 @@ import os
 from dataclasses import dataclass
 
 
+def _normalize_storage_root(raw: str | None) -> str | None:
+    """A shared-bucket subfolder (the app's ``TTS_STORAGE_ROOT``), normalized to
+    a bare segment: no surrounding whitespace or slashes, empty → ``None``."""
+    if not raw:
+        return None
+    return raw.strip().strip("/") or None
+
+
 def _normalize_b2_region(raw: str | None) -> str | None:
     """B2's S3 endpoint is ``s3.<region>.backblazeb2.com``, so people often paste
     the endpoint-host form (``s3.us-west-001`` or the full host) into B2_REGION —
@@ -31,6 +39,11 @@ class RunnerConfig:
     b2_region: str | None = None
     b2_public_url_base: str | None = None
 
+    # Shared-bucket subfolder: uploads go under {storage_root}/genblaze/ instead
+    # of genblaze/, mirroring the app's TTS_STORAGE_ROOT so one bucket can serve
+    # several apps. Both sides must agree or the app's provenance proxy 404s.
+    storage_root: str | None = None
+
     max_rerolls: int = 3
     max_concurrency: int = 2
 
@@ -45,6 +58,11 @@ class RunnerConfig:
             b2_bucket=os.getenv("B2_BUCKET") or None,
             b2_region=_normalize_b2_region(os.getenv("B2_REGION")),
             b2_public_url_base=os.getenv("B2_PUBLIC_URL_BASE") or None,
+            # TTS_STORAGE_ROOT is read directly so a wrapper that sources the
+            # site's .env needs no extra mapping; MIMIC_STORAGE_ROOT overrides.
+            storage_root=_normalize_storage_root(
+                os.getenv("MIMIC_STORAGE_ROOT") or os.getenv("TTS_STORAGE_ROOT")
+            ),
             max_rerolls=int(os.getenv("GENBLAZE_MAX_REROLLS", "3")),
             max_concurrency=int(os.getenv("GENBLAZE_MAX_CONCURRENCY", "2")),
         )

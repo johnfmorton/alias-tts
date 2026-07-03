@@ -81,10 +81,11 @@ TTS_ASR_ENABLED=true                       # optional: enables the re-roll quali
 |---|---|
 | `MIMIC_BASE_URL` | The app's URL (`https://tts.example.com`, or `https://tts.ddev.site` locally) |
 | `MIMIC_INTERNAL_SECRET` | Must equal the app's `TTS_INTERNAL_SECRET` |
-| `MIMIC_API_KEY` | A dashboard API key (sent as the `xi-api-key` header) |
+| `MIMIC_API_KEY` | Optional — only for the standalone TTS provider (Posture A); the orchestrated run authenticates everything with the internal secret |
 | `B2_KEY_ID` / `B2_APP_KEY` | The application key pair from the B2 console |
 | `B2_BUCKET` / `B2_REGION` | Bucket name + region from the endpoint (e.g. `us-west-004`) |
 | `B2_PUBLIC_URL_BASE` | Optional: base URL for object links if you front the bucket |
+| `TTS_STORAGE_ROOT` | Optional: the app's shared-bucket subfolder — uploads go under `<root>/genblaze/` so both sides agree (read directly; `MIMIC_STORAGE_ROOT` overrides) |
 | `GENBLAZE_MAX_CONCURRENCY` | Parallel chunk generations (default `2`; use `1` if Replicate throttles) |
 | `GENBLAZE_MAX_REROLLS` | Re-roll budget per chunk (default `3`) |
 | `GENBLAZE_OUTPUT_DIR` | Local temp dir for audio before upload (default: system temp) |
@@ -164,22 +165,37 @@ normal deploy updates the runner's code without reinstalling — re-run this
 `pip install` only when the Python dependencies change.
 
 **2. Wrapper script** — daemons don't read the site's `.env`, so the runner
-gets its env from a small launcher, e.g. `/home/forge/your-site/run-genblaze.sh`:
+gets its env from a small launcher at `/home/forge/your-site/run-genblaze.sh`.
+Copy the ready-made prototype from the repo and edit one line (`SITE=`):
+
+```bash
+cp $SITE/current/genblaze-runner/run-genblaze.sh.example /home/forge/your-site/run-genblaze.sh
+```
+
+Rather than duplicating secrets, the prototype **sources the shared values
+straight from the site's `.env`** (the B2 keys, `TTS_INTERNAL_SECRET`,
+`APP_URL`, the pronunciation LLM key, and `TTS_STORAGE_ROOT` if you scope the
+bucket) — so each value is defined exactly once and panel edits to the `.env`
+carry over on the next daemon restart:
 
 ```bash
 #!/usr/bin/env bash
 set -e
+
 SITE=/home/forge/your-site
+ENV_FILE="$SITE/current/.env"
+
 export PYTHONPATH="$SITE/current/genblaze-runner:$SITE/current/connectors/genblaze-mimic"
-export MIMIC_BASE_URL="https://your-domain.com"      # public HTTPS URL (real cert)
-export MIMIC_INTERNAL_SECRET="<same as TTS_INTERNAL_SECRET>"
-export MIMIC_API_KEY="<a dashboard API key>"
-export B2_BUCKET="..." B2_KEY_ID="..." B2_APP_KEY="..." B2_REGION="us-west-004"
-export GENBLAZE_MAX_CONCURRENCY=1
-# Pronunciation pre-processor only — key(s) for the runner's LLM provider:
-# export ANTHROPIC_API_KEY=...   (or REPLICATE_API_TOKEN, GEMINI_API_KEY, OPENAI_API_KEY)
-exec "$SITE/runner-venv/bin/uvicorn" genblaze_runner.app:app \
-    --host 127.0.0.1 --port 8800
+
+set -a
+. <(grep -E '^(REPLICATE_API_TOKEN|ANTHROPIC_API_KEY|GEMINI_API_KEY|OPENAI_API_KEY|B2_KEY_ID|B2_APP_KEY|B2_BUCKET|B2_REGION|B2_PUBLIC_URL_BASE|TTS_INTERNAL_SECRET|TTS_STORAGE_ROOT|APP_URL)=' "$ENV_FILE")
+set +a
+
+export MIMIC_INTERNAL_SECRET="${TTS_INTERNAL_SECRET:-}"
+export MIMIC_BASE_URL="${APP_URL:-}"   # must be the public HTTPS URL (real cert)
+export GENBLAZE_MAX_CONCURRENCY=1      # conservative — avoids Replicate burst limits
+
+exec "$SITE/runner-venv/bin/uvicorn" genblaze_runner.app:app --host 127.0.0.1 --port 8800
 ```
 
 `chmod +x` it, then add the daemon (command = the script, directory = the site
