@@ -196,7 +196,7 @@ class VoiceController extends Controller
 
         return response($this->voices->export($voice), 200)
             ->header('Content-Type', 'application/zip')
-            ->header('Content-Disposition', 'attachment; filename="'.$voice->slug.'.bespoken-voice.zip"');
+            ->header('Content-Disposition', 'attachment; filename="'.$voice->slug.'.mimic-voice.zip"');
     }
 
     public function import(Request $request): RedirectResponse

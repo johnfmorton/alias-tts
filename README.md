@@ -238,7 +238,7 @@ php artisan apikey:list
 # Voices
 php artisan voice:create "<Name>" [audio] [--slug=] [--raw] [--seed=]
 php artisan voice:list
-php artisan voice:export <slug> [--output=path]        # -> <slug>.bespoken-voice.zip
+php artisan voice:export <slug> [--output=path]        # -> <slug>.mimic-voice.zip
 php artisan voice:import <file.zip>
 
 # Maintenance

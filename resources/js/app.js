@@ -1828,7 +1828,7 @@ function initGenblaze() {
                     : data.final_url;
                 const hash8 = (data.final_manifest_hash || '').slice(0, 8);
                 const ext = (data.final_url || '').toLowerCase().endsWith('.wav') ? 'wav' : 'mp3';
-                dl.setAttribute('download', `bespoken-sealed-final${hash8 ? '-' + hash8 : ''}.${ext}`);
+                dl.setAttribute('download', `mimic-sealed-final${hash8 ? '-' + hash8 : ''}.${ext}`);
                 dl.className = 'mt-2 inline-flex items-center gap-1.5 rounded-md border border-emerald-500/30 bg-emerald-500/10 px-2.5 py-1 text-xs font-medium text-emerald-300 hover:bg-emerald-500/20';
             } else {
                 dl.className = 'hidden';

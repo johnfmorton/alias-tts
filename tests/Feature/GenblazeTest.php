@@ -204,7 +204,7 @@ class GenblazeTest extends TestCase
         $this->actingAs($this->admin())
             ->get(route('admin.studio.genblaze.asset', ['key' => 'genblaze/runs/x/assets/final.mp3', 'download' => 1]))
             ->assertOk()
-            ->assertHeader('Content-Disposition', 'attachment; filename="bespoken-sealed-final.mp3"');
+            ->assertHeader('Content-Disposition', 'attachment; filename="mimic-sealed-final.mp3"');
 
         // Any non-genblaze key is refused — the proxy can't serve arbitrary bucket objects.
         $this->actingAs($this->admin())
