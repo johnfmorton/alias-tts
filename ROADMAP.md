@@ -23,6 +23,31 @@ by likely usefulness. See [CHANGELOG.md](CHANGELOG.md) for what's already shippe
   fallback. **Open question:** whether supporting multiple providers is worth the
   added surface area, or whether to stay Replicate-only and keep it simple.
 
+## Accounts
+
+- **Self-service (email-based) password reset.** Today recovery is
+  human-mediated by design: a SuperAdmin issues a signed set-password link from
+  the Users page, the CLI `admin:create` covers a locked-out sole admin, and the
+  sign-in page points a stranded user at the instance's contact
+  (`TTS_SUPPORT_EMAIL`, pre-drafted email). A self-service flow would be the
+  app's **first mail dependency**, so it should land as one opt-in package:
+  - **Strictly opt-in.** The "Forgot password?" link, routes, and reset mailable
+    (Laravel's password broker) appear only when mail is actually configured —
+    an unconfigured install keeps today's behavior with zero new setup burden.
+  - **Doctor + Health coverage ships with it, not after.** A mail check in
+    `tts:doctor` (transport configured/reachable) and a one-click "send a test
+    email" probe on the Health page, so a broken SMTP setup is caught before
+    the first user needs a reset.
+  - **2FA interaction.** A reset must not bypass the second factor: a
+    2FA-enabled account still faces the challenge after a reset; invalidate the
+    user's other sessions on completion.
+  - **No user enumeration.** Identical response whether or not the address has
+    an account; throttle requests per email and per IP.
+  - **Reuse the transport for invites.** The Users page's invite / force-reset
+    actions gain an optional "email this link" alongside copy-to-clipboard.
+  - **Docs.** A MAIL-SETUP section in DEPLOYMENT.md; the `.env.example` MAIL_*
+    comment flips from "unused" to "optional — enables self-service reset".
+
 ## Operations
 
 - **`speech:stats` / `speech:list`** console commands for visibility into usage

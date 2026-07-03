@@ -19,6 +19,14 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   storage is selected with `TTS_STORAGE_DISK`.
 
 ### Added
+- **The sign-in page now tells a locked-out user how to recover.** Password
+  recovery is admin-mediated by design (a SuperAdmin issues a signed reset link
+  from the Users page; the app sends no email). The login card now says so —
+  and when the new `TTS_SUPPORT_EMAIL` is set, it links a pre-drafted "send me
+  a reset link" email to that address, carrying the instance URL and the
+  account email from the failed attempt. A full self-service (mail-based)
+  reset is specced in ROADMAP.md's new Accounts section; `.env.example` now
+  notes the `MAIL_*` block is unused today.
 - **`tts:doctor` now checks the Genblaze runner.** A dedicated "Genblaze
   runner" health check (CLI and the dashboard Health page): unset
   `TTS_GENBLAZE_RUNNER_URL` passes as "not configured", but a configured runner

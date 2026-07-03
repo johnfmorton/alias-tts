@@ -28,6 +28,11 @@ return [
         'password' => env('ADMIN_PASSWORD'),
     ],
 
+    // Shown on the sign-in page as the "forgot your password?" contact. The app
+    // sends no email, so recovery is human-mediated: this address receives the
+    // request and an admin issues a signed reset link from the Users page.
+    'support_email' => env('TTS_SUPPORT_EMAIL'),
+
     /*
     |--------------------------------------------------------------------------
     | Defaults

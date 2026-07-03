@@ -70,6 +70,28 @@
                     @endforeach
                 </div>
             @endif
+
+            @php
+                // Password recovery is human-mediated (an admin issues a signed
+                // reset link from the Users page) — point the locked-out user at
+                // a person, with the email pre-drafted when a contact is set.
+                $supportEmail = (string) config('tts.support_email');
+                $mailto = $supportEmail === '' ? null : 'mailto:'.$supportEmail
+                    .'?subject='.rawurlencode('Mimic TTS password reset request')
+                    .'&body='.rawurlencode(
+                        "Hi,\n\nI've forgotten my password for the Mimic TTS panel at ".config('app.url')
+                        .". Could you send me a password-reset link?\n\nMy account email is: ".(old('email') ?: '')."\n\nThanks!"
+                    );
+            @endphp
+            <p class="mt-5 border-t border-zinc-800 pt-4 text-center text-xs text-zinc-500">
+                Forgot your password?
+                @if($mailto)
+                    <a href="{{ $mailto }}" class="text-cyan-400 hover:text-cyan-300">Email the administrator</a>
+                    and they'll send you a reset link.
+                @else
+                    Ask an administrator to send you a reset link from the Users page.
+                @endif
+            </p>
         </div>
     </div>
 </body>
