@@ -42,6 +42,9 @@
              (TTS_ASR_ENABLED must stay UNSET — any value would lock it and break the
              ASR auto-enable tests — so it is simply absent from .env, not pinned here.) -->
         <env name="TTS_ASR_URL" value="http://127.0.0.1:8765"/>
+        <!-- NOTE: this can't blank DDEV's real container env var (real env beats
+             <env> — Laravel reads $_SERVER first), so tests/TestCase.php also
+             pins config('tts.genblaze.runner_url') to '' per test. -->
         <env name="TTS_GENBLAZE_RUNNER_URL" value=""/>
         <!-- Local dev .env may pin the pronunciation pre-processor (provider +
              enabled). Null them here (env() reads "null" as null) so the settings

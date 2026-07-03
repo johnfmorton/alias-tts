@@ -10,6 +10,7 @@ use App\Services\Health\HealthReport;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
 use Tests\TestCase;
@@ -38,7 +39,7 @@ class HealthReportTest extends TestCase
         $keys = array_map(fn (HealthCheckResult $r) => $r->key, $results);
         $this->assertEqualsCanonicalizing([
             'php_version', 'php_extensions', 'database', 'migrations', 'cache',
-            'ffmpeg', 'storage', 'disk', 'provider', 'asr', 'pronunciation', 'queue', 'failed_jobs',
+            'ffmpeg', 'storage', 'disk', 'provider', 'asr', 'genblaze', 'pronunciation', 'queue', 'failed_jobs',
             'scheduler', 'cleanup', 'voices', 'api_keys', 'app_key', 'debug', 'app_url',
         ], $keys);
     }
@@ -143,6 +144,128 @@ class HealthReportTest extends TestCase
         ]);
 
         $this->assertSame(HealthStatus::Pass, $this->resultFor('queue_timing')->status);
+    }
+
+    public function test_genblaze_passes_as_not_configured_without_a_runner_url(): void
+    {
+        $genblaze = $this->resultFor('genblaze');
+
+        $this->assertSame(HealthStatus::Pass, $genblaze->status);
+        $this->assertStringContainsString('TTS_GENBLAZE_RUNNER_URL', $genblaze->detail);
+    }
+
+    public function test_genblaze_fails_when_the_configured_runner_is_unreachable(): void
+    {
+        config(['tts.genblaze.runner_url' => 'http://runner.test']);
+        Http::fake(['runner.test/health' => Http::response([], 500)]);
+
+        $genblaze = $this->resultFor('genblaze');
+
+        $this->assertSame(HealthStatus::Fail, $genblaze->status);
+        $this->assertStringContainsString("isn't responding", $genblaze->detail);
+    }
+
+    public function test_genblaze_fails_when_the_internal_secret_is_empty(): void
+    {
+        config(['tts.genblaze.runner_url' => 'http://runner.test', 'tts.internal.secret' => '']);
+        Http::fake(['runner.test/health' => Http::response($this->runnerHealth())]);
+
+        $genblaze = $this->resultFor('genblaze');
+
+        $this->assertSame(HealthStatus::Fail, $genblaze->status);
+        $this->assertStringContainsString('TTS_INTERNAL_SECRET', $genblaze->detail);
+    }
+
+    public function test_genblaze_fails_on_a_storage_root_mismatch(): void
+    {
+        config([
+            'tts.genblaze.runner_url' => 'http://runner.test',
+            'tts.internal.secret' => 's3cret',
+            'filesystems.disks.s3.root' => 'mimic',
+        ]);
+        Http::fake(['runner.test/health' => Http::response($this->runnerHealth(['storage_root' => null]))]);
+
+        $genblaze = $this->resultFor('genblaze');
+
+        $this->assertSame(HealthStatus::Fail, $genblaze->status);
+        $this->assertStringContainsString('storage root mismatch', $genblaze->detail);
+        $this->assertStringContainsString('"mimic/"', $genblaze->detail);
+    }
+
+    public function test_genblaze_fails_when_the_app_has_a_root_but_the_runner_predates_it(): void
+    {
+        config([
+            'tts.genblaze.runner_url' => 'http://runner.test',
+            'tts.internal.secret' => 's3cret',
+            'filesystems.disks.s3.root' => 'mimic',
+        ]);
+        // An old runner's /health has no storage_root key at all.
+        $body = $this->runnerHealth();
+        unset($body['storage_root']);
+        Http::fake(['runner.test/health' => Http::response($body)]);
+
+        $genblaze = $this->resultFor('genblaze');
+
+        $this->assertSame(HealthStatus::Fail, $genblaze->status);
+        $this->assertStringContainsString('predates storage-root support', $genblaze->detail);
+    }
+
+    public function test_genblaze_warns_when_callbacks_target_a_different_app_url(): void
+    {
+        config([
+            'tts.genblaze.runner_url' => 'http://runner.test',
+            'tts.internal.secret' => 's3cret',
+            'app.url' => 'https://tts.example.com',
+        ]);
+        Http::fake(['runner.test/health' => Http::response($this->runnerHealth(['mimic' => 'https://other.example.com']))]);
+
+        $genblaze = $this->resultFor('genblaze');
+
+        $this->assertSame(HealthStatus::Warn, $genblaze->status);
+        $this->assertStringContainsString('MIMIC_BASE_URL', $genblaze->detail);
+    }
+
+    public function test_genblaze_warns_without_a_b2_sink(): void
+    {
+        config([
+            'tts.genblaze.runner_url' => 'http://runner.test',
+            'tts.internal.secret' => 's3cret',
+            'app.url' => 'https://tts.example.com',
+        ]);
+        Http::fake(['runner.test/health' => Http::response($this->runnerHealth(['b2' => false]))]);
+
+        $genblaze = $this->resultFor('genblaze');
+
+        $this->assertSame(HealthStatus::Warn, $genblaze->status);
+        $this->assertStringContainsString('B2_BUCKET', $genblaze->detail);
+    }
+
+    public function test_genblaze_passes_when_everything_agrees(): void
+    {
+        config([
+            'tts.genblaze.runner_url' => 'http://runner.test',
+            'tts.internal.secret' => 's3cret',
+            'app.url' => 'https://tts.example.com',
+            'filesystems.disks.s3.root' => 'mimic',
+        ]);
+        Http::fake(['runner.test/health' => Http::response($this->runnerHealth(['storage_root' => 'mimic']))]);
+
+        $genblaze = $this->resultFor('genblaze');
+
+        $this->assertSame(HealthStatus::Pass, $genblaze->status);
+        $this->assertStringContainsString('storage root "mimic/"', $genblaze->detail);
+    }
+
+    /** A healthy runner /health payload; override fields per scenario. */
+    private function runnerHealth(array $overrides = []): array
+    {
+        return array_merge([
+            'status' => 'ok',
+            'mimic' => 'https://tts.example.com',
+            'b2' => true,
+            'storage_root' => null,
+            'pronounce' => [],
+        ], $overrides);
     }
 
     private function resultFor(string $key): HealthCheckResult

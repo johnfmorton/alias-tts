@@ -206,8 +206,12 @@ through the public HTTPS URL, which is fine.
 daemon after any deploy that touches its Python code (Forge's daemon panel,
 or a restart line in the deploy script).
 
-**4. Verify:** `curl http://127.0.0.1:8800/health` on the server, then run the
-smoke (`source runner-venv/bin/activate`, export the same env, and
+**4. Verify:** run `php artisan tts:doctor` — its **Genblaze runner** check
+confirms the runner responds, the internal secret is set, the storage roots
+agree, the callback URL matches the app, and the B2 sink is on (same checks on
+the dashboard's Health page). For a deeper probe, `curl
+http://127.0.0.1:8800/health` on the server, then run the smoke
+(`source runner-venv/bin/activate`, export the same env, and
 `python -m genblaze_runner.smoke`) and confirm new objects under
 `genblaze/runs/...` in the B2 console. In Studio, **Generate via Genblaze**
 appears once `TTS_GENBLAZE_RUNNER_URL` is set.

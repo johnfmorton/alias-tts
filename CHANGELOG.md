@@ -4,6 +4,19 @@ All notable changes to this project are documented in this file. The format is
 based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this
 project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+- **`tts:doctor` now checks the Genblaze runner.** A dedicated "Genblaze
+  runner" health check (CLI and the dashboard Health page): unset
+  `TTS_GENBLAZE_RUNNER_URL` passes as "not configured", but a configured runner
+  that is down, missing `TTS_INTERNAL_SECRET`, or disagreeing with the app's
+  `TTS_STORAGE_ROOT` fails loudly with the fix in the message — previously a
+  dead runner only surfaced as a broken Studio page after doctor reported
+  green. Softer misconfigurations (callback URL not matching the app, no B2
+  sink) warn. The runner's `/health` now reports its `storage_root` so the two
+  sides can be compared.
+
 ## [0.25.0] - 2026-07-03
 
 ### Added

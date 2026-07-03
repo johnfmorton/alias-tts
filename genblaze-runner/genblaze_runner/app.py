@@ -43,6 +43,9 @@ def health() -> dict:
         "status": "ok",
         "mimic": _config.mimic_base_url,
         "b2": bool(_config.b2_bucket),
+        # Reported so the app's tts:doctor can flag a shared-bucket subfolder
+        # disagreement (uploads and the provenance proxy must use the same root).
+        "storage_root": _config.storage_root,
         "pronounce": pronounce.available_providers(),
     }
 

@@ -73,6 +73,7 @@ class HealthReport
         // Inference + async
         $this->checkProvider();
         $this->checkAsr();
+        $this->checkGenblaze();
         $this->checkPronunciation();
         $this->checkQueue();
         $this->checkQueueTiming();
@@ -270,6 +271,88 @@ class HealthReport
             $health['latency_ms'] ?? 0,
         );
         $this->add('asr', HealthStatus::Pass, 'Transcript QA', $detail);
+    }
+
+    /**
+     * The optional Genblaze runner (drives the Studio "Generate via Genblaze"
+     * page; the pronunciation pre-processor rides the same daemon). Not
+     * configured is a clean pass — the page hides. But configured-and-broken
+     * FAILS loudly: without this check a dead runner only surfaces as a broken
+     * Studio page after everything else reports green.
+     */
+    private function checkGenblaze(): void
+    {
+        $client = app(GenblazeRunnerClient::class);
+
+        if (! $client->configured()) {
+            $this->add('genblaze', HealthStatus::Pass, 'Genblaze runner', 'not configured — set TTS_GENBLAZE_RUNNER_URL to enable the Studio "Generate via Genblaze" page (see docs/GENBLAZE-SETUP.md).');
+
+            return;
+        }
+
+        $url = (string) config('tts.genblaze.runner_url');
+        $health = $client->health();
+
+        if (! ($health['reachable'] ?? false)) {
+            $this->add('genblaze', HealthStatus::Fail, 'Genblaze runner', "the runner at {$url} isn't responding (".($health['error'] ?? 'unknown').') — start the daemon (docs/GENBLAZE-SETUP.md), or unset TTS_GENBLAZE_RUNNER_URL to hide the Studio page.');
+
+            return;
+        }
+
+        $body = (array) ($health['body'] ?? []);
+
+        // Callbacks: the runner drives generation through /v1/internal/*, which
+        // is mounted only when the shared secret is set — without it every run
+        // fails mid-pipeline even though the runner itself looks healthy.
+        if ((string) config('tts.internal.secret') === '') {
+            $this->add('genblaze', HealthStatus::Fail, 'Genblaze runner', 'the runner is up, but TTS_INTERNAL_SECRET is empty so its /v1/internal/* callbacks are disabled (503) — set the secret in the app\'s .env and MIMIC_INTERNAL_SECRET in the runner\'s environment.');
+
+            return;
+        }
+
+        // Shared-bucket subfolder agreement: the runner uploads provenance with
+        // its own client, so its root must match the app's or every playback
+        // proxied through the s3 disk 404s.
+        $appRoot = trim((string) config('filesystems.disks.s3.root', ''), '/');
+        $runnerRoot = array_key_exists('storage_root', $body) ? trim((string) ($body['storage_root'] ?? ''), '/') : null;
+
+        if ($runnerRoot === null && $appRoot !== '') {
+            $this->add('genblaze', HealthStatus::Fail, 'Genblaze runner', "the app scopes storage under \"{$appRoot}/\" (TTS_STORAGE_ROOT), but the runner predates storage-root support — redeploy and restart the runner daemon.");
+
+            return;
+        }
+
+        if ($runnerRoot !== null && $runnerRoot !== $appRoot) {
+            $this->add('genblaze', HealthStatus::Fail, 'Genblaze runner', sprintf(
+                'storage root mismatch — the app reads under %s but the runner uploads under %s, so provenance playback will 404. Make TTS_STORAGE_ROOT agree on both sides (the run-genblaze.sh wrapper sources it from the site\'s .env).',
+                $appRoot === '' ? 'the bucket top level' : "\"{$appRoot}/\"",
+                $runnerRoot === '' ? 'the bucket top level' : "\"{$runnerRoot}/\"",
+            ));
+
+            return;
+        }
+
+        // Softer misconfigurations: the runner responds, but something is off.
+        $mimic = rtrim((string) ($body['mimic'] ?? ''), '/');
+        $appUrl = rtrim((string) config('app.url'), '/');
+        if ($mimic !== '' && $appUrl !== '' && $mimic !== $appUrl) {
+            $this->add('genblaze', HealthStatus::Warn, 'Genblaze runner', "up at {$url}, but its callbacks target {$mimic} while this app is {$appUrl} — fix MIMIC_BASE_URL in the runner's environment if runs stall.");
+
+            return;
+        }
+
+        if (! (bool) ($body['b2'] ?? false)) {
+            $this->add('genblaze', HealthStatus::Warn, 'Genblaze runner', "up at {$url}, but no B2 bucket is configured (B2_BUCKET) — runs work, provenance stays on the runner's local disk instead of the bucket.");
+
+            return;
+        }
+
+        $this->add('genblaze', HealthStatus::Pass, 'Genblaze runner', sprintf(
+            'up at %s — callbacks to %s, B2 sink on%s.',
+            $url,
+            $mimic,
+            $appRoot === '' ? '' : ", storage root \"{$appRoot}/\"",
+        ));
     }
 
     /**

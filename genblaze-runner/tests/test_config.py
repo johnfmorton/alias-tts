@@ -39,3 +39,15 @@ def test_storage_root_reads_the_apps_env_name_directly(monkeypatch):
 
     monkeypatch.setenv("MIMIC_STORAGE_ROOT", "other")
     assert RunnerConfig.from_env().storage_root == "other"
+
+
+def test_health_reports_the_storage_root(monkeypatch):
+    # The app's tts:doctor compares this against its own TTS_STORAGE_ROOT to
+    # flag a shared-bucket disagreement, so /health must always carry the key.
+    from genblaze_runner import app as runner_app
+
+    monkeypatch.setattr(runner_app, "_config", RunnerConfig(storage_root="mimic"))
+    assert runner_app.health()["storage_root"] == "mimic"
+
+    monkeypatch.setattr(runner_app, "_config", RunnerConfig())
+    assert runner_app.health()["storage_root"] is None
