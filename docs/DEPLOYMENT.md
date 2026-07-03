@@ -154,7 +154,13 @@ it to fire, the OS must run Laravel's scheduler every minute:
 
 Confirm with `php artisan schedule:list` (you should see `speech:cleanup` and a
 per-minute `tts:scheduler-heartbeat`); run cleanup manually any time with
-`php artisan speech:cleanup` (add `--dry-run` to preview). The heartbeat stamps the
+`php artisan speech:cleanup` (add `--dry-run` to preview). Add `--orphans` to
+also remove files under the speech storage path that no database row references
+— leftovers from crashed jobs. The sweep never leaves that path (voices,
+avatars, Genblaze provenance, and any other app sharing the bucket are safe) and
+spares files younger than `--orphan-age` hours (default 24) so an in-flight
+generation is never caught. It is intentionally not scheduled by default; run it
+by hand or add your own scheduled entry once you trust it on your data. The heartbeat stamps the
 cache every minute so `tts:doctor` can tell the cron is *actually firing* — not
 just that the task is registered.
 
@@ -231,6 +237,18 @@ On AWS that's an IAM policy with `s3:GetObject`, `s3:PutObject`, `s3:DeleteObjec
 `s3:ListBucket`; on **Backblaze B2** it's an application key scoped to the bucket
 with Read + Write + Delete + List capabilities. (B2's S3 API rejects per-object
 ACLs — the app handles that automatically and never sends one.)
+
+**Sharing one bucket between apps.** Set `TTS_STORAGE_ROOT=myapp` to scope
+everything this install stores (`speech/`, `voices/`, `avatars/`, `genblaze/`)
+under a subfolder, so other apps can safely use the same bucket. The prefix is
+applied at the disk layer — database rows keep their relative paths — so you can
+adopt it on an existing install by moving the objects in the bucket (e.g.
+`rclone move b2:bucket/speech b2:bucket/myapp/speech`, and the same for
+`voices/`, `avatars/`, `genblaze/`) and setting the variable in the same
+maintenance window. Two things it does not cover: the **Genblaze runner**
+uploads with its own B2 client, so give the runner the matching prefix in its
+environment; and an S3 **lifecycle rule** you may have on `speech/` should move
+to `myapp/speech/`.
 
 **Cleanup works the same on S3.** All storage goes through Laravel's disk
 abstraction, so `speech:cleanup` (and the daily schedule) delete expired audio

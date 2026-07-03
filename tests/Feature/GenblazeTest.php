@@ -116,6 +116,34 @@ class GenblazeTest extends TestCase
             && $req['text'] === 'Hello there.' && $req['voice'] === 'v');
     }
 
+    public function test_play_urls_strip_a_shared_bucket_storage_root(): void
+    {
+        // Under TTS_STORAGE_ROOT the runner's B2 URLs carry the instance prefix
+        // (bucket/mimic/genblaze/...), but the proxied key must stay disk-relative
+        // (genblaze/...) — the s3 disk re-applies the root on read.
+        config(['filesystems.disks.s3.bucket' => 'johnfmorton', 'filesystems.disks.s3.root' => 'mimic']);
+        Voice::create(['slug' => 'v', 'name' => 'V']);
+        Http::fake([
+            'runner.test/pronounce' => Http::response(['available' => true, 'substitutions' => []]),
+            'runner.test/run' => Http::response([
+                'final_url' => 'https://s3.us-west-001.backblazeb2.com/johnfmorton/mimic/genblaze/runs/x/assets/final.mp3',
+                'final_manifest_hash' => 'abc123',
+                'final_manifest_verified' => true,
+                'reroll_count' => 0,
+                'chunks' => [],
+            ]),
+        ]);
+
+        $start = $this->actingAs($this->admin())
+            ->postJson(route('admin.studio.genblaze.run'), ['text' => 'Hello there.', 'voice' => 'v'])
+            ->assertStatus(202);
+
+        $this->actingAs($this->admin())
+            ->getJson($start->json('status_url'))
+            ->assertOk()
+            ->assertJsonPath('result.final_play_url', route('admin.studio.genblaze.asset', ['key' => 'genblaze/runs/x/assets/final.mp3']));
+    }
+
     public function test_run_applies_pronunciation_and_reports_it_in_provenance(): void
     {
         // Global toggle OFF — this page forces the pronunciation pass on regardless.

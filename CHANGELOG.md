@@ -7,6 +7,21 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 ## [Unreleased]
 
 ### Added
+- **Shared-bucket storage root (`TTS_STORAGE_ROOT`).** Optionally scope
+  everything an install stores (`speech/`, `voices/`, `avatars/`, `genblaze/`)
+  to a subfolder of the storage disk, so several apps can safely share one S3/B2
+  bucket. The prefix is applied at the disk layer — database rows keep their
+  relative paths — so adopting it on an existing install only means moving the
+  objects in the bucket and setting the variable. The Genblaze provenance proxy
+  understands prefixed runner URLs; the runner itself needs the matching prefix
+  in its own environment.
+- **Orphan-file sweep for `speech:cleanup` (`--orphans`).** Removes files under
+  the speech storage path that no database row references — leftovers from
+  crashed jobs or rows deleted outside the app. The sweep never leaves that
+  path (voices, avatars, Genblaze provenance, and other apps on a shared disk
+  are untouched) and spares files younger than `--orphan-age` hours (default
+  24) so an in-flight generation is never caught. Preview with `--dry-run`;
+  it is not scheduled by default.
 - **Per-user "Final audio format" setting (MP3 or uncompressed WAV).** A new
   "Audio output" section on the Settings page lets each user choose the format
   their projects build to: the default MP3 (44.1 kHz, 128 kbps) or uncompressed

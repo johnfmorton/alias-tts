@@ -27,9 +27,10 @@ by likely usefulness. See [CHANGELOG.md](CHANGELOG.md) for what's already shippe
 
 - **`speech:stats` / `speech:list`** console commands for visibility into usage
   and stored audio.
-- **Orphan-file sweep** for `speech:cleanup` — optionally remove files on the
-  storage disk that no longer have a matching database row (today cleanup is keyed
-  off expired rows).
+- ~~**Orphan-file sweep** for `speech:cleanup`~~ — done: `speech:cleanup
+  --orphans` removes unreferenced files under the speech storage path, with an
+  age guard for in-flight generations (and `TTS_STORAGE_ROOT` scopes an install
+  to a bucket subfolder so shared buckets stay safe).
 - **Cost guardrails** — optional per-key monthly character caps on top of the
   existing hourly `rate_limit` and `tts.max_text_length`.
 

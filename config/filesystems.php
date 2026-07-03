@@ -1,5 +1,22 @@
 <?php
 
+/*
+|--------------------------------------------------------------------------
+| Instance storage root
+|--------------------------------------------------------------------------
+|
+| Optional subfolder that scopes EVERYTHING this install stores (speech/,
+| voices/, avatars/, genblaze/) so one bucket or disk can be shared by
+| several apps. Applied at the DISK layer: database rows keep their
+| disk-relative paths, so setting or changing the root never rewrites data —
+| but any EXISTING objects must be moved to the new location in the bucket
+| yourself (e.g. `rclone move b2:bucket/speech b2:bucket/myroot/speech`).
+| The Genblaze runner uploads with its own client and needs the matching
+| prefix set in ITS environment.
+|
+*/
+$storageRoot = trim((string) env('TTS_STORAGE_ROOT', ''), '/');
+
 return [
 
     /*
@@ -32,7 +49,7 @@ return [
 
         'local' => [
             'driver' => 'local',
-            'root' => storage_path('app/private'),
+            'root' => storage_path('app/private'.($storageRoot === '' ? '' : '/'.$storageRoot)),
             'serve' => true,
             'throw' => false,
             'report' => false,
@@ -49,6 +66,7 @@ return [
 
         's3' => [
             'driver' => 's3',
+            'root' => $storageRoot,
             'key' => env('AWS_ACCESS_KEY_ID'),
             'secret' => env('AWS_SECRET_ACCESS_KEY'),
             'region' => env('AWS_DEFAULT_REGION'),

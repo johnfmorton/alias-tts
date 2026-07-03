@@ -175,6 +175,14 @@ class GenblazeController extends Controller
 
         $key = substr($path, strlen($bucket) + 1);
 
+        // Under a shared-bucket TTS_STORAGE_ROOT the runner's URLs carry the
+        // instance prefix, but disk keys must stay relative to it (the disk
+        // re-applies the root on every read).
+        $root = trim((string) config('filesystems.disks.s3.root', ''), '/');
+        if ($root !== '' && str_starts_with($key, $root.'/')) {
+            $key = substr($key, strlen($root) + 1);
+        }
+
         return str_starts_with($key, 'genblaze/') ? $key : null;
     }
 }

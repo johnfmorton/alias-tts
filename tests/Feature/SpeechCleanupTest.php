@@ -5,6 +5,9 @@ namespace Tests\Feature;
 use App\Enums\SpeechStatus;
 use App\Models\ApiKey;
 use App\Models\Speech;
+use App\Models\TtsChunk;
+use App\Models\TtsChunkTake;
+use App\Models\TtsProject;
 use App\Models\Voice;
 use Carbon\Carbon;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -81,5 +84,125 @@ class SpeechCleanupTest extends TestCase
             ->assertExitCode(0);
 
         $this->assertNull(Speech::find($soon->id));
+    }
+
+    /** Write a file under the speech path and age its mtime past the orphan guard. */
+    private function makeOldFile(string $path, int $ageHours = 48): string
+    {
+        Storage::disk('local')->put($path, 'ORPHAN-BYTES');
+        touch(Storage::disk('local')->path($path), time() - $ageHours * 3600);
+
+        return $path;
+    }
+
+    /** A project with a chunk, a take, a final, and a sealed file — all on disk. */
+    private function makeProjectWithAudio(): TtsProject
+    {
+        $voice = Voice::create(['slug' => 'v-'.Str::random(6), 'name' => 'V']);
+
+        $project = TtsProject::create([
+            'title' => 'P',
+            'voice_id' => $voice->id,
+            'settings' => [],
+            'model_id' => 'chatterbox',
+            'output_format' => 'mp3_44100_128',
+            'source_text' => 'hi',
+            'normalized_text' => 'hi',
+            'status' => 'draft',
+            'final_audio_path' => 'speech/projects/p1/final.mp3',
+            'sealed_audio_path' => 'speech/projects/p1/sealed/abc.mp3',
+        ]);
+
+        $chunk = TtsChunk::create([
+            'tts_project_id' => $project->id,
+            'position' => 0,
+            'text' => 'hi',
+            'break_after' => 'sentence',
+            'status' => 'completed',
+            'audio_path' => 'speech/projects/p1/chunks/c1/takes/t1.wav',
+            'characters' => 2,
+        ]);
+
+        TtsChunkTake::create([
+            'tts_chunk_id' => $chunk->id,
+            'audio_path' => 'speech/projects/p1/chunks/c1/takes/t1.wav',
+            'source' => 'generate',
+        ]);
+
+        foreach (['speech/projects/p1/final.mp3', 'speech/projects/p1/sealed/abc.mp3', 'speech/projects/p1/chunks/c1/takes/t1.wav'] as $path) {
+            $this->makeOldFile($path);
+        }
+
+        return $project;
+    }
+
+    public function test_orphan_sweep_deletes_unreferenced_files_and_keeps_referenced_ones(): void
+    {
+        $tracked = $this->makeSpeech(Carbon::now()->addDay());
+        touch(Storage::disk('local')->path($tracked->audio_path), time() - 48 * 3600); // old but referenced
+        $this->makeProjectWithAudio();
+
+        $orphan = $this->makeOldFile('speech/deadbeef.mp3');
+        $orphanTake = $this->makeOldFile('speech/projects/gone/chunks/x/takes/y.wav');
+
+        $this->artisan('speech:cleanup', ['--orphans' => true])->assertExitCode(0);
+
+        Storage::disk('local')->assertMissing($orphan);
+        Storage::disk('local')->assertMissing($orphanTake);
+
+        Storage::disk('local')->assertExists($tracked->audio_path);
+        Storage::disk('local')->assertExists('speech/projects/p1/final.mp3');
+        Storage::disk('local')->assertExists('speech/projects/p1/sealed/abc.mp3');
+        Storage::disk('local')->assertExists('speech/projects/p1/chunks/c1/takes/t1.wav');
+    }
+
+    public function test_orphan_sweep_never_leaves_the_speech_path(): void
+    {
+        // Files owned by other features (or other apps on a shared disk) live
+        // outside tts.storage_path and must never be candidates.
+        $voiceClip = $this->makeOldFile('voices/someone.wav');
+        $avatar = $this->makeOldFile('avatars/someone.png');
+
+        $this->artisan('speech:cleanup', ['--orphans' => true])->assertExitCode(0);
+
+        Storage::disk('local')->assertExists($voiceClip);
+        Storage::disk('local')->assertExists($avatar);
+    }
+
+    public function test_orphan_sweep_spares_files_younger_than_the_age_guard(): void
+    {
+        // Just written, no row yet — exactly what an in-flight generation looks like.
+        Storage::disk('local')->put('speech/in-flight.mp3', 'FRESH-BYTES');
+
+        $this->artisan('speech:cleanup', ['--orphans' => true])->assertExitCode(0);
+
+        Storage::disk('local')->assertExists('speech/in-flight.mp3');
+    }
+
+    public function test_orphan_sweep_age_guard_is_tunable(): void
+    {
+        Storage::disk('local')->put('speech/in-flight.mp3', 'FRESH-BYTES');
+
+        $this->artisan('speech:cleanup', ['--orphans' => true, '--orphan-age' => 0])->assertExitCode(0);
+
+        Storage::disk('local')->assertMissing('speech/in-flight.mp3');
+    }
+
+    public function test_orphan_sweep_respects_dry_run(): void
+    {
+        $orphan = $this->makeOldFile('speech/deadbeef.mp3');
+
+        $this->artisan('speech:cleanup', ['--orphans' => true, '--dry-run' => true])->assertExitCode(0);
+
+        Storage::disk('local')->assertExists($orphan);
+    }
+
+    public function test_orphans_are_untouched_without_the_flag(): void
+    {
+        $orphan = $this->makeOldFile('speech/deadbeef.mp3');
+
+        $this->artisan('speech:cleanup')->assertExitCode(0);
+
+        Storage::disk('local')->assertExists($orphan);
     }
 }
