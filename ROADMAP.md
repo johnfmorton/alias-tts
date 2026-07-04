@@ -1,15 +1,17 @@
 # Roadmap
 
-The service is fully functional for its purpose — a self-hosted,
-ElevenLabs-compatible voice backend for the Bespoken Craft plugin. The items below
-are **not yet built**; none are required for current use. They're roughly ordered
-by likely usefulness. See [CHANGELOG.md](CHANGELOG.md) for what's already shipped.
+The service is fully functional for its purpose — a self-hosted text-to-speech
+server that speaks both the ElevenLabs and OpenAI TTS API dialects, so existing
+clients of either work by changing only the base URL and key (the Bespoken Craft
+plugin is one such client). The items below are **not yet built**; none are
+required for current use. They're roughly ordered by likely usefulness. See
+[CHANGELOG.md](CHANGELOG.md) for what's already shipped.
 
 ## API
 
 - **`/v1/voices` management API** — `GET /v1/voices`, `GET /v1/voices/{id}`,
-  `POST /v1/voices/add` (multipart), `DELETE /v1/voices/{id}`. Not needed by the
-  Bespoken plugin (voices are managed via the dashboard / console), but it would
+  `POST /v1/voices/add` (multipart), `DELETE /v1/voices/{id}`. Not needed by
+  current clients (voices are managed via the dashboard / console), but it would
   round out ElevenLabs compatibility.
 - **Real streaming** — `POST /v1/text-to-speech/{voice_id}/stream` is currently an
   alias that returns the full audio once it's ready, not a streamed response.
