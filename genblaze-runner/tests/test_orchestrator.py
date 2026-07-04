@@ -13,6 +13,7 @@ from __future__ import annotations
 
 from dataclasses import replace
 
+from genblaze_core.media import get_handler
 from genblaze_core.models.asset import Asset
 
 from genblaze_mimic._client import TtsResult
@@ -187,3 +188,98 @@ def test_synthesize_project_rerolls_then_succeeds(tmp_path):
     assert result.chunks[0].attempts == 2  # real from_result lineage path exercised
     assert result.reroll_count == 1
     assert result.manifest.verify() is True
+
+
+# --------------------------------------------------------------------------
+# Manifest embedding into the UPLOADED final (remote/B2 path)
+#
+# In prod a sink is configured, so by the time _embed_manifest runs the stitched
+# final already lives in object storage (asset.url is the durable https URL, not
+# file://). The remote path downloads that object through the sink's own backend,
+# embeds the provenance manifest (ID3v2 TXXX for MP3), and re-uploads the SAME
+# key so the B2 deliverable is self-describing. These tests stand a fake
+# in-memory backend in for S3StorageBackend, mirroring its real
+# key_from_url/get/put contract (verified against genblaze-s3 0.3.4), and prove
+# the manifest survives the round-trip — plus the two "degrade to sidecar-only"
+# safety paths, since the whole thing is best-effort and must never fail a run.
+# --------------------------------------------------------------------------
+
+
+class _FakeBackend:
+    """In-memory stand-in for S3StorageBackend: url->key, get(key), put(key)."""
+
+    def __init__(self, store, *, key_for):
+        self._store = store
+        self._key_for = key_for  # callable(url) -> key | None
+        self.puts: list[tuple] = []
+
+    def key_from_url(self, url):
+        return self._key_for(url)
+
+    def get(self, key):
+        return self._store[key]
+
+    def put(self, key, data, *, content_type=None, **_):
+        data = data if isinstance(data, bytes) else data.read()
+        self._store[key] = data
+        self.puts.append((key, content_type, len(data)))
+        return "etag"
+
+
+class _FakeSink:
+    """A sink exposing (or not) the ._backend the orchestrator reaches through."""
+
+    def __init__(self, backend=None):
+        if backend is not None:
+            self._backend = backend
+
+
+def _project_manifest(tmp_path):
+    """Run a real (sink=None) project so the test embeds a genuine Manifest."""
+    client = FakeClient(chunks=[{"position": 0, "text": "Hi.", "break_after": "sentence"}])
+    orch = Orchestrator(client=client, sink=None, output_dir=tmp_path, max_rerolls=1)
+    result = orch.synthesize_project(text="Hi.", voice="default", max_concurrency=1)
+    return orch, result.manifest
+
+
+_REMOTE_KEY = "genblaze/runs/tenant/date/rid/final.mp3"
+_REMOTE_URL = "https://s3.example/" + _REMOTE_KEY
+
+
+def test_embed_manifest_remote_round_trips(tmp_path):
+    orch, manifest = _project_manifest(tmp_path)
+    store = {_REMOTE_KEY: _FAKE_MP3}
+    backend = _FakeBackend(store, key_for=lambda url: _REMOTE_KEY if url == _REMOTE_URL else None)
+    orch.sink = _FakeSink(backend)
+
+    orch._embed_manifest(Asset(url=_REMOTE_URL, media_type="audio/mpeg"), manifest)
+
+    # Re-uploaded in place: same key, correct content-type, bigger (manifest added).
+    assert [p[0] for p in backend.puts] == [_REMOTE_KEY]
+    assert backend.puts[0][1] == "audio/mpeg"
+    assert len(store[_REMOTE_KEY]) > len(_FAKE_MP3)
+
+    # The provenance manifest survives download -> embed -> re-upload.
+    out = tmp_path / "reup.mp3"
+    out.write_bytes(store[_REMOTE_KEY])
+    assert get_handler("audio/mpeg").extract(out).verify() is True
+
+
+def test_embed_manifest_remote_foreign_url_stays_sidecar_only(tmp_path):
+    orch, manifest = _project_manifest(tmp_path)
+    store = {_REMOTE_KEY: _FAKE_MP3}
+    # key_from_url can't resolve a foreign/unswappable URL -> None -> no embed.
+    backend = _FakeBackend(store, key_for=lambda url: None)
+    orch.sink = _FakeSink(backend)
+
+    orch._embed_manifest(Asset(url="https://elsewhere/other.mp3", media_type="audio/mpeg"), manifest)
+
+    assert backend.puts == []
+    assert store[_REMOTE_KEY] == _FAKE_MP3  # untouched
+
+
+def test_embed_manifest_remote_without_backend_is_noop(tmp_path):
+    orch, manifest = _project_manifest(tmp_path)
+    orch.sink = _FakeSink(backend=None)  # sink has no ._backend at all
+    # Must not raise; simply degrades to the sidecar manifest.
+    orch._embed_manifest(Asset(url=_REMOTE_URL, media_type="audio/mpeg"), manifest)

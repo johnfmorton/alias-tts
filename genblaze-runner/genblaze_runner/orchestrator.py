@@ -337,18 +337,61 @@ class Orchestrator:
             return None
 
     def _embed_manifest(self, asset: Asset, manifest) -> None:
-        """Best-effort: embed the provenance manifest into a local final file.
+        """Best-effort: embed the provenance manifest into the final deliverable.
 
-        (Embedding into the already-uploaded B2 copy is a follow-up.)
+        The final then carries its own provenance and can be verified offline —
+        the handler stores the manifest in a metadata region (e.g. an ID3v2 TXXX
+        frame for MP3), leaving the audio stream intact. Two cases:
+
+        * **Local** (dev / tests, no sink): the final is still a ``file://``
+          asset — embed in place.
+        * **Uploaded** (prod, sink configured): the sink already transferred the
+          final to object storage, so download the just-uploaded bytes, embed,
+          and overwrite the SAME key. This makes the B2 deliverable
+          self-describing rather than merely accompanied by a sidecar manifest.
+
+        Embedding is a nicety layered on top of the sidecar manifest, so every
+        failure path degrades to "sidecar only" and never fails the run.
         """
-        parsed = urlparse(asset.url)
-        if parsed.scheme != "file":
-            return
         handler = get_handler(asset.media_type)
         if handler is None:
             return
-        path = Path(unquote(parsed.path))
+        parsed = urlparse(asset.url)
+        if parsed.scheme == "file":
+            path = Path(unquote(parsed.path))
+            try:
+                handler.embed(path, manifest, path)
+            except Exception:  # noqa: BLE001 — embedding is a nicety, never fatal
+                pass
+            return
+        self._embed_manifest_remote(asset, manifest, handler)
+
+    def _embed_manifest_remote(self, asset: Asset, manifest, handler) -> None:
+        """Embed the manifest into the copy already uploaded to the sink, in place.
+
+        Downloads the just-uploaded final through the sink's own backend (the
+        same authenticated client that wrote it — so a private bucket works),
+        embeds the manifest, and re-``put``s the SAME key. Best-effort: a missing
+        backend, an unresolvable key, or any transfer error leaves the sidecar
+        manifest as the sole provenance record.
+        """
+        backend = getattr(self.sink, "_backend", None)
+        if backend is None:
+            return
         try:
-            handler.embed(path, manifest, path)
-        except Exception:  # noqa: BLE001 — embedding is a nicety, never fatal
+            key = backend.key_from_url(asset.url)
+        except Exception:  # noqa: BLE001 — foreign/unswappable URL → sidecar only
+            key = None
+        if not key:
+            return
+        suffix = Path(unquote(urlparse(asset.url).path)).suffix or ".bin"
+        try:
+            data = backend.get(key)
+            with tempfile.TemporaryDirectory() as tmp:
+                local = Path(tmp) / f"final{suffix}"
+                local.write_bytes(data)
+                handler.embed(local, manifest, local)
+                embedded = local.read_bytes()
+            backend.put(key, embedded, content_type=asset.media_type)
+        except Exception:  # noqa: BLE001 — sidecar manifest remains the record
             pass

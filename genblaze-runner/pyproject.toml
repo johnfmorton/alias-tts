@@ -12,7 +12,10 @@ license = { text = "MIT" }
 # NOTE: genblaze-mimic is a sibling editable install, not on PyPI:
 #   pip install -e ../connectors/genblaze-mimic
 dependencies = [
-    "genblaze-core>=0.3,<0.4",
+    # [audio] pulls in mutagen, required to embed the provenance manifest into
+    # the final deliverable (ID3v2 TXXX for MP3). Without it the embed step is a
+    # silent no-op and the B2 final carries only a sidecar manifest.
+    "genblaze-core[audio]>=0.3,<0.4",
     "genblaze-s3>=0.3,<0.4",
     "httpx>=0.27",
     "fastapi>=0.110",
