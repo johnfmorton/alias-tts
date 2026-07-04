@@ -4,6 +4,33 @@ All notable changes to this project are documented in this file. The format is
 based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this
 project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.30.0] - 2026-07-04
+
+### Added
+- **Object-storage finals now carry an embedded provenance manifest.** When a
+  Genblaze run uploads its stitched final to object storage (e.g. Backblaze B2),
+  the runner downloads the just-uploaded file, embeds the provenance manifest
+  into it (an ID3v2 TXXX frame for MP3), and re-uploads it in place — so the
+  delivered file is self-describing rather than merely accompanied by a sidecar
+  `manifest.json`. It's best-effort: if embedding can't run, the sidecar
+  manifest remains and the run is unaffected. (Requires the runner's `[audio]`
+  extra, which pulls in mutagen.)
+
+### Changed
+- **The "is this the approved final?" verifier is now server-side.** Uploading a
+  file to `/verify` hashes it on the server and matches it against the sealed
+  approval, replacing the previous page that hashed the file in your browser. A
+  fingerprint link (`/verify?sha=…`) opens the authoritative record for a known
+  hash — showing the seal panel and the per-chunk provenance (including each
+  take's text), and re-confirming the stored snapshot is intact. The approved-
+  version `.zip` no longer ships a client-side verifier page; its `receipt.html`
+  is now a static provenance record that links out to `/verify`. Upload size is
+  capped by the new `TTS_VERIFY_MAX_UPLOAD_KB` (200 MB default).
+- **Mimic is now described as a dual-dialect TTS server** — one that speaks both
+  the ElevenLabs and OpenAI TTS API dialects, so existing clients of either work
+  by changing only the base URL and key — rather than around a single client, in
+  the package metadata and roadmap.
+
 ## [0.29.0] - 2026-07-04
 
 ### Added
