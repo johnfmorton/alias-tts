@@ -4,6 +4,18 @@ All notable changes to this project are documented in this file. The format is
 based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this
 project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+- **A project's final audio format (MP3/WAV) can now be changed after the
+  project is created.** A new **Format** picker sits next to the Voice picker in
+  the project header; switching it re-encodes the final on the next build.
+  Previously the format was fixed at creation from the per-user "Final audio
+  format" default, which now only seeds new projects. Because chunk audio is
+  stored format-independently, changing the format regenerates nothing — it just
+  marks the built final out of date so a single **Build final** re-encodes it in
+  the new format (and un-approves a sealed cut, as any edit does).
+
 ## [0.28.0] - 2026-07-03
 
 ### Changed

@@ -36,7 +36,7 @@ $keys = [
         ],
         'inherits' => 'tts.default_output_format',
         'label' => 'Final audio format',
-        'help' => 'Format of the final audio file your projects build. MP3 suits most uses; WAV is uncompressed (roughly ten times larger) for editing or archival. Applies to projects you create from now on — an existing project keeps the format it was created with. Direct /v1/text-to-speech calls (including the Bespoken plugin) are unaffected and stay MP3 unless the request asks otherwise.',
+        'help' => 'Default format for the final audio file your projects build. MP3 suits most uses; WAV is uncompressed (roughly ten times larger) for editing or archival. Applies to projects you create from now on; an existing project keeps its format until you change it on the project itself. Direct /v1/text-to-speech calls (including the Bespoken plugin) are unaffected and stay MP3 unless the request asks otherwise.',
     ],
     [
         'group' => 'asr',

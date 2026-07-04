@@ -1669,6 +1669,39 @@ function initStudioProject() {
         });
     }
 
+    // Format switch: PATCH the project's final-audio format (mp3/wav). Chunk audio
+    // is format-independent, so nothing regenerates — but the built final was
+    // encoded in the old format, so the server marks the project stale; reflect
+    // that and prompt a rebuild (revert the picker if the request fails).
+    const formatSelect = document.getElementById('project-format');
+    if (formatSelect) {
+        let lastFormat = formatSelect.value;
+        formatSelect.addEventListener('change', async () => {
+            const output_format = formatSelect.value;
+            if (output_format === lastFormat) return;
+            formatSelect.disabled = true;
+            try {
+                const res = await fetch(root.dataset.formatUrl, {
+                    method: 'PATCH',
+                    headers: { 'X-CSRF-TOKEN': csrfToken(), 'Accept': 'application/json', 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ output_format }),
+                });
+                if (!res.ok) throw new Error(await errorMessage(res));
+                const data = await res.json();
+                lastFormat = output_format;
+                setProjectStatus(data.project_status);
+                reflectActionState();
+                const label = formatSelect.options[formatSelect.selectedIndex].text;
+                setStatus(finalStatus, `✓ Format set to ${label}. Build the final to apply.`, 'ok');
+            } catch (err) {
+                formatSelect.value = lastFormat; // revert the picker on failure
+                setStatus(finalStatus, `✗ ${err.message}`, 'error');
+            } finally {
+                formatSelect.disabled = false;
+            }
+        });
+    }
+
     // Overflow ⋯ menu (Start over / Delete / receipt). Same toggle idiom as the nav.
     const overflowBtn = document.getElementById('project-overflow');
     const overflowMenu = document.getElementById('project-overflow-menu');

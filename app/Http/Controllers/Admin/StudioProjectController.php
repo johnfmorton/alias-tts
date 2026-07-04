@@ -22,6 +22,7 @@ use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Validator;
 use Illuminate\Support\Str;
+use Illuminate\Validation\Rule;
 use Illuminate\View\View;
 use RuntimeException;
 use Symfony\Component\HttpFoundation\Response;
@@ -217,6 +218,8 @@ class StudioProjectController extends Controller
             'project' => $project,
             'chunks' => $chunks,
             'voices' => Voice::orderedFor($request->user()->id)->get(),
+            // Offered final-audio formats for the header picker (token => "MP3"/"WAV").
+            'outputFormats' => $this->outputFormatLabels(),
             // Named presets for the per-chunk "apply preset" pick (fills the
             // chunk's knobs client-side; saving still goes through Save tuning).
             'presets' => TuningPreset::forUser($request->user()->id)->orderBy('name')->get(),
@@ -253,6 +256,52 @@ class StudioProjectController extends Controller
             'voice_name' => $voice->name,
             'project_status' => $project->refresh()->status->value,
         ]);
+    }
+
+    /**
+     * Change the project's final-audio format after creation (AJAX). The per-user
+     * "Final audio format" setting only stamps NEW projects; this lets a user
+     * switch an existing project's mp3/wav. Chunk audio is untouched — the built
+     * final just needs a rebuild, which {@see ProjectService::changeOutputFormat()}
+     * flags by marking the project Stale.
+     */
+    public function updateOutputFormat(Request $request, TtsProject $project): JsonResponse
+    {
+        $options = array_keys($this->outputFormatLabels());
+
+        $validator = Validator::make($request->all(), [
+            'output_format' => ['required', 'string', Rule::in($options)],
+        ]);
+        if ($validator->fails()) {
+            return response()->json(['message' => $validator->errors()->first()], 422);
+        }
+
+        $this->projects->changeOutputFormat($project, (string) $request->input('output_format'));
+        $project->refresh();
+
+        return response()->json([
+            'ok' => true,
+            'output_format' => $project->output_format,
+            'project_status' => $project->status->value,
+        ]);
+    }
+
+    /**
+     * Human-readable {token => short label} map of the offered final-audio formats,
+     * read from the managed-settings registry so the project picker stays in sync
+     * with the Settings page (same option set, same validation). The label is the
+     * codec segment (mp3_44100_128 → "MP3") — compact enough for the header select.
+     *
+     * @return array<string, string>
+     */
+    private function outputFormatLabels(): array
+    {
+        $entry = config('settings.managed')['tts.project_output_format'] ?? [];
+        $options = $entry['options'] ?? ['mp3_44100_128', 'wav_44100'];
+
+        return collect($options)
+            ->mapWithKeys(fn (string $token) => [$token => strtoupper((string) Str::before($token, '_'))])
+            ->all();
     }
 
     /**

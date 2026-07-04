@@ -279,6 +279,25 @@ class ProjectService
     }
 
     /**
+     * Change the project's final-audio format (e.g. mp3_44100_128 → wav_44100)
+     * after creation. Chunk audio is stored provider-native and format-independent,
+     * so nothing is regenerated — but the already-built final was encoded to the
+     * old format, so it's flagged out of date (Stale + seal cleared) and must be
+     * rebuilt to re-encode. A no-op when the format is unchanged.
+     */
+    public function changeOutputFormat(TtsProject $project, string $format): TtsProject
+    {
+        if ($project->output_format === $format) {
+            return $project;
+        }
+
+        $project->update(['output_format' => $format]);
+        $this->markFinalOutdated($project);
+
+        return $project->refresh();
+    }
+
+    /**
      * Set (or clear) a chunk's per-chunk voice override. A null voice restores
      * inheritance of the project voice. A generated chunk goes Stale — its audio
      * was made with the previous voice — and the final file is flagged out of

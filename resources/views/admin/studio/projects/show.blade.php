@@ -20,6 +20,7 @@
          data-rename-url="{{ route('admin.studio.projects.update', $project) }}"
          data-dismiss-url="{{ route('admin.studio.projects.dismiss-failure', $project) }}"
          data-voice-url="{{ route('admin.studio.projects.voice', $project) }}"
+         data-format-url="{{ route('admin.studio.projects.format', $project) }}"
          data-insert-url="{{ route('admin.studio.projects.chunks.store', $project) }}"
          data-seal-url="{{ route('admin.studio.projects.seal', $project) }}"
          data-unseal-url="{{ route('admin.studio.projects.unseal', $project) }}"
@@ -70,6 +71,15 @@
                                 class="rounded-[8px] border border-white/12 bg-inset px-2.5 py-1.5 text-sm text-zinc-200 focus:border-accent/50 focus:outline-none">
                             @foreach($voices as $v)
                                 <option value="{{ $v->slug }}" @selected($project->voice && $project->voice->id === $v->id)>{{ $v->name }}</option>
+                            @endforeach
+                        </select>
+                    </label>
+                    <label class="flex items-center gap-2 text-xs text-zinc-500" title="Final audio format. MP3 is compressed; WAV is uncompressed (~10× larger). Changing it rebuilds the final in the new format.">
+                        <span class="text-zinc-400">Format</span>
+                        <select id="project-format"
+                                class="rounded-[8px] border border-white/12 bg-inset px-2.5 py-1.5 text-sm text-zinc-200 focus:border-accent/50 focus:outline-none">
+                            @foreach($outputFormats as $token => $optLabel)
+                                <option value="{{ $token }}" @selected($project->output_format === $token)>{{ $optLabel }}</option>
                             @endforeach
                         </select>
                     </label>

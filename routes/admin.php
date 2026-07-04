@@ -105,6 +105,7 @@ Route::prefix('studio')->name('studio.')->group(function () {
             Route::patch('/{project}', [StudioProjectController::class, 'update'])->name('update');
             Route::post('/{project}/dismiss-failure', [StudioProjectController::class, 'dismissFailure'])->name('dismiss-failure');
             Route::patch('/{project}/voice', [StudioProjectController::class, 'updateVoice'])->name('voice');
+            Route::patch('/{project}/format', [StudioProjectController::class, 'updateOutputFormat'])->name('format');
             Route::delete('/{project}', [StudioProjectController::class, 'destroy'])->name('destroy');
             Route::get('/{project}/edit', [StudioProjectController::class, 'edit'])->name('edit');
             Route::post('/{project}/reset', [StudioProjectController::class, 'reset'])->name('reset');

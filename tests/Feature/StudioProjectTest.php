@@ -456,6 +456,72 @@ class StudioProjectTest extends TestCase
             ->assertJsonPath('message', 'Unknown voice.');
     }
 
+    public function test_show_page_renders_the_format_picker(): void
+    {
+        $project = $this->project();
+
+        $this->actingAs($this->admin())
+            ->get(route('admin.studio.projects.show', $project))
+            ->assertOk()
+            ->assertSee('id="project-format"', false)
+            ->assertSee('value="mp3_44100_128"', false)
+            ->assertSee('value="wav_44100"', false);
+    }
+
+    public function test_changing_project_format_updates_it_and_stales_the_built_final(): void
+    {
+        // Build a final (Ready, mp3) first, then switch the format. The chunk audio
+        // is untouched, but the built final no longer matches — so the project goes
+        // Stale to prompt a rebuild, and the column carries the new format.
+        $project = $this->project();
+        foreach ($project->chunks()->get() as $chunk) {
+            $this->actingAs($this->admin())->post(route('admin.studio.projects.chunks.generate', [$project, $chunk]));
+        }
+        $this->actingAs($this->admin())->postJson(route('admin.studio.projects.rebuild', $project))->assertOk();
+        $this->assertSame(ProjectStatus::Ready, $project->refresh()->status);
+        $this->assertSame('mp3_44100_128', $project->output_format);
+
+        $this->actingAs($this->admin())
+            ->patchJson(route('admin.studio.projects.format', $project), ['output_format' => 'wav_44100'])
+            ->assertOk()
+            ->assertJsonPath('ok', true)
+            ->assertJsonPath('output_format', 'wav_44100')
+            ->assertJsonPath('project_status', ProjectStatus::Stale->value);
+
+        $project->refresh();
+        $this->assertSame('wav_44100', $project->output_format);
+        $this->assertSame(ProjectStatus::Stale, $project->status);
+    }
+
+    public function test_changing_format_to_the_same_value_is_a_noop(): void
+    {
+        // No change → no restale: a Ready project stays Ready when the picker is
+        // "set" to the format it already has.
+        $project = $this->project();
+        foreach ($project->chunks()->get() as $chunk) {
+            $this->actingAs($this->admin())->post(route('admin.studio.projects.chunks.generate', [$project, $chunk]));
+        }
+        $this->actingAs($this->admin())->postJson(route('admin.studio.projects.rebuild', $project))->assertOk();
+
+        $this->actingAs($this->admin())
+            ->patchJson(route('admin.studio.projects.format', $project), ['output_format' => 'mp3_44100_128'])
+            ->assertOk()
+            ->assertJsonPath('project_status', ProjectStatus::Ready->value);
+
+        $this->assertSame(ProjectStatus::Ready, $project->refresh()->status);
+    }
+
+    public function test_changing_project_format_rejects_an_unknown_format(): void
+    {
+        $project = $this->project();
+
+        $this->actingAs($this->admin())
+            ->patchJson(route('admin.studio.projects.format', $project), ['output_format' => 'ogg_48000'])
+            ->assertStatus(422);
+
+        $this->assertSame('mp3_44100_128', $project->refresh()->output_format);
+    }
+
     public function test_chunk_audio_is_served_after_generation(): void
     {
         $project = $this->project();
