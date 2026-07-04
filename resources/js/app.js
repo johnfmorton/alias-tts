@@ -816,8 +816,9 @@ function initStudioProject() {
     const sealHashEl = document.getElementById('project-seal-hash');
     const sealCopyBtn = document.getElementById('project-seal-copy');
     let isSealed = sealBadge ? !sealBadge.classList.contains('hidden') : false;
-    // route('verify') is already an absolute URL; append the byte hash as a fragment.
-    const buildVerifyUrl = (hash) => hash ? verifyBase + '#expect=' + hash : '';
+    // route('verify') is already an absolute URL; the byte hash opens the record
+    // view server-side (?sha=…), where the holder uploads the file to confirm it.
+    const buildVerifyUrl = (hash) => hash ? verifyBase + '?sha=' + hash : '';
     let verifyUrl = isSealed ? buildVerifyUrl(sealBadge?.dataset.sha256) : '';
 
     // Toggle hidden + the element's display class together so neither lingers and

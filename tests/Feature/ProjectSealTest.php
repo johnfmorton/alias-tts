@@ -9,6 +9,7 @@ use App\Models\Voice;
 use App\Services\ProjectExportService;
 use App\Services\ProjectService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\Storage;
 use Tests\TestCase;
 use ZipArchive;
@@ -245,8 +246,8 @@ class ProjectSealTest extends TestCase
             $this->assertNotFalse($entry, "missing zip entry: {$name}");
             $this->assertNotSame('', $entry, "empty zip entry: {$name}");
         }
-        // The verifier lives inside receipt.html now — no separate page to
-        // mistake for the receipt.
+        // Verification is server-side now (the hosted /verify page) — the zip
+        // ships no client-side verifier page to mistake for the receipt.
         $this->assertFalse($zip->getFromName('verify.html'));
 
         // The audio is named for the project + fingerprint (matching the .zip and
@@ -256,7 +257,7 @@ class ProjectSealTest extends TestCase
         $zip->close();
     }
 
-    public function test_receipt_page_has_the_verifier_with_the_sealed_hash_baked_in(): void
+    public function test_receipt_shows_the_sealed_hash_and_links_to_the_hosted_verifier(): void
     {
         $admin = $this->admin();
         $project = $this->readyProject();
@@ -267,11 +268,13 @@ class ProjectSealTest extends TestCase
         $receipt = $zip->getFromName('receipt.html');
         $zip->close();
 
-        // The receipt itself is the verifier: a drop zone plus the sealed hash
-        // baked into its script, so opening receipt.html offline just works.
         $sha = $project->refresh()->final_sha256;
-        $this->assertStringContainsString("var expect = '{$sha}'", $receipt);
-        $this->assertStringContainsString('id="drop"', $receipt);
+        // The receipt prints the sealed fingerprint and points at the hosted,
+        // server-side verifier — no client-side hashing in the page.
+        $this->assertStringContainsString($sha, $receipt);
+        $this->assertStringContainsString(route('verify'), $receipt);
+        $this->assertStringNotContainsString('crypto.subtle', $receipt);
+        $this->assertStringNotContainsString('id="drop"', $receipt);
         // The page names the audio it verifies — the same project+fingerprint name
         // as the file in the zip, so the instructions point at the real filename.
         $this->assertStringContainsString($this->sealedAudioName($project), $receipt);
@@ -405,7 +408,7 @@ class ProjectSealTest extends TestCase
         $this->assertSame($sealedHash, hash('sha256', $final), 'receipt must ship the sealed snapshot, not the live file');
     }
 
-    public function test_export_service_builds_a_self_contained_offline_verifier(): void
+    public function test_export_service_receipt_has_no_client_side_verifier(): void
     {
         $project = $this->readyProject();
         app(ProjectService::class)->seal($project, $this->admin());
@@ -414,9 +417,12 @@ class ProjectSealTest extends TestCase
         $receipt = $zip->getFromName('receipt.html');
         $zip->close();
 
-        $this->assertStringContainsString('crypto.subtle.digest', $receipt);
+        // The receipt is a self-contained provenance record that links out to the
+        // server-side verifier — it carries no script and no in-browser hashing.
+        $this->assertStringNotContainsString('crypto.subtle', $receipt);
+        $this->assertStringNotContainsString('<script', $receipt);
         $this->assertStringNotContainsString('@vite', $receipt);
-        $this->assertStringNotContainsString('<script src', $receipt);
+        $this->assertStringContainsString(route('verify'), $receipt);
     }
 
     // ---- Download filenames -------------------------------------------------
@@ -478,13 +484,66 @@ class ProjectSealTest extends TestCase
             ->assertSee(substr((string) $project->final_sha256, 0, 12));
     }
 
-    // ---- Verify page --------------------------------------------------------
+    // ---- Verify page (public, server-side) ----------------------------------
 
-    public function test_verify_route_is_public_and_offline(): void
+    public function test_verify_page_is_public_and_server_side(): void
     {
-        // Served as a static file (BinaryFileResponse), so assert the route is
-        // reachable by a guest and the served file is the offline verifier.
-        $this->get(route('verify'))->assertOk();
-        $this->assertStringContainsString('crypto.subtle.digest', (string) file_get_contents(public_path('verify.html')));
+        // Reachable by a guest, renders the upload form, and does NO client-side
+        // hashing — the server computes the SHA-256.
+        $res = $this->get(route('verify'));
+        $res->assertOk()->assertSee('Verify file');
+        $this->assertStringNotContainsString('crypto.subtle.digest', $res->getContent());
+        $this->assertStringContainsString('name="file"', $res->getContent());
+    }
+
+    public function test_verify_upload_matches_a_sealed_final(): void
+    {
+        $project = $this->readyProject();
+        app(ProjectService::class)->seal($project, $this->admin());
+        $bytes = (string) app(ProjectService::class)->sealedAudioBytes($project->refresh());
+
+        // A guest uploads the approved bytes; the server hashes them and matches.
+        $upload = UploadedFile::fake()->createWithContent($this->sealedAudioName($project), $bytes);
+
+        $this->post(route('verify.check'), ['file' => $upload])
+            ->assertOk()
+            ->assertSee('Verified')                       // the match verdict
+            ->assertSee('Approved by')                    // seal panel (approver)
+            ->assertSee('plenty of words');               // per-chunk take text is retained
+    }
+
+    public function test_verify_upload_that_does_not_match_reports_no_match(): void
+    {
+        $project = $this->readyProject();
+        app(ProjectService::class)->seal($project, $this->admin());
+
+        $upload = UploadedFile::fake()->createWithContent('not-the-final.mp3', 'these bytes were never approved');
+
+        $this->post(route('verify.check'), ['file' => $upload])
+            ->assertOk()
+            ->assertSee('No match');
+    }
+
+    public function test_verify_by_fingerprint_shows_the_sealed_record(): void
+    {
+        $project = $this->readyProject();
+        $admin = $this->admin();
+        app(ProjectService::class)->seal($project, $admin);
+        $sha = $project->refresh()->final_sha256;
+
+        // The receipt's ?sha= link opens the authoritative record for a guest.
+        $this->get(route('verify', ['sha' => $sha]))
+            ->assertOk()
+            ->assertSee('sealed approval exists')
+            ->assertSee($admin->name)                     // approver name (not email)
+            ->assertSee('plenty of words')                // per-chunk take text
+            ->assertSee('server-confirmed');              // snapshot integrity re-hash
+    }
+
+    public function test_verify_by_unknown_fingerprint_reports_no_record(): void
+    {
+        $this->get(route('verify', ['sha' => str_repeat('a', 64)]))
+            ->assertOk()
+            ->assertSee('No approval found');
     }
 }

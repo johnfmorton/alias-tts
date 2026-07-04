@@ -4,15 +4,19 @@ use App\Http\Controllers\Admin\AuthController;
 use App\Http\Controllers\Admin\SocialAuthController;
 use App\Http\Controllers\Admin\TwoFactorChallengeController;
 use App\Http\Controllers\InvitationController;
+use App\Http\Controllers\VerifyController;
 use Illuminate\Support\Facades\Route;
 
 Route::view('/', 'landing')->name('landing');
 
-// Offline-capable "is this the approved final?" verifier. Public by design: it
-// hashes a dropped file locally with Web Crypto and never uploads anything; the
-// expected hash travels in the URL fragment (#expect=…), not the request. Served
-// as the static file so the hosted page is byte-identical to the in-zip copy.
-Route::get('/verify', fn () => response()->file(public_path('verify.html')))->name('verify');
+// Public, server-side "is this the approved final?" verifier. The server hashes
+// the uploaded bytes and matches a sealed project's final_sha256; a `?sha=` link
+// opens the authoritative record for a known fingerprint. The POST is throttled
+// per IP (audio uploads) and capped by tts.verify_max_upload_kb.
+Route::get('/verify', [VerifyController::class, 'show'])->name('verify');
+Route::post('/verify', [VerifyController::class, 'check'])
+    ->middleware('throttle:20,1')
+    ->name('verify.check');
 
 Route::middleware('guest')->group(function () {
     Route::get('/login', [AuthController::class, 'showLogin'])->name('login');

@@ -761,7 +761,7 @@ class StudioProjectController extends Controller
             'sealed_at_human' => optional($project->sealed_at)->toDayDateTimeString(),
             'approver' => $project->sealApprover(),
             'receipt_url' => route('admin.studio.projects.receipt', $project),
-            'verify_url' => route('verify').'#expect='.$project->final_sha256,
+            'verify_url' => route('verify', ['sha' => $project->final_sha256]),
         ]);
     }
 
@@ -786,8 +786,8 @@ class StudioProjectController extends Controller
     }
 
     /**
-     * Download the verifiable receipt .zip (final + provenance + offline verifier)
-     * for a sealed project.
+     * Download the verifiable receipt .zip (final + provenance record that links
+     * to the hosted /verify page) for a sealed project.
      */
     public function receipt(TtsProject $project): Response
     {

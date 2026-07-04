@@ -354,6 +354,12 @@ return [
     'storage_path' => trim((string) env('TTS_STORAGE_PATH', 'speech'), '/'),
     'reference_path' => trim((string) env('TTS_REFERENCE_PATH', 'voices'), '/'),
 
+    // Max upload the public /verify page hashes server-side (KB). A sealed final
+    // is a single project's audio, so 200 MB covers even a long WAV; the holder
+    // can always verify from the receipt if theirs is bigger. Must stay under the
+    // web server's client_max_body_size / PHP post_max_size (see tts:doctor).
+    'verify_max_upload_kb' => (int) env('TTS_VERIFY_MAX_UPLOAD_KB', 204800),
+
     /*
     |--------------------------------------------------------------------------
     | ffmpeg

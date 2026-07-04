@@ -115,7 +115,7 @@
                             title="Approve this cut as the final deliverable and record who approved it. Editing the project afterward clears the approval."
                             class="inline-flex items-center gap-1.5 rounded-[9px] px-4 py-[9px] text-sm transition">🔒 Approve as final</button>
                     <a id="project-receipt" href="{{ route('admin.studio.projects.receipt', $project) }}" download
-                       title="Download the approved version (.zip): the final audio, a provenance report, and an offline drag-to-verify page."
+                       title="Download the approved version (.zip): the final audio and a provenance report, with a link to verify the file online."
                        class="inline-flex items-center gap-1.5 rounded-[9px] px-4 py-[9px] text-sm transition {{ $project->isSealed() ? '' : 'hidden' }}">⤓ Download approved version</a>
 
                     {{-- Overflow: rare + destructive actions (design turn 3) --}}

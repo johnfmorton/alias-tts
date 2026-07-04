@@ -10,15 +10,16 @@ use ZipArchive;
 
 /**
  * Builds the "approved final" receipt: a portable .zip containing the frozen
- * approved audio, a human-readable provenance receipt with an embedded offline
- * verifier (the approved hash is baked into the page — no #expect= link needed),
- * and a machine-readable manifest. Unzip it, open receipt.html with no network,
- * drop the audio on it, and it confirms the bytes are untouched.
+ * approved audio, a human-readable provenance receipt (seal panel + per-chunk
+ * table, with each take's text), and a machine-readable manifest. The receipt is
+ * a self-contained record that links out to the hosted, server-side verifier at
+ * /verify — upload the audio there and the server re-hashes it and matches it
+ * against the sealed approval.
  *
  * Modeled on {@see VoiceService::export()}. The load-bearing value is the byte
  * SHA-256 of the SEALED snapshot (computed at seal time, persisted on the
  * project); the export ships those exact bytes so the printed hash always matches
- * the file in the zip.
+ * the file in the zip. The receiptData() view-data is shared with the /verify page.
  */
 class ProjectExportService
 {
@@ -35,23 +36,10 @@ class ProjectExportService
             throw new RuntimeException('The sealed audio is missing — re-seal the project.');
         }
 
-        $project->loadMissing('voice', 'chunks.takes', 'chunks.voice');
+        $data = $this->receiptData($project);
+        $finalName = $data['finalName'];
 
-        $ext = pathinfo((string) $project->final_audio_path, PATHINFO_EXTENSION) ?: 'mp3';
-        // Name the audio to match the .zip and the folder it unzips to (e.g.
-        // love-what-you-do-sealed-bbe2014e.mp3) rather than a bare "final.mp3".
-        // This name flows into receipt.html and the manifest too.
-        $finalName = $project->sealedBaseName().'.'.$ext;
-
-        $chunks = $this->chunkRows($project);
-        $manifest = $this->manifest($project, $finalName, $chunks);
-
-        $receiptHtml = view('admin.studio.projects.receipt', [
-            'project' => $project,
-            'chunks' => $chunks,
-            'manifest' => $manifest,
-            'finalName' => $finalName,
-        ])->render();
+        $receiptHtml = view('admin.studio.projects.receipt', $data)->render();
 
         $tmp = tempnam(sys_get_temp_dir(), 'receipt_').'.zip';
 
@@ -62,13 +50,40 @@ class ProjectExportService
             }
             $zip->addFromString($finalName, $bytes);
             $zip->addFromString('receipt.html', $receiptHtml);
-            $zip->addFromString('manifest.json', json_encode($manifest, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES));
+            $zip->addFromString('manifest.json', json_encode($data['manifest'], JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES));
             $zip->close();
 
             return (string) file_get_contents($tmp);
         } finally {
             @unlink($tmp);
         }
+    }
+
+    /**
+     * The provenance view-data for a sealed project — shared by the receipt .zip
+     * (offline record) and the hosted /verify result so both render the identical
+     * seal panel + per-chunk provenance table (including the selected take's text).
+     *
+     * @return array{project: TtsProject, chunks: list<array<string, mixed>>, manifest: array<string, mixed>, finalName: string}
+     */
+    public function receiptData(TtsProject $project): array
+    {
+        $project->loadMissing('voice', 'chunks.takes', 'chunks.voice');
+
+        $ext = pathinfo((string) $project->final_audio_path, PATHINFO_EXTENSION) ?: 'mp3';
+        // Name the audio to match the .zip and the folder it unzips to (e.g.
+        // love-what-you-do-sealed-bbe2014e.mp3) rather than a bare "final.mp3".
+        // This name flows into receipt.html, the manifest, and the verify page.
+        $finalName = $project->sealedBaseName().'.'.$ext;
+
+        $chunks = $this->chunkRows($project);
+
+        return [
+            'project' => $project,
+            'chunks' => $chunks,
+            'manifest' => $this->manifest($project, $finalName, $chunks),
+            'finalName' => $finalName,
+        ];
     }
 
     /**
