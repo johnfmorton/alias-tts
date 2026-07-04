@@ -348,6 +348,38 @@ class ProjectService
     }
 
     /**
+     * Delete a chunk, shifting every chunk after it up by one so positions stay
+     * contiguous. The mirror of {@see insertChunk}. The chunk's take rows cascade
+     * with it (FK); its take files under chunks/{id}/ — and any pre-takes in-place
+     * audio at chunks/{id}.wav — are removed from disk. Audio is keyed by chunk id,
+     * so the surviving chunks' files are never touched. Marks the project's final
+     * file out of date. Callers guard against deleting the project's last chunk.
+     */
+    public function deleteChunk(TtsChunk $chunk): void
+    {
+        $project = $chunk->project;
+        $position = $chunk->position;
+        $projectId = $chunk->tts_project_id;
+        $chunkId = $chunk->id;
+        $inPlaceAudio = $chunk->audio_path;
+
+        DB::transaction(function () use ($project, $chunk, $position) {
+            $chunk->delete(); // cascades this chunk's take rows
+            $project->chunks()->where('position', '>', $position)->decrement('position');
+        });
+
+        $disk = Storage::disk($this->disk());
+        $disk->deleteDirectory(config('tts.storage_path').'/projects/'.$projectId.'/chunks/'.$chunkId);
+        // A legacy chunk kept its audio in place at chunks/{id}.wav (outside the
+        // directory above); the delete is a no-op for a take-based path.
+        if ($inPlaceAudio) {
+            $disk->delete($inPlaceAudio);
+        }
+
+        $this->markFinalOutdated($project);
+    }
+
+    /**
      * Synthesize one chunk and store its raw audio. Used for both first
      * generation and regeneration after an edit. Marks the project's final file
      * out of date. Throws on provider failure (after recording it on the chunk).
@@ -443,6 +475,10 @@ class ProjectService
         $take = $chunk->takes()->create([
             'id' => $takeId,
             'audio_path' => $path,
+            // Snapshot the text this take actually read, so a later "select" of an
+            // earlier take can print the words it spoke on the receipt even after
+            // the chunk's text was edited (see ProjectExportService::chunkRows).
+            'text' => $chunk->text,
             'settings' => $override ?: null,
             'source' => $source,
             'asr_score' => $verdict?->score,

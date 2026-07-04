@@ -296,6 +296,59 @@ class ProjectSealTest extends TestCase
         $this->assertNotEmpty($manifest['chunks'][0]['text']);
     }
 
+    public function test_receipt_prints_the_selected_takes_text_not_the_current_chunk_text(): void
+    {
+        // A take can be re-selected after the chunk's text was edited, so the
+        // chunk's current text (v2) may not be what the sealed audio actually says
+        // (v1). The receipt must print the SELECTED take's snapshotted text.
+        $admin = $this->admin();
+        $svc = app(ProjectService::class);
+        $project = $this->readyProject();
+
+        $chunk = $project->chunks()->orderBy('position')->first();
+        $originalText = $chunk->text;
+        $originalTake = $chunk->takes()->where('audio_path', $chunk->audio_path)->first();
+        $this->assertSame($originalText, $originalTake->text); // snapshotted at generate
+
+        // Edit the text (chunk goes Stale; the take's audio + text are untouched),
+        // then re-select the original take as the chunk's audio.
+        $svc->updateChunkText($chunk->refresh(), 'These are completely different words for version two of the chunk.');
+        $svc->selectTake($originalTake->refresh());
+
+        $svc->rebuild($project->refresh());
+        $svc->seal($project->refresh(), $admin);
+
+        $res = $this->actingAs($admin)->get(route('admin.studio.projects.receipt', $project));
+        $zip = $this->openZip($res->getContent());
+        $manifest = json_decode($zip->getFromName('manifest.json'), true);
+        $zip->close();
+
+        $row = collect($manifest['chunks'])->firstWhere('position', $chunk->position);
+        $this->assertSame($originalText, $row['text']);
+        $this->assertStringNotContainsString('version two', $row['text']);
+    }
+
+    public function test_receipt_falls_back_to_chunk_text_for_a_legacy_take_without_a_snapshot(): void
+    {
+        // Pre-existing takes have no text snapshot (null). The receipt must still
+        // print something sensible — the chunk's current text — not blow up.
+        $admin = $this->admin();
+        $project = $this->readyProject();
+
+        $chunk = $project->chunks()->orderBy('position')->first();
+        $chunk->takes()->update(['text' => null]); // simulate a pre-migration take
+
+        app(ProjectService::class)->seal($project->refresh(), $admin);
+
+        $res = $this->actingAs($admin)->get(route('admin.studio.projects.receipt', $project));
+        $zip = $this->openZip($res->getContent());
+        $manifest = json_decode($zip->getFromName('manifest.json'), true);
+        $zip->close();
+
+        $row = collect($manifest['chunks'])->firstWhere('position', $chunk->position);
+        $this->assertSame($chunk->text, $row['text']);
+    }
+
     public function test_receipt_records_per_chunk_voice_overrides(): void
     {
         $admin = $this->admin();

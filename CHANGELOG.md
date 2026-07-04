@@ -7,6 +7,18 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 ## [Unreleased]
 
 ### Added
+- **Studio chunks can now be deleted.** Each chunk card has a delete control next
+  to Regenerate; because deletion is destructive, it uses a two-step inline
+  confirm (the button expands to **Delete chunk? · Confirm · Cancel**) rather than
+  a browser dialog. Deleting a chunk removes it and its takes (rows and audio
+  files), shifts the remaining chunks up to stay contiguous, and marks the final
+  out of date. The control is hidden for a one-chunk project — a project needs at
+  least one chunk — and the server refuses the last-chunk delete as a backstop.
+- **The per-chunk Save/Regenerate buttons now reflect the edit state.** **Save
+  text** is disabled while the text matches what's saved (nothing to save), and
+  **Regenerate** is disabled while the text is unsaved — only saved text is ever
+  generated, so the two are never actionable at once. Editing enables Save;
+  saving (or Revert) re-enables Regenerate.
 - **A project's final audio format (MP3/WAV) can now be changed after the
   project is created.** A new **Format** picker sits next to the Voice picker in
   the project header; switching it re-encodes the final on the next build.
@@ -15,6 +27,16 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   stored format-independently, changing the format regenerates nothing — it just
   marks the built final out of date so a single **Build final** re-encodes it in
   the new format (and un-approves a sealed cut, as any edit does).
+
+### Fixed
+- **A sealed receipt now prints the text each chunk's chosen take actually read,
+  not the chunk's latest text.** Every take now snapshots the text it was
+  synthesized from, and the receipt/manifest use the *selected* take's snapshot.
+  Previously a take carried no text of its own, so re-selecting an earlier take
+  after editing the words left the receipt's "Script" showing the current text
+  while the sealed audio spoke the older version — a silent mismatch (the audio
+  hash was always correct; only the printed script could drift). Pre-existing
+  takes with no snapshot fall back to the chunk's current text.
 
 ## [0.28.0] - 2026-07-03
 

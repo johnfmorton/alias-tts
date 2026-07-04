@@ -95,7 +95,11 @@ class ProjectExportService
 
             $rows[] = [
                 'position' => $chunk->position,
-                'text' => $chunk->text,
+                // The text the SELECTED take actually read — which can differ from
+                // the chunk's current text if an earlier take was re-selected after
+                // an edit. Falls back to the chunk text for legacy takes (no
+                // snapshot) so the receipt always shows the words tied to the audio.
+                'text' => $selected->text ?? $chunk->text,
                 // The chunk's own voice if it overrides, else the inherited project
                 // voice — a chunk can be voiced differently from the project.
                 'voice' => $chunk->voice?->name ?? $project->voice?->name,

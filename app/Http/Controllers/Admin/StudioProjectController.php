@@ -459,6 +459,33 @@ class StudioProjectController extends Controller
         ]);
     }
 
+    /**
+     * Delete a chunk (with its takes) and renumber the rest. Refused for the last
+     * remaining chunk — a project needs at least one. AJAX (JSON); the editor
+     * reloads to re-render the renumbered list, like insert.
+     */
+    public function destroyChunk(TtsProject $project, TtsChunk $chunk): JsonResponse
+    {
+        $this->assertChunkBelongs($project, $chunk);
+
+        if ($project->chunks()->count() <= 1) {
+            return response()->json(['message' => "You can't delete the only chunk — a project needs at least one."], 422);
+        }
+
+        try {
+            $this->projects->deleteChunk($chunk);
+        } catch (Throwable $e) {
+            report($e);
+
+            return response()->json(['message' => 'Could not delete this chunk: '.$e->getMessage()], 502);
+        }
+
+        return response()->json([
+            'ok' => true,
+            'project_status' => $project->refresh()->status->value,
+        ]);
+    }
+
     public function generateChunk(TtsProject $project, TtsChunk $chunk): JsonResponse
     {
         $this->assertChunkBelongs($project, $chunk);

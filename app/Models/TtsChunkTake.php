@@ -21,6 +21,7 @@ class TtsChunkTake extends Model
     protected $fillable = [
         'tts_chunk_id',
         'audio_path',
+        'text',
         'settings',
         'source',
         'asr_score',

@@ -188,6 +188,7 @@
                      data-reroll-url="{{ route('admin.studio.projects.chunks.reroll', [$project, $chunk]) }}"
                      data-preview-tuning-url="{{ route('admin.studio.projects.chunks.preview-tuning', [$project, $chunk]) }}"
                      data-use-preview-url="{{ route('admin.studio.projects.chunks.use-preview', [$project, $chunk]) }}"
+                     data-delete-url="{{ route('admin.studio.projects.chunks.destroy', [$project, $chunk]) }}"
                      data-audio-url="{{ route('admin.studio.projects.chunks.audio', [$project, $chunk]) }}"
                      data-takes-url="{{ route('admin.studio.projects.chunks.takes.index', [$project, $chunk]) }}"
                      data-takes='@json($takesByChunk[$chunk->id])'>
@@ -215,9 +216,23 @@
                                 </select>
                             </label>
                             <button type="button" class="chunk-revert hidden rounded-lg border border-zinc-700 px-3 py-1.5 text-sm text-zinc-400 hover:bg-zinc-800">Revert</button>
-                            <button type="button" class="chunk-save rounded-lg border border-zinc-700 px-3 py-1.5 text-sm hover:bg-zinc-800">Save text</button>
-                            <button type="button" class="chunk-generate rounded-lg border border-zinc-700 px-3 py-1.5 text-sm hover:bg-zinc-800"
+                            {{-- Save applies only to unsaved edits (disabled when clean); Regenerate
+                                 renders the SAVED text, so it's disabled while the text is dirty.
+                                 initStudioProject keeps both in sync as the user types. --}}
+                            <button type="button" class="chunk-save rounded-lg border border-zinc-700 px-3 py-1.5 text-sm hover:bg-zinc-800 disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-transparent" disabled>Save text</button>
+                            <button type="button" class="chunk-generate rounded-lg border border-zinc-700 px-3 py-1.5 text-sm hover:bg-zinc-800 disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-transparent"
                                     title="Render this chunk's audio from its current text and tuning.">▶ {{ $chunk->isCompleted() ? 'Regenerate' : 'Generate' }}</button>
+                            @if($chunks->count() > 1)
+                                {{-- Delete this chunk (two-step inline confirm). Hidden entirely for a
+                                     one-chunk project — a project needs at least one chunk. --}}
+                                <button type="button" class="chunk-delete rounded-lg border border-zinc-700 px-2.5 py-1.5 text-sm text-zinc-500 hover:border-red-700/60 hover:text-red-300"
+                                        title="Delete this chunk.">🗑</button>
+                                <span class="chunk-delete-confirm hidden items-center gap-1.5">
+                                    <span class="text-xs text-red-300">Delete chunk?</span>
+                                    <button type="button" class="chunk-delete-yes rounded-lg border border-red-700/60 bg-red-500/10 px-3 py-1.5 text-sm text-red-300 hover:bg-red-500/20">Confirm</button>
+                                    <button type="button" class="chunk-delete-no rounded-lg border border-zinc-700 px-3 py-1.5 text-sm text-zinc-400 hover:bg-zinc-800">Cancel</button>
+                                </span>
+                            @endif
                         </div>
                     </div>
 

@@ -4,6 +4,8 @@ namespace Tests\Feature;
 
 use App\Enums\ChunkStatus;
 use App\Enums\ProjectStatus;
+use App\Models\TtsChunk;
+use App\Models\TtsChunkTake;
 use App\Models\TtsProject;
 use App\Models\TuningPreset;
 use App\Models\User;
@@ -700,6 +702,84 @@ class StudioProjectTest extends TestCase
         $this->assertCount(2, $project->chunks()->get());
     }
 
+    public function test_deleting_a_chunk_removes_it_and_renumbers_the_rest(): void
+    {
+        $project = $this->project(); // positions 0, 1
+        $this->actingAs($this->admin())
+            ->postJson(route('admin.studio.projects.chunks.store', $project), ['position' => 2])->assertOk();
+        // Now positions 0, 1, 2 — delete the middle one.
+        $middle = $project->chunks()->where('position', 1)->first();
+
+        $this->actingAs($this->admin())
+            ->deleteJson(route('admin.studio.projects.chunks.destroy', [$project, $middle]))
+            ->assertOk()
+            ->assertJsonPath('ok', true);
+
+        $chunks = $project->chunks()->get();
+        $this->assertCount(2, $chunks);
+        $this->assertSame([0, 1], $chunks->pluck('position')->all());
+        $this->assertNull(TtsChunk::find($middle->id));
+    }
+
+    public function test_deleting_a_chunk_removes_its_take_files(): void
+    {
+        $project = $this->project();
+        $this->actingAs($this->admin())
+            ->postJson(route('admin.studio.projects.chunks.store', $project), ['position' => 2])->assertOk();
+
+        // Generate the last chunk so it has a take (row + file on disk).
+        $target = $project->chunks()->orderBy('position')->get()->last();
+        $target->update(['text' => 'Some words long enough to render into audio here.']);
+        app(ProjectService::class)->generateChunk($target->refresh());
+        $audioPath = $target->refresh()->audio_path;
+        $takeId = $target->takes()->first()->id;
+        Storage::disk('local')->assertExists($audioPath);
+
+        $this->actingAs($this->admin())
+            ->deleteJson(route('admin.studio.projects.chunks.destroy', [$project, $target]))
+            ->assertOk();
+
+        // The take row cascaded and its file is gone.
+        $this->assertNull(TtsChunkTake::find($takeId));
+        Storage::disk('local')->assertMissing($audioPath);
+    }
+
+    public function test_deleting_the_only_chunk_is_refused(): void
+    {
+        $project = $this->project();
+        // Collapse to a single chunk, then try to delete it.
+        $project->chunks()->where('position', '>', 0)->delete();
+        $only = $project->chunks()->first();
+
+        $this->actingAs($this->admin())
+            ->deleteJson(route('admin.studio.projects.chunks.destroy', [$project, $only]))
+            ->assertStatus(422);
+
+        $this->assertCount(1, $project->chunks()->get());
+    }
+
+    public function test_deleting_a_chunk_from_another_project_is_404(): void
+    {
+        $mine = $this->project();
+        $other = $this->projectWithVoice(Voice::create(['slug' => 'other', 'name' => 'Other']));
+        $otherChunk = $other->chunks()->first();
+
+        $this->actingAs($this->admin())
+            ->deleteJson(route('admin.studio.projects.chunks.destroy', [$mine, $otherChunk]))
+            ->assertNotFound();
+    }
+
+    public function test_single_chunk_project_hides_the_delete_control(): void
+    {
+        $project = $this->project();
+        $project->chunks()->where('position', '>', 0)->delete();
+
+        $this->actingAs($this->admin())
+            ->get(route('admin.studio.projects.show', $project))
+            ->assertOk()
+            ->assertDontSee('chunk-delete-confirm');
+    }
+
     public function test_generate_rejects_empty_chunk(): void
     {
         $project = $this->project();
@@ -1256,12 +1336,12 @@ class StudioProjectTest extends TestCase
         // Re-run the takes migration against the already-generated chunk, as a real
         // deploy would: drop + recreate the table so up()'s backfill runs over the
         // existing audio (the chunk's audio_path is untouched by the rollback).
-        // Twelve steps because the takes table is the twelfth-newest migration
+        // Thirteen steps because the takes table is the thirteenth-newest migration
         // (native presets, project-seal, bundled default voices, account fields,
         // two-factor/connected-accounts, the unowned-api-key reassignment, project
         // ownership, the magic-login-table drop, per-user settings, per-user
-        // voices, and per-user presets all sit on top of it).
-        Artisan::call('migrate:rollback', ['--step' => 12]);
+        // voices, per-user presets, and the take-text snapshot all sit on top of it).
+        Artisan::call('migrate:rollback', ['--step' => 13]);
         Artisan::call('migrate', ['--force' => true]);
 
         $takes = $chunk->refresh()->takes()->get();

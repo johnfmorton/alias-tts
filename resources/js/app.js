@@ -989,6 +989,13 @@ function initStudioProject() {
         card.querySelector('.chunk-revert').classList.toggle('hidden', !dirty);
         textarea.classList.toggle('border-amber-500/50', dirty);
         textarea.classList.toggle('border-zinc-800', !dirty);
+        // Save applies only to an unsaved edit; Regenerate renders the SAVED text,
+        // so only one is actionable at a time (the Blade markup starts a clean
+        // chunk with Save disabled). The `disabled:` classes handle the dimming.
+        const saveBtn = card.querySelector('.chunk-save');
+        const genBtn = card.querySelector('.chunk-generate');
+        if (saveBtn) saveBtn.disabled = !dirty;
+        if (genBtn) genBtn.disabled = dirty;
     };
 
     async function patchChunk(card) {
@@ -1496,6 +1503,40 @@ function initStudioProject() {
             textarea.value = textarea.dataset.original;
             setDirty(card, false);
         });
+
+        // Delete this chunk — a two-step inline confirm (destructive). Deletion
+        // renumbers the list, so — like insert — reload to re-render it. The
+        // control isn't rendered for a one-chunk project (guard the wiring too).
+        const deleteBtn = card.querySelector('.chunk-delete');
+        const deleteConfirm = card.querySelector('.chunk-delete-confirm');
+        if (deleteBtn && deleteConfirm) {
+            // Toggle hidden AND inline-flex together so neither lingers and wins
+            // over the other in the compiled CSS (see the dirty-badge note above).
+            const showConfirm = (show) => {
+                deleteBtn.classList.toggle('hidden', show);
+                deleteConfirm.classList.toggle('hidden', !show);
+                deleteConfirm.classList.toggle('inline-flex', show);
+            };
+            const yesBtn = deleteConfirm.querySelector('.chunk-delete-yes');
+            deleteBtn.addEventListener('click', () => showConfirm(true));
+            deleteConfirm.querySelector('.chunk-delete-no').addEventListener('click', () => showConfirm(false));
+            yesBtn.addEventListener('click', async () => {
+                startBusy(yesBtn, 'Deleting…');
+                try {
+                    const res = await fetch(card.dataset.deleteUrl, {
+                        method: 'DELETE',
+                        headers: { 'X-CSRF-TOKEN': csrfToken(), 'Accept': 'application/json' },
+                    });
+                    if (!res.ok) throw new Error(await errorMessage(res));
+                    skipUnloadGuard = true; // the delete is committed; the reload is intentional
+                    window.location.reload();
+                } catch (err) {
+                    setStatus(finalStatus, `✗ ${err.message}`, 'error');
+                    endBusy(yesBtn);
+                    showConfirm(false);
+                }
+            });
+        }
     });
 
     initTuningKnobs(root); // wire every per-chunk Exaggeration / CFG-Pace slider
