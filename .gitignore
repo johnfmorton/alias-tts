@@ -37,3 +37,8 @@ Thumbs.db
 
 # Design handoff artifacts live outside the repo (like hackathon write-ups).
 /*.zip
+
+# Python bytecode caches (Genblaze connectors ship .py sources only). A git mv
+# of a connector package strands its untracked __pycache__ under the old name.
+__pycache__/
+*.pyc

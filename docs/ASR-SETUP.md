@@ -127,6 +127,12 @@ Forge panel → your server → **Daemons** (a.k.a. background processes) → Ne
   /home/forge/<your-site>/asr-sidecar/.venv/bin/uvicorn app:app --host 127.0.0.1 --port 8765
   ```
 - **Directory / Working Directory:** `/home/forge/<your-site>/asr-sidecar`
+  — under **Custom → Supervisor configuration**. **⚠️ Change this: Forge
+  pre-fills it with the release path `/home/forge/<your-site>/current`**, but the
+  sidecar's `app.py` and `.venv/` live in the stable `asr-sidecar/` dir *beside*
+  `current`, not inside it. Left at the default, the daemon starts from `current/`
+  and fails to import `app.py`. Click **Edit** on the Supervisor configuration and
+  set the working directory to `.../asr-sidecar`.
 - **User:** `forge`
 - **Processes:** `1` (one warm model is enough; raise only if transcription becomes a bottleneck)
 
