@@ -1,6 +1,7 @@
 <x-layout title="Voices" description="Each voice maps a voice_id to a reference clip for zero-shot cloning. Your voices are yours alone — other users only ever see the built-ins and their own.">
     <div class="mb-4 flex flex-wrap items-center justify-between gap-3">
-        <form method="POST" action="{{ route('admin.voices.import') }}" enctype="multipart/form-data" class="flex items-center gap-2">
+        <form method="POST" action="{{ route('admin.voices.import') }}" enctype="multipart/form-data"
+              data-busy data-busy-label="Importing…" class="flex items-center gap-2">
             @csrf
             <input type="file" name="archive" accept=".zip" required
                    class="block text-sm text-zinc-400 file:mr-3 file:rounded-lg file:border-0 file:bg-zinc-800 file:px-3 file:py-1.5 file:text-sm file:text-zinc-200 hover:file:bg-zinc-700">

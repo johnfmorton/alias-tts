@@ -62,8 +62,10 @@ Route::middleware(EnsureUserIsSuperAdmin::class)->group(function () {
 Route::get('/settings', [SettingsController::class, 'index'])->name('settings.index');
 Route::put('/settings', [SettingsController::class, 'update'])->name('settings.update');
 
-// Health — web view over the same checks as `php artisan tts:doctor`.
+// Health — web view over the same checks as `php artisan tts:doctor`. The page
+// is a fast shell; the checks run in the async `results` fragment below.
 Route::get('/health', [HealthController::class, 'index'])->name('health');
+Route::get('/health/results', [HealthController::class, 'results'])->name('health.results');
 
 // Live provider tests (real, billable generation calls).
 Route::post('/health/test/short', [HealthTestController::class, 'short'])->name('health.test.short');

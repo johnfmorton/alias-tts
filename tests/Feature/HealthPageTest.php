@@ -37,12 +37,29 @@ class HealthPageTest extends TestCase
             ->assertOk();
     }
 
-    public function test_admin_sees_the_per_check_results(): void
+    public function test_the_shell_loads_fast_without_running_the_checks(): void
     {
+        // The page paints instantly: it renders the report container + the live
+        // provider test panel, but does NOT inline the (slow) check results —
+        // those are fetched from the async results endpoint by the browser.
         $this->actingAs($this->admin())
             ->get(route('admin.health'))
             ->assertOk()
-            ->assertSee('Health')
+            ->assertSee('Live provider test')
+            ->assertSee('data-health-report', false)
+            ->assertDontSee('PHP version');
+    }
+
+    public function test_results_endpoint_requires_login(): void
+    {
+        $this->get(route('admin.health.results'))->assertRedirect(route('login'));
+    }
+
+    public function test_results_endpoint_renders_the_per_check_results(): void
+    {
+        $this->actingAs($this->admin())
+            ->get(route('admin.health.results'))
+            ->assertOk()
             ->assertSee('PHP version')
             ->assertSee('Database')
             ->assertSee('Provider')
@@ -55,7 +72,7 @@ class HealthPageTest extends TestCase
     public function test_deep_mode_renders_the_live_note(): void
     {
         $this->actingAs($this->admin())
-            ->get(route('admin.health', ['deep' => 1]))
+            ->get(route('admin.health.results', ['deep' => 1]))
             ->assertOk()
             ->assertSee('Live mode:');
     }

@@ -205,22 +205,8 @@ document.addEventListener('click', async (e) => {
         await runLongTest(longBtn);
         return;
     }
-
-    // Health checks: <a data-health-run data-loading-label="Running…">. These
-    // are full-page GETs that can take several seconds (the queue probe), so we
-    // paint a loading state immediately — the page stays visible until the
-    // server responds and replaces it. We do NOT preventDefault: let it navigate.
-    const runBtn = e.target.closest('[data-health-run]');
-    if (runBtn) {
-        const label = runBtn.getAttribute('data-loading-label') || 'Running…';
-        document.querySelectorAll('[data-health-run]').forEach((b) => {
-            if (!b.dataset.originalText) b.dataset.originalText = b.textContent;
-            b.classList.add('pointer-events-none', 'opacity-50');
-            b.setAttribute('aria-disabled', 'true');
-        });
-        setRunning(runBtn, label);
-        document.querySelector('[data-health-results]')?.classList.add('opacity-40', 'pointer-events-none');
-    }
+    // The health-page "Run checks" buttons are handled by initHealthReport (they
+    // re-fetch the async report fragment rather than reloading the whole page).
 });
 
 // ---------------------------------------------------------------------------
@@ -1817,18 +1803,6 @@ document.addEventListener('play', (e) => {
 document.addEventListener('pause', (e) => e.target.classList.remove('is-playing'), true);
 document.addEventListener('ended', (e) => e.target.classList.remove('is-playing'), true);
 
-// Back/forward bfcache can restore the frozen "running…" DOM. Reset it so the
-// buttons aren't stuck mid-spin when the user navigates back to the page.
-window.addEventListener('pageshow', (e) => {
-    if (!e.persisted) return;
-    document.querySelectorAll('[data-health-run]').forEach((b) => {
-        if (b.dataset.originalText) b.textContent = b.dataset.originalText;
-        b.classList.remove('pointer-events-none', 'opacity-50');
-        b.removeAttribute('aria-disabled');
-    });
-    document.querySelector('[data-health-results]')?.classList.remove('opacity-40', 'pointer-events-none');
-});
-
 // Genblaze: one POST kicks off the whole orchestrated run (generate → QA-gated
 // re-roll → stitch → B2) and renders the per-chunk provenance it returns.
 function initGenblaze() {
@@ -2155,6 +2129,96 @@ function initCreateProjectForm() {
     });
 }
 initCreateProjectForm();
+
+// Health page: the diagnostic checks are slow (ffmpeg, storage probe, sidecar
+// pings, deep provider/queue probes), so the page ships as a shell and fetches
+// the rendered report fragment here — showing a "running diagnostics" indicator
+// so the page never reads as frozen. The Run / Run-live buttons re-fetch the
+// same fragment (delegated on the stable region, since each result swap replaces
+// the buttons). See HealthController::results + admin/health/_report.blade.php.
+function initHealthReport() {
+    const region = document.querySelector('[data-health-report]');
+    if (!region) return;
+    const baseUrl = region.dataset.resultsUrl;
+
+    const showLoading = (label) => {
+        const box = document.createElement('div');
+        box.className = 'flex items-center gap-3 rounded-xl border border-zinc-800 bg-zinc-900/50 p-5 text-sm text-zinc-400';
+        box.setAttribute('role', 'status');
+        box.setAttribute('aria-live', 'polite');
+        box.append(spinnerSvg(), document.createTextNode(label));
+        region.replaceChildren(box);
+    };
+
+    const showError = (message) => {
+        const box = document.createElement('div');
+        box.className = 'rounded-xl border border-red-500/30 bg-red-500/10 p-5 text-sm text-red-300';
+        box.setAttribute('role', 'alert');
+        box.append(document.createTextNode('✗ ' + message + ' '));
+        const retry = document.createElement('button');
+        retry.type = 'button';
+        retry.dataset.healthRun = '';
+        retry.dataset.deep = '0';
+        retry.className = 'font-medium underline';
+        retry.textContent = 'Retry';
+        box.append(retry);
+        region.replaceChildren(box);
+    };
+
+    async function run(deep) {
+        showLoading(deep
+            ? 'Running live checks… validating the provider token, probing the queue worker, and testing the upload limit. This can take a few seconds.'
+            : 'Running diagnostics… checking PHP, the database, ffmpeg, storage, the provider, the queue, and the scheduler.');
+        try {
+            const url = deep ? baseUrl + (baseUrl.includes('?') ? '&' : '?') + 'deep=1' : baseUrl;
+            const res = await fetch(url, { headers: { 'Accept': 'text/html' } });
+            if (!res.ok) throw new Error(`HTTP ${res.status}`);
+            // Trusted HTML: our own same-origin, admin-only Blade fragment whose
+            // every dynamic value is {{ }}-escaped server-side. It's a rendered
+            // partial, so it must be injected as markup (not textContent).
+            region.innerHTML = await res.text();
+        } catch (err) {
+            showError(`Couldn't run the diagnostics (${err.message}).`);
+        }
+    }
+
+    region.addEventListener('click', (e) => {
+        const btn = e.target.closest('[data-health-run]');
+        if (!btn) return;
+        e.preventDefault();
+        run(btn.dataset.deep === '1');
+    });
+
+    run(false); // kick off the initial run once the shell has painted
+}
+initHealthReport();
+
+// Full-page POST forms whose server-side work is slow (ffmpeg-normalizing a new
+// voice's reference clip, unpacking a voice import) read as frozen after submit.
+// Mark such a form [data-busy]: this shows a spinner + label on its submit button
+// (and an optional status line) until the browser navigates away. A generalized
+// take on initCreateProjectForm for the one-off, two-stage new-project form.
+function initBusyForms() {
+    document.querySelectorAll('form[data-busy]').forEach((form) => {
+        const btn = form.querySelector('button[type=submit]');
+        const status = form.querySelector('[data-busy-status]');
+        const reset = () => {
+            if (btn) endBusy(btn);
+            if (status) setStatus(status, '');
+        };
+        // Native validation blocks submit before this fires, so reaching here
+        // means the form is valid and the (slow) request is on its way.
+        form.addEventListener('submit', () => {
+            if (btn) startBusy(btn, form.dataset.busyLabel || 'Working…');
+            if (status && form.dataset.busyMessage) setStatus(status, form.dataset.busyMessage);
+        });
+        // bfcache can restore this page with the button stuck mid-spin — reset it.
+        window.addEventListener('pageshow', (e) => {
+            if (e.persisted) reset();
+        });
+    });
+}
+initBusyForms();
 
 // Global-nav account menu: the avatar pill toggles a dropdown; dismiss on outside
 // click or Escape. The menu root is display:block so toggling `hidden` is safe

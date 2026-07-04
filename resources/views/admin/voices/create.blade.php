@@ -1,5 +1,8 @@
 <x-layout title="Add a voice" description="Upload a clean ~15–30s reference clip. It's normalized and registered instantly (zero-shot — no training job).">
-    <form method="POST" action="{{ route('admin.voices.store') }}" enctype="multipart/form-data" class="max-w-lg space-y-5 rounded-xl border border-zinc-800 bg-zinc-900/50 p-6">
+    <form method="POST" action="{{ route('admin.voices.store') }}" enctype="multipart/form-data"
+          data-busy data-busy-label="Saving voice…"
+          data-busy-message="Normalizing the reference clip can take a few seconds — keep this page open."
+          class="max-w-lg space-y-5 rounded-xl border border-zinc-800 bg-zinc-900/50 p-6">
         @csrf
         <div>
             <label for="name" class="mb-1.5 block text-sm font-medium">Name</label>
@@ -26,5 +29,6 @@
             <button type="submit" class="rounded-lg bg-cyan-500 px-4 py-2 text-sm font-medium text-zinc-950 hover:bg-cyan-400">Save voice</button>
             <a href="{{ route('admin.voices.index') }}" class="text-sm text-zinc-400 hover:text-zinc-200">Cancel</a>
         </div>
+        <p data-busy-status role="status" aria-live="polite" class="text-sm text-zinc-400"></p>
     </form>
 </x-layout>

@@ -136,8 +136,10 @@ class AsrAutoEnableTest extends TestCase
         $admin = User::factory()->create(['is_super_admin' => true]);
         $bystander = User::factory()->create();
 
+        // The auto-enable + notice live in the async results fragment (the checks
+        // run there, not on the page shell) — that's what the browser fetches.
         $this->actingAs($admin)
-            ->get(route('admin.health'))
+            ->get(route('admin.health.results'))
             ->assertOk()
             ->assertSee('turned on automatically');
 

@@ -28,6 +28,22 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   marks the built final out of date so a single **Build final** re-encodes it in
   the new format (and un-approves a sealed cut, as any edit does).
 
+### Changed
+- **The Health page now paints instantly and runs its checks in the background.**
+  Previously the ~20 diagnostics (ffmpeg, a storage read/write probe, Whisper and
+  Genblaze sidecar pings, and — in live mode — a Replicate token check, a queue
+  probe, and an upload-ceiling test) all ran server-side *before* any HTML was
+  sent, so the page looked frozen for several seconds. The page now loads as a
+  shell showing a "Running diagnostics…" indicator, then fetches the rendered
+  results; **Run checks** / **Run live checks** re-fetch in place instead of
+  reloading. The CLI `php artisan tts:doctor` is unchanged.
+- **Adding or importing a voice now shows a loading state on submit.** Both were
+  full-page POSTs that blocked while the server ffmpeg-normalized the reference
+  clip (add) or unpacked the archive (import), which could read as a hang. The
+  submit button now shows a spinner + label ("Saving voice…" / "Importing…"), and
+  the add form adds a "keep this page open" note — the same treatment the New
+  Project form uses.
+
 ### Fixed
 - **A sealed receipt now prints the text each chunk's chosen take actually read,
   not the chunk's latest text.** Every take now snapshots the text it was
