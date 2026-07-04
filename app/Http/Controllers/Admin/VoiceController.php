@@ -202,7 +202,8 @@ class VoiceController extends Controller
     public function import(Request $request): RedirectResponse
     {
         $request->validate([
-            'archive' => ['required', 'file', 'mimes:zip', 'max:51200'], // 50 MB
+            // Cap shared with tts:doctor's "Upload size limit" check (config).
+            'archive' => ['required', 'file', 'mimes:zip', 'max:'.((int) config('tts.max_upload_size_mb', 50) * 1024)],
         ]);
 
         try {

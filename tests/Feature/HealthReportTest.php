@@ -40,7 +40,7 @@ class HealthReportTest extends TestCase
         $this->assertEqualsCanonicalizing([
             'php_version', 'php_extensions', 'database', 'migrations', 'cache',
             'ffmpeg', 'storage', 'disk', 'provider', 'asr', 'genblaze', 'pronunciation', 'queue', 'failed_jobs',
-            'scheduler', 'cleanup', 'voices', 'api_keys', 'app_key', 'debug', 'app_url',
+            'scheduler', 'cleanup', 'voices', 'api_keys', 'app_key', 'debug', 'app_url', 'upload_limit',
         ], $keys);
     }
 
@@ -284,8 +284,47 @@ class HealthReportTest extends TestCase
         ], $overrides);
     }
 
+    public function test_upload_limit_passes_below_the_required_size_and_points_to_deep(): void
+    {
+        // 1 MB required clears the PHP default everywhere; the non-deep result
+        // can't see the web server, so it points the operator at --deep.
+        config(['tts.max_upload_size_mb' => 1]);
+
+        $r = $this->resultFor('upload_limit');
+
+        $this->assertSame(HealthStatus::Pass, $r->status);
+        $this->assertStringContainsString('--deep', $r->detail);
+    }
+
+    public function test_upload_limit_fails_when_the_web_server_413s_in_deep_mode(): void
+    {
+        config(['tts.max_upload_size_mb' => 1, 'app.url' => 'https://mimic.test']);
+        Http::fake(['mimic.test/up' => Http::response('', 413, ['Server' => 'nginx'])]);
+
+        $r = $this->resultForDeep('upload_limit');
+
+        $this->assertSame(HealthStatus::Fail, $r->status);
+        $this->assertStringContainsString('client_max_body_size', $r->detail);
+        $this->assertStringContainsString('nginx', $r->detail);
+    }
+
+    public function test_upload_limit_passes_in_deep_mode_when_the_body_clears_the_web_server(): void
+    {
+        // POST /up 405s once it's past the web server's size gate — a non-413
+        // status means the upload path is wide enough.
+        config(['tts.max_upload_size_mb' => 1, 'app.url' => 'https://mimic.test']);
+        Http::fake(['mimic.test/up' => Http::response('', 405)]);
+
+        $this->assertSame(HealthStatus::Pass, $this->resultForDeep('upload_limit')->status);
+    }
+
     private function resultFor(string $key): HealthCheckResult
     {
         return collect(app(HealthReport::class)->run())->firstWhere('key', $key);
+    }
+
+    private function resultForDeep(string $key): HealthCheckResult
+    {
+        return collect(app(HealthReport::class)->run(true))->firstWhere('key', $key);
     }
 }

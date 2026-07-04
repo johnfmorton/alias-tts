@@ -86,6 +86,7 @@ class HealthReport
         // App config
         $this->checkApp();
         $this->checkAppUrl();
+        $this->checkUploadLimit();
 
         return $this->results;
     }
@@ -852,6 +853,103 @@ class HealthReport
         }
 
         $this->add('app_url', HealthStatus::Pass, 'App URL', $url !== '' ? $url : '(not set)');
+    }
+
+    /**
+     * The upload size the app needs (the voice-import cap) vs. what the server
+     * allows. PHP's own caps are readable here; nginx's `client_max_body_size` is
+     * NOT — it returns 413 before PHP runs — so the deep probe POSTs an
+     * at-the-limit body through the real stack (CDN → web server → PHP) and
+     * watches for a 413. Without this, an import that 413s passes every other
+     * check (they never exercise upload size).
+     */
+    private function checkUploadLimit(): void
+    {
+        $docs = (string) config('tts.upload_docs_url') ?: null;
+        $requiredMb = max(1, (int) config('tts.max_upload_size_mb', 50));
+        $requiredBytes = $requiredMb * 1024 * 1024;
+
+        // Both PHP caps gate an upload; the smaller one wins.
+        $php = min(
+            $this->parseIniBytes((string) ini_get('upload_max_filesize')),
+            $this->parseIniBytes((string) ini_get('post_max_size')),
+        );
+
+        if ($php < $requiredBytes) {
+            // A dev box / CI with the 2M PHP default should not read as a hard
+            // failure, but a live server genuinely can't accept the uploads.
+            $status = app()->environment('production') ? HealthStatus::Fail : HealthStatus::Warn;
+            $this->add('upload_limit', $status, 'Upload size limit', "PHP caps uploads at {$this->bytes($php)}, below the {$requiredMb} MB voice-import limit — raise upload_max_filesize and post_max_size to at least {$requiredMb}M (Forge → PHP → edit the version's INI).", $docs);
+
+            return;
+        }
+
+        if (! $this->deep) {
+            $this->add('upload_limit', HealthStatus::Pass, 'Upload size limit', "PHP allows up to {$requiredMb} MB. The web server's own limit (nginx client_max_body_size, or a CDN in front) is not visible from PHP — run `tts:doctor --deep` (or the Health page's deep probe) to test the full upload path.", $docs);
+
+            return;
+        }
+
+        // Deep: does the web server accept a body up to the limit, or 413 first?
+        $probe = $this->probeUploadCeiling($requiredBytes);
+
+        if (isset($probe['error'])) {
+            $this->add('upload_limit', HealthStatus::Warn, 'Upload size limit', "PHP allows {$requiredMb} MB, but the upload probe to {$probe['url']} could not run ({$probe['error']}) — verify by hand that importing a large voice .zip doesn't return 413.", $docs);
+
+            return;
+        }
+
+        if (($probe['status'] ?? 0) === 413) {
+            $server = trim((string) ($probe['server'] ?? '')) ?: 'the web server';
+            $this->add('upload_limit', HealthStatus::Fail, 'Upload size limit', "{$server} rejects uploads over its limit with 413 before they reach the app — raise nginx `client_max_body_size` to at least {$requiredMb}M (and any CDN's upload limit if you front the site). See the deploy guide.", $docs);
+
+            return;
+        }
+
+        $this->add('upload_limit', HealthStatus::Pass, 'Upload size limit', "PHP and the web server both accept an upload up to {$requiredMb} MB (probe returned HTTP {$probe['status']}).", $docs);
+    }
+
+    /**
+     * POST a body of `$bytes` to APP_URL's `/up` health path and report the HTTP
+     * status + Server header. nginx returns 413 from the Content-Length before
+     * reading the body, so a too-small limit fails cheaply; a healthy server
+     * streams the body once. Any non-413 status means the body cleared the web
+     * server's gate (POST /up itself just 405s — we only care about 413 vs not).
+     *
+     * @return array{status?: int, server?: string, url: string, error?: string}
+     */
+    private function probeUploadCeiling(int $bytes): array
+    {
+        $url = rtrim((string) config('app.url'), '/').'/up';
+
+        try {
+            $res = Http::withoutRedirecting()
+                ->timeout(30)
+                ->withBody(str_repeat('.', $bytes), 'application/octet-stream')
+                ->post($url);
+
+            return ['status' => $res->status(), 'server' => (string) $res->header('Server'), 'url' => $url];
+        } catch (Throwable $e) {
+            return ['error' => $e->getMessage(), 'url' => $url];
+        }
+    }
+
+    /** Parse a PHP ini size ("50M", "1024K", "2G"; "0"/"-1" => unlimited) to bytes. */
+    private function parseIniBytes(string $value): int
+    {
+        $value = trim($value);
+        if ($value === '' || $value === '0' || $value === '-1') {
+            return PHP_INT_MAX; // 0 / -1 mean "no limit"
+        }
+
+        $num = (int) $value;
+
+        return match (strtolower(substr($value, -1))) {
+            'g' => $num * 1024 * 1024 * 1024,
+            'm' => $num * 1024 * 1024,
+            'k' => $num * 1024,
+            default => (int) $value,
+        };
     }
 
     private function bytes(float|int $bytes): string

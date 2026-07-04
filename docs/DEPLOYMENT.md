@@ -121,12 +121,23 @@ lines after `composer install` and make sure `php artisan migrate --force` runs.
   command needs no arguments; otherwise pass the email
   (`admin:create you@example.com`) and it prompts for a password.
 
-### 6. SSL + timeouts
+### 6. SSL, timeouts & upload limits
 - Enable **Let's Encrypt** SSL for the domain.
 - A first (cold) generation can take up to ~60s. Raise timeouts so the request
   isn't cut off (Forge site settings):
   - nginx: `fastcgi_read_timeout 120;`
   - PHP: `max_execution_time = 120`
+- **Raise the upload size limit**, or importing a voice / uploading a reference
+  clip fails with an nginx **`413 Request Entity Too Large`** *before* it reaches
+  the app (nginx's default `client_max_body_size` is 1 MB, but the app accepts up
+  to 50 MB voice-import `.zip`s and 20 MB audio clips). In Forge → site → **Edit
+  Files → Edit Nginx Configuration**, add to the `server { … }` block:
+  - nginx: `client_max_body_size 50M;`
+  - Also confirm PHP's `upload_max_filesize` and `post_max_size` are ≥ `50M`
+    (Forge → **PHP** → edit the version's INI; the defaults are usually fine).
+  - `php artisan tts:doctor --deep` verifies this end-to-end (its **Upload size
+    limit** check POSTs an at-the-limit body and flags a 413), as does the Health
+    page's deep probe. The cap is `TTS_MAX_UPLOAD_SIZE_MB` (default 50).
 
 #### Behind Cloudflare or another reverse proxy
 

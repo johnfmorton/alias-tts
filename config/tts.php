@@ -40,6 +40,13 @@ return [
     // App\Http\Middleware\TrustProxies, so it is safe under a cached config.
     'trusted_proxies' => env('TRUSTED_PROXIES'),
 
+    // Largest upload the app accepts (MB): the voice-import .zip cap, and the
+    // size tts:doctor's "Upload size limit" check verifies the server allows.
+    // The web server (nginx client_max_body_size) and PHP (upload_max_filesize /
+    // post_max_size) must both be >= this, or uploads 413 before reaching Laravel.
+    'max_upload_size_mb' => (int) env('TTS_MAX_UPLOAD_SIZE_MB', 50),
+    'upload_docs_url' => env('TTS_UPLOAD_DOCS_URL', 'https://github.com/johnfmorton/mimic-tts/blob/main/docs/DEPLOYMENT.md'),
+
     /*
     |--------------------------------------------------------------------------
     | Defaults
