@@ -139,6 +139,14 @@ class SettingsPageTest extends TestCase
         $this->assertSame('auto', (new SettingsManager)->displayValue('tts.asr.studio_action'));
     }
 
+    public function test_studio_remediation_defaults_to_auto(): void
+    {
+        // The interactive Studio self-heals a flagged chunk by default (the badge
+        // is still shown so an admin can re-roll further by hand).
+        $this->assertSame('auto', app(AsrClient::class)->studioAction());
+        $this->assertSame('auto', (new SettingsManager)->displayValue('tts.asr.studio_action'));
+    }
+
     public function test_admin_can_view_the_settings_page(): void
     {
         $res = $this->actingAs($this->admin())->get(route('admin.settings.index'));

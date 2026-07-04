@@ -470,16 +470,15 @@ return [
         // keeping the best-coverage take) and precise-trim a TAIL-only chunk at
         // the ASR speech end (no Replicate call). Any other value behaves as 'log'.
         //
-        // The two generation paths default differently because they have different
-        // operators watching them. The interactive Studio (editable projects) shows
-        // an admin the per-chunk ASR badge, so it defaults to 'log' — let the human
-        // decide when to re-roll. The API / full-MP3 path is unattended (no badge,
-        // no human), so it defaults to 'auto' and self-heals. `action` is the shared
-        // base the Studio inherits when studio_action is unset (null); set
-        // TTS_ASR_API_ACTION=log to opt the API back into log-only.
+        // Both generation paths default to 'auto' so a flagged chunk self-heals
+        // out of the box. The interactive Studio still shows the per-chunk ASR
+        // badge, so an admin can see what was remediated and re-roll further by
+        // hand; set TTS_ASR_STUDIO_ACTION=log (or TTS_ASR_API_ACTION=log) to opt a
+        // path back into badge-only, no automatic re-roll. `action` is the shared
+        // base each path inherits when its own key is unset (null).
         'action' => env('TTS_ASR_ACTION', 'log'),
-        'studio_action' => env('TTS_ASR_STUDIO_ACTION'),   // null ⇒ inherit `action` (⇒ 'log')
-        'api_action' => env('TTS_ASR_API_ACTION', 'auto'), // unattended path self-heals by default
+        'studio_action' => env('TTS_ASR_STUDIO_ACTION', 'auto'), // interactive path self-heals; badge still shown
+        'api_action' => env('TTS_ASR_API_ACTION', 'auto'),       // unattended path self-heals by default
         'max_rerolls' => (int) env('TTS_ASR_MAX_REROLLS', 3),
         // Detection thresholds.
         'trail_s_max' => (float) env('TTS_ASR_TRAIL_S_MAX', 1.2),

@@ -56,7 +56,7 @@ $keys = [
         'options' => ['log', 'auto'],
         'inherits' => 'tts.asr.action',
         'label' => 'Studio remediation',
-        'help' => 'What the interactive Studio does with a flagged chunk. "log" = show the badge and let an admin re-roll by hand (recommended). "auto" = re-roll/trim automatically.',
+        'help' => 'What the interactive Studio does with a flagged chunk. "auto" (default) = re-roll/trim automatically, and still show the badge so you can re-roll further by hand. "log" = only show the badge and take no automatic action.',
     ],
     [
         'group' => 'asr',
