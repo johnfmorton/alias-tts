@@ -66,7 +66,7 @@ class VoiceTransferTest extends TestCase
         $this->assertNull(Voice::firstWhere('slug', 'dash-voice'));
 
         // Old ".bespoken-voice.zip" name on purpose: import is content-based
-        // (reads voice.json), so archives exported before the Mimic rename still import.
+        // (reads voice.json), so archives exported before the Alias rename still import.
         $upload = UploadedFile::fake()->createWithContent('dash-voice.bespoken-voice.zip', $zipBytes);
         $this->actingAs($admin)->post(route('admin.voices.import'), ['archive' => $upload])
             ->assertRedirect(route('admin.voices.index'));

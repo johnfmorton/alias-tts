@@ -32,7 +32,7 @@ class LoginPageTest extends TestCase
         $html = $this->get(route('login'))->assertOk()->getContent();
 
         $this->assertStringContainsString('mailto:help@example.com', $html);
-        $this->assertStringContainsString(rawurlencode('Mimic TTS password reset request'), $html);
+        $this->assertStringContainsString(rawurlencode('Alias TTS password reset request'), $html);
         // The drafted body names the instance so the admin knows which install.
         $this->assertStringContainsString(rawurlencode('https://tts.example.com'), $html);
         $this->assertStringContainsString('Email the administrator', $html);

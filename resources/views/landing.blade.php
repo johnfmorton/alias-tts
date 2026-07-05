@@ -3,9 +3,9 @@
 <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>Mimic TTS — self-hosted, ElevenLabs- &amp; OpenAI-compatible text-to-speech</title>
+    <title>Alias TTS — self-hosted, ElevenLabs- &amp; OpenAI-compatible text-to-speech</title>
     <link rel="icon" href="{{ asset('favicon.ico') }}" sizes="32x32">
-    <link rel="icon" href="{{ asset('mimic-icon.svg') }}" type="image/svg+xml">
+    <link rel="icon" href="{{ asset('alias-icon.svg') }}" type="image/svg+xml">
     <link rel="apple-touch-icon" href="{{ asset('apple-touch-icon.png') }}">
     @vite(['resources/css/app.css'])
     <style>
@@ -55,8 +55,8 @@
 
         {{-- Brand lockup --}}
         <div class="rise flex items-center gap-2.5" style="animation-delay: 0ms">
-            <img src="{{ asset('mimic-icon-on-dark.svg') }}" alt="" class="h-8 w-8">
-            <span class="text-lg font-semibold tracking-tight text-zinc-200">Mimic TTS</span>
+            <img src="{{ asset('alias-icon-on-dark.svg') }}" alt="" class="h-8 w-8">
+            <span class="text-lg font-semibold tracking-tight text-zinc-200">Alias TTS</span>
         </div>
 
         {{-- Thesis: the three pillars as a tricolon — self-hosted, dual-API, cloning. --}}
@@ -75,7 +75,7 @@
                class="rounded-lg bg-[#22d3ee] px-5 py-2.5 text-sm font-semibold text-[#062326] transition hover:brightness-110">
                 Open dashboard
             </a>
-            <a href="https://github.com/johnfmorton/mimic-tts"
+            <a href="https://github.com/johnfmorton/alias-tts"
                class="rounded-lg border border-zinc-700 px-5 py-2.5 text-sm font-medium text-zinc-300 transition hover:border-zinc-500 hover:bg-white/5">
                 View on GitHub
             </a>

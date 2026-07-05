@@ -41,7 +41,7 @@ class GenblazeTest extends TestCase
 
     public function test_page_renders_runner_health(): void
     {
-        Http::fake(['runner.test/health' => Http::response(['status' => 'ok', 'mimic' => 'https://tts.ddev.site', 'b2' => true])]);
+        Http::fake(['runner.test/health' => Http::response(['status' => 'ok', 'alias' => 'https://tts.ddev.site', 'b2' => true])]);
         Voice::create(['slug' => 'v', 'name' => 'V']);
 
         $this->actingAs($this->admin())
@@ -58,7 +58,7 @@ class GenblazeTest extends TestCase
 
     public function test_genblaze_page_highlights_only_the_genblaze_nav_tab(): void
     {
-        Http::fake(['runner.test/health' => Http::response(['status' => 'ok', 'mimic' => 'x', 'b2' => true])]);
+        Http::fake(['runner.test/health' => Http::response(['status' => 'ok', 'alias' => 'x', 'b2' => true])]);
         Voice::create(['slug' => 'v', 'name' => 'V']);
 
         $html = $this->actingAs($this->admin())
@@ -119,14 +119,14 @@ class GenblazeTest extends TestCase
     public function test_play_urls_strip_a_shared_bucket_storage_root(): void
     {
         // Under TTS_STORAGE_ROOT the runner's B2 URLs carry the instance prefix
-        // (bucket/mimic/genblaze/...), but the proxied key must stay disk-relative
+        // (bucket/alias/genblaze/...), but the proxied key must stay disk-relative
         // (genblaze/...) — the s3 disk re-applies the root on read.
-        config(['filesystems.disks.s3.bucket' => 'johnfmorton', 'filesystems.disks.s3.root' => 'mimic']);
+        config(['filesystems.disks.s3.bucket' => 'johnfmorton', 'filesystems.disks.s3.root' => 'alias']);
         Voice::create(['slug' => 'v', 'name' => 'V']);
         Http::fake([
             'runner.test/pronounce' => Http::response(['available' => true, 'substitutions' => []]),
             'runner.test/run' => Http::response([
-                'final_url' => 'https://s3.us-west-001.backblazeb2.com/johnfmorton/mimic/genblaze/runs/x/assets/final.mp3',
+                'final_url' => 'https://s3.us-west-001.backblazeb2.com/johnfmorton/alias/genblaze/runs/x/assets/final.mp3',
                 'final_manifest_hash' => 'abc123',
                 'final_manifest_verified' => true,
                 'reroll_count' => 0,
@@ -232,7 +232,7 @@ class GenblazeTest extends TestCase
         $this->actingAs($this->admin())
             ->get(route('admin.studio.genblaze.asset', ['key' => 'genblaze/runs/x/assets/final.mp3', 'download' => 1]))
             ->assertOk()
-            ->assertHeader('Content-Disposition', 'attachment; filename="mimic-sealed-final.mp3"');
+            ->assertHeader('Content-Disposition', 'attachment; filename="alias-sealed-final.mp3"');
 
         // Any non-genblaze key is refused — the proxy can't serve arbitrary bucket objects.
         $this->actingAs($this->admin())

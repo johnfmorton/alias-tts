@@ -1607,7 +1607,7 @@ function initStudioProject() {
             if (!res.ok) throw new Error(await errorMessage(res));
             const data = await res.json();
             heading.textContent = data.title;
-            document.title = `${data.title} — Mimic TTS`;
+            document.title = `${data.title} — Alias TTS`;
             closeRename();
             setStatus(finalStatus, '✓ Renamed.', 'ok');
         } catch (err) {
@@ -1643,7 +1643,7 @@ function initStudioProject() {
                 const data = await res.json();
                 if (data.title && heading) {
                     heading.textContent = data.title;
-                    document.title = `${data.title} — Mimic TTS`;
+                    document.title = `${data.title} — Alias TTS`;
                 }
                 document.getElementById('project-failure-notice')?.remove();
                 setStatus(finalStatus, '✓ Cleared the API-failure flag — this is now a regular project.', 'ok');
@@ -1877,7 +1877,7 @@ function initGenblaze() {
                     : data.final_url;
                 const hash8 = (data.final_manifest_hash || '').slice(0, 8);
                 const ext = (data.final_url || '').toLowerCase().endsWith('.wav') ? 'wav' : 'mp3';
-                dl.setAttribute('download', `mimic-sealed-final${hash8 ? '-' + hash8 : ''}.${ext}`);
+                dl.setAttribute('download', `alias-sealed-final${hash8 ? '-' + hash8 : ''}.${ext}`);
                 dl.className = 'mt-2 inline-flex items-center gap-1.5 rounded-md border border-emerald-500/30 bg-emerald-500/10 px-2.5 py-1 text-xs font-medium text-emerald-300 hover:bg-emerald-500/20';
             } else {
                 dl.className = 'hidden';

@@ -1,9 +1,9 @@
 # OpenAI-compatible TTS endpoint
 
-Mimic exposes one endpoint that speaks OpenAI's text-to-speech API,
+Alias exposes one endpoint that speaks OpenAI's text-to-speech API,
 `POST /v1/audio/speech`, adapting it onto the same synthesis engine, voices,
 cache, and audio pipeline the [ElevenLabs surface](BESPOKEN.md) uses. An app
-written against OpenAI's TTS API can point at Mimic by changing only the base
+written against OpenAI's TTS API can point at Alias by changing only the base
 URL and the API key.
 
 This document is the **support contract**: exactly what is honored, what is
@@ -16,9 +16,9 @@ speech **only** — none of OpenAI's other APIs are implemented (see
 | Area | Status |
 |---|---|
 | `POST /v1/audio/speech` | ✅ Supported |
-| `Authorization: Bearer <key>` | ✅ Supported (key is a **Mimic** key) |
+| `Authorization: Bearer <key>` | ✅ Supported (key is a **Alias** key) |
 | `input` | ✅ Supported |
-| `voice` | ⚠️ Supported, but it is a **Mimic voice slug**, not an OpenAI preset |
+| `voice` | ⚠️ Supported, but it is a **Alias voice slug**, not an OpenAI preset |
 | `model` | 🟡 Accepted, **ignored** (the configured provider picks the model) |
 | `response_format`: `mp3`, `wav` | ✅ Supported |
 | `response_format`: `pcm` | ⚠️ Returns a **WAV container**, not raw PCM |
@@ -44,11 +44,11 @@ socket, or any other OpenAI route — requests to those get a `404`.
 
 ## Authentication
 
-- **Supported:** `Authorization: Bearer <key>`, where `<key>` is a **Mimic
+- **Supported:** `Authorization: Bearer <key>`, where `<key>` is a **Alias
   API key** (`sk_…`) from the dashboard — *not* an OpenAI key. `xi-api-key` and
   `X-API-Key` headers also work.
 - **Ignored:** `OpenAI-Organization` / `OpenAI-Project` headers are accepted and
-  have no effect (Mimic has no org/project concept).
+  have no effect (Alias has no org/project concept).
 - Errors are `401` (missing/invalid key) and `403` (deactivated key), in the
   OpenAI error shape.
 
@@ -57,8 +57,8 @@ socket, or any other OpenAI route — requests to those get a `404`.
 | Field | Required | Behavior |
 |---|---|---|
 | `input` | yes | The text to synthesize. Capped at `tts.max_text_length` (default **5000**; note OpenAI's own cap is 4096). Over the cap → `400`. |
-| `voice` | yes | Resolved as a **Mimic voice slug** — see [Voices](#voices). Unknown → `404`. |
-| `model` | no | **Accepted and ignored.** OpenAI requires it (`tts-1`, `tts-1-hd`, `gpt-4o-mini-tts`); Mimic's configured provider (Chatterbox via Replicate by default) decides the actual model. |
+| `voice` | yes | Resolved as a **Alias voice slug** — see [Voices](#voices). Unknown → `404`. |
+| `model` | no | **Accepted and ignored.** OpenAI requires it (`tts-1`, `tts-1-hd`, `gpt-4o-mini-tts`); Alias's configured provider (Chatterbox via Replicate by default) decides the actual model. |
 | `response_format` | no | `mp3` (default), `wav`, `pcm` — see [Audio formats](#audio-formats). `opus`/`aac`/`flac` → `400`. |
 | `speed` | no | **Accepted (0.25–4.0), not applied.** Out-of-range → `400`. |
 | `instructions` | no | **Accepted, not applied** — the Chatterbox provider has no prose-steering input. |
@@ -74,13 +74,13 @@ stock OpenAI client.
 - **OpenAI:** `voice` is one of a **fixed preset list** (`alloy`, `ash`, `coral`,
   `echo`, `fable`, `onyx`, `nova`, `sage`, `shimmer`, plus a few on
   `gpt-4o-mini-tts`). There is **no cloning and no custom voices**.
-- **Mimic:** voices are **arbitrary, per-user, and often cloned**, addressed
+- **Alias:** voices are **arbitrary, per-user, and often cloned**, addressed
   by a **slug** — the same value the ElevenLabs `{voice_id}` path segment takes.
 
-So the `voice` field is treated as **one of your Mimic slugs**, not an OpenAI
+So the `voice` field is treated as **one of your Alias slugs**, not an OpenAI
 preset. Two ways to make a client work:
 
-1. **Send a real slug** — set the client's `voice` to a Mimic voice slug
+1. **Send a real slug** — set the client's `voice` to a Alias voice slug
    (e.g. `my-voice`). Simplest.
 2. **Alias the preset names** — map OpenAI's fixed names to your voices in
    `config/tts.php` so a stock client that only knows `alloy`/`nova` resolves:
@@ -98,7 +98,7 @@ preset. Two ways to make a client work:
 
 **Not supported:** the OpenAI preset voices as *actual distinct voices*
 (`alloy` does not sound like OpenAI's alloy), and creating/cloning a voice
-through this endpoint. Manage voices in the Mimic dashboard.
+through this endpoint. Manage voices in the Alias dashboard.
 
 ## Audio formats
 
@@ -158,10 +158,10 @@ A single, explicit list:
 - **`speed`** and **`instructions`** — accepted for compatibility but have no
   effect on the output.
 - **OpenAI's preset voices as real voices**, and **voice cloning/creation** via
-  the API. `voice` is a Mimic slug (optionally aliased).
-- **OpenAI's `model` selection** — the value is ignored; Mimic's configured
+  the API. `voice` is a Alias slug (optionally aliased).
+- **OpenAI's `model` selection** — the value is ignored; Alias's configured
   provider decides the model.
-- **OpenAI API keys** — authenticate with a Mimic `sk_…` key.
+- **OpenAI API keys** — authenticate with a Alias `sk_…` key.
 
 ## Quickstart
 
@@ -170,12 +170,12 @@ A single, explicit list:
 ```python
 from openai import OpenAI
 
-client = OpenAI(base_url="https://your-host/v1", api_key="<mimic sk_ key>")
+client = OpenAI(base_url="https://your-host/v1", api_key="<alias sk_ key>")
 
 client.audio.speech.create(
     model="tts-1",       # accepted, ignored
-    voice="my-voice",    # a Mimic slug (or an aliased preset name)
-    input="Hello from Mimic.",
+    voice="my-voice",    # a Alias slug (or an aliased preset name)
+    input="Hello from Alias.",
 ).stream_to_file("out.mp3")
 ```
 
@@ -183,8 +183,8 @@ client.audio.speech.create(
 
 ```bash
 curl -X POST https://your-host/v1/audio/speech \
-  -H "Authorization: Bearer <mimic sk_ key>" \
+  -H "Authorization: Bearer <alias sk_ key>" \
   -H "Content-Type: application/json" \
-  -d '{"model":"tts-1","voice":"my-voice","input":"Hello from Mimic.","response_format":"mp3"}' \
+  -d '{"model":"tts-1","voice":"my-voice","input":"Hello from Alias.","response_format":"mp3"}' \
   --output out.mp3
 ```

@@ -68,7 +68,7 @@ deploys (it's where Forge keeps `.env` and `storage/`), it's scoped to this site
 ```
 
 > Throughout, replace `<your-site>` with your real site directory, e.g.
-> `mimic-tts-xxxx.on-forge.com`.
+> `alias-tts-xxxx.on-forge.com`.
 
 ## Install (run as the `forge` user, over SSH)
 

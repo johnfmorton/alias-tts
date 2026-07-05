@@ -307,7 +307,7 @@ class HealthReport
         // is mounted only when the shared secret is set — without it every run
         // fails mid-pipeline even though the runner itself looks healthy.
         if ((string) config('tts.internal.secret') === '') {
-            $this->add('genblaze', HealthStatus::Fail, 'Genblaze runner', 'the daemon is up, but TTS_INTERNAL_SECRET is empty so its /v1/internal/* callbacks are disabled (503) and every run fails mid-pipeline — set TTS_INTERNAL_SECRET in the app\'s .env and the matching MIMIC_INTERNAL_SECRET in the runner\'s environment, then restart the daemon.', $docs);
+            $this->add('genblaze', HealthStatus::Fail, 'Genblaze runner', 'the daemon is up, but TTS_INTERNAL_SECRET is empty so its /v1/internal/* callbacks are disabled (503) and every run fails mid-pipeline — set TTS_INTERNAL_SECRET in the app\'s .env and the matching ALIAS_INTERNAL_SECRET in the runner\'s environment, then restart the daemon.', $docs);
 
             return;
         }
@@ -335,10 +335,10 @@ class HealthReport
         }
 
         // Softer misconfigurations: the runner responds, but something is off.
-        $mimic = rtrim((string) ($body['mimic'] ?? ''), '/');
+        $alias = rtrim((string) ($body['alias'] ?? ''), '/');
         $appUrl = rtrim((string) config('app.url'), '/');
-        if ($mimic !== '' && $appUrl !== '' && $mimic !== $appUrl) {
-            $this->add('genblaze', HealthStatus::Warn, 'Genblaze runner', "up at {$url}, but its callbacks target {$mimic} while this app is {$appUrl} — fix MIMIC_BASE_URL in the runner's environment if runs stall.", $docs);
+        if ($alias !== '' && $appUrl !== '' && $alias !== $appUrl) {
+            $this->add('genblaze', HealthStatus::Warn, 'Genblaze runner', "up at {$url}, but its callbacks target {$alias} while this app is {$appUrl} — fix ALIAS_BASE_URL in the runner's environment if runs stall.", $docs);
 
             return;
         }
@@ -352,7 +352,7 @@ class HealthReport
         $this->add('genblaze', HealthStatus::Pass, 'Genblaze runner', sprintf(
             'up at %s — callbacks to %s, B2 sink on%s.',
             $url,
-            $mimic,
+            $alias,
             $appRoot === '' ? '' : ", storage root \"{$appRoot}/\"",
         ));
     }

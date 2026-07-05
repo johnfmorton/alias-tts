@@ -2,7 +2,7 @@
 
 This is the piece that makes Genblaze *orchestrate* rather than merely store:
 it drives the chunk -> generate -> ASR-score -> (re-roll | trim) -> stitch flow
-that Mimic's ``ChunkRemediator`` does internally, but expressed as Genblaze
+that Alias's ``ChunkRemediator`` does internally, but expressed as Genblaze
 pipelines so every take + verdict + manifest is provenance-tracked to B2.
 
 Two phases (forced by Genblaze's static DAG: ``input_from`` is same-run only,
@@ -34,15 +34,15 @@ from genblaze_core.media import get_handler
 from genblaze_core.models.asset import Asset
 from genblaze_core.models.enums import Modality, StepType
 
-from genblaze_mimic import (
-    MimicChunkProvider,
-    MimicQAProvider,
-    MimicStitchProvider,
+from genblaze_alias import (
+    AliasChunkProvider,
+    AliasQAProvider,
+    AliasStitchProvider,
 )
-from genblaze_mimic._assets import read_asset_bytes, write_audio_asset
-from genblaze_mimic._client import MimicClient
+from genblaze_alias._assets import read_asset_bytes, write_audio_asset
+from genblaze_alias._client import AliasClient
 
-# Problem classes (from Mimic's ChunkQualityVerdict).
+# Problem classes (from Alias's ChunkQualityVerdict).
 REROLL_PROBLEMS = frozenset({"TRUNC", "PAUSE", "NOSPEECH", "BNDNOISE"})
 TRIM_PROBLEMS = frozenset({"TAIL", "TAILNOISE"})
 
@@ -107,14 +107,14 @@ class Orchestrator:
     def __init__(
         self,
         *,
-        client: MimicClient | None = None,
+        client: AliasClient | None = None,
         sink=None,
         output_dir: str | Path | None = None,
         max_rerolls: int = 3,
         tenant: str | None = None,
-        chunk_provider: MimicChunkProvider | None = None,
-        qa_provider: MimicQAProvider | None = None,
-        stitch_provider: MimicStitchProvider | None = None,
+        chunk_provider: AliasChunkProvider | None = None,
+        qa_provider: AliasQAProvider | None = None,
+        stitch_provider: AliasStitchProvider | None = None,
     ) -> None:
         self.client = client
         self.sink = sink
@@ -123,15 +123,15 @@ class Orchestrator:
         self.tenant = tenant
         self.reroll_problems = REROLL_PROBLEMS
         self.trim_problems = TRIM_PROBLEMS
-        self.chunk_provider = chunk_provider or MimicChunkProvider(client=client, output_dir=self.output_dir)
-        self.qa_provider = qa_provider or MimicQAProvider(client=client, output_dir=self.output_dir)
-        self.stitch_provider = stitch_provider or MimicStitchProvider(client=client, output_dir=self.output_dir)
+        self.chunk_provider = chunk_provider or AliasChunkProvider(client=client, output_dir=self.output_dir)
+        self.qa_provider = qa_provider or AliasQAProvider(client=client, output_dir=self.output_dir)
+        self.stitch_provider = stitch_provider or AliasStitchProvider(client=client, output_dir=self.output_dir)
 
     @classmethod
     def from_config(cls, config, sink=None) -> "Orchestrator":
-        client = MimicClient(
-            base_url=config.mimic_base_url,
-            internal_secret=config.mimic_internal_secret,
+        client = AliasClient(
+            base_url=config.alias_base_url,
+            internal_secret=config.alias_internal_secret,
         )
         return cls(client=client, sink=sink, output_dir=config.output_dir,
                    max_rerolls=config.max_rerolls)

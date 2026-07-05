@@ -1,10 +1,10 @@
-# Mimic TTS
+# Alias TTS
 
 **Your own self-hosted text-to-speech server with zero-shot voice cloning —
 API-compatible with both ElevenLabs and OpenAI, so existing clients work by
 changing only the base URL and API key.**
 
-![CI](https://github.com/johnfmorton/mimic-tts/actions/workflows/ci.yml/badge.svg)
+![CI](https://github.com/johnfmorton/alias-tts/actions/workflows/ci.yml/badge.svg)
 
 This is a Laravel app that speaks two TTS dialects: the **ElevenLabs HTTP API**
 (`POST /v1/text-to-speech/{voice_id}`) and the **OpenAI audio API**
@@ -147,7 +147,7 @@ the **queue worker** for async generation, and the **scheduler/cron** for cleanu
 
 ## The API
 
-Two dialects, one engine. Both surfaces authenticate with the same Mimic API
+Two dialects, one engine. Both surfaces authenticate with the same Alias API
 keys, resolve the same voices, share the same cache and audio pipeline, and
 count against the same per-key rate limit.
 
@@ -205,10 +205,10 @@ request. Over the limit, the endpoint returns an ElevenLabs-shaped 422.
 ### OpenAI dialect
 
 `POST /v1/audio/speech` — an app written against OpenAI's TTS API works by
-changing only the base URL and key. Authenticate with a **Mimic** key via
+changing only the base URL and key. Authenticate with a **Alias** key via
 `Authorization: Bearer`; errors use the OpenAI `{"error":{…}}` envelope.
 
-The one semantic difference: `voice` is a **Mimic voice slug**, not an OpenAI
+The one semantic difference: `voice` is a **Alias voice slug**, not an OpenAI
 preset (OpenAI has no custom voices to map to). For stock clients that only know
 `alloy`/`nova`/etc., a config map (`openai_voice_aliases`) can alias the preset
 names to your voices. `model` is accepted and ignored; `response_format`
@@ -217,7 +217,7 @@ supports `mp3` and `wav` (`pcm` returns a WAV container); streaming,
 support contract — exactly what's honored, accepted-but-ignored, and rejected —
 is in **[docs/OPENAI-COMPAT.md](docs/OPENAI-COMPAT.md)**.
 
-### Mimic extensions
+### Alias extensions
 
 Beyond the two compatibility surfaces (and the async jobs above), two
 authenticated endpoints exist for richer clients:
@@ -286,7 +286,7 @@ automatically to all future text. Clients can read the dictionary via
 `GET /v1/pronunciations`. It's off by default (`TTS_PRONUNCIATION_ENABLED`),
 toggleable per user on the Settings page, and degrades safely — if the LLM is
 unreachable, generation continues without suggestions. See
-**[docs/MIMIC-PRONUNCIATION-PREPROCESSOR.md](docs/MIMIC-PRONUNCIATION-PREPROCESSOR.md)**.
+**[docs/ALIAS-PRONUNCIATION-PREPROCESSOR.md](docs/ALIAS-PRONUNCIATION-PREPROCESSOR.md)**.
 
 ## Audio quality checks (QA)
 
@@ -324,7 +324,7 @@ php artisan apikey:list
 # Voices
 php artisan voice:create "<Name>" [audio] [--slug=] [--raw] [--seed=]
 php artisan voice:list
-php artisan voice:export <slug> [--output=path]        # -> <slug>.mimic-voice.zip
+php artisan voice:export <slug> [--output=path]        # -> <slug>.alias-voice.zip
 php artisan voice:import <file.zip>
 
 # Maintenance
@@ -369,9 +369,9 @@ healthy. See [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md) for the details.
 ## Using it with Craft CMS
 
 The **[Bespoken plugin](https://github.com/johnfmorton/craft-bespoken)** for
-Craft CMS speaks the ElevenLabs dialect and understands the Mimic extensions
-(async jobs, projects, pronunciation sync), so it works with Mimic out of the
-box: set the plugin's base URL to your domain, the API key to a Mimic key, and
+Craft CMS speaks the ElevenLabs dialect and understands the Alias extensions
+(async jobs, projects, pronunciation sync), so it works with Alias out of the
+box: set the plugin's base URL to your domain, the API key to a Alias key, and
 a `voice_id` that matches a registered voice slug. See
 **[docs/BESPOKEN.md](docs/BESPOKEN.md)** for the full step-by-step guide.
 

@@ -1,6 +1,6 @@
 # Deployment
 
-Mimic TTS is a standard Laravel app — it runs anywhere Laravel runs. The
+Alias TTS is a standard Laravel app — it runs anywhere Laravel runs. The
 extras beyond a normal Laravel deploy are **ffmpeg** (audio normalization +
 format conversion), a one-time **Node build** of the dashboard assets, and two
 Python sidecars: the **Genblaze runner** (whole-render orchestration +
@@ -25,7 +25,7 @@ audio quality gate, see [ASR-SETUP.md](ASR-SETUP.md)).
 ### 1. Create the site
 On **Install a Laravel application**:
 
-- **Repository:** `johnfmorton/mimic-tts` · **Branch:** `main`
+- **Repository:** `johnfmorton/alias-tts` · **Branch:** `main`
 - **Connect to database:** on → **Create a new database** (Forge injects `DB_*`)
 - **Install Composer dependencies:** on
 - **Generate a site deploy key:** off — your connected GitHub account owns the
@@ -329,8 +329,8 @@ reachable.
 
 The same steps by hand on any host:
 ```bash
-git clone https://github.com/johnfmorton/mimic-tts.git
-cd mimic-tts
+git clone https://github.com/johnfmorton/alias-tts.git
+cd alias-tts
 composer install --no-dev --optimize-autoloader
 cp .env.example .env && php artisan key:generate
 # edit .env: APP_URL, DB_*, TTS_PROVIDER, REPLICATE_API_TOKEN, ADMIN_*

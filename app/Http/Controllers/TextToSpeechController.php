@@ -26,7 +26,7 @@ use Throwable;
  * Success -> raw audio bytes (audio/mpeg by default).
  * Error   -> JSON { "detail": { "message": ... } } (matches ElevenLabs).
  *
- * A Mimic-specific async extension lets long text exceed the synchronous
+ * A Alias-specific async extension lets long text exceed the synchronous
  * ~300s ceiling:
  *
  *   POST /v1/text-to-speech/{voice_id}/jobs  -> 202 { id, status, status_url, audio_url }

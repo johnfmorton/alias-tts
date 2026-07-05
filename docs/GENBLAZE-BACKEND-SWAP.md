@@ -19,7 +19,7 @@
 A dropdown in the admin settings selects the TTS backend for a render:
 
 - **Default:** our existing custom solution (the Genblaze runner's
-  `MimicChunkProvider` → `/v1/internal/generate` →
+  `AliasChunkProvider` → `/v1/internal/generate` →
   `ReplicateChatterboxProvider` → Replicate / Chatterbox). Unchanged; it works
   well today.
 - **Alternative(s):** a second engine — e.g. **LMNT** — reachable through a real
@@ -77,7 +77,7 @@ cheap, and two things follow from that:
    Genblaze's "swap one line" claim into a literal UI control.
 
 2. **The alternative engine is a real off-the-shelf Genblaze adapter.**
-   Keep Chatterbox as our **custom** `MimicChunkProvider`; add LMNT via the
+   Keep Chatterbox as our **custom** `AliasChunkProvider`; add LMNT via the
    **published** `genblaze-lmnt` adapter (`pip install genblaze-lmnt`). That
    puts a bespoke engine *and* an off-the-shelf engine behind the **same**
    Pipeline/Step API and the **same** manifest shape — with zero LMNT
@@ -127,7 +127,7 @@ The two wins, paired:
 ## 6. Concrete components to change (future checklist — not started)
 
 - **Runner:** a provider registry keyed by backend name
-  (`{"chatterbox": MimicChunkProvider(...), "lmnt": …}` — the `lmnt` entry is
+  (`{"chatterbox": AliasChunkProvider(...), "lmnt": …}` — the `lmnt` entry is
   the `genblaze-lmnt` adapter's provider class; exact class name unverified until
   the package is installed). The orchestrator selects the provider object per
   render instead of hard-coding `self.chunk_provider`. Alternatively, build the

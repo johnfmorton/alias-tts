@@ -142,7 +142,7 @@ class ProjectExportService
     {
         return [
             'version' => 1,
-            'kind' => 'mimic-seal-receipt',
+            'kind' => 'alias-seal-receipt',
             'project' => [
                 'id' => $project->id,
                 'title' => $project->title,

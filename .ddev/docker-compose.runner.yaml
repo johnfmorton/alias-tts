@@ -16,9 +16,9 @@ services:
     volumes:
       - "../:/app"
     # Bulk-load secrets from the Laravel .env (REPLICATE_API_TOKEN, B2_*,
-    # TTS_INTERNAL_SECRET, …); the entrypoint maps the MIMIC_* names.
+    # TTS_INTERNAL_SECRET, …); the entrypoint maps the ALIAS_* names.
     env_file:
       - ../.env
     environment:
-      - MIMIC_BASE_URL=http://web
+      - ALIAS_BASE_URL=http://web
       - GENBLAZE_MAX_CONCURRENCY=1

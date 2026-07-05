@@ -27,14 +27,14 @@ def _normalize_b2_region(raw: str | None) -> str | None:
 
 @dataclass
 class RunnerConfig:
-    """Where the runner finds Mimic and its object storage, plus orchestration
+    """Where the runner finds Alias and its object storage, plus orchestration
     knobs. Provenance storage is provider-agnostic: it reads the app's own
     ``AWS_*`` config (any S3-compatible provider — AWS S3, B2, R2, MinIO, …) so
     the runner writes to the SAME bucket with a single source of truth, and falls
     back to the legacy ``B2_*`` vars for a daemon whose env predates this."""
 
-    mimic_base_url: str = "http://localhost"
-    mimic_internal_secret: str = ""
+    alias_base_url: str = "http://localhost"
+    alias_internal_secret: str = ""
     output_dir: str | None = None
 
     # Provider-agnostic S3 config, mirrored from the app's AWS_* env. s3_endpoint
@@ -64,10 +64,10 @@ class RunnerConfig:
     @classmethod
     def from_env(cls) -> "RunnerConfig":
         return cls(
-            # MIMIC_* are the current names; BESPOKEN_* are still read as a
+            # ALIAS_* are the current names; BESPOKEN_* are still read as a
             # fallback so a daemon whose env predates the rename keeps working.
-            mimic_base_url=os.getenv("MIMIC_BASE_URL") or os.getenv("BESPOKEN_BASE_URL", "http://localhost"),
-            mimic_internal_secret=os.getenv("MIMIC_INTERNAL_SECRET") or os.getenv("BESPOKEN_INTERNAL_SECRET", ""),
+            alias_base_url=os.getenv("ALIAS_BASE_URL") or os.getenv("BESPOKEN_BASE_URL", "http://localhost"),
+            alias_internal_secret=os.getenv("ALIAS_INTERNAL_SECRET") or os.getenv("BESPOKEN_INTERNAL_SECRET", ""),
             output_dir=os.getenv("GENBLAZE_OUTPUT_DIR"),
             # The app's storage config, read directly so a wrapper that sources
             # the site's .env needs no mapping. Endpoint/region/keys/bucket all
@@ -82,9 +82,9 @@ class RunnerConfig:
             b2_region=_normalize_b2_region(os.getenv("B2_REGION")),
             b2_public_url_base=os.getenv("B2_PUBLIC_URL_BASE") or None,
             # TTS_STORAGE_ROOT is read directly so a wrapper that sources the
-            # site's .env needs no extra mapping; MIMIC_STORAGE_ROOT overrides.
+            # site's .env needs no extra mapping; ALIAS_STORAGE_ROOT overrides.
             storage_root=_normalize_storage_root(
-                os.getenv("MIMIC_STORAGE_ROOT") or os.getenv("TTS_STORAGE_ROOT")
+                os.getenv("ALIAS_STORAGE_ROOT") or os.getenv("TTS_STORAGE_ROOT")
             ),
             max_rerolls=int(os.getenv("GENBLAZE_MAX_REROLLS", "3")),
             max_concurrency=int(os.getenv("GENBLAZE_MAX_CONCURRENCY", "2")),

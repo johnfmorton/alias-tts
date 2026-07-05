@@ -1,4 +1,4 @@
-"""``MimicChunkProvider`` — Posture B: synthesize ONE chunk with a single
+"""``AliasChunkProvider`` — Posture B: synthesize ONE chunk with a single
 seed via ``POST /v1/internal/generate`` (no internal ASR re-roll — the Genblaze
 orchestrator owns the QA-gated re-roll). Returns the raw provider container
 (WAV) as a ``file://`` asset.
@@ -16,20 +16,20 @@ from genblaze_core.models.step import Step
 from genblaze_core.providers.base import ProviderCapabilities, SyncProvider
 from genblaze_core.runnable.config import RunnableConfig
 
-from genblaze_mimic._assets import write_audio_asset
-from genblaze_mimic._client import MimicClient
-from genblaze_mimic._errors import classify_exception
+from genblaze_alias._assets import write_audio_asset
+from genblaze_alias._client import AliasClient
+from genblaze_alias._errors import classify_exception
 
 
-class MimicChunkProvider(SyncProvider):
-    """Synthesize a single chunk via the Mimic internal API."""
+class AliasChunkProvider(SyncProvider):
+    """Synthesize a single chunk via the Alias internal API."""
 
-    name = "mimic-chunk"
+    name = "alias-chunk"
 
     def __init__(
         self,
         *,
-        client: MimicClient | None = None,
+        client: AliasClient | None = None,
         base_url: str | None = None,
         api_key: str | None = None,
         internal_secret: str | None = None,
@@ -38,7 +38,7 @@ class MimicChunkProvider(SyncProvider):
         **kwargs,
     ) -> None:
         super().__init__(**kwargs)
-        self._client = client or MimicClient(
+        self._client = client or AliasClient(
             base_url=base_url, api_key=api_key, internal_secret=internal_secret, timeout=timeout
         )
         self._output_dir = Path(output_dir or os.getenv("GENBLAZE_OUTPUT_DIR") or tempfile.gettempdir())

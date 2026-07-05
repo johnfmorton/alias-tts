@@ -5,12 +5,12 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "genblaze-runner"
 version = "0.1.0"
-description = "Genblaze-owned orchestrator for the Mimic TTS pipeline (chunk -> generate -> ASR re-roll -> stitch) with Backblaze B2 provenance."
+description = "Genblaze-owned orchestrator for the Alias TTS pipeline (chunk -> generate -> ASR re-roll -> stitch) with Backblaze B2 provenance."
 readme = "README.md"
 requires-python = ">=3.11"
 license = { text = "MIT" }
-# NOTE: genblaze-mimic is a sibling editable install, not on PyPI:
-#   pip install -e ../connectors/genblaze-mimic
+# NOTE: genblaze-alias is a sibling editable install, not on PyPI:
+#   pip install -e ../connectors/genblaze-alias
 dependencies = [
     # [audio] pulls in mutagen, required to embed the provenance manifest into
     # the final deliverable (ID3v2 TXXX for MP3). Without it the embed step is a

@@ -16,7 +16,7 @@ from dataclasses import replace
 from genblaze_core.media import get_handler
 from genblaze_core.models.asset import Asset
 
-from genblaze_mimic._client import TtsResult
+from genblaze_alias._client import TtsResult
 from genblaze_runner.orchestrator import Orchestrator
 
 _FAKE_WAV = b"RIFF\x24\x00\x00\x00WAVEfmt " + b"\x00" * 32

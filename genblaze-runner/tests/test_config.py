@@ -31,9 +31,9 @@ def test_normalize_b2_region_empty_is_none():
 
 
 def test_normalize_storage_root_strips_slashes_and_whitespace():
-    assert _normalize_storage_root("mimic") == "mimic"
-    assert _normalize_storage_root("/mimic/") == "mimic"
-    assert _normalize_storage_root("  mimic  ") == "mimic"
+    assert _normalize_storage_root("alias") == "alias"
+    assert _normalize_storage_root("/alias/") == "alias"
+    assert _normalize_storage_root("  alias  ") == "alias"
     assert _normalize_storage_root("") is None
     assert _normalize_storage_root("/") is None
     assert _normalize_storage_root(None) is None
@@ -41,16 +41,16 @@ def test_normalize_storage_root_strips_slashes_and_whitespace():
 
 def test_sink_prefix_nests_genblaze_under_the_storage_root():
     assert sink_prefix(None) == "genblaze"                    # default: top-level, matches the app
-    assert sink_prefix("mimic") == "mimic/genblaze"           # shared bucket: TTS_STORAGE_ROOT set
+    assert sink_prefix("alias") == "alias/genblaze"           # shared bucket: TTS_STORAGE_ROOT set
 
 
 def test_storage_root_reads_the_apps_env_name_directly(monkeypatch):
     # A wrapper that sources the site's .env passes TTS_STORAGE_ROOT through
-    # untouched — no MIMIC_* mapping needed; MIMIC_STORAGE_ROOT still overrides.
-    monkeypatch.setenv("TTS_STORAGE_ROOT", "mimic")
-    assert RunnerConfig.from_env().storage_root == "mimic"
+    # untouched — no ALIAS_* mapping needed; ALIAS_STORAGE_ROOT still overrides.
+    monkeypatch.setenv("TTS_STORAGE_ROOT", "alias")
+    assert RunnerConfig.from_env().storage_root == "alias"
 
-    monkeypatch.setenv("MIMIC_STORAGE_ROOT", "other")
+    monkeypatch.setenv("ALIAS_STORAGE_ROOT", "other")
     assert RunnerConfig.from_env().storage_root == "other"
 
 
@@ -138,8 +138,8 @@ def test_health_reports_the_storage_root(monkeypatch):
     # flag a shared-bucket disagreement, so /health must always carry the key.
     from genblaze_runner import app as runner_app
 
-    monkeypatch.setattr(runner_app, "_config", RunnerConfig(storage_root="mimic"))
-    assert runner_app.health()["storage_root"] == "mimic"
+    monkeypatch.setattr(runner_app, "_config", RunnerConfig(storage_root="alias"))
+    assert runner_app.health()["storage_root"] == "alias"
 
     monkeypatch.setattr(runner_app, "_config", RunnerConfig())
     assert runner_app.health()["storage_root"] is None

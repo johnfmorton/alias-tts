@@ -3,14 +3,14 @@ requires = ["setuptools>=68", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "genblaze-mimic"
+name = "genblaze-alias"
 version = "0.1.0"
-description = "Genblaze provider connectors for the Mimic self-hosted, ElevenLabs-compatible TTS service (Chatterbox on Replicate)."
+description = "Genblaze provider connectors for the Alias self-hosted, ElevenLabs-compatible TTS service (Chatterbox on Replicate)."
 readme = "README.md"
 requires-python = ">=3.11"
 license = { text = "MIT" }
 authors = [{ name = "John F Morton" }]
-keywords = ["genblaze", "tts", "text-to-speech", "mimic", "backblaze", "provenance"]
+keywords = ["genblaze", "tts", "text-to-speech", "alias", "backblaze", "provenance"]
 dependencies = [
     "genblaze-core>=0.3,<0.4",
     "httpx>=0.27",
@@ -25,13 +25,13 @@ dev = [
 
 # Discovered at runtime by genblaze_core.providers.registry.discover_providers().
 [project.entry-points."genblaze.providers"]
-mimic-tts = "genblaze_mimic.provider_tts:MimicTTSProvider"
-mimic-chunk = "genblaze_mimic.provider_chunk:MimicChunkProvider"
-mimic-qa = "genblaze_mimic.provider_qa:MimicQAProvider"
-mimic-stitch = "genblaze_mimic.provider_stitch:MimicStitchProvider"
+alias-tts = "genblaze_alias.provider_tts:AliasTTSProvider"
+alias-chunk = "genblaze_alias.provider_chunk:AliasChunkProvider"
+alias-qa = "genblaze_alias.provider_qa:AliasQAProvider"
+alias-stitch = "genblaze_alias.provider_stitch:AliasStitchProvider"
 
 [tool.setuptools.packages.find]
-include = ["genblaze_mimic*"]
+include = ["genblaze_alias*"]
 
 [tool.setuptools.package-data]
-genblaze_mimic = ["py.typed"]
+genblaze_alias = ["py.typed"]

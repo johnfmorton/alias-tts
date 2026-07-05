@@ -10,7 +10,7 @@ verifiable provenance manifest** to a **Backblaze B2** bucket. It powers:
   generation workflow (and the post-login landing page once
   `TTS_GENBLAZE_RUNNER_URL` is set), and
 - the **pronunciation pre-processor**'s LLM step (`POST /pronounce`) — see
-  [MIMIC-PRONUNCIATION-PREPROCESSOR.md](MIMIC-PRONUNCIATION-PREPROCESSOR.md).
+  [ALIAS-PRONUNCIATION-PREPROCESSOR.md](ALIAS-PRONUNCIATION-PREPROCESSOR.md).
 
 The bare `/v1` API runs without it, but the app as designed —
 provenance-tracked renders, QA-gated re-rolls, pronunciation review — expects
@@ -21,7 +21,7 @@ the runner. Treat this as part of a standard install, not an add-on.
 ```
         ┌────────────────────────── one server ──────────────────────────────┐
         │                                                                    │
-        │   Mimic (Laravel) ───────────────► /v1/internal/* (chunk/generate/ │
+        │   Alias (Laravel) ───────────────► /v1/internal/* (chunk/generate/ │
         │     │                                   score/trim/stitch)        │
         │     ├─ queue worker         (daemon)          ▲                    │
         │     ├─ Whisper ASR sidecar  (daemon :8765) ◄──┤ orchestrated by    │
@@ -79,21 +79,21 @@ TTS_ASR_ENABLED=true                       # optional: enables the re-roll quali
 
 | Variable | Meaning |
 |---|---|
-| `MIMIC_BASE_URL` | The app's URL (`https://tts.example.com`, or `https://tts.ddev.site` locally) |
-| `MIMIC_INTERNAL_SECRET` | Must equal the app's `TTS_INTERNAL_SECRET` |
-| `MIMIC_API_KEY` | Optional — only for the standalone TTS provider (Posture A); the orchestrated run authenticates everything with the internal secret |
+| `ALIAS_BASE_URL` | The app's URL (`https://tts.example.com`, or `https://tts.ddev.site` locally) |
+| `ALIAS_INTERNAL_SECRET` | Must equal the app's `TTS_INTERNAL_SECRET` |
+| `ALIAS_API_KEY` | Optional — only for the standalone TTS provider (Posture A); the orchestrated run authenticates everything with the internal secret |
 | `AWS_BUCKET` / `AWS_ENDPOINT` / `AWS_DEFAULT_REGION` | **Provenance storage — the app's own `AWS_*` config.** The runner writes to the SAME bucket the app uses, on **any S3 provider**: leave `AWS_ENDPOINT` blank for AWS S3, or set it for B2 / R2 / MinIO (matches the app's `.env`). |
 | `AWS_ACCESS_KEY_ID` / `AWS_SECRET_ACCESS_KEY` | Storage credentials (read/write/delete/list on the bucket) |
 | `AWS_URL` | Optional: public URL base for object links if you front the bucket |
 | `B2_KEY_ID` / `B2_APP_KEY` / `B2_BUCKET` / `B2_REGION` / `B2_PUBLIC_URL_BASE` | **Legacy** Backblaze-only fallback, used only when the `AWS_*` block above is unset. New installs should use `AWS_*`. |
-| `TTS_STORAGE_ROOT` | Optional: the app's shared-bucket subfolder — uploads go under `<root>/genblaze/` so both sides agree (read directly; `MIMIC_STORAGE_ROOT` overrides) |
+| `TTS_STORAGE_ROOT` | Optional: the app's shared-bucket subfolder — uploads go under `<root>/genblaze/` so both sides agree (read directly; `ALIAS_STORAGE_ROOT` overrides) |
 | `GENBLAZE_MAX_CONCURRENCY` | Parallel chunk generations (default `2`; use `1` if Replicate throttles) |
 | `GENBLAZE_MAX_REROLLS` | Re-roll budget per chunk (default `3`) |
 | `GENBLAZE_OUTPUT_DIR` | Local temp dir for audio before upload (default: system temp) |
 
 > **Renamed from `BESPOKEN_*`.** The runner still reads the old
 > `BESPOKEN_BASE_URL` / `BESPOKEN_INTERNAL_SECRET` / `BESPOKEN_API_KEY` names as a
-> fallback, so an existing daemon keeps working — but set the `MIMIC_*` names and
+> fallback, so an existing daemon keeps working — but set the `ALIAS_*` names and
 > drop the old ones when convenient.
 
 ## Run it locally
@@ -104,7 +104,7 @@ virtualenv (from the repo root):
 ```bash
 python3 -m venv .venv-genblaze
 source .venv-genblaze/bin/activate
-pip install -e connectors/genblaze-mimic -e genblaze-runner
+pip install -e connectors/genblaze-alias -e genblaze-runner
 ```
 
 **Offline self-test first** — no accounts, no app, proves the install:
@@ -165,7 +165,7 @@ so it survives deploys:
 ```bash
 cd /home/forge/your-site
 python3 -m venv runner-venv
-runner-venv/bin/pip install ./current/connectors/genblaze-mimic ./current/genblaze-runner
+runner-venv/bin/pip install ./current/connectors/genblaze-alias ./current/genblaze-runner
 ```
 
 This pulls the Python dependencies into `runner-venv`. The wrapper below puts
@@ -195,14 +195,14 @@ set -e
 SITE=/home/forge/your-site
 ENV_FILE="$SITE/current/.env"
 
-export PYTHONPATH="$SITE/current/genblaze-runner:$SITE/current/connectors/genblaze-mimic"
+export PYTHONPATH="$SITE/current/genblaze-runner:$SITE/current/connectors/genblaze-alias"
 
 set -a
 . <(grep -E '^(REPLICATE_API_TOKEN|ANTHROPIC_API_KEY|GEMINI_API_KEY|OPENAI_API_KEY|B2_KEY_ID|B2_APP_KEY|B2_BUCKET|B2_REGION|B2_PUBLIC_URL_BASE|AWS_ACCESS_KEY_ID|AWS_SECRET_ACCESS_KEY|AWS_BUCKET|AWS_DEFAULT_REGION|AWS_ENDPOINT|AWS_URL|TTS_INTERNAL_SECRET|TTS_STORAGE_ROOT|APP_URL)=' "$ENV_FILE")
 set +a
 
-export MIMIC_INTERNAL_SECRET="${TTS_INTERNAL_SECRET:-}"
-export MIMIC_BASE_URL="${APP_URL:-}"   # must be the public HTTPS URL (real cert)
+export ALIAS_INTERNAL_SECRET="${TTS_INTERNAL_SECRET:-}"
+export ALIAS_BASE_URL="${APP_URL:-}"   # must be the public HTTPS URL (real cert)
 export GENBLAZE_MAX_CONCURRENCY=1      # conservative — avoids Replicate burst limits
 
 exec "$SITE/runner-venv/bin/uvicorn" genblaze_runner.app:app --host 127.0.0.1 --port 8800
@@ -213,7 +213,7 @@ provenance to the **same bucket the app uses, on any S3 provider** — no separa
 storage setup. (The legacy `B2_*` names are still sourced as a fallback for an
 older install.) `chmod +x` it, then add the daemon (command = the script,
 directory = the site root). The runner binds to localhost only; its
-`MIMIC_BASE_URL` loops out through the public HTTPS URL, which is fine.
+`ALIAS_BASE_URL` loops out through the public HTTPS URL, which is fine.
 
 **3. Restart on deploy** — uvicorn loads code at start, so restart the runner
 daemon after any deploy that touches its Python code (Forge's daemon panel,
@@ -236,7 +236,7 @@ appears once `TTS_GENBLAZE_RUNNER_URL` is set.
 | `No module named genblaze_runner` | Venv not activated, or the editable installs were skipped. |
 | SSL error against `tts.ddev.site` | DDEV cert not trusted by Python — use the `SSL_CERT_FILE` bundle above, or run against a deployed site. |
 | `/v1/internal/...` → 503 "disabled" | `TTS_INTERNAL_SECRET` is empty in the app's env. Set it and restart/redeploy. |
-| `/v1/internal/...` → 403 | Runner's `MIMIC_INTERNAL_SECRET` ≠ app's `TTS_INTERNAL_SECRET`. |
+| `/v1/internal/...` → 403 | Runner's `ALIAS_INTERNAL_SECRET` ≠ app's `TTS_INTERNAL_SECRET`. |
 | Every chunk scores `{"available": false}` | ASR is off or the Whisper sidecar isn't running — see [ASR-SETUP.md](ASR-SETUP.md). |
 | B2 auth error | `B2_REGION` doesn't match the bucket's endpoint, or the app key isn't scoped to that bucket. |
 | Provenance audio won't play in Studio | The app's `s3` disk isn't pointed at the B2 bucket (the proxy streams through it). |

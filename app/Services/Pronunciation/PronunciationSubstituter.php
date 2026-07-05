@@ -10,7 +10,7 @@ use App\Services\TextNormalizer;
  * the TTS engine (e.g. "DDEV" => "dee dev"). Pure (no DB/IO) so it is trivially
  * testable and reusable on any code path.
  *
- * Semantics (see docs/MIMIC-PRONUNCIATION-PREPROCESSOR.md §5):
+ * Semantics (see docs/ALIAS-PRONUNCIATION-PREPROCESSOR.md §5):
  *  - Longest term first, so "PostgreSQL" wins before a bare "SQL" could match
  *    inside it.
  *  - Word-boundary aware via (?<!\w)…(?!\w) lookarounds, so "SQL" inside

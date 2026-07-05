@@ -1,4 +1,4 @@
-# Mimic — Pronunciation Pre-Processor Spec
+# Alias — Pronunciation Pre-Processor Spec
 
 A pre-processing stage that catches terms Chatterbox is likely to mispronounce
 (e.g. `DDEV`), respells them phonetically (`dee dev`), and applies the change

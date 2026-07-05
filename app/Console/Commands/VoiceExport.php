@@ -10,7 +10,7 @@ class VoiceExport extends Command
 {
     protected $signature = 'voice:export
                             {slug : The voice_id (slug) to export}
-                            {--output= : Path to write the .zip (default: ./<slug>.mimic-voice.zip)}';
+                            {--output= : Path to write the .zip (default: ./<slug>.alias-voice.zip)}';
 
     protected $description = 'Export a voice (manifest + reference clip) to a portable .zip';
 
@@ -24,7 +24,7 @@ class VoiceExport extends Command
             return Command::FAILURE;
         }
 
-        $output = $this->option('output') ?: getcwd().'/'.$voice->slug.'.mimic-voice.zip';
+        $output = $this->option('output') ?: getcwd().'/'.$voice->slug.'.alias-voice.zip';
         file_put_contents($output, $voices->export($voice));
 
         $this->info("Exported '{$voice->slug}' → {$output}");

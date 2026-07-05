@@ -1,5 +1,5 @@
 # Genblaze runner as a DDEV service. The published genblaze packages come from
-# PyPI; the local sidecar packages (genblaze_runner, genblaze_mimic) are
+# PyPI; the local sidecar packages (genblaze_runner, genblaze_alias) are
 # provided via a bind-mount of the repo + PYTHONPATH, so edits are live under
 # `uvicorn --reload` without a rebuild.
 FROM python:3.13-slim
@@ -16,8 +16,8 @@ RUN pip install --no-cache-dir \
 
 # Local packages live in the bind-mounted repo (see docker-compose.runner.yaml):
 #   /app/genblaze-runner/genblaze_runner
-#   /app/connectors/genblaze-mimic/genblaze_mimic
-ENV PYTHONPATH=/app/genblaze-runner:/app/connectors/genblaze-mimic \
+#   /app/connectors/genblaze-alias/genblaze_alias
+ENV PYTHONPATH=/app/genblaze-runner:/app/connectors/genblaze-alias \
     PYTHONUNBUFFERED=1
 
 COPY entrypoint.sh /runner-entrypoint.sh

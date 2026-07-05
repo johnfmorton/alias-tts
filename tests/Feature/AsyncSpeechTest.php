@@ -13,7 +13,7 @@ use Illuminate\Support\Facades\Storage;
 use Tests\TestCase;
 
 /**
- * The Mimic async extension: POST .../jobs -> poll -> fetch, so long text
+ * The Alias async extension: POST .../jobs -> poll -> fetch, so long text
  * isn't bound by the synchronous ~300s ceiling.
  */
 class AsyncSpeechTest extends TestCase

@@ -197,7 +197,7 @@ class HealthReportTest extends TestCase
         config([
             'tts.genblaze.runner_url' => 'http://runner.test',
             'tts.internal.secret' => 's3cret',
-            'filesystems.disks.s3.root' => 'mimic',
+            'filesystems.disks.s3.root' => 'alias',
         ]);
         Http::fake(['runner.test/health' => Http::response($this->runnerHealth(['storage_root' => null]))]);
 
@@ -205,7 +205,7 @@ class HealthReportTest extends TestCase
 
         $this->assertSame(HealthStatus::Fail, $genblaze->status);
         $this->assertStringContainsString('storage root mismatch', $genblaze->detail);
-        $this->assertStringContainsString('"mimic/"', $genblaze->detail);
+        $this->assertStringContainsString('"alias/"', $genblaze->detail);
     }
 
     public function test_genblaze_fails_when_the_app_has_a_root_but_the_runner_predates_it(): void
@@ -213,7 +213,7 @@ class HealthReportTest extends TestCase
         config([
             'tts.genblaze.runner_url' => 'http://runner.test',
             'tts.internal.secret' => 's3cret',
-            'filesystems.disks.s3.root' => 'mimic',
+            'filesystems.disks.s3.root' => 'alias',
         ]);
         // An old runner's /health has no storage_root key at all.
         $body = $this->runnerHealth();
@@ -233,12 +233,12 @@ class HealthReportTest extends TestCase
             'tts.internal.secret' => 's3cret',
             'app.url' => 'https://tts.example.com',
         ]);
-        Http::fake(['runner.test/health' => Http::response($this->runnerHealth(['mimic' => 'https://other.example.com']))]);
+        Http::fake(['runner.test/health' => Http::response($this->runnerHealth(['alias' => 'https://other.example.com']))]);
 
         $genblaze = $this->resultFor('genblaze');
 
         $this->assertSame(HealthStatus::Warn, $genblaze->status);
-        $this->assertStringContainsString('MIMIC_BASE_URL', $genblaze->detail);
+        $this->assertStringContainsString('ALIAS_BASE_URL', $genblaze->detail);
     }
 
     public function test_genblaze_warns_without_a_b2_sink(): void
@@ -262,14 +262,14 @@ class HealthReportTest extends TestCase
             'tts.genblaze.runner_url' => 'http://runner.test',
             'tts.internal.secret' => 's3cret',
             'app.url' => 'https://tts.example.com',
-            'filesystems.disks.s3.root' => 'mimic',
+            'filesystems.disks.s3.root' => 'alias',
         ]);
-        Http::fake(['runner.test/health' => Http::response($this->runnerHealth(['storage_root' => 'mimic']))]);
+        Http::fake(['runner.test/health' => Http::response($this->runnerHealth(['storage_root' => 'alias']))]);
 
         $genblaze = $this->resultFor('genblaze');
 
         $this->assertSame(HealthStatus::Pass, $genblaze->status);
-        $this->assertStringContainsString('storage root "mimic/"', $genblaze->detail);
+        $this->assertStringContainsString('storage root "alias/"', $genblaze->detail);
     }
 
     /** A healthy runner /health payload; override fields per scenario. */
@@ -277,7 +277,7 @@ class HealthReportTest extends TestCase
     {
         return array_merge([
             'status' => 'ok',
-            'mimic' => 'https://tts.example.com',
+            'alias' => 'https://tts.example.com',
             'b2' => true,
             'storage_root' => null,
             'pronounce' => [],
@@ -298,8 +298,8 @@ class HealthReportTest extends TestCase
 
     public function test_upload_limit_fails_when_the_web_server_413s_in_deep_mode(): void
     {
-        config(['tts.max_upload_size_mb' => 1, 'app.url' => 'https://mimic.test']);
-        Http::fake(['mimic.test/up' => Http::response('', 413, ['Server' => 'nginx'])]);
+        config(['tts.max_upload_size_mb' => 1, 'app.url' => 'https://alias.test']);
+        Http::fake(['alias.test/up' => Http::response('', 413, ['Server' => 'nginx'])]);
 
         $r = $this->resultForDeep('upload_limit');
 
@@ -312,8 +312,8 @@ class HealthReportTest extends TestCase
     {
         // POST /up 405s once it's past the web server's size gate — a non-413
         // status means the upload path is wide enough.
-        config(['tts.max_upload_size_mb' => 1, 'app.url' => 'https://mimic.test']);
-        Http::fake(['mimic.test/up' => Http::response('', 405)]);
+        config(['tts.max_upload_size_mb' => 1, 'app.url' => 'https://alias.test']);
+        Http::fake(['alias.test/up' => Http::response('', 405)]);
 
         $this->assertSame(HealthStatus::Pass, $this->resultForDeep('upload_limit')->status);
     }

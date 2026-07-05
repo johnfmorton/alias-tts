@@ -10,7 +10,7 @@ in your self-hosted cloned voice instead of using ElevenLabs.
 
 ## Prerequisites
 
-- **mimic-tts deployed** (see [DEPLOYMENT.md](DEPLOYMENT.md)) with an
+- **alias-tts deployed** (see [DEPLOYMENT.md](DEPLOYMENT.md)) with an
   **API key** (Dashboard → API Keys). Two built-in voices (`default`,
   `default-female`) ship out of the box, so no voice setup is required to get
   started — add your own cloned voice (Dashboard → Voices) when you want the
@@ -34,7 +34,7 @@ In the Bespoken plugin settings:
 
 | Plugin setting | Value |
 |---|---|
-| TTS provider | **Mimic TTS service** — the settings screen then shows only the fields that apply to this service |
+| TTS provider | **Alias TTS service** — the settings screen then shows only the fields that apply to this service |
 | API endpoint URL | the **Base URL** from the dashboard (origin, e.g. `https://your-domain.com`; environment variables are supported) |
 | API key | the **API key** from the dashboard |
 | Voice → `voiceId` | a **Voice ID** from the dashboard (e.g. `john`) |
@@ -77,7 +77,7 @@ The service maps the ElevenLabs voice settings onto its backend:
 
 - **The service does the chunking.** In TTS-service mode the plugin sends the
   whole article in one request (switching to the async jobs endpoint above
-  ~4,000 characters — see [Mimic extensions](#4-mimic-extensions) below);
+  ~4,000 characters — see [Alias extensions](#4-alias-extensions) below);
   the service splits, generates, and stitches the audio server-side with
   seam-clean concatenation.
 - **Output** is a mono MP3 (44.1 kHz / 128 kbps) by default; ElevenLabs
@@ -87,21 +87,21 @@ The service maps the ElevenLabs voice settings onto its backend:
 - **Request stitching** (`previous_request_ids`) is ElevenLabs-only; the service
   ignores it and generates each chunk independently.
 
-## 4. Mimic extensions
+## 4. Alias extensions
 
 Beyond the ElevenLabs-compatible surface, the service adds endpoints the plugin
-uses when talking to a Mimic TTS server (same `xi-api-key` auth):
+uses when talking to a Alias TTS server (same `xi-api-key` auth):
 
 - **Async long-text generation** — `POST /v1/text-to-speech/{voice_id}/jobs`,
   then poll `GET /v1/text-to-speech/jobs/{id}` and fetch the result from
   `GET /v1/text-to-speech/jobs/{id}/audio`. Lifts the synchronous ceiling for
   long articles; requires a queue worker on the server (see
   [DEPLOYMENT.md](DEPLOYMENT.md)).
-- **`POST /v1/projects`** — powers the plugin's "Create Mimic TTS project"
+- **`POST /v1/projects`** — powers the plugin's "Create Alias TTS project"
   button: opens the entry's text as an editable Studio project on the server.
 - **`GET /v1/pronunciations`** — read-only sync of the per-user pronunciation
   dictionary (see
-  [MIMIC-PRONUNCIATION-PREPROCESSOR.md](MIMIC-PRONUNCIATION-PREPROCESSOR.md)).
+  [ALIAS-PRONUNCIATION-PREPROCESSOR.md](ALIAS-PRONUNCIATION-PREPROCESSOR.md)).
 
 ## 5. Switching back to ElevenLabs
 
@@ -126,7 +126,7 @@ Set the plugin's API base URL back to ElevenLabs' default
 
 Plugin-side support lands in **Bespoken 5.4.0** (unreleased):
 
-- **TTS provider setting** with a Mimic-TTS-service mode and a configurable
+- **TTS provider setting** with a Alias-TTS-service mode and a configurable
   **API endpoint URL** (environment-variable capable); the settings screen is
   tailored per provider. Defaults to ElevenLabs for backward compatibility.
 - **Whole-article send** (no plugin-side chunking against this service) and

@@ -30,7 +30,7 @@ class DashboardTest extends TestCase
 
     public function test_landing_is_public(): void
     {
-        $this->get('/')->assertOk()->assertSee('Mimic TTS');
+        $this->get('/')->assertOk()->assertSee('Alias TTS');
     }
 
     public function test_admin_requires_login(): void

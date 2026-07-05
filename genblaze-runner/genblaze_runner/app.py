@@ -41,7 +41,7 @@ class PronounceRequest(BaseModel):
 def health() -> dict:
     return {
         "status": "ok",
-        "mimic": _config.mimic_base_url,
+        "alias": _config.alias_base_url,
         # "is a provenance sink configured?" — true for either the AWS_* (any S3
         # provider) or the legacy B2_* path. Named "b2" for back-compat with the
         # app's health check.

@@ -20,7 +20,7 @@ Route::middleware([ValidateApiKey::class, RateLimitApiRequests::class])->group(f
     Route::post('/v1/text-to-speech/{voice_id}/stream', [TextToSpeechController::class, 'store'])
         ->name('tts.stream');
 
-    // Async (Mimic extension): queue generation for long text. The POST is
+    // Async (Alias extension): queue generation for long text. The POST is
     // the expensive, generating call, so it stays rate-limited.
     Route::post('/v1/text-to-speech/{voice_id}/jobs', [TextToSpeechController::class, 'queue'])
         ->name('tts.jobs.queue');

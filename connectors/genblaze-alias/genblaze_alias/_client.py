@@ -1,9 +1,9 @@
-"""HTTP client for the Mimic TTS service.
+"""HTTP client for the Alias TTS service.
 
 Two surfaces:
 
 * **Posture A** — the public ElevenLabs-compatible endpoint
-  ``POST /v1/text-to-speech/{voice_id}`` (Mimic runs the whole pipeline
+  ``POST /v1/text-to-speech/{voice_id}`` (Alias runs the whole pipeline
   internally). Authenticated with the ``xi-api-key`` header.
 * **Posture B** — the granular ``/v1/internal/{chunk,generate,score,stitch}``
   primitives the Genblaze runner orchestrates. Authenticated with the
@@ -31,8 +31,8 @@ class TtsResult:
     content_type: str
 
 
-class MimicClient:
-    """Calls the Mimic ``/v1`` and ``/v1/internal`` APIs over HTTP."""
+class AliasClient:
+    """Calls the Alias ``/v1`` and ``/v1/internal`` APIs over HTTP."""
 
     def __init__(
         self,
@@ -43,16 +43,16 @@ class MimicClient:
         timeout: float = DEFAULT_TIMEOUT,
         transport: httpx.BaseTransport | None = None,
     ) -> None:
-        # MIMIC_* are the current env names; BESPOKEN_* remain a fallback so a
+        # ALIAS_* are the current env names; BESPOKEN_* remain a fallback so a
         # process whose environment predates the rename keeps working.
         self.base_url = (
-            base_url or os.getenv("MIMIC_BASE_URL") or os.getenv("BESPOKEN_BASE_URL", "http://localhost")
+            base_url or os.getenv("ALIAS_BASE_URL") or os.getenv("BESPOKEN_BASE_URL", "http://localhost")
         ).rstrip("/")
-        self.api_key = api_key if api_key is not None else (os.getenv("MIMIC_API_KEY") or os.getenv("BESPOKEN_API_KEY", ""))
+        self.api_key = api_key if api_key is not None else (os.getenv("ALIAS_API_KEY") or os.getenv("BESPOKEN_API_KEY", ""))
         self.internal_secret = (
             internal_secret
             if internal_secret is not None
-            else (os.getenv("MIMIC_INTERNAL_SECRET") or os.getenv("BESPOKEN_INTERNAL_SECRET", ""))
+            else (os.getenv("ALIAS_INTERNAL_SECRET") or os.getenv("BESPOKEN_INTERNAL_SECRET", ""))
         )
         self.timeout = timeout
         self._transport = transport  # injected in tests

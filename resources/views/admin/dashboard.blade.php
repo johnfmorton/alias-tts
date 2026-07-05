@@ -11,7 +11,7 @@
     <div class="mt-8 rounded-xl border border-zinc-800 bg-zinc-900/50">
         <div class="border-b border-zinc-800 px-5 py-4">
             <h2 class="font-semibold">Connect your app</h2>
-            <p class="mt-1 text-sm text-zinc-400">Mimic speaks the ElevenLabs v1 API, so any ElevenLabs-compatible app works — including the Bespoken Craft CMS plugin. Paste these into its API settings.</p>
+            <p class="mt-1 text-sm text-zinc-400">Alias speaks the ElevenLabs v1 API, so any ElevenLabs-compatible app works — including the Bespoken Craft CMS plugin. Paste these into its API settings.</p>
         </div>
         <div class="space-y-5 p-5">
             <div>
