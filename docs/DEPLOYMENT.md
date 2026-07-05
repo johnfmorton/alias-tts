@@ -138,6 +138,13 @@ lines after `composer install` and make sure `php artisan migrate --force` runs.
   - `php artisan tts:doctor --deep` verifies this end-to-end (its **Upload size
     limit** check POSTs an at-the-limit body and flags a 413), as does the Health
     page's deep probe. The cap is `TTS_MAX_UPLOAD_SIZE_MB` (default 50).
+- The **public `/verify` page** (approved-final check) does **not** accept
+  uploads by default — it fingerprints the file in the visitor's browser and
+  sends only the SHA-256 — so it adds no upload attack surface and doesn't factor
+  into the sizing above. Turn on a server-side hashing fallback only for
+  non-secure-context browsers with `TTS_VERIFY_ALLOW_UPLOAD=true`; it then accepts
+  files up to `TTS_VERIFY_MAX_UPLOAD_KB` (default 200 MB), which must stay under
+  `client_max_body_size` and `post_max_size`.
 
 #### Behind Cloudflare or another reverse proxy
 

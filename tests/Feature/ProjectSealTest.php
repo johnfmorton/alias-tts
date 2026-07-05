@@ -484,25 +484,67 @@ class ProjectSealTest extends TestCase
             ->assertSee(substr((string) $project->final_sha256, 0, 12));
     }
 
-    // ---- Verify page (public, server-side) ----------------------------------
+    // ---- Verify page (public; local-first hashing, opt-in upload) -----------
 
-    public function test_verify_page_is_public_and_server_side(): void
+    public function test_verify_page_is_public_and_hashes_locally(): void
     {
-        // Reachable by a guest, renders the upload form, and does NO client-side
-        // hashing — the server computes the SHA-256.
-        $res = $this->get(route('verify'));
-        $res->assertOk()->assertSee('Verify file');
-        $this->assertStringNotContainsString('crypto.subtle.digest', $res->getContent());
-        $this->assertStringContainsString('name="file"', $res->getContent());
+        // Reachable by a guest and wired to fingerprint the file IN THE BROWSER
+        // (Web Crypto), handing off only the hash via ?sha=…&local=1.
+        $content = $this->get(route('verify'))
+            ->assertOk()
+            ->assertSee('Verify file')
+            ->getContent();
+
+        $this->assertStringContainsString('crypto.subtle', $content);   // local hashing
+        $this->assertStringContainsString('local=1', $content);         // fingerprint-only handoff
     }
 
-    public function test_verify_upload_matches_a_sealed_final(): void
+    public function test_verify_uploads_are_disabled_by_default(): void
     {
+        // Secure by default: no upload form on the page, and the POST endpoint
+        // 404s — so there is no file-upload attack surface.
+        $content = $this->get(route('verify'))->assertOk()->getContent();
+        $this->assertStringNotContainsString('multipart/form-data', $content);
+
+        $upload = UploadedFile::fake()->createWithContent('x.mp3', 'bytes');
+        $this->post(route('verify.check'), ['file' => $upload])->assertNotFound();
+    }
+
+    public function test_verify_by_local_hash_reports_verified(): void
+    {
+        $project = $this->readyProject();
+        $admin = $this->admin();
+        app(ProjectService::class)->seal($project, $admin);
+        $sha = $project->refresh()->final_sha256;
+
+        // Browser hashed the file locally and redirected with local=1 → a full
+        // "Verified" verdict (not the bare record lookup), with provenance, noting
+        // the file was NOT uploaded.
+        $this->get(route('verify', ['sha' => $sha, 'local' => 1]))
+            ->assertOk()
+            ->assertSee('Verified')
+            ->assertSee('Fingerprinted in your browser')  // privacy note: no upload
+            ->assertSee($admin->name)
+            ->assertSee('plenty of words');               // per-chunk take text retained
+    }
+
+    public function test_verify_by_local_hash_no_match_reports_no_match(): void
+    {
+        $this->get(route('verify', ['sha' => str_repeat('a', 64), 'local' => 1]))
+            ->assertOk()
+            ->assertSee('No match');
+    }
+
+    public function test_verify_upload_matches_a_sealed_final_when_enabled(): void
+    {
+        config(['tts.verify_allow_upload' => true]);
+
         $project = $this->readyProject();
         app(ProjectService::class)->seal($project, $this->admin());
         $bytes = (string) app(ProjectService::class)->sealedAudioBytes($project->refresh());
 
-        // A guest uploads the approved bytes; the server hashes them and matches.
+        // With the upload fallback enabled, a guest uploads the approved bytes;
+        // the server hashes them and matches.
         $upload = UploadedFile::fake()->createWithContent($this->sealedAudioName($project), $bytes);
 
         $this->post(route('verify.check'), ['file' => $upload])
@@ -512,8 +554,10 @@ class ProjectSealTest extends TestCase
             ->assertSee('plenty of words');               // per-chunk take text is retained
     }
 
-    public function test_verify_upload_that_does_not_match_reports_no_match(): void
+    public function test_verify_upload_that_does_not_match_reports_no_match_when_enabled(): void
     {
+        config(['tts.verify_allow_upload' => true]);
+
         $project = $this->readyProject();
         app(ProjectService::class)->seal($project, $this->admin());
 
@@ -531,7 +575,8 @@ class ProjectSealTest extends TestCase
         app(ProjectService::class)->seal($project, $admin);
         $sha = $project->refresh()->final_sha256;
 
-        // The receipt's ?sha= link opens the authoritative record for a guest.
+        // A plain ?sha= link (no local=1) — e.g. from a receipt — opens the
+        // authoritative record and invites the holder to check their copy.
         $this->get(route('verify', ['sha' => $sha]))
             ->assertOk()
             ->assertSee('sealed approval exists')

@@ -9,12 +9,20 @@ use Illuminate\Http\Request;
 use Illuminate\View\View;
 
 /**
- * Public, server-side "is this the approved final?" verifier. The server does the
- * hashing (this is the trusted-compute story — no client-side crypto): a visitor
- * uploads the audio, we SHA-256 the bytes and look up a sealed project whose
- * final_sha256 matches. A `?sha=` link opens the authoritative record for a known
+ * Public "is this the approved final?" verifier. The primary path is LOCAL: the
+ * page hashes the visitor's file in the browser (Web Crypto) and redirects to
+ * `?sha=<hash>&local=1` carrying only the 64-char fingerprint — the file is never
+ * uploaded, so no large file can exhaust the server. show() then looks up a
+ * sealed project whose final_sha256 matches and renders the verdict.
+ *
+ * A `?sha=` link WITHOUT `local=1` opens the authoritative record for a known
  * fingerprint (what a receipt links to) and re-hashes our own frozen snapshot to
  * prove the stored copy is intact.
+ *
+ * check() is an OPT-IN upload fallback for non-secure-context browsers (no
+ * crypto.subtle): the server SHA-256s the uploaded bytes instead. It is gated by
+ * tts.verify_allow_upload — OFF by default, in which case the POST 404s and the
+ * page renders no upload form (local hashing or the receipt only).
  *
  * Verification reuses {@see ProjectExportService::receiptData()} so the live page
  * shows the same seal panel + per-chunk provenance table (incl. each take's text)
@@ -27,7 +35,7 @@ class VerifyController extends Controller
         private readonly ProjectService $projects,
     ) {}
 
-    /** GET /verify — the upload form, or the record view for a `?sha=` fingerprint. */
+    /** GET /verify — the verify form, or a result/record view for a `?sha=` fingerprint. */
     public function show(Request $request): View
     {
         $sha = $this->normalizeSha($request->query('sha'));
@@ -37,6 +45,21 @@ class VerifyController extends Controller
         }
 
         $project = $this->lookup($sha);
+
+        // `local=1` means the browser hashed the visitor's OWN file with Web
+        // Crypto and redirected here carrying only the fingerprint — the file
+        // was never uploaded (so no large upload can choke the server). A hash
+        // of their file matching a sealed record IS proof, so render a verdict
+        // (match / no match), not the bare "a record exists" lookup below.
+        if ($request->boolean('local')) {
+            $state = $project === null ? 'nomatch' : 'match';
+
+            return view('verify.show', $this->base($state, [
+                'uploadedHash' => $sha,
+                'hashedLocally' => true,
+            ] + ($project ? $this->provenance($project) : [])));
+        }
+
         if ($project === null) {
             return view('verify.show', $this->base('record_missing', ['querySha' => $sha]));
         }
@@ -49,6 +72,10 @@ class VerifyController extends Controller
     /** POST /verify — hash the uploaded bytes server-side and match a sealed record. */
     public function check(Request $request): View
     {
+        // Uploads are an opt-in fallback. When disabled the endpoint does not
+        // exist at all — no upload attack surface (the page hashes locally).
+        abort_unless($this->allowUpload(), 404);
+
         $request->validate([
             'file' => ['required', 'file', 'max:'.$this->maxUploadKb()],
         ], [
@@ -88,6 +115,9 @@ class VerifyController extends Controller
             'chunks' => [],
             'finalName' => null,
             'snapshotVerified' => null,  // did our stored snapshot still hash to final_sha256?
+            'hashedLocally' => false,    // did the browser hash the file (no upload)?
+            'allowUpload' => $this->allowUpload(),
+            'maxUploadKb' => $this->maxUploadKb(),
             'maxUploadMb' => (int) round($this->maxUploadKb() / 1024),
         ], $overrides);
     }
@@ -140,5 +170,10 @@ class VerifyController extends Controller
     private function maxUploadKb(): int
     {
         return (int) config('tts.verify_max_upload_kb', 204800);
+    }
+
+    private function allowUpload(): bool
+    {
+        return (bool) config('tts.verify_allow_upload', false);
     }
 }

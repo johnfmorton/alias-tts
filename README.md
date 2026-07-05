@@ -260,8 +260,15 @@ seams, or fixing one sentence in a long piece without regenerating the whole fil
   regenerating. (Chunk reordering isn't supported yet.)
 - **Approve & seal** — mark a build as the approved final and **seal** it: the
   project records a SHA-256 of the exact audio bytes plus a frozen snapshot, and
-  you can download a receipt `.zip` whose `receipt.html` verifies the file
-  offline by drag-and-drop (the hosted `/verify` page does the same).
+  you can download a receipt `.zip` (the audio, a human-readable `receipt.html`
+  provenance record with the per-chunk script, and a machine-readable
+  `manifest.json`). The receipt links to the public **`/verify`** page, where
+  anyone can confirm a file is the untouched approved final — the browser
+  fingerprints it locally with SHA-256, so **the file itself is never uploaded**;
+  only the 64-character hash is sent and matched against the sealed approval. A
+  `?sha=…` link opens the record for a known fingerprint directly. (Uploads are
+  off by default; enable a server-side hashing fallback for non-secure-context
+  browsers with `TTS_VERIFY_ALLOW_UPLOAD=true`.)
 - **Generate via Genblaze** — hand a whole render to the Genblaze runner,
   which orchestrates chunk → generate → QA-score → re-roll → stitch and
   archives every take plus a verifiable provenance manifest to a Backblaze B2

@@ -55,6 +55,8 @@
   .hashes div { margin-top: .4rem; }
   .hashes .lbl { color: #71717a; display: block; }
   .mono { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; word-break: break-all; }
+  .privacy { color: #6ee7b7; font-size: .82rem; margin-top: .7rem; }
+  .note { color: #a1a1aa; font-size: .9rem; background: rgba(34,211,238,.06); border: 1px solid rgba(34,211,238,.22); border-radius: .75rem; padding: .9rem 1.1rem; margin: 0 0 1.5rem; }
 
   .seal { border: 1px solid rgba(16,185,129,.3); background: rgba(16,185,129,.06); border-radius: 1rem; padding: 1.25rem 1.4rem; margin: 0 0 1.5rem; }
   .seal dl { display: grid; grid-template-columns: max-content 1fr; gap: .35rem 1rem; margin: 0; }
@@ -77,7 +79,7 @@
 <body>
 <main>
   <h1>Verify the approved final</h1>
-  <p class="lede">Upload the audio file to confirm it's the exact cut that was approved, untouched. Mimic hashes it on the server and matches it against the sealed approval.</p>
+  <p class="lede">Check that an audio file is the exact cut that was approved, untouched. Your browser fingerprints it locally — the file itself is not uploaded — and matches it against the sealed approval.</p>
 
   {{-- ---- Result banner (upload matched / no match / record lookup) ---- --}}
   @if($state === 'match')
@@ -88,6 +90,7 @@
         @if($uploadedName)<div><span class="lbl">Your file</span><span class="mono">{{ $uploadedName }}</span></div>@endif
         <div><span class="lbl">SHA-256 (matches the sealed fingerprint)</span><span class="mono">{{ $uploadedHash }}</span></div>
       </div>
+      @if($hashedLocally)<p class="privacy">🔒 Fingerprinted in your browser — the file was not uploaded.</p>@endif
     </div>
   @elseif($state === 'nomatch')
     <div class="result nomatch">
@@ -97,11 +100,12 @@
         @if($uploadedName)<div><span class="lbl">Your file</span><span class="mono">{{ $uploadedName }}</span></div>@endif
         <div><span class="lbl">SHA-256 of your file</span><span class="mono">{{ $uploadedHash }}</span></div>
       </div>
+      @if($hashedLocally)<p class="privacy">🔒 Fingerprinted in your browser — the file was not uploaded.</p>@endif
     </div>
   @elseif($state === 'record')
     <div class="result info">
       <p class="verdict">🔒 A sealed approval exists for this fingerprint</p>
-      <p class="detail">Here is what was approved. To prove your own copy matches it byte-for-byte, upload the file below.</p>
+      <p class="detail">Here is what was approved. To prove your own copy matches it byte-for-byte, check the file below.</p>
       <div class="hashes"><div><span class="lbl">Fingerprint</span><span class="mono">{{ $querySha }}</span></div></div>
     </div>
   @elseif($state === 'record_missing')
@@ -132,9 +136,10 @@
     @include('partials.seal-provenance', ['chunks' => $chunks, 'finalName' => $finalName])
   @endif
 
-  {{-- ---- Upload form (server-side hashing; shown for every state) ---- --}}
-  <form class="verify" method="POST" action="{{ route('verify.check') }}" enctype="multipart/form-data" id="verify-form">
-    @csrf
+  {{-- ---- Verify form: hashes locally first; upload is an opt-in fallback ---- --}}
+  <form class="verify" id="verify-form"
+        @if($allowUpload) method="POST" action="{{ route('verify.check') }}" enctype="multipart/form-data" @else onsubmit="return false" @endif>
+    @if($allowUpload)@csrf @endif
     <label class="drop" id="drop">
       <strong>Drop the audio file here</strong><br>
       <span>or click to choose it</span>
@@ -145,28 +150,46 @@
       <span class="picked" id="picked"></span>
     </div>
     @error('file')<p class="err">{{ $message }}</p>@enderror
+    <p class="err" id="js-err" role="alert"></p>
   </form>
 
   <footer>
-    Verification runs on the server: your file is hashed with SHA-256 and matched against the sealed
-    approval — it is not stored. Files up to {{ $maxUploadMb }} MB. The machine-readable record travels
-    in each receipt's <code>manifest.json</code>.
+    Your file is fingerprinted in your browser with SHA-256 — only the 64-character fingerprint is sent,
+    the file itself never leaves your device.
+    @if($allowUpload)
+      If your browser can’t hash locally, it falls back to a server-side check (files up to {{ $maxUploadMb }} MB; the file is not stored).
+    @else
+      If your browser can’t hash locally, verify from the file’s receipt instead — uploads are disabled on this server.
+    @endif
+    The machine-readable record travels in each receipt’s <code>manifest.json</code>.
   </footer>
 </main>
 
 <script>
-  // Progressive enhancement only — NO hashing here. Drag-drop fills the file
-  // input and the server does the SHA-256 compare; keeps the drop-zone feel.
+  // Verify WITHOUT uploading: hash the file in the browser (Web Crypto) and hand
+  // off only its fingerprint via ?sha=…&local=1 — so even a very large file never
+  // touches the server. A plain upload (server-side hash) is an opt-in fallback
+  // for browsers without crypto.subtle, and is refused for oversized files.
   (function () {
     var drop = document.getElementById('drop');
     var file = document.getElementById('file');
     var form = document.getElementById('verify-form');
     var submit = document.getElementById('submit');
     var picked = document.getElementById('picked');
+    var errEl = document.getElementById('js-err');
+
+    var VERIFY_URL = @json(route('verify'));
+    var ALLOW_UPLOAD = @json((bool) $allowUpload);
+    var MAX_UPLOAD_BYTES = {{ (int) $maxUploadKb }} * 1024;
+    var canHashLocally = !!(window.crypto && window.crypto.subtle && window.File && File.prototype.arrayBuffer);
+
+    function say(msg) { if (errEl) errEl.textContent = msg || ''; }
+    function reset() { submit.disabled = false; submit.textContent = 'Verify file'; }
 
     function named() {
       var f = file.files && file.files[0];
       picked.textContent = f ? f.name : '';
+      say('');
     }
     file.addEventListener('change', named);
 
@@ -181,8 +204,46 @@
       if (dt && dt.files && dt.files.length) { file.files = dt.files; named(); }
     });
 
-    form.addEventListener('submit', function () {
-      if (file.files && file.files.length) { submit.disabled = true; submit.textContent = 'Verifying…'; }
+    function sha256Hex(f) {
+      return f.arrayBuffer()
+        .then(function (buf) { return crypto.subtle.digest('SHA-256', buf); })
+        .then(function (digest) {
+          return Array.prototype.map.call(new Uint8Array(digest), function (b) {
+            return ('0' + b.toString(16)).slice(-2);
+          }).join('');
+        });
+    }
+
+    form.addEventListener('submit', function (e) {
+      var f = file.files && file.files[0];
+      if (!f) return; // the input's `required` handles the empty case
+
+      if (canHashLocally) {
+        // No upload: hash here and hand off only the fingerprint.
+        e.preventDefault();
+        say(''); submit.disabled = true; submit.textContent = 'Hashing locally…';
+        sha256Hex(f).then(function (hex) {
+          window.location = VERIFY_URL + '?sha=' + hex + '&local=1';
+        }).catch(function () {
+          reset();
+          say('That file was too large to hash in this browser. Verify it from the receipt instead.');
+        });
+        return;
+      }
+
+      // No Web Crypto (non-secure context / old browser).
+      if (!ALLOW_UPLOAD) {
+        e.preventDefault();
+        say('This browser can’t hash files locally and uploads are disabled here. Verify from the file’s receipt, or open this page over HTTPS in a current browser.');
+        return;
+      }
+      if (f.size > MAX_UPLOAD_BYTES) {
+        e.preventDefault();
+        say('This browser can’t hash locally and the file is over the ' + Math.round(MAX_UPLOAD_BYTES / 1048576) + ' MB upload limit. Verify it from the receipt instead.');
+        return;
+      }
+      // Fall back to a plain upload; the server hashes it.
+      submit.disabled = true; submit.textContent = 'Verifying…';
     });
   })();
 </script>

@@ -354,10 +354,20 @@ return [
     'storage_path' => trim((string) env('TTS_STORAGE_PATH', 'speech'), '/'),
     'reference_path' => trim((string) env('TTS_REFERENCE_PATH', 'voices'), '/'),
 
-    // Max upload the public /verify page hashes server-side (KB). A sealed final
-    // is a single project's audio, so 200 MB covers even a long WAV; the holder
-    // can always verify from the receipt if theirs is bigger. Must stay under the
-    // web server's client_max_body_size / PHP post_max_size (see tts:doctor).
+    // Accept file UPLOADS on the public /verify page? Off by default: the page
+    // fingerprints the file in the visitor's browser (Web Crypto) and sends only
+    // the 64-char SHA-256, so nothing is uploaded and no large file can exhaust
+    // the server. Turn this on only to support non-secure-context browsers (plain
+    // http, where crypto.subtle is unavailable); when on, the POST is throttled
+    // and capped by verify_max_upload_kb. When off, the POST endpoint 404s and
+    // the page offers no upload form — local hashing (or the receipt) only.
+    'verify_allow_upload' => (bool) env('TTS_VERIFY_ALLOW_UPLOAD', false),
+
+    // Max upload the public /verify page accepts, in KB, WHEN verify_allow_upload
+    // is on. A sealed final is a single project's audio, so 200 MB covers even a
+    // long WAV; the holder can always verify from the receipt if theirs is
+    // bigger. Must stay under the web server's client_max_body_size / PHP
+    // post_max_size (see tts:doctor).
     'verify_max_upload_kb' => (int) env('TTS_VERIFY_MAX_UPLOAD_KB', 204800),
 
     /*
