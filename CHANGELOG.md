@@ -4,6 +4,15 @@ All notable changes to this project are documented in this file. The format is
 based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this
 project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.31.1] - 2026-07-05
+
+### Fixed
+- **Home-page wordmark sizing.** After the rename, "Alias TTS" rendered lighter
+  and smaller than "Mimic TTS" did — its letterforms are narrower, so at the
+  same size it lost presence. The landing wordmark is now `text-xl`/bold with a
+  slightly larger icon, restoring the weight it had and matching the app
+  header's wordmark.
+
 ## [0.31.0] - 2026-07-05
 
 ### Changed
