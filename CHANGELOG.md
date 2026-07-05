@@ -4,6 +4,33 @@ All notable changes to this project are documented in this file. The format is
 based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this
 project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.31.0] - 2026-07-05
+
+### Changed
+- **The project is renamed from "Mimic TTS" to "Alias TTS."** "Alias" keeps the
+  original double meaning — an *alias* is both a drop-in alternate endpoint (the
+  ElevenLabs/OpenAI dialect compatibility) and an assumed identity that is still
+  you (the voice cloning) — while avoiding a name clash with an existing TTS
+  engine. This is a branding change only: the `/v1` API surface, request and
+  response shapes, and authentication are unchanged, so existing clients keep
+  working. The GitHub repository and Composer package are now
+  `johnfmorton/alias-tts` (the old URL redirects).
+
+### Changed — action required when upgrading a deployment
+- **Genblaze runner environment variables are renamed `MIMIC_*` → `ALIAS_*`**
+  (`ALIAS_BASE_URL`, `ALIAS_INTERNAL_SECRET`, `ALIAS_STORAGE_ROOT`,
+  `ALIAS_API_KEY`). Update your runner daemon's environment. The legacy
+  `BESPOKEN_*` fallbacks are unchanged.
+- **The Genblaze connector package is renamed `genblaze-mimic` → `genblaze-alias`**
+  (module `genblaze_mimic` → `genblaze_alias`, classes `Mimic*Provider`/
+  `MimicClient` → `Alias*`, provider keys `mimic-*` → `alias-*`). Reinstall it
+  (`pip install ./connectors/genblaze-alias`) and update the daemon's
+  `PYTHONPATH`.
+- **`APP_NAME`** should be set to `"Alias TTS"`. The runner `/health` response
+  key `mimic` is now `alias`; brand assets are `alias-icon*.svg`; the
+  pronunciation spec is `docs/ALIAS-PRONUNCIATION-PREPROCESSOR.md`; sealed-final
+  and voice-export filenames now use the `alias-` prefix.
+
 ## [0.30.1] - 2026-07-05
 
 ### Changed
