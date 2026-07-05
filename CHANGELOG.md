@@ -4,6 +4,24 @@ All notable changes to this project are documented in this file. The format is
 based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this
 project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.30.1] - 2026-07-05
+
+### Changed
+- **The `/verify` page now fingerprints files in your browser instead of
+  uploading them.** It computes the SHA-256 locally with Web Crypto and sends
+  only the 64-character fingerprint, so the audio never leaves your device and a
+  large file can't load the server. A matching fingerprint shows the full
+  "Verified" result with the provenance; a `?sha=…` link still opens a sealed
+  record directly.
+
+### Security
+- **File uploads to `/verify` are disabled by default.** Because verification is
+  now client-side, the public endpoint no longer needs to accept uploads: the
+  `POST /verify` route returns 404 and no upload form is rendered, removing that
+  attack surface. Set `TTS_VERIFY_ALLOW_UPLOAD=true` to restore a server-side
+  hashing fallback for browsers without Web Crypto (non-secure contexts); it is
+  throttled and capped by `TTS_VERIFY_MAX_UPLOAD_KB`.
+
 ## [0.30.0] - 2026-07-04
 
 ### Added
