@@ -55,8 +55,8 @@
 
         {{-- Brand lockup --}}
         <div class="rise flex items-center gap-2.5" style="animation-delay: 0ms">
-            <img src="{{ asset('alias-icon-on-dark.svg') }}" alt="" class="h-8 w-8">
-            <span class="text-lg font-semibold tracking-tight text-zinc-200">Alias TTS</span>
+            <img src="{{ asset('alias-icon-on-dark.svg') }}" alt="" class="h-9 w-9">
+            <span class="text-xl font-bold tracking-tight text-zinc-200">Alias TTS</span>
         </div>
 
         {{-- Thesis: the three pillars as a tricolon — self-hosted, dual-API, cloning. --}}
