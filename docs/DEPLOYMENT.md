@@ -8,6 +8,10 @@ provenance — part of a standard install, see
 [GENBLAZE-SETUP.md](GENBLAZE-SETUP.md)) and the **Whisper ASR sidecar** (the
 audio quality gate, see [ASR-SETUP.md](ASR-SETUP.md)).
 
+> **Shortcut:** all of the above — app, worker, scheduler, both sidecars,
+> ffmpeg — ships pre-wired in a **single Docker image**; see
+> [DOCKER.md](DOCKER.md). This guide is for running the pieces yourself.
+
 ## Requirements
 
 - PHP **8.3+** with the usual Laravel extensions

@@ -141,9 +141,24 @@ curl -k -X POST https://tts.ddev.site/v1/audio/speech \
 
 ## Production
 
-See **[docs/DEPLOYMENT.md](docs/DEPLOYMENT.md)** for the full step-by-step guide
-(Laravel Forge + generic hosts), including ffmpeg, building assets, **S3 storage**,
-the **queue worker** for async generation, and the **scheduler/cron** for cleanup.
+The simplest install is the **single Docker image** — the whole service (web
+app, queue worker, scheduler, ASR quality gate, Genblaze runner) in one
+container with all state on one volume:
+
+```bash
+docker run -d -p 8080:80 -v alias-data:/data \
+  -e REPLICATE_API_TOKEN=r8_xxx \
+  -e ADMIN_EMAIL=you@example.com -e ADMIN_PASSWORD=a-strong-password \
+  alias-tts
+```
+
+See **[docs/DOCKER.md](docs/DOCKER.md)** for the walkthrough (HTTPS, S3,
+backups, tuning).
+
+Running on your own host or Laravel Forge instead? See
+**[docs/DEPLOYMENT.md](docs/DEPLOYMENT.md)** for the full step-by-step guide,
+including ffmpeg, building assets, **S3 storage**, the **queue worker** for
+async generation, and the **scheduler/cron** for cleanup.
 
 ## The API
 

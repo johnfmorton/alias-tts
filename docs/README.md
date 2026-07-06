@@ -4,6 +4,9 @@ Start with the group that matches what you're doing.
 
 ## Running the service
 
+- **[DOCKER.md](DOCKER.md)** — the simplest install: one Docker image carrying
+  the whole service (app, queue worker, scheduler, ASR sidecar, Genblaze
+  runner) with all state on a single `/data` volume.
 - **[DEPLOYMENT.md](DEPLOYMENT.md)** — full install guide: Laravel Forge and
   generic hosts, storage (local vs S3/B2), scheduler + queue worker, `tts:doctor`.
 - **[GENBLAZE-SETUP.md](GENBLAZE-SETUP.md)** — the Genblaze runner sidecar and

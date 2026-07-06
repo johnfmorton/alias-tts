@@ -389,16 +389,20 @@ class HealthReport
         }
 
         // Softer misconfigurations: the runner responds, but something is off.
+        // A LOOPBACK callback target that answers the health path is not a
+        // mismatch: co-located layouts (the single-image Docker package, a
+        // same-host daemon) deliberately point the runner at a local listener
+        // so callbacks survive any public TLS/domain setup.
         $alias = rtrim((string) ($body['alias'] ?? ''), '/');
         $appUrl = rtrim((string) config('app.url'), '/');
-        if ($alias !== '' && $appUrl !== '' && $alias !== $appUrl) {
+        if ($alias !== '' && $appUrl !== '' && $alias !== $appUrl && ! $this->aliasLoopsBackLocally($alias)) {
             $this->add('genblaze', HealthStatus::Warn, 'Genblaze runner', "up at {$url}, but its callbacks target {$alias} while this app is {$appUrl} — fix ALIAS_BASE_URL in the runner's environment if runs stall.", $docs);
 
             return;
         }
 
         if (! (bool) ($body['b2'] ?? false)) {
-            $this->add('genblaze', HealthStatus::Warn, 'Genblaze runner', "up at {$url}, but no object-storage bucket is configured (AWS_BUCKET / B2_BUCKET) — runs work, but provenance stays on the runner's local disk instead of the bucket (source the storage vars in run-genblaze.sh).", $docs);
+            $this->add('genblaze', HealthStatus::Warn, 'Genblaze runner', "up at {$url}, but no object-storage bucket is configured (AWS_BUCKET / B2_BUCKET) — runs work, but provenance stays on the runner's local disk instead of a bucket. Configure S3 storage (the AWS_* block) to archive takes + manifests; the Forge wrapper run-genblaze.sh sources it from the site's .env, and the Docker image passes it through automatically.", $docs);
 
             return;
         }
@@ -409,6 +413,28 @@ class HealthReport
             $alias,
             $appRoot === '' ? '' : ", storage root \"{$appRoot}/\"",
         ));
+    }
+
+    /**
+     * Is the runner's callback target a loopback listener that actually
+     * answers? The app can only test its OWN network view, but for a loopback
+     * address that is the same view the co-located runner has, so a live /up
+     * there means the callbacks land. Non-loopback targets never take this
+     * path — they keep the ALIAS_BASE_URL/APP_URL mismatch warning.
+     */
+    private function aliasLoopsBackLocally(string $alias): bool
+    {
+        $host = strtolower((string) parse_url($alias, PHP_URL_HOST));
+
+        if (! in_array($host, ['127.0.0.1', 'localhost', '::1', '[::1]'], true)) {
+            return false;
+        }
+
+        try {
+            return Http::timeout(3)->get($alias.'/up')->successful();
+        } catch (Throwable) {
+            return false;
+        }
     }
 
     /**

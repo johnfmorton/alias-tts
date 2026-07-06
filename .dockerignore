@@ -1,0 +1,48 @@
+# Build context for the single-image Docker package (see docs/DOCKER.md).
+# Everything the IMAGE needs stays in; local state, dev tooling, and
+# repo-only artifacts stay out.
+
+.git
+.githooks
+.github
+.ddev
+.claude
+.DS_Store
+**/.DS_Store
+
+# Dependencies — installed inside their own build stages.
+node_modules
+vendor
+
+# Local state and secrets. The container assembles its own .env on /data;
+# .env.example ships for reference.
+.env
+.env.backup
+.env.production
+database/*.sqlite
+database/*.sqlite-journal
+database/*.sqlite-wal
+database/*.sqlite-shm
+
+# Runtime state — the image carries an empty skeleton; real storage lives on
+# the /data volume.
+storage
+
+# Built assets — produced by the assets build stage.
+public/build
+public/hot
+
+# Dev / test tooling.
+tests
+phpunit.xml
+docker-compose.override.yml
+
+# Repo-only artifacts that have no business in an image.
+not in repo
+debugging-audio-files
+vctk_candidates_cleaned
+*.zip
+asr-sidecar/__pycache__
+genblaze-runner/**/__pycache__
+connectors/**/__pycache__
+genblaze-runner/.pytest_cache

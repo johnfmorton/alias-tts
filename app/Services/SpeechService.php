@@ -17,6 +17,7 @@ use App\Services\Tts\VoiceReference;
 use Carbon\Carbon;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Storage;
+use RuntimeException;
 use Throwable;
 
 class SpeechService
@@ -163,7 +164,14 @@ class SpeechService
 
             $disk = config('tts.storage_disk');
             $audioPath = config('tts.storage_path').'/'.$speech->id.'.'.$ext;
-            Storage::disk($disk)->put($audioPath, $bytes);
+
+            // put() reports failure (disk full, permissions, a root-owned
+            // directory from a CLI run as the wrong user) as false, not an
+            // exception — unchecked, the speech would be marked Completed
+            // with no file and every download would 500.
+            if (Storage::disk($disk)->put($audioPath, $bytes) === false) {
+                throw new RuntimeException("Could not write the generated audio to disk \"{$disk}\" at \"{$audioPath}\" — check storage permissions and free space.");
+            }
 
             $speech->update([
                 'status' => SpeechStatus::Completed,

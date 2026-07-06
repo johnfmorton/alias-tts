@@ -1,0 +1,37 @@
+# Caddyfile for the single-image package (FrankenPHP).
+#
+# Two listeners:
+#   1. The public site. SERVER_NAME defaults to ":80" (plain HTTP — put your
+#      own proxy in front, or publish -p 8080:80 and browse http://localhost:8080).
+#      Set SERVER_NAME=your-domain.com (and publish 80 + 443) to let Caddy
+#      obtain and renew a Let's Encrypt certificate automatically; cert state
+#      persists under /data/caddy.
+#   2. A loopback-only plain-HTTP listener on 127.0.0.1:8081 that the bundled
+#      Genblaze runner and the container HEALTHCHECK call. It exists so
+#      internal calls keep working no matter how the public listener is
+#      configured (HTTPS redirects, custom domains, proxies).
+
+{
+	frankenphp
+	admin off
+	persist_config off
+}
+
+{$SERVER_NAME::80} {
+	log {
+		output stderr
+		format console
+	}
+
+	root * /var/www/html/public
+	encode zstd br gzip
+
+	# Generated audio downloads can be large; no request body cap here — PHP's
+	# post_max_size / upload_max_filesize (docker/php.ini) are the limits.
+	php_server
+}
+
+http://127.0.0.1:8081 {
+	root * /var/www/html/public
+	php_server
+}

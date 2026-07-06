@@ -4,7 +4,35 @@ All notable changes to this project are documented in this file. The format is
 based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this
 project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [0.35.0] - 2026-07-06
+## [Unreleased]
+
+### Added
+- **A single-image Docker package.** One `docker run` now stands up the whole
+  service: the web app (FrankenPHP), the database-queue worker, the scheduler,
+  the Whisper ASR sidecar (transcript QA with auto re-roll/trim), and the
+  Genblaze runner — supervised in one container, with all state (SQLite
+  database, generated audio, voice clips, secrets, ASR models, TLS
+  certificates) on a single `/data` volume. First boot generates `APP_KEY` and
+  the app↔runner shared secret, migrates, seeds the admin login from
+  `ADMIN_EMAIL`/`ADMIN_PASSWORD`, and pre-seeds the bundled Whisper model so
+  no network is needed. ffmpeg ships in-image as a checksum-pinned static
+  8.1.2 build (the `tts:doctor` minimum), and setting `SERVER_NAME` to a
+  domain turns on automatic Let's Encrypt HTTPS. See the new
+  [docs/DOCKER.md](docs/DOCKER.md).
+
+### Changed
+- **`tts:doctor` understands co-located Genblaze runners.** A runner whose
+  callback target is a loopback listener that actually answers (the Docker
+  package's layout) now passes instead of warning about an
+  `ALIAS_BASE_URL`/`APP_URL` mismatch; a dead loopback target still warns.
+  The no-bucket warning also explains where the runner gets its storage
+  config in each layout.
+
+### Fixed
+- **A failed final-audio write can no longer masquerade as success.** If the
+  storage write of the stitched audio fails (permissions, full disk), the
+  speech is now marked Failed with a clear error instead of Completed with a
+  missing file — which previously surfaced as a bare 500 on download.
 
 ### Changed
 - **The landing page now tells the whole ladder — APIs in, Studio at the

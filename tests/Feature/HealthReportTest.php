@@ -241,6 +241,44 @@ class HealthReportTest extends TestCase
         $this->assertStringContainsString('ALIAS_BASE_URL', $genblaze->detail);
     }
 
+    public function test_genblaze_accepts_a_live_loopback_callback_target(): void
+    {
+        // Co-located layouts (the single-image Docker package, a same-host
+        // daemon) point the runner at a loopback listener on purpose — when
+        // that listener answers /up, the URL "mismatch" is not a problem.
+        config([
+            'tts.genblaze.runner_url' => 'http://runner.test',
+            'tts.internal.secret' => 's3cret',
+            'app.url' => 'https://tts.example.com',
+        ]);
+        Http::fake([
+            'runner.test/health' => Http::response($this->runnerHealth(['alias' => 'http://127.0.0.1:8081'])),
+            '127.0.0.1:8081/up' => Http::response('OK'),
+        ]);
+
+        $genblaze = $this->resultFor('genblaze');
+
+        $this->assertSame(HealthStatus::Pass, $genblaze->status);
+    }
+
+    public function test_genblaze_still_warns_when_the_loopback_callback_target_is_dead(): void
+    {
+        config([
+            'tts.genblaze.runner_url' => 'http://runner.test',
+            'tts.internal.secret' => 's3cret',
+            'app.url' => 'https://tts.example.com',
+        ]);
+        Http::fake([
+            'runner.test/health' => Http::response($this->runnerHealth(['alias' => 'http://127.0.0.1:8081'])),
+            '127.0.0.1:8081/up' => Http::response('', 500),
+        ]);
+
+        $genblaze = $this->resultFor('genblaze');
+
+        $this->assertSame(HealthStatus::Warn, $genblaze->status);
+        $this->assertStringContainsString('ALIAS_BASE_URL', $genblaze->detail);
+    }
+
     public function test_genblaze_warns_without_a_b2_sink(): void
     {
         config([
