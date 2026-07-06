@@ -2379,3 +2379,263 @@ function initVoicesReorder() {
     }
 }
 initVoicesReorder();
+
+// Voice reference-clip widget: preview an uploaded clip's cleanup (denoise +
+// enhance) and A/B "Original" vs "Cleaned up" before saving. The prepare endpoint
+// stages both takes server-side and returns ranged URLs; choosing one submits its
+// token with the form so the saved reference is byte-identical to the preview.
+// (The in-browser mic recorder hooks into prepareClip() in a later phase.)
+function initVoiceRecorder() {
+    const widget = document.getElementById('voice-clip-widget');
+    if (!widget) return;
+
+    const prepareUrl = widget.dataset.prepareUrl;
+    // Nothing to preview when cleanup is disabled — the plain upload still works.
+    if (!prepareUrl || widget.dataset.enhanceEnabled !== '1') return;
+
+    const fileInput = widget.querySelector('[data-clip-file]');
+    const enhanceBox = widget.querySelector('[data-clip-enhance]');
+    const previewBtn = widget.querySelector('[data-clip-preview]');
+    const abPanel = widget.querySelector('[data-clip-ab]');
+    const warningEl = widget.querySelector('[data-clip-ab-warning]');
+    const statusEl = widget.querySelector('[data-clip-status]');
+    const tokenInput = widget.querySelector('[data-clip-token]');
+    const choices = widget.querySelectorAll('[data-clip-choice]');
+
+    // A recording Blob from the mic recorder (Phase 3); null on the upload path.
+    let recordedBlob = null;
+
+    const nativeOf = (variant) => widget.querySelector(`[data-clip-player="${variant}"] .aplayer__native`);
+    const rowOf = (variant) => widget.querySelector(`[data-clip-row="${variant}"]`);
+    const hasSource = () => recordedBlob || (fileInput && fileInput.files && fileInput.files.length);
+
+    function refreshPreviewBtn() {
+        const show = !!hasSource() && enhanceBox && enhanceBox.checked && !tokenInput.value;
+        previewBtn.classList.toggle('hidden', !show);
+    }
+
+    function clearPreview() {
+        tokenInput.value = '';
+        choices.forEach((r) => { r.checked = false; });
+        abPanel.classList.add('hidden');
+        if (warningEl) { warningEl.classList.add('hidden'); warningEl.textContent = ''; }
+        if (fileInput) fileInput.disabled = false;
+        setStatus(statusEl, '', 'muted');
+        refreshPreviewBtn();
+    }
+
+    async function prepareClip(blob, filename) {
+        setStatus(statusEl, 'Cleaning up your clip — this takes about a minute…', 'muted');
+        startBusy(previewBtn, 'Cleaning up…');
+        try {
+            const fd = new FormData();
+            fd.append('audio', blob, filename);
+            if (enhanceBox && enhanceBox.checked) fd.append('enhance', '1');
+            const res = await fetch(prepareUrl, {
+                method: 'POST',
+                headers: { 'X-CSRF-TOKEN': csrfToken(), 'Accept': 'application/json' },
+                body: fd,
+            });
+            if (!res.ok) throw new Error(await errorMessage(res));
+            renderAB(await res.json());
+            setStatus(statusEl, '', 'muted');
+        } catch (err) {
+            setStatus(statusEl, `✗ ${err.message}`, 'error');
+        } finally {
+            endBusy(previewBtn);
+            refreshPreviewBtn();
+        }
+    }
+
+    function renderAB(data) {
+        tokenInput.value = data.token || '';
+
+        const hasEnhanced = !!data.enhanced;
+        rowOf('enhanced').classList.toggle('hidden', !hasEnhanced);
+        if (hasEnhanced) nativeOf('enhanced').src = data.enhanced.url;
+        nativeOf('original').src = data.original.url;
+
+        // Preselect the cleaned-up take when present, else the original.
+        const preferred = hasEnhanced ? 'enhanced' : 'original';
+        choices.forEach((r) => { r.checked = r.value === preferred; });
+
+        if (warningEl) {
+            const warn = !hasEnhanced && data.enhance_error;
+            warningEl.textContent = warn ? data.enhance_error : '';
+            warningEl.classList.toggle('hidden', !warn);
+        }
+
+        enhanceStudioPlayers(widget); // skin the A/B players now that src is set
+        abPanel.classList.remove('hidden');
+        previewBtn.classList.add('hidden');
+        if (fileInput) fileInput.disabled = true; // the token supersedes a raw upload
+    }
+
+    // Expose a small hook so the recorder phase can feed a Blob through the same path.
+    widget.__prepareRecording = (blob, filename) => {
+        recordedBlob = blob;
+        tokenInput.value = '';
+        abPanel.classList.add('hidden');
+        prepareClip(blob, filename);
+    };
+
+    if (fileInput) fileInput.addEventListener('change', () => { recordedBlob = null; clearPreview(); });
+    if (enhanceBox) enhanceBox.addEventListener('change', refreshPreviewBtn);
+    previewBtn.addEventListener('click', () => {
+        const file = fileInput && fileInput.files && fileInput.files[0];
+        if (recordedBlob) prepareClip(recordedBlob, 'recording.webm');
+        else if (file) prepareClip(file, file.name);
+    });
+    widget.querySelector('[data-clip-reset]')?.addEventListener('click', () => { recordedBlob = null; clearPreview(); });
+
+    // ── In-browser mic recorder (progressive enhancement) ──────────────────
+    (function initMicRecorder() {
+        const recorder = widget.querySelector('[data-recorder]');
+        if (!recorder) return;
+        // Unsupported / non-secure context → leave the recorder hidden; upload works.
+        if (!navigator.mediaDevices?.getUserMedia || !window.MediaRecorder) return;
+
+        const q = (sel) => recorder.querySelector(sel);
+        const enableBtn = q('[data-recorder-enable]');
+        const recordBtn = q('[data-recorder-record]');
+        const stopBtn = q('[data-recorder-stop]');
+        const redoBtn = q('[data-recorder-redo]');
+        const timerEl = q('[data-recorder-timer]');
+        const meterWrap = q('[data-recorder-meter-wrap]');
+        const meterBar = q('[data-recorder-meter]');
+        const guideEl = q('[data-recorder-guide]');
+        const reviewWrap = q('[data-recorder-review]');
+        const reviewAudio = q('[data-recorder-player] .aplayer__native');
+        const useBtn = q('[data-recorder-use]');
+        const recStatus = q('[data-recorder-status]');
+        const scriptRadios = recorder.querySelectorAll('[data-recorder-script]');
+
+        const targetMin = Number(widget.dataset.targetMin) || 15;
+        const targetMax = Number(widget.dataset.targetMax) || 30;
+        const maxSeconds = Number(widget.dataset.maxSeconds) || 60;
+
+        let stream = null, audioCtx = null, analyser = null, meterRAF = 0;
+        let mr = null, chunks = [], recBlob = null, startedAt = 0, timerId = 0;
+
+        const show = (node, on) => node.classList.toggle('hidden', !on);
+        // Buttons with an icon need inline-flex; toggle it WITH hidden so neither lingers.
+        const showFlex = (node, on) => { node.classList.toggle('hidden', !on); node.classList.toggle('inline-flex', on); };
+        const fmt = (s) => Math.floor(s / 60) + ':' + String(Math.floor(s % 60)).padStart(2, '0');
+
+        recorder.classList.remove('hidden'); // supported → offer recording
+
+        // Script picker: reveal only the selected script's full text.
+        scriptRadios.forEach((radio) => radio.addEventListener('change', () => {
+            scriptRadios.forEach((r) => {
+                const text = r.closest('label').querySelector('[data-recorder-script-text]');
+                if (text) text.classList.toggle('hidden', r !== radio);
+            });
+        }));
+
+        const pickMime = () => ['audio/webm;codecs=opus', 'audio/webm', 'audio/mp4;codecs=mp4a.40.2', 'audio/mp4']
+            .find((t) => MediaRecorder.isTypeSupported(t)) || '';
+
+        function updateMeter() {
+            if (!analyser) return;
+            const buf = new Uint8Array(analyser.fftSize);
+            analyser.getByteTimeDomainData(buf);
+            let sum = 0;
+            for (let i = 0; i < buf.length; i++) { const v = (buf[i] - 128) / 128; sum += v * v; }
+            meterBar.style.width = Math.min(100, Math.round(Math.sqrt(sum / buf.length) * 240)) + '%';
+            meterRAF = requestAnimationFrame(updateMeter);
+        }
+
+        function tick() {
+            const s = (performance.now() - startedAt) / 1000;
+            timerEl.textContent = fmt(s);
+            if (s < targetMin) { guideEl.textContent = 'Keep reading…'; guideEl.className = 'text-xs text-zinc-500'; }
+            else if (s <= targetMax) { guideEl.textContent = '✓ Good length — stop when you finish the paragraph.'; guideEl.className = 'text-xs text-emerald-400'; }
+            else { guideEl.textContent = 'Getting long — you can stop any time.'; guideEl.className = 'text-xs text-amber-400'; }
+            if (s >= maxSeconds) stopRecording(`Stopped at ${maxSeconds}s — that's plenty.`);
+        }
+
+        async function enableMic() {
+            setStatus(recStatus, 'Requesting microphone…', 'muted');
+            try {
+                stream = await navigator.mediaDevices.getUserMedia({
+                    // Browser DSP off — resemble-enhance does the cleanup, and its
+                    // artifacts hurt cloning; AGC on for safe input levels.
+                    audio: { echoCancellation: false, noiseSuppression: false, autoGainControl: true, channelCount: 1 },
+                });
+            } catch (err) {
+                const denied = err && (err.name === 'NotAllowedError' || err.name === 'SecurityError');
+                setStatus(recStatus, denied
+                    ? "✗ Microphone blocked — allow it in your browser's site settings, or upload a file instead."
+                    : '✗ Could not access the microphone: ' + (err?.message || err), 'error');
+                return;
+            }
+            // AudioContext created on the user gesture (Safari requires it).
+            audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+            if (audioCtx.state === 'suspended') await audioCtx.resume();
+            analyser = audioCtx.createAnalyser();
+            analyser.fftSize = 512;
+            audioCtx.createMediaStreamSource(stream).connect(analyser); // never to destination (feedback)
+            show(meterWrap, true);
+            updateMeter();
+
+            show(enableBtn, false);
+            showFlex(recordBtn, true);
+            setStatus(recStatus, 'Microphone ready — press Record and read a script.', 'muted');
+        }
+
+        function startRecording() {
+            const mimeType = pickMime();
+            recBlob = null; chunks = [];
+            mr = mimeType ? new MediaRecorder(stream, { mimeType, audioBitsPerSecond: 128000 }) : new MediaRecorder(stream);
+            mr.ondataavailable = (e) => { if (e.data && e.data.size) chunks.push(e.data); };
+            mr.onstop = () => {
+                recBlob = new Blob(chunks, { type: mr.mimeType || mimeType || 'audio/webm' });
+                reviewAudio.src = URL.createObjectURL(recBlob);
+                enhanceStudioPlayers(recorder);
+                show(reviewWrap, true);
+                show(useBtn, true);
+                if ((performance.now() - startedAt) / 1000 < 10) {
+                    setStatus(recStatus, 'That was short — aim for 15–30s for a better clone. You can re-record.', 'muted');
+                }
+            };
+            mr.start();
+            startedAt = performance.now();
+            timerId = setInterval(tick, 200);
+            show(timerEl, true); show(guideEl, true); show(reviewWrap, false);
+            showFlex(recordBtn, false); showFlex(stopBtn, true); show(redoBtn, false);
+            setStatus(recStatus, '', 'muted');
+        }
+
+        function stopRecording(msg) {
+            if (mr && mr.state !== 'inactive') mr.stop();
+            clearInterval(timerId);
+            showFlex(stopBtn, false); showFlex(recordBtn, false); show(redoBtn, true);
+            if (msg) setStatus(recStatus, msg, 'muted');
+        }
+
+        function teardown() {
+            cancelAnimationFrame(meterRAF);
+            if (stream) stream.getTracks().forEach((t) => t.stop());
+            if (audioCtx && audioCtx.state !== 'closed') audioCtx.close();
+            stream = null; audioCtx = null; analyser = null;
+        }
+
+        enableBtn.addEventListener('click', enableMic);
+        recordBtn.addEventListener('click', startRecording);
+        stopBtn.addEventListener('click', () => stopRecording(''));
+        redoBtn.addEventListener('click', () => {
+            show(reviewWrap, false); show(useBtn, false); show(redoBtn, false);
+            showFlex(recordBtn, true); timerEl.textContent = '0:00'; show(guideEl, false);
+            setStatus(recStatus, '', 'muted');
+        });
+        useBtn.addEventListener('click', () => {
+            if (!recBlob || recBlob.size < 1) { setStatus(recStatus, '✗ The recording is empty — try again.', 'error'); return; }
+            const ext = /mp4|m4a/.test(recBlob.type) ? 'mp4' : recBlob.type.includes('ogg') ? 'ogg' : 'webm';
+            widget.__prepareRecording(recBlob, 'recording.' + ext);
+        });
+        window.addEventListener('pagehide', teardown);
+    })();
+
+    refreshPreviewBtn();
+}
+initVoiceRecorder();

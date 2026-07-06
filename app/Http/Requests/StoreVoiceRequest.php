@@ -21,6 +21,11 @@ class StoreVoiceRequest extends FormRequest
             'audio' => ['nullable', 'file', 'mimes:wav,mp3,m4a,aac,ogg,flac', 'max:20480', new AudioOnlyUpload], // 20 MB
             'seed' => ['nullable', 'integer'],
             'raw' => ['sometimes', 'boolean'],
+            // Clean up the reference clip (denoise + enhance) before storing.
+            'enhance' => ['sometimes', 'boolean'],
+            // A prepared-clip token + the A/B choice, when saving a previewed clip.
+            'clip_token' => ['nullable', 'string', 'size:40', 'required_with:clip_choice'],
+            'clip_choice' => ['nullable', 'in:original,enhanced', 'required_with:clip_token'],
         ];
     }
 

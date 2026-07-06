@@ -234,10 +234,16 @@ A password-protected control panel (at `/admin`; visiting `/` while signed in
 redirects you there). It's **multi-user**: each account has its own **API
 keys**, **voices**, **pronunciation dictionary**, and **settings** (like the
 final audio format for projects), with the bundled default voices shared by
-everyone. Add a voice by uploading a short reference clip — it's normalized and
-registered instantly; Chatterbox is zero-shot, so there's no training job —
-then dial in its delivery on the voice's edit page (**"Tune by ear"**: an A/B
-bench for comparing settings side by side, saveable as named presets). The
+everyone. Add a voice by uploading a short reference clip **or recording one
+right in the browser** (read one of the built-in prompts, review the take, and
+submit) — it's normalized and registered instantly; Chatterbox is zero-shot, so
+there's no training job. Clips are optionally **cleaned up** (denoise + enhance
+via [resemble-enhance](https://github.com/resemble-ai/resemble-enhance) on
+Replicate) with an Original-vs-Cleaned-up preview before saving; cleanup is on
+by default and degrades safely to the original clip if it can't run (toggle with
+`TTS_ENHANCE_ENABLED`). Then dial in its delivery on the voice's edit page
+(**"Tune by ear"**: an A/B bench for comparing settings side by side, saveable
+as named presets). The
 home page shows copy-paste connection details (base URL, key, voice IDs) for
 any ElevenLabs- or OpenAI-compatible client. Optional Google/GitHub sign-in is
 available — see [docs/SSO-SETUP.md](docs/SSO-SETUP.md).

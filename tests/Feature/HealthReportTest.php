@@ -39,7 +39,7 @@ class HealthReportTest extends TestCase
         $keys = array_map(fn (HealthCheckResult $r) => $r->key, $results);
         $this->assertEqualsCanonicalizing([
             'php_version', 'php_extensions', 'database', 'migrations', 'cache',
-            'ffmpeg', 'storage', 'disk', 'provider', 'asr', 'genblaze', 'pronunciation', 'queue', 'failed_jobs',
+            'ffmpeg', 'storage', 'disk', 'provider', 'asr', 'enhance', 'genblaze', 'pronunciation', 'queue', 'failed_jobs',
             'scheduler', 'cleanup', 'voices', 'api_keys', 'app_key', 'debug', 'app_url', 'upload_limit',
         ], $keys);
     }
@@ -282,6 +282,51 @@ class HealthReportTest extends TestCase
             'storage_root' => null,
             'pronounce' => [],
         ], $overrides);
+    }
+
+    public function test_enhance_passes_when_disabled(): void
+    {
+        config(['tts.enhance.enabled' => false]);
+
+        $this->assertSame(HealthStatus::Pass, $this->resultFor('enhance')->status);
+    }
+
+    public function test_enhance_passes_with_the_fake_provider(): void
+    {
+        // The suite runs the fake enhancer (phpunit.xml), so a healthy run has
+        // no enhance failure even with cleanup enabled.
+        config(['tts.enhance.enabled' => true, 'tts.enhance.provider' => 'fake']);
+
+        $this->assertSame(HealthStatus::Pass, $this->resultFor('enhance')->status);
+    }
+
+    public function test_enhance_fails_when_enabled_on_replicate_without_a_token(): void
+    {
+        config([
+            'tts.enhance.enabled' => true,
+            'tts.enhance.provider' => 'replicate',
+            'tts.providers.replicate.token' => null,
+        ]);
+
+        $r = $this->resultFor('enhance');
+
+        $this->assertSame(HealthStatus::Fail, $r->status);
+        $this->assertStringContainsString('REPLICATE_API_TOKEN', $r->detail);
+    }
+
+    public function test_enhance_warns_when_the_model_version_is_unpinned(): void
+    {
+        config([
+            'tts.enhance.enabled' => true,
+            'tts.enhance.provider' => 'replicate',
+            'tts.providers.replicate.token' => 'r8_test',
+            'tts.enhance.replicate.version' => '',
+        ]);
+
+        $r = $this->resultFor('enhance');
+
+        $this->assertSame(HealthStatus::Warn, $r->status);
+        $this->assertStringContainsString('TTS_ENHANCE_REPLICATE_VERSION', $r->detail);
     }
 
     public function test_upload_limit_passes_below_the_required_size_and_points_to_deep(): void

@@ -9,6 +9,7 @@ use App\Models\Speech;
 use App\Models\Voice;
 use App\Providers\AppServiceProvider;
 use App\Services\Asr\AsrClient;
+use App\Services\Enhance\EnhanceProvider;
 use App\Services\Genblaze\GenblazeRunnerClient;
 use Illuminate\Console\Scheduling\Event;
 use Illuminate\Console\Scheduling\Schedule;
@@ -73,6 +74,7 @@ class HealthReport
         // Inference + async
         $this->checkProvider();
         $this->checkAsr();
+        $this->checkEnhance();
         $this->checkGenblaze();
         $this->checkPronunciation();
         $this->checkQueue();
@@ -272,6 +274,58 @@ class HealthReport
             $health['latency_ms'] ?? 0,
         );
         $this->add('asr', HealthStatus::Pass, 'Transcript QA', $detail);
+    }
+
+    /**
+     * Optional reference-clip cleanup (resemble-enhance via Replicate). On by
+     * default and degrade-safe, so this never hard-fails a clip — but if it's
+     * enabled with no token, cleanup silently no-ops on every save, so that's a
+     * FAIL worth surfacing. An unpinned model version is a WARN.
+     */
+    private function checkEnhance(): void
+    {
+        if (! (bool) config('tts.enhance.enabled', true)) {
+            $this->add('enhance', HealthStatus::Pass, 'Reference cleanup', 'disabled — set TTS_ENHANCE_ENABLED=true to denoise + enhance reference clips.');
+
+            return;
+        }
+
+        $provider = (string) config('tts.enhance.provider');
+
+        if ($provider === 'fake') {
+            $this->add('enhance', HealthStatus::Pass, 'Reference cleanup', 'fake — returns a deterministic placeholder (tests/offline)');
+
+            return;
+        }
+
+        if ($provider !== 'replicate') {
+            $this->add('enhance', HealthStatus::Warn, 'Reference cleanup', "unknown enhance provider '{$provider}'");
+
+            return;
+        }
+
+        if (! config('tts.providers.replicate.token')) {
+            $this->add('enhance', HealthStatus::Fail, 'Reference cleanup', 'enabled but REPLICATE_API_TOKEN is not set — every clip would silently fall back to the un-enhanced original. Set the token, or TTS_ENHANCE_ENABLED=false.');
+
+            return;
+        }
+
+        if ((string) config('tts.enhance.replicate.version') === '') {
+            $this->add('enhance', HealthStatus::Warn, 'Reference cleanup', 'no model version pinned — set TTS_ENHANCE_REPLICATE_VERSION to a known-good '.config('tts.enhance.replicate.model').' version (see its API page).');
+
+            return;
+        }
+
+        if (! $this->deep) {
+            $this->add('enhance', HealthStatus::Pass, 'Reference cleanup', 'replicate — token set, version pinned (run with --deep to validate live)');
+
+            return;
+        }
+
+        $health = app(EnhanceProvider::class)->health(true);
+        $health['reachable']
+            ? $this->add('enhance', HealthStatus::Pass, 'Reference cleanup', $health['detail'])
+            : $this->add('enhance', HealthStatus::Warn, 'Reference cleanup', 'could not validate: '.($health['error'] ?? 'unknown'));
     }
 
     /**

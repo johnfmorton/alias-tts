@@ -26,6 +26,11 @@ class UpdateVoiceRequest extends FormRequest
             'exaggeration' => ['nullable', 'numeric', 'between:0.25,2'],
             'cfg_weight' => ['nullable', 'numeric', 'between:0.2,1'],
             'raw' => ['sometimes', 'boolean'],
+            // Clean up the replacement clip (denoise + enhance) before storing.
+            'enhance' => ['sometimes', 'boolean'],
+            // A prepared-clip token + the A/B choice, when saving a previewed clip.
+            'clip_token' => ['nullable', 'string', 'size:40', 'required_with:clip_choice'],
+            'clip_choice' => ['nullable', 'in:original,enhanced', 'required_with:clip_token'],
         ];
     }
 

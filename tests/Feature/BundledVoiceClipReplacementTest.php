@@ -19,10 +19,14 @@ class BundledVoiceClipReplacementTest extends TestCase
 {
     use RefreshDatabase;
 
-    /** Roll back just the replacement migration (a no-op down) and re-run it. */
+    /**
+     * Roll back to (and re-run) the replacement migration. Two steps because the
+     * voice-clips staging table now sits on top of it; rewinding both and
+     * re-migrating re-runs the replacement's up() (its own down() is a no-op).
+     */
     private function rerunReplacementMigration(): void
     {
-        Artisan::call('migrate:rollback', ['--step' => 1]);
+        Artisan::call('migrate:rollback', ['--step' => 2]);
         Artisan::call('migrate', ['--force' => true]);
     }
 

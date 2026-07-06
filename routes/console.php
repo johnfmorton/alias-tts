@@ -20,6 +20,10 @@ Schedule::command('speech:cleanup')->dailyAt('03:00');
 // are never pruned. Staggered just after speech:cleanup.
 Schedule::command('projects:prune-recovery')->dailyAt('03:10');
 
+// Daily prune of expired prepared reference clips (record/upload → preview
+// staging). A saved clip is consumed immediately; this clears abandoned previews.
+Schedule::command('voices:prune-clips')->dailyAt('03:20');
+
 // Liveness heartbeat: stamps the current time every minute so `tts:doctor` can
 // tell whether cron is actually running `schedule:run` — not just that tasks
 // are registered in code. A stale/missing beat means the cron isn't firing.

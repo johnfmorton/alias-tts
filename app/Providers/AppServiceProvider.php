@@ -3,6 +3,9 @@
 namespace App\Providers;
 
 use App\Services\Audio\AudioConverter;
+use App\Services\Enhance\EnhanceProvider;
+use App\Services\Enhance\FakeEnhanceProvider;
+use App\Services\Enhance\ReplicateEnhanceProvider;
 use App\Services\Health\HealthReport;
 use App\Services\Tts\FakeTtsProvider;
 use App\Services\Tts\ReplicateChatterboxProvider;
@@ -44,6 +47,22 @@ class AppServiceProvider extends ServiceProvider
                 ),
                 default => throw new InvalidArgumentException(
                     'Unknown TTS provider: '.config('tts.provider'),
+                ),
+            };
+        });
+
+        // Reference-clip cleanup backend. Replicate only (plus a fake for
+        // tests/offline); the seam keeps a future local backend possible. Reuses
+        // the Replicate token — no separate secret.
+        $this->app->bind(EnhanceProvider::class, function () {
+            return match (config('tts.enhance.provider')) {
+                'fake' => new FakeEnhanceProvider,
+                'replicate' => new ReplicateEnhanceProvider(
+                    config('tts.enhance.replicate', []) + ['token' => config('tts.providers.replicate.token')],
+                    (int) config('tts.enhance.timeout', 120),
+                ),
+                default => throw new InvalidArgumentException(
+                    'Unknown enhance provider: '.config('tts.enhance.provider'),
                 ),
             };
         });

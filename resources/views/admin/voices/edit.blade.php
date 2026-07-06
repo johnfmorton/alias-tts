@@ -1,5 +1,8 @@
 <x-layout title="Edit voice" description="Rename the voice_id, set default tuning, or replace the reference clip.">
-    <form method="POST" action="{{ route('admin.voices.update', $voice) }}" enctype="multipart/form-data" class="max-w-lg space-y-5 rounded-xl border border-zinc-800 bg-zinc-900/50 p-6">
+    <form method="POST" action="{{ route('admin.voices.update', $voice) }}" enctype="multipart/form-data"
+          data-busy data-busy-label="Saving changes…"
+          data-busy-message="Cleaning up and normalizing a replacement clip can take up to a minute — keep this page open."
+          class="max-w-lg space-y-5 rounded-xl border border-zinc-800 bg-zinc-900/50 p-6">
         @csrf
         @method('PUT')
         <div>
@@ -44,12 +47,10 @@
             </div>
             <p class="mt-1.5 text-xs text-zinc-500">Used when a request doesn't set its own. Higher exaggeration = more animated delivery; lower CFG/Pace = quicker, looser pacing. Blank uses the system defaults.</p>
         </div>
-        <div>
-            <label for="audio" class="mb-1.5 block text-sm font-medium">Replace reference clip <span class="text-zinc-500">(optional)</span></label>
-            <input id="audio" name="audio" type="file" accept=".wav,.mp3,.m4a,.aac,.ogg,.flac"
-                   class="block w-full text-sm text-zinc-400 file:mr-3 file:rounded-lg file:border-0 file:bg-zinc-800 file:px-3 file:py-2 file:text-sm file:text-zinc-200 hover:file:bg-zinc-700">
-            <p class="mt-1.5 text-xs text-zinc-500">Leave empty to keep the current clip ({{ $voice->reference_audio_path ? 'present' : 'none' }}).</p>
-        </div>
+        @include('admin.voices._clip_source', [
+            'replace' => true,
+            'fileHelp' => 'Leave empty to keep the current clip ('.($voice->reference_audio_path ? 'present' : 'none').').',
+        ])
         <label class="flex items-center gap-2 text-sm text-zinc-400">
             <input type="checkbox" name="raw" value="1" {{ old('raw') ? 'checked' : '' }} class="rounded border-zinc-700 bg-zinc-900 text-cyan-500 focus:ring-cyan-500/30">
             Store raw (skip auto-normalization) — only applies when replacing the clip

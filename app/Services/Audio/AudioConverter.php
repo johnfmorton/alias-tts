@@ -1048,6 +1048,85 @@ class AudioConverter
     }
 
     /**
+     * Decode arbitrary uploaded/recorded audio bytes (mp3, m4a, ogg, webm, mp4,
+     * flac, wav …) to canonical 16-bit PCM WAV, preserving the source sample rate
+     * and channels. This is the entry step before enhancement/preview — mono
+     * downmix and loudness live in {@see normalizeReference()} at save time.
+     * Returns WAV bytes; throws on decode failure.
+     */
+    public function decodeToWav(string $inputBytes): string
+    {
+        $in = tempnam(sys_get_temp_dir(), 'tts_dec_in_');
+        $out = tempnam(sys_get_temp_dir(), 'tts_dec_out_');
+
+        try {
+            file_put_contents($in, $inputBytes);
+
+            $process = new Process([
+                $this->ffmpegPath, '-y', '-hide_banner', '-loglevel', 'error',
+                '-i', $in,
+                // -vn: untrusted input (user upload/recording). Drop any video
+                // stream so a smuggled/crafted video can never reach a video
+                // decoder (CVE-2026-8461). Also ffprobe-screened at the request
+                // layer; this is defense-in-depth.
+                '-vn',
+                '-c:a', 'pcm_s16le', '-f', 'wav',
+                $out,
+            ]);
+            $process->setTimeout(120);
+            $process->run();
+
+            if (! $process->isSuccessful()) {
+                throw new RuntimeException('ffmpeg could not decode the audio: '.trim($process->getErrorOutput()));
+            }
+
+            $bytes = file_get_contents($out);
+            if ($bytes === false || $bytes === '') {
+                throw new RuntimeException('ffmpeg produced no decoded audio.');
+            }
+
+            return $bytes;
+        } finally {
+            @unlink($in);
+            @unlink($out);
+        }
+    }
+
+    /**
+     * Duration in seconds of a PCM WAV, from its header (data chunk size ÷ byte
+     * rate). Walks the chunk list so extra chunks are tolerated. Returns null if
+     * the header can't be parsed. Cheap — no ffmpeg. Used to cap prepared clips.
+     */
+    public function wavDurationSeconds(string $wav): ?float
+    {
+        $pos = 12; // skip 'RIFF' <size> 'WAVE'
+        $len = strlen($wav);
+        $byteRate = null;
+        $dataSize = null;
+
+        while ($pos + 8 <= $len) {
+            $id = substr($wav, $pos, 4);
+            $size = unpack('V', substr($wav, $pos + 4, 4))[1];
+
+            if ($id === 'fmt ' && $pos + 20 <= $len) {
+                // fmt body: audioFormat(2) channels(2) sampleRate(4) byteRate(4) …
+                $byteRate = (int) unpack('V', substr($wav, $pos + 8 + 8, 4))[1];
+            } elseif ($id === 'data') {
+                // Clamp to the bytes actually present (tolerate a truncated tail).
+                $dataSize = min($size, $len - ($pos + 8));
+            }
+
+            $pos += 8 + $size + ($size & 1); // chunks are word-aligned
+        }
+
+        if ($byteRate === null || $byteRate <= 0 || $dataSize === null) {
+            return null;
+        }
+
+        return $dataSize / $byteRate;
+    }
+
+    /**
      * Normalize a reference voice clip for zero-shot cloning: downmix to mono,
      * trim leading/trailing silence, loudness-normalize, and cap the true peak
      * so the result can never clip. Returns 16-bit PCM WAV bytes.

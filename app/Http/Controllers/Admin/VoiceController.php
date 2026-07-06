@@ -9,6 +9,7 @@ use App\Models\ApiKey;
 use App\Models\TuningPreset;
 use App\Models\Voice;
 use App\Services\SpeechService;
+use App\Services\VoiceClipService;
 use App\Services\VoiceService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
@@ -23,6 +24,7 @@ class VoiceController extends Controller
     public function __construct(
         private VoiceService $voices,
         private SpeechService $speechService,
+        private VoiceClipService $voiceClips,
     ) {}
 
     public function index(Request $request): View
@@ -86,13 +88,17 @@ class VoiceController extends Controller
     public function store(StoreVoiceRequest $request): RedirectResponse
     {
         $file = $request->file('audio');
+        $token = $request->input('clip_token');
+        $warning = null;
 
         try {
+            [$audioBytes, $ext, $warning] = $this->resolveClip($request, $file, $token);
+
             $voice = $this->voices->register(
                 name: $request->input('name'),
                 slug: $request->input('slug') ?: null,
-                audioBytes: $file ? (string) file_get_contents($file->getRealPath()) : null,
-                ext: $file?->getClientOriginalExtension(),
+                audioBytes: $audioBytes,
+                ext: $ext,
                 normalize: (bool) config('tts.normalize_reference') && ! $request->boolean('raw'),
                 seed: $request->filled('seed') ? (int) $request->input('seed') : null,
                 ownerId: $request->user()->id,
@@ -103,10 +109,44 @@ class VoiceController extends Controller
                 ->with('error', $e->getMessage());
         }
 
+        // Single-use: drop the staged clip only after a successful save.
+        if ($token) {
+            $this->voiceClips->discard($token);
+        }
+
         // Land on the edit page: tuning lives there now, so the natural next
         // step after saving a clip is to hear it and dial in the defaults.
         return redirect()->route('admin.voices.edit', $voice)
-            ->with('success', "Voice '{$voice->slug}' saved — tune it by ear below.");
+            ->with('success', "Voice '{$voice->slug}' saved — tune it by ear below.")
+            ->with($warning ? ['warning' => $warning] : []);
+    }
+
+    /**
+     * Resolve the reference-clip bytes for a save. A prepared-clip token wins
+     * (its exact previewed bytes, already decoded/enhanced); otherwise the raw
+     * upload, cleaned up synchronously when the no-JS "clean up" box is on
+     * (degrade-safe — a failed enhance keeps the original + a warning).
+     *
+     * @return array{0: string|null, 1: string|null, 2: string|null} [bytes, ext, warning]
+     */
+    private function resolveClip(Request $request, $file, ?string $token): array
+    {
+        if ($token) {
+            $claimed = $this->voiceClips->claim($token, (string) $request->input('clip_choice'), $request->user()->id);
+
+            return [$claimed['bytes'], $claimed['ext'], null];
+        }
+
+        $bytes = $file ? (string) file_get_contents($file->getRealPath()) : null;
+        $ext = $file?->getClientOriginalExtension();
+
+        if ($bytes !== null && $request->boolean('enhance') && config('tts.enhance.enabled')) {
+            $result = $this->voiceClips->enhanceUploadedClip($bytes);
+
+            return [$result['bytes'], 'wav', $result['error']];
+        }
+
+        return [$bytes, $ext, null];
     }
 
     public function edit(Request $request, Voice $voice): View
@@ -124,21 +164,36 @@ class VoiceController extends Controller
         abort_unless($voice->isManagedBy($request->user()), 403);
 
         $file = $request->file('audio');
+        $token = $request->input('clip_token');
+        $warning = null;
 
-        $voice = $this->voices->update(
-            voice: $voice,
-            name: $request->input('name'),
-            slug: $request->input('slug'),
-            audioBytes: $file ? (string) file_get_contents($file->getRealPath()) : null,
-            ext: $file?->getClientOriginalExtension(),
-            normalize: (bool) config('tts.normalize_reference') && ! $request->boolean('raw'),
-            seed: $request->filled('seed') ? (int) $request->input('seed') : null,
-            exaggeration: $request->filled('exaggeration') ? (float) $request->input('exaggeration') : null,
-            cfgWeight: $request->filled('cfg_weight') ? (float) $request->input('cfg_weight') : null,
-        );
+        try {
+            [$audioBytes, $ext, $warning] = $this->resolveClip($request, $file, $token);
+
+            $voice = $this->voices->update(
+                voice: $voice,
+                name: $request->input('name'),
+                slug: $request->input('slug'),
+                audioBytes: $audioBytes,
+                ext: $ext,
+                normalize: (bool) config('tts.normalize_reference') && ! $request->boolean('raw'),
+                seed: $request->filled('seed') ? (int) $request->input('seed') : null,
+                exaggeration: $request->filled('exaggeration') ? (float) $request->input('exaggeration') : null,
+                cfgWeight: $request->filled('cfg_weight') ? (float) $request->input('cfg_weight') : null,
+            );
+        } catch (Throwable $e) {
+            return redirect()->route('admin.voices.edit', $voice)
+                ->withInput()
+                ->with('error', $e->getMessage());
+        }
+
+        if ($token) {
+            $this->voiceClips->discard($token);
+        }
 
         return redirect()->route('admin.voices.index')
-            ->with('success', "Voice '{$voice->slug}' updated.");
+            ->with('success', "Voice '{$voice->slug}' updated.")
+            ->with($warning ? ['warning' => $warning] : []);
     }
 
     /**

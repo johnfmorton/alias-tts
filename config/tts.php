@@ -354,6 +354,12 @@ return [
     'storage_path' => trim((string) env('TTS_STORAGE_PATH', 'speech'), '/'),
     'reference_path' => trim((string) env('TTS_REFERENCE_PATH', 'voices'), '/'),
 
+    // Staging area for the "prepare a clip" flow (record/upload → clean up →
+    // preview → choose). Deliberately a top-level prefix OUTSIDE storage_path so
+    // `speech:cleanup --orphans` (which sweeps only storage_path) never touches a
+    // pending clip; its own TTL prune (voices:prune-clips) owns cleanup here.
+    'voice_clip_path' => trim((string) env('TTS_VOICE_CLIP_PATH', 'voice-clips'), '/'),
+
     // Accept file UPLOADS on the public /verify page? Off by default: the page
     // fingerprints the file in the visitor's browser (Web Crypto) and sends only
     // the 64-char SHA-256, so nothing is uploaded and no large file can exhaust
@@ -531,6 +537,48 @@ return [
         'boundary_gap_inset_ms' => (int) env('TTS_ASR_BOUNDARY_GAP_INSET_MS', 100), // trim each gap end before measuring
         'boundary_energy_dbfs_max' => (float) env('TTS_ASR_BOUNDARY_ENERGY_DBFS_MAX', -55),
         'boundary_zcr_max_hz' => (float) env('TTS_ASR_BOUNDARY_ZCR_MAX_HZ', 1500),
+    ],
+
+    /*
+    |--------------------------------------------------------------------------
+    | Reference-clip cleanup (resemble-enhance)
+    |--------------------------------------------------------------------------
+    |
+    | Optional AI cleanup of a voice's reference clip — denoise + enhance via the
+    | official `resemble-ai/resemble-enhance` model on Replicate — applied to both
+    | recorded and uploaded clips before it becomes the reference. On by default:
+    | it reuses REPLICATE_API_TOKEN (already required for TTS), costs ~$0.0086/run,
+    | and DEGRADES SAFELY — any failure falls back to the original clip so a voice
+    | is never blocked from saving. The `provider` seam keeps a future local
+    | backend possible; only `replicate` and `fake` (tests/offline) are valid now.
+    |
+    | NOTE: the model returns a TWO-element list [denoised, enhanced]; we use the
+    | enhanced take (index 1), or the denoised take (index 0) when denoise_only is
+    | on. Confirm the model's input field names and pin a version from its API page
+    | (https://replicate.com/resemble-ai/resemble-enhance/api) before going live —
+    | tts:doctor WARNs while the version is unpinned.
+    |
+    */
+    'enhance' => [
+        'enabled' => (bool) env('TTS_ENHANCE_ENABLED', true),
+        'provider' => env('TTS_ENHANCE_PROVIDER', 'replicate'), // 'replicate' | 'fake'
+        'default_on' => (bool) env('TTS_ENHANCE_DEFAULT_ON', true), // the opt-out checkbox's default state
+        'denoise_only' => (bool) env('TTS_ENHANCE_DENOISE_ONLY', false), // gentler: denoise without the enhancer
+        'timeout' => (int) env('TTS_ENHANCE_TIMEOUT', 120), // seconds for the whole prediction (incl. polling)
+        'clip_ttl_hours' => (int) env('TTS_ENHANCE_CLIP_TTL_HOURS', 24), // prepared-clip token lifetime
+        'max_clip_seconds' => (int) env('TTS_ENHANCE_MAX_CLIP_SECONDS', 120), // prepare-endpoint duration cap
+        'replicate' => [
+            'model' => env('TTS_ENHANCE_REPLICATE_MODEL', 'resemble-ai/resemble-enhance'),
+            // Pinned to a known-good version (this model 404s on the version-less
+            // model-predictions endpoint, so a version is required). Override via
+            // env to bump it; empty makes tts:doctor WARN to pin one.
+            'version' => env('TTS_ENHANCE_REPLICATE_VERSION', '93266a7e7f5805fb79bcf213b1a4e0ef2e45aff3c06eefd96c59e850c87fd6a2'),
+            // Input field names — confirm against the model schema; env-overridable
+            // so a schema change needs no code change.
+            'audio_field' => env('TTS_ENHANCE_REPLICATE_AUDIO_FIELD', 'input_audio'),
+            'denoise_flag_field' => env('TTS_ENHANCE_REPLICATE_DENOISE_FIELD', 'denoise_flag'),
+            'max_retries' => (int) env('TTS_ENHANCE_MAX_RETRIES', 2),
+        ],
     ],
 
     /*

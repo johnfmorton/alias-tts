@@ -52,5 +52,9 @@
              unless a test turns it on explicitly. -->
         <env name="TTS_PRONUNCIATION_ENABLED" value="null"/>
         <env name="TTS_PRONUNCIATION_LLM_PROVIDER" value="null"/>
+        <!-- Reference-clip cleanup: use the deterministic fake enhancer so the
+             suite never calls Replicate. Tests that exercise the degrade-safe
+             fallback rebind EnhanceProvider to a failing fake per test. -->
+        <env name="TTS_ENHANCE_PROVIDER" value="fake"/>
     </php>
 </phpunit>

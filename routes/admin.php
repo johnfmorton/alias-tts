@@ -13,6 +13,7 @@ use App\Http\Controllers\Admin\StudioController;
 use App\Http\Controllers\Admin\StudioProjectController;
 use App\Http\Controllers\Admin\TwoFactorController;
 use App\Http\Controllers\Admin\UserController;
+use App\Http\Controllers\Admin\VoiceClipController;
 use App\Http\Controllers\Admin\VoiceController;
 use App\Http\Middleware\EnsureUserIsSuperAdmin;
 use Illuminate\Support\Facades\Route;
@@ -161,6 +162,11 @@ Route::post('/voices', [VoiceController::class, 'store'])->name('voices.store');
 Route::post('/voices/import', [VoiceController::class, 'import'])->name('voices.import');
 // Persist the signed-in user's drag order — it drives every voice dropdown.
 Route::post('/voices/order', [VoiceController::class, 'order'])->name('voices.order');
+// Prepare a recorded/uploaded clip for preview (AJAX) + serve its A/B variants.
+// Registered BEFORE /voices/{voice} so "clips" isn't captured as a voice slug.
+Route::post('/voices/clips', [VoiceClipController::class, 'store'])->name('voices.clips.store');
+Route::get('/voices/clips/{clip:token}/{variant}', [VoiceClipController::class, 'audio'])
+    ->whereIn('variant', ['original', 'enhanced'])->name('voices.clips.audio');
 Route::get('/voices/{voice}/edit', [VoiceController::class, 'edit'])->name('voices.edit');
 Route::put('/voices/{voice}', [VoiceController::class, 'update'])->name('voices.update');
 Route::post('/voices/{voice}/duplicate', [VoiceController::class, 'duplicate'])->name('voices.duplicate');

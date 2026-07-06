@@ -182,6 +182,9 @@
             @if(session('error'))
                 <div class="mb-4 rounded-lg border border-red-500/30 bg-red-500/10 px-4 py-3 text-sm text-red-300">{{ session('error') }}</div>
             @endif
+            @if(session('warning'))
+                <div class="mb-4 rounded-lg border border-amber-500/30 bg-amber-500/10 px-4 py-3 text-sm text-amber-300">{{ session('warning') }}</div>
+            @endif
             @if($errors->any())
                 <div class="mb-4 rounded-lg border border-red-500/30 bg-red-500/10 px-4 py-3 text-sm text-red-300">
                     @foreach($errors->all() as $error)
