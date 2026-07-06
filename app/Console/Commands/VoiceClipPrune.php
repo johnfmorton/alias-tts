@@ -2,6 +2,7 @@
 
 namespace App\Console\Commands;
 
+use App\Models\VoiceClip;
 use App\Services\VoiceClipService;
 use Illuminate\Console\Command;
 
@@ -20,7 +21,7 @@ class VoiceClipPrune extends Command
     public function handle(VoiceClipService $clips): int
     {
         if ($this->option('dry-run')) {
-            $count = \App\Models\VoiceClip::where('expires_at', '<=', now())->count();
+            $count = VoiceClip::where('expires_at', '<=', now())->count();
             $this->info("{$count} expired prepared clip(s) would be pruned.");
 
             return self::SUCCESS;

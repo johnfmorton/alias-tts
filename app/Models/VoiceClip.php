@@ -5,6 +5,7 @@ namespace App\Models;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Support\Carbon;
 
 /**
  * A prepared-but-unsaved reference clip: the decoded original and (optionally) an
@@ -16,7 +17,7 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
  * @property string $original_path
  * @property string|null $enhanced_path
  * @property string|null $enhance_error
- * @property \Illuminate\Support\Carbon $expires_at
+ * @property Carbon $expires_at
  */
 class VoiceClip extends Model
 {

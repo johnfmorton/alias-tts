@@ -2,6 +2,7 @@
 
 namespace App\Services\Enhance;
 
+use App\Services\Tts\ReplicateChatterboxProvider;
 use Illuminate\Http\Client\Response;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
@@ -11,7 +12,7 @@ use Throwable;
 /**
  * Cleans up a reference clip via the official `resemble-ai/resemble-enhance`
  * model on Replicate (denoise + enhance). Modeled on
- * {@see \App\Services\Tts\ReplicateChatterboxProvider} — `Prefer: wait` with a
+ * {@see ReplicateChatterboxProvider} — `Prefer: wait` with a
  * polling fallback (the model averages ~39s, so the poll WILL be exercised) and
  * one retry that honors a 429 `retry_after`.
  *

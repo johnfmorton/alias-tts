@@ -2,21 +2,25 @@
 
 namespace App\Services\Enhance;
 
+use App\Services\Asr\AsrClient;
+use App\Services\Audio\AudioConverter;
+use App\Services\Tts\ReplicateChatterboxProvider;
+
 /**
  * Cleans up a voice reference clip (denoise + enhance) before it becomes the
  * reference. Applied to both recorded and uploaded clips.
  *
  * Degrade-safe BY CONTRACT: {@see enhance()} returns null on ANY failure and
  * never throws — callers fall back to the original clip (mirroring
- * {@see \App\Services\Asr\AsrClient}). This is deliberately different from
- * {@see \App\Services\Tts\ReplicateChatterboxProvider}, which throws: cleanup is
+ * {@see AsrClient}). This is deliberately different from
+ * {@see ReplicateChatterboxProvider}, which throws: cleanup is
  * cosmetic, so a broken enhancer must never block saving a voice.
  */
 interface EnhanceProvider
 {
     /**
      * Clean up a reference clip. Input is decoded WAV bytes (see
-     * {@see \App\Services\Audio\AudioConverter::decodeToWav()}); returns enhanced
+     * {@see AudioConverter::decodeToWav()}); returns enhanced
      * WAV bytes, or null on any failure.
      *
      * @param  array{denoise_only?: bool}  $options
