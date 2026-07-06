@@ -520,15 +520,8 @@ function initTuningBench(bench) {
         const input = document.createElement('input');
         Object.assign(input, { type: 'number', step: '0.05', min, max, placeholder });
         if (value !== null && value !== '') input.value = value;
-        input.className = 'w-20 rounded-lg border border-zinc-700 bg-zinc-950 px-2 py-1 text-sm';
+        input.className = 'w-[74px] rounded-[8px] border border-white/12 bg-inset px-2.5 py-2 text-[15px] text-zinc-100 focus:border-accent focus:outline-none focus:ring-2 focus:ring-accent/30';
         return input;
-    };
-
-    const field = (labelText, input) => {
-        const wrap = document.createElement('label');
-        wrap.className = 'flex items-center gap-1.5 text-xs text-zinc-500';
-        wrap.append(document.createTextNode(labelText), input);
-        return wrap;
     };
 
     // The bench body for one candidate row: the sample line, the bench's voice,
@@ -561,6 +554,7 @@ function initTuningBench(bench) {
             if (!res.ok) throw new Error(await errorMessage(res));
             const blob = await res.blob();
             autoplay ? playAudio(state.audio, blob) : loadAudio(state.audio, blob);
+            if (state.placeholder) state.placeholder.classList.add('hidden');
             setStatus(els.status, `✓ Generated in ${elapsed(t0)}s.`, 'ok');
         } catch (err) {
             setStatus(els.status, `✗ ${err.message}`, 'error');
@@ -571,7 +565,7 @@ function initTuningBench(bench) {
 
     function addRow(exaggeration, cfg) {
         const li = document.createElement('li');
-        li.className = 'flex flex-wrap items-center gap-2 rounded-lg border border-zinc-800 bg-zinc-950/40 p-2';
+        li.className = 'grid grid-cols-[44px_1.4fr_1.4fr_1fr_1.6fr_40px] items-center gap-2 border-b border-white/6 px-4 py-3.5 last:border-b-0';
 
         const pick = document.createElement('input');
         Object.assign(pick, { type: 'radio', name: 'bench-pick', title: 'Pick this setting to save' });
@@ -582,22 +576,28 @@ function initTuningBench(bench) {
 
         const playBtn = document.createElement('button');
         playBtn.type = 'button';
-        playBtn.className = 'rounded-lg border border-zinc-700 px-3 py-1.5 text-sm hover:bg-zinc-800';
+        playBtn.className = 'grid h-[34px] w-[34px] place-items-center rounded-full border border-accent/50 text-accent transition hover:bg-accent/10';
         playBtn.textContent = '▶';
 
+        // Take cell: a "not generated" placeholder swapped for the audio once made.
+        const take = document.createElement('div');
+        const placeholder = document.createElement('span');
+        placeholder.className = 'text-[13px] text-zinc-600';
+        placeholder.textContent = 'not generated';
         const audio = document.createElement('audio');
         audio.controls = true;
-        audio.className = 'hidden h-8 grow';
+        audio.className = 'hidden h-8 w-full';
+        take.append(placeholder, audio);
 
         const remove = document.createElement('button');
         remove.type = 'button';
-        remove.className = 'text-zinc-600 hover:text-zinc-300';
+        remove.className = 'text-center text-zinc-600 hover:text-zinc-300';
         remove.title = 'Remove';
         remove.textContent = '✕';
 
-        li.append(pick, field('Exaggeration', exagIn), field('CFG/Pace', cfgIn), playBtn, audio, remove);
+        li.append(pick, exagIn, cfgIn, playBtn, take, remove);
 
-        const state = { exagIn, cfgIn, audio, pick };
+        const state = { exagIn, cfgIn, audio, pick, placeholder };
         rows.push(state);
         if (rows.length === 1) pick.checked = true;
 
@@ -2380,11 +2380,11 @@ function initVoicesReorder() {
 }
 initVoicesReorder();
 
-// Voice reference-clip widget: preview an uploaded clip's cleanup (denoise +
-// enhance) and A/B "Original" vs "Cleaned up" before saving. The prepare endpoint
-// stages both takes server-side and returns ranged URLs; choosing one submits its
-// token with the form so the saved reference is byte-identical to the preview.
-// (The in-browser mic recorder hooks into prepareClip() in a later phase.)
+// Voice reference-clip widget: a segmented Upload / Record panel that previews a
+// clip's cleanup (denoise + enhance) and A/Bs "Original" vs "Cleaned up" before
+// saving. The prepare endpoint stages both takes server-side and returns ranged
+// URLs; choosing one submits its token with the form so the saved reference is
+// byte-identical to the preview.
 function initVoiceRecorder() {
     const widget = document.getElementById('voice-clip-widget');
     if (!widget) return;
@@ -2393,21 +2393,50 @@ function initVoiceRecorder() {
     // Nothing to preview when cleanup is disabled — the plain upload still works.
     if (!prepareUrl || widget.dataset.enhanceEnabled !== '1') return;
 
-    const fileInput = widget.querySelector('[data-clip-file]');
-    const enhanceBox = widget.querySelector('[data-clip-enhance]');
-    const previewBtn = widget.querySelector('[data-clip-preview]');
-    const abPanel = widget.querySelector('[data-clip-ab]');
-    const warningEl = widget.querySelector('[data-clip-ab-warning]');
-    const statusEl = widget.querySelector('[data-clip-status]');
-    const tokenInput = widget.querySelector('[data-clip-token]');
+    const q = (sel) => widget.querySelector(sel);
+    const fileInput = q('[data-clip-file]');
+    const enhanceBox = q('[data-clip-enhance]');
+    const previewBtn = q('[data-clip-preview]');
+    const panel = q('[data-clip-panel]');
+    const abPanel = q('[data-clip-ab]');
+    const warningEl = q('[data-clip-ab-warning]');
+    const statusEl = q('[data-clip-status]');
+    const tokenInput = q('[data-clip-token]');
     const choices = widget.querySelectorAll('[data-clip-choice]');
 
-    // A recording Blob from the mic recorder (Phase 3); null on the upload path.
+    // A recording Blob from the mic recorder; null on the upload path.
     let recordedBlob = null;
 
-    const nativeOf = (variant) => widget.querySelector(`[data-clip-player="${variant}"] .aplayer__native`);
-    const rowOf = (variant) => widget.querySelector(`[data-clip-row="${variant}"]`);
+    const nativeOf = (v) => widget.querySelector(`[data-clip-player="${v}"] .aplayer__native`);
+    const rowOf = (v) => widget.querySelector(`[data-clip-row="${v}"]`);
     const hasSource = () => recordedBlob || (fileInput && fileInput.files && fileInput.files.length);
+
+    // ── Segmented Upload / Record ──────────────────────────────────────────
+    const modeButtons = widget.querySelectorAll('[data-clip-mode]');
+    const bodyOf = (m) => widget.querySelector(`[data-clip-body="${m}"]`);
+    const canRecord = !!(navigator.mediaDevices?.getUserMedia && window.MediaRecorder);
+
+    function setMode(mode) {
+        modeButtons.forEach((b) => {
+            const active = b.dataset.clipMode === mode;
+            b.classList.toggle('bg-accent', active);
+            b.classList.toggle('text-accent-on', active);
+            b.classList.toggle('font-semibold', active);
+            b.classList.toggle('text-zinc-400', !active);
+        });
+        bodyOf('upload').classList.toggle('hidden', mode !== 'upload');
+        bodyOf('record').classList.toggle('hidden', mode !== 'record');
+    }
+    modeButtons.forEach((b) => b.addEventListener('click', () => setMode(b.dataset.clipMode)));
+
+    if (canRecord) {
+        setMode('record'); // headline the recorder; the user can tab to Upload
+    } else {
+        // Non-secure context / unsupported browser: hide the segmented bar, upload only.
+        const recBtn = widget.querySelector('[data-clip-mode="record"]');
+        if (recBtn) recBtn.parentElement.classList.add('hidden');
+        setMode('upload');
+    }
 
     function refreshPreviewBtn() {
         const show = !!hasSource() && enhanceBox && enhanceBox.checked && !tokenInput.value;
@@ -2418,6 +2447,7 @@ function initVoiceRecorder() {
         tokenInput.value = '';
         choices.forEach((r) => { r.checked = false; });
         abPanel.classList.add('hidden');
+        panel.classList.remove('hidden');
         if (warningEl) { warningEl.classList.add('hidden'); warningEl.textContent = ''; }
         if (fileInput) fileInput.disabled = false;
         setStatus(statusEl, '', 'muted');
@@ -2465,19 +2495,15 @@ function initVoiceRecorder() {
             warningEl.classList.toggle('hidden', !warn);
         }
 
-        enhanceStudioPlayers(widget); // skin the A/B players now that src is set
+        enhanceStudioPlayers(widget);        // skin the A/B players now that src is set
+        panel.classList.add('hidden');       // swap the Upload/Record panel for the chooser
         abPanel.classList.remove('hidden');
         previewBtn.classList.add('hidden');
         if (fileInput) fileInput.disabled = true; // the token supersedes a raw upload
     }
 
-    // Expose a small hook so the recorder phase can feed a Blob through the same path.
-    widget.__prepareRecording = (blob, filename) => {
-        recordedBlob = blob;
-        tokenInput.value = '';
-        abPanel.classList.add('hidden');
-        prepareClip(blob, filename);
-    };
+    // Hook the mic recorder uses to route a recording through the same preview path.
+    widget.__prepareRecording = (blob, filename) => { recordedBlob = blob; prepareClip(blob, filename); };
 
     if (fileInput) fileInput.addEventListener('change', () => { recordedBlob = null; clearPreview(); });
     if (enhanceBox) enhanceBox.addEventListener('change', refreshPreviewBtn);
@@ -2488,154 +2514,200 @@ function initVoiceRecorder() {
     });
     widget.querySelector('[data-clip-reset]')?.addEventListener('click', () => { recordedBlob = null; clearPreview(); });
 
-    // ── In-browser mic recorder (progressive enhancement) ──────────────────
-    (function initMicRecorder() {
-        const recorder = widget.querySelector('[data-recorder]');
-        if (!recorder) return;
-        // Unsupported / non-secure context → leave the recorder hidden; upload works.
-        if (!navigator.mediaDevices?.getUserMedia || !window.MediaRecorder) return;
+    // ── Teleprompter: swap the passage per script + A−/A+ sizing (persisted) ──
+    const passageEl = q('[data-recorder-passage]');
+    const titleEl = q('[data-recorder-title]');
+    const taglineEl = q('[data-recorder-tagline]');
+    const SIZE_KEY = 'aliasTeleprompterSize';
+    const sizes = [17, 20, 23, 27, 31];
+    let sizeIdx = parseInt(localStorage.getItem(SIZE_KEY) ?? '2', 10);
+    if (!Number.isFinite(sizeIdx)) sizeIdx = 2;
+    sizeIdx = Math.max(0, Math.min(sizes.length - 1, sizeIdx));
+    const applySize = () => { if (passageEl) passageEl.style.fontSize = sizes[sizeIdx] + 'px'; };
+    applySize();
+    widget.querySelectorAll('[data-recorder-size]').forEach((b) => b.addEventListener('click', () => {
+        sizeIdx = Math.max(0, Math.min(sizes.length - 1, sizeIdx + Number(b.dataset.recorderSize)));
+        try { localStorage.setItem(SIZE_KEY, String(sizeIdx)); } catch (_) {}
+        applySize();
+    }));
+    widget.querySelectorAll('[data-recorder-script]').forEach((r) => r.addEventListener('change', () => {
+        if (passageEl) passageEl.textContent = r.dataset.text;
+        if (titleEl) titleEl.textContent = r.dataset.title;
+        if (taglineEl) taglineEl.textContent = '— ' + r.dataset.tagline;
+    }));
 
-        const q = (sel) => recorder.querySelector(sel);
-        const enableBtn = q('[data-recorder-enable]');
-        const recordBtn = q('[data-recorder-record]');
-        const stopBtn = q('[data-recorder-stop]');
-        const redoBtn = q('[data-recorder-redo]');
-        const timerEl = q('[data-recorder-timer]');
-        const meterWrap = q('[data-recorder-meter-wrap]');
-        const meterBar = q('[data-recorder-meter]');
-        const guideEl = q('[data-recorder-guide]');
-        const reviewWrap = q('[data-recorder-review]');
-        const reviewAudio = q('[data-recorder-player] .aplayer__native');
-        const useBtn = q('[data-recorder-use]');
-        const recStatus = q('[data-recorder-status]');
-        const scriptRadios = recorder.querySelectorAll('[data-recorder-script]');
-
-        const targetMin = Number(widget.dataset.targetMin) || 15;
-        const targetMax = Number(widget.dataset.targetMax) || 30;
-        const maxSeconds = Number(widget.dataset.maxSeconds) || 60;
-
-        let stream = null, audioCtx = null, analyser = null, meterRAF = 0;
-        let mr = null, chunks = [], recBlob = null, startedAt = 0, timerId = 0;
-
-        const show = (node, on) => node.classList.toggle('hidden', !on);
-        // Buttons with an icon need inline-flex; toggle it WITH hidden so neither lingers.
-        const showFlex = (node, on) => { node.classList.toggle('hidden', !on); node.classList.toggle('inline-flex', on); };
-        const fmt = (s) => Math.floor(s / 60) + ':' + String(Math.floor(s % 60)).padStart(2, '0');
-
-        recorder.classList.remove('hidden'); // supported → offer recording
-
-        // Script picker: reveal only the selected script's full text.
-        scriptRadios.forEach((radio) => radio.addEventListener('change', () => {
-            scriptRadios.forEach((r) => {
-                const text = r.closest('label').querySelector('[data-recorder-script-text]');
-                if (text) text.classList.toggle('hidden', r !== radio);
-            });
-        }));
-
-        const pickMime = () => ['audio/webm;codecs=opus', 'audio/webm', 'audio/mp4;codecs=mp4a.40.2', 'audio/mp4']
-            .find((t) => MediaRecorder.isTypeSupported(t)) || '';
-
-        function updateMeter() {
-            if (!analyser) return;
-            const buf = new Uint8Array(analyser.fftSize);
-            analyser.getByteTimeDomainData(buf);
-            let sum = 0;
-            for (let i = 0; i < buf.length; i++) { const v = (buf[i] - 128) / 128; sum += v * v; }
-            meterBar.style.width = Math.min(100, Math.round(Math.sqrt(sum / buf.length) * 240)) + '%';
-            meterRAF = requestAnimationFrame(updateMeter);
-        }
-
-        function tick() {
-            const s = (performance.now() - startedAt) / 1000;
-            timerEl.textContent = fmt(s);
-            if (s < targetMin) { guideEl.textContent = 'Keep reading…'; guideEl.className = 'text-xs text-zinc-500'; }
-            else if (s <= targetMax) { guideEl.textContent = '✓ Good length — stop when you finish the paragraph.'; guideEl.className = 'text-xs text-emerald-400'; }
-            else { guideEl.textContent = 'Getting long — you can stop any time.'; guideEl.className = 'text-xs text-amber-400'; }
-            if (s >= maxSeconds) stopRecording(`Stopped at ${maxSeconds}s — that's plenty.`);
-        }
-
-        async function enableMic() {
-            setStatus(recStatus, 'Requesting microphone…', 'muted');
-            try {
-                stream = await navigator.mediaDevices.getUserMedia({
-                    // Browser DSP off — resemble-enhance does the cleanup, and its
-                    // artifacts hurt cloning; AGC on for safe input levels.
-                    audio: { echoCancellation: false, noiseSuppression: false, autoGainControl: true, channelCount: 1 },
-                });
-            } catch (err) {
-                const denied = err && (err.name === 'NotAllowedError' || err.name === 'SecurityError');
-                setStatus(recStatus, denied
-                    ? "✗ Microphone blocked — allow it in your browser's site settings, or upload a file instead."
-                    : '✗ Could not access the microphone: ' + (err?.message || err), 'error');
-                return;
-            }
-            // AudioContext created on the user gesture (Safari requires it).
-            audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-            if (audioCtx.state === 'suspended') await audioCtx.resume();
-            analyser = audioCtx.createAnalyser();
-            analyser.fftSize = 512;
-            audioCtx.createMediaStreamSource(stream).connect(analyser); // never to destination (feedback)
-            show(meterWrap, true);
-            updateMeter();
-
-            show(enableBtn, false);
-            showFlex(recordBtn, true);
-            setStatus(recStatus, 'Microphone ready — press Record and read a script.', 'muted');
-        }
-
-        function startRecording() {
-            const mimeType = pickMime();
-            recBlob = null; chunks = [];
-            mr = mimeType ? new MediaRecorder(stream, { mimeType, audioBitsPerSecond: 128000 }) : new MediaRecorder(stream);
-            mr.ondataavailable = (e) => { if (e.data && e.data.size) chunks.push(e.data); };
-            mr.onstop = () => {
-                recBlob = new Blob(chunks, { type: mr.mimeType || mimeType || 'audio/webm' });
-                reviewAudio.src = URL.createObjectURL(recBlob);
-                enhanceStudioPlayers(recorder);
-                show(reviewWrap, true);
-                show(useBtn, true);
-                if ((performance.now() - startedAt) / 1000 < 10) {
-                    setStatus(recStatus, 'That was short — aim for 15–30s for a better clone. You can re-record.', 'muted');
-                }
-            };
-            mr.start();
-            startedAt = performance.now();
-            timerId = setInterval(tick, 200);
-            show(timerEl, true); show(guideEl, true); show(reviewWrap, false);
-            showFlex(recordBtn, false); showFlex(stopBtn, true); show(redoBtn, false);
-            setStatus(recStatus, '', 'muted');
-        }
-
-        function stopRecording(msg) {
-            if (mr && mr.state !== 'inactive') mr.stop();
-            clearInterval(timerId);
-            showFlex(stopBtn, false); showFlex(recordBtn, false); show(redoBtn, true);
-            if (msg) setStatus(recStatus, msg, 'muted');
-        }
-
-        function teardown() {
-            cancelAnimationFrame(meterRAF);
-            if (stream) stream.getTracks().forEach((t) => t.stop());
-            if (audioCtx && audioCtx.state !== 'closed') audioCtx.close();
-            stream = null; audioCtx = null; analyser = null;
-        }
-
-        enableBtn.addEventListener('click', enableMic);
-        recordBtn.addEventListener('click', startRecording);
-        stopBtn.addEventListener('click', () => stopRecording(''));
-        redoBtn.addEventListener('click', () => {
-            show(reviewWrap, false); show(useBtn, false); show(redoBtn, false);
-            showFlex(recordBtn, true); timerEl.textContent = '0:00'; show(guideEl, false);
-            setStatus(recStatus, '', 'muted');
-        });
-        useBtn.addEventListener('click', () => {
-            if (!recBlob || recBlob.size < 1) { setStatus(recStatus, '✗ The recording is empty — try again.', 'error'); return; }
-            const ext = /mp4|m4a/.test(recBlob.type) ? 'mp4' : recBlob.type.includes('ogg') ? 'ogg' : 'webm';
-            widget.__prepareRecording(recBlob, 'recording.' + ext);
-        });
-        window.addEventListener('pagehide', teardown);
-    })();
+    if (canRecord) initVoiceMicRecorder(widget);
 
     refreshPreviewBtn();
 }
+
+// In-browser mic capture for the voice widget: getUserMedia + MediaRecorder with
+// a live level meter and timed guidance, feeding the recording through the
+// widget's preview path (widget.__prepareRecording). Only wired when supported.
+function initVoiceMicRecorder(widget) {
+    const q = (sel) => widget.querySelector(sel);
+    const enableBtn = q('[data-recorder-enable]');
+    const recordBtn = q('[data-recorder-record]');
+    const stopBtn = q('[data-recorder-stop]');
+    const redoBtn = q('[data-recorder-redo]');
+    const hintEl = q('[data-recorder-hint]');
+    const timerEl = q('[data-recorder-timer]');
+    const meterWrap = q('[data-recorder-meter-wrap]');
+    const meterBar = q('[data-recorder-meter]');
+    const guideEl = q('[data-recorder-guide]');
+    const reviewWrap = q('[data-recorder-review]');
+    const reviewAudio = q('[data-recorder-player] .aplayer__native');
+    const useBtn = q('[data-recorder-use]');
+    const recStatus = q('[data-recorder-status]');
+    if (!enableBtn) return;
+
+    const targetMin = Number(widget.dataset.targetMin) || 15;
+    const targetMax = Number(widget.dataset.targetMax) || 30;
+    const maxSeconds = Number(widget.dataset.maxSeconds) || 60;
+
+    let stream = null, audioCtx = null, analyser = null, meterRAF = 0;
+    let mr = null, chunks = [], recBlob = null, startedAt = 0, timerId = 0;
+
+    const show = (node, on) => node && node.classList.toggle('hidden', !on);
+    // Icon buttons need inline-flex; toggle it WITH hidden so neither lingers.
+    const showFlex = (node, on) => { node.classList.toggle('hidden', !on); node.classList.toggle('inline-flex', on); };
+    const fmt = (s) => Math.floor(s / 60) + ':' + String(Math.floor(s % 60)).padStart(2, '0');
+
+    const pickMime = () => ['audio/webm;codecs=opus', 'audio/webm', 'audio/mp4;codecs=mp4a.40.2', 'audio/mp4']
+        .find((t) => MediaRecorder.isTypeSupported(t)) || '';
+
+    function updateMeter() {
+        if (!analyser) return;
+        const buf = new Uint8Array(analyser.fftSize);
+        analyser.getByteTimeDomainData(buf);
+        let sum = 0;
+        for (let i = 0; i < buf.length; i++) { const v = (buf[i] - 128) / 128; sum += v * v; }
+        meterBar.style.width = Math.min(100, Math.round(Math.sqrt(sum / buf.length) * 240)) + '%';
+        meterRAF = requestAnimationFrame(updateMeter);
+    }
+
+    function tick() {
+        const s = (performance.now() - startedAt) / 1000;
+        timerEl.textContent = fmt(s);
+        if (s < targetMin) { guideEl.textContent = 'Keep reading…'; guideEl.className = 'mt-2 text-xs text-zinc-500'; }
+        else if (s <= targetMax) { guideEl.textContent = '✓ Good length — stop when you finish the paragraph.'; guideEl.className = 'mt-2 text-xs text-emerald-400'; }
+        else { guideEl.textContent = 'Getting long — you can stop any time.'; guideEl.className = 'mt-2 text-xs text-amber-400'; }
+        if (s >= maxSeconds) stopRecording(`Stopped at ${maxSeconds}s — that's plenty.`);
+    }
+
+    async function enableMic() {
+        setStatus(recStatus, 'Requesting microphone…', 'muted');
+        try {
+            stream = await navigator.mediaDevices.getUserMedia({
+                // Browser DSP off — resemble-enhance does the cleanup, and its
+                // artifacts hurt cloning; AGC on for safe input levels.
+                audio: { echoCancellation: false, noiseSuppression: false, autoGainControl: true, channelCount: 1 },
+            });
+        } catch (err) {
+            const denied = err && (err.name === 'NotAllowedError' || err.name === 'SecurityError');
+            setStatus(recStatus, denied
+                ? "✗ Microphone blocked — allow it in your browser's site settings, or upload a file instead."
+                : '✗ Could not access the microphone: ' + (err?.message || err), 'error');
+            return;
+        }
+        // AudioContext created on the user gesture (Safari requires it).
+        audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+        if (audioCtx.state === 'suspended') await audioCtx.resume();
+        analyser = audioCtx.createAnalyser();
+        analyser.fftSize = 512;
+        audioCtx.createMediaStreamSource(stream).connect(analyser); // never to destination (feedback)
+        show(meterWrap, true);
+        updateMeter();
+
+        show(enableBtn, false);
+        show(hintEl, false);
+        showFlex(recordBtn, true);
+        setStatus(recStatus, 'Microphone ready — press Record and read the passage.', 'muted');
+    }
+
+    function startRecording() {
+        const mimeType = pickMime();
+        recBlob = null; chunks = [];
+        mr = mimeType ? new MediaRecorder(stream, { mimeType, audioBitsPerSecond: 128000 }) : new MediaRecorder(stream);
+        mr.ondataavailable = (e) => { if (e.data && e.data.size) chunks.push(e.data); };
+        mr.onstop = () => {
+            recBlob = new Blob(chunks, { type: mr.mimeType || mimeType || 'audio/webm' });
+            reviewAudio.src = URL.createObjectURL(recBlob);
+            enhanceStudioPlayers(widget);
+            show(reviewWrap, true);
+            show(useBtn, true);
+            if ((performance.now() - startedAt) / 1000 < 10) {
+                setStatus(recStatus, 'That was short — aim for 15–30s for a better clone. You can re-record.', 'muted');
+            }
+        };
+        mr.start();
+        startedAt = performance.now();
+        timerId = setInterval(tick, 200);
+        show(timerEl, true); show(guideEl, true); show(reviewWrap, false);
+        showFlex(recordBtn, false); showFlex(stopBtn, true); show(redoBtn, false);
+        setStatus(recStatus, '', 'muted');
+    }
+
+    function stopRecording(msg) {
+        if (mr && mr.state !== 'inactive') mr.stop();
+        clearInterval(timerId);
+        showFlex(stopBtn, false); showFlex(recordBtn, false); show(redoBtn, true);
+        if (msg) setStatus(recStatus, msg, 'muted');
+    }
+
+    function teardown() {
+        cancelAnimationFrame(meterRAF);
+        if (stream) stream.getTracks().forEach((t) => t.stop());
+        if (audioCtx && audioCtx.state !== 'closed') audioCtx.close();
+        stream = null; audioCtx = null; analyser = null;
+    }
+
+    enableBtn.addEventListener('click', enableMic);
+    recordBtn.addEventListener('click', startRecording);
+    stopBtn.addEventListener('click', () => stopRecording(''));
+    redoBtn.addEventListener('click', () => {
+        show(reviewWrap, false); show(useBtn, false); show(redoBtn, false);
+        showFlex(recordBtn, true); timerEl.textContent = '0:00'; show(guideEl, false);
+        setStatus(recStatus, '', 'muted');
+    });
+    useBtn.addEventListener('click', () => {
+        if (!recBlob || recBlob.size < 1) { setStatus(recStatus, '✗ The recording is empty — try again.', 'error'); return; }
+        const ext = /mp4|m4a/.test(recBlob.type) ? 'mp4' : recBlob.type.includes('ogg') ? 'ogg' : 'webm';
+        widget.__prepareRecording(recBlob, 'recording.' + ext);
+    });
+    window.addEventListener('pagehide', teardown);
+}
 initVoiceRecorder();
+
+// Default-tuning dials (voice edit page): a number field and a slider are two
+// views of one value. Editing either updates the other and the slider's cyan
+// fill; a blank number rests the slider at neutral without writing a value.
+function initVoiceTuningDials() {
+    document.querySelectorAll('[data-tuning-dial]').forEach((dial) => {
+        const number = dial.querySelector('[data-tuning-number]');
+        const slider = dial.querySelector('[data-tuning-slider]');
+        if (!number || !slider) return;
+
+        const min = Number(slider.min), max = Number(slider.max);
+        const neutral = 0.5;
+        const fill = (val) => {
+            const pct = Math.max(0, Math.min(100, ((val - min) / (max - min)) * 100));
+            slider.style.setProperty('--fill', pct + '%');
+        };
+
+        const syncFromNumber = () => {
+            const raw = number.value.trim();
+            const val = raw === '' ? neutral : Number(raw);
+            slider.value = val;
+            fill(val);
+        };
+        syncFromNumber();
+
+        number.addEventListener('input', syncFromNumber);
+        slider.addEventListener('input', () => {
+            number.value = slider.value;
+            fill(Number(slider.value));
+        });
+    });
+}
+initVoiceTuningDials();

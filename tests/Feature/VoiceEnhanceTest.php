@@ -128,10 +128,10 @@ class VoiceEnhanceTest extends TestCase
     {
         $html = $this->actingAs($this->admin())->get(route('admin.voices.create'))->assertOk()->getContent();
 
-        // Progressive enhancement: the recorder ships hidden; JS reveals it when
-        // getUserMedia + MediaRecorder are available.
-        $this->assertStringContainsString('data-recorder', $html);
-        $this->assertStringContainsString('record with your microphone', $html);
+        // Progressive enhancement: the recorder + segmented control ship in the
+        // markup; JS reveals/activates them when getUserMedia + MediaRecorder exist.
+        $this->assertStringContainsString('data-clip-mode="record"', $html); // segmented Record tab
+        $this->assertStringContainsString('Pick a script to read', $html);   // the teleprompter script picker
         $this->assertStringContainsString('The old harbor wakes slowly', $html); // a reading script
         $this->assertStringContainsString('data-clip-ab', $html); // the A/B compare panel
     }
