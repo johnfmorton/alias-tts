@@ -65,4 +65,55 @@ class VoiceReferenceTest extends TestCase
 
         $this->assertNull(VoiceReference::localPath($voice));
     }
+
+    public function test_self_heals_a_missing_builtin_clip_from_the_seed_asset(): void
+    {
+        // A TTS_STORAGE_ROOT change or bucket cleanup stranded the stored clip:
+        // it exists on no disk, but the row still points at the bundled path.
+        config(['tts.storage_disk' => 's3']);
+        Storage::fake('s3');
+        Storage::fake('local');
+
+        $voice = Voice::where('slug', Voice::defaultSlug())->firstOrFail();
+
+        $path = VoiceReference::localPath($voice);
+
+        $seed = file_get_contents($voice->builtinSeedAsset());
+        $this->assertNotNull($path);
+        $this->assertSame($seed, file_get_contents($path));
+        $this->assertSame($seed, Storage::disk('s3')->get('voices/default.wav'));
+    }
+
+    public function test_self_heals_a_missing_builtin_clip_on_the_local_disk(): void
+    {
+        config(['tts.storage_disk' => 'local']);
+        Storage::fake('local');
+
+        $voice = Voice::where('slug', Voice::femaleDefaultSlug())->firstOrFail();
+
+        $path = VoiceReference::localPath($voice);
+
+        $this->assertNotNull($path);
+        $this->assertSame(
+            file_get_contents($voice->builtinSeedAsset()),
+            file_get_contents($path),
+        );
+    }
+
+    public function test_does_not_heal_a_builtin_whose_reference_was_repointed(): void
+    {
+        // An admin attached their own clip to the built-in voice; if it goes
+        // missing, substituting the bundled seed would silently change which
+        // voice they hear — stay missing instead.
+        config(['tts.storage_disk' => 's3']);
+        Storage::fake('s3');
+        Storage::fake('local');
+
+        $voice = Voice::where('slug', Voice::defaultSlug())->firstOrFail();
+        $voice->update(['reference_audio_path' => 'voices/default.mp3']);
+
+        $this->assertNull(VoiceReference::localPath($voice->refresh()));
+        $this->assertFalse(Storage::disk('s3')->exists('voices/default.mp3'));
+        $this->assertFalse(Storage::disk('s3')->exists('voices/default.wav'));
+    }
 }

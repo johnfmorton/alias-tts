@@ -6,26 +6,26 @@ unconditioned native voice, which is not anchored and drifts between runs.
 
 They are copied into the configured storage disk (`tts.storage_disk`, path
 `tts.reference_path`) by `database/migrations/2026_06_30_000002_seed_bundled_default_voices.php`
-and attached to the built-in `default` (male) and `default-female` voices.
+(and rolled out to existing installs by
+`2026_07_06_000001_replace_bundled_default_voice_clips.php`), attached to the
+built-in `default` (male) and `default-female` voices. If a stored clip goes
+missing (for example after a `TTS_STORAGE_ROOT` change), `VoiceReference`
+restores it from these assets automatically.
 
-| File                 | Voice slug       | Speaker | Accent / region          |
-|----------------------|------------------|---------|--------------------------|
-| `default-male.wav`   | `default`        | p311    | American — Iowa (General American) |
-| `default-female.wav` | `default-female` | p333    | American — Indiana (Midwest)       |
+| File                 | Voice slug       | Source (LibriVox recording)                                  |
+|----------------------|------------------|--------------------------------------------------------------|
+| `default-male.wav`   | `default`        | *The Three Musketeers* (Alexandre Dumas), chapter 22         |
+| `default-female.wav` | `default-female` | *The Count of Monte Cristo* (Alexandre Dumas), chapter 9     |
 
 ## Source & license
 
-Derived from the **CSTR VCTK Corpus (version 0.92)** — *English Multi-speaker
-Corpus for CSTR Voice Cloning Toolkit*, by Junichi Yamagishi, Christophe Veaux,
-and Kirsten MacDonald, The Centre for Speech Technology Research (CSTR),
-University of Edinburgh.
+Derived from **LibriVox** audiobook recordings (<https://librivox.org/>).
+LibriVox volunteers dedicate all of their recordings to the **public domain**
+(<https://librivox.org/pages/public-domain/>), so these clips carry no license
+obligations.
 
-Licensed under **Creative Commons Attribution 4.0 International (CC BY 4.0)**.
-
-- Dataset: https://datashare.ed.ac.uk/handle/10283/3443
-- License: https://creativecommons.org/licenses/by/4.0/
-
-Each clip is two of the standard VCTK elicitation sentences for the chosen
-speaker (~10 s), resampled to mono 24 kHz, loudness-normalized, and cleaned with
-background-noise reduction / voice isolation. See the top-level `CREDITS.md` for
-the project-wide attribution notice.
+Each clip is a short excerpt (~15 s) of clean single-speaker speech, processed
+with the app's own reference normalization (`AudioConverter::normalizeReference`):
+downmixed to mono, silence-trimmed, loudness-normalized to −20 LUFS (true peak
+−1.5 dBTP), and resampled to 44.1 kHz 16-bit PCM. See the top-level `CREDITS.md`
+for the project-wide attribution notice.

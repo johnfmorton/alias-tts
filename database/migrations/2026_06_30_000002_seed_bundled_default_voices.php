@@ -7,8 +7,11 @@ use Illuminate\Support\Str;
 
 /**
  * Ship the built-in default voices with a real, bundled reference clip each — a
- * neutral US male (`default`) and female (`default-female`) from the VCTK corpus
- * (see database/seeders/voices/README.md). Previously `default` was reference-less
+ * neutral US male (`default`) and female (`default-female`); see
+ * database/seeders/voices/README.md for the current assets' source. (The clips
+ * this migration originally shipped were VCTK-derived; they were replaced by
+ * 2026_07_06_000001, and this migration copies whatever assets now ship.)
+ * Previously `default` was reference-less
  * and fell back to Chatterbox's unconditioned native voice, which is not anchored
  * and drifts between runs; a bundled clip makes each default consistent and
  * distinct. Repurposes the existing `default` row (preserving its UUID, so

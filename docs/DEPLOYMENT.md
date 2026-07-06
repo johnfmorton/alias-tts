@@ -172,7 +172,8 @@ Visit `https://your-domain.com/`, log in, then:
 - **API Keys → New key** (copy it).
 - Two built-in default voices ship seeded with a bundled reference clip each — a
   neutral US **male** (`voice_id` = `default`) and **female** (`voice_id` =
-  `default-female`), from the VCTK corpus (CC BY 4.0; see `CREDITS.md`) — so you
+  `default-female`), derived from public-domain LibriVox recordings (see
+  `CREDITS.md`) — so you
   can generate consistent, distinct audio immediately. To clone a specific voice,
   **Voices → Add voice** (upload a clean ~15–30s clip); a reference clip is
   optional (a voice with none falls back to Chatterbox's native voice). The slugs

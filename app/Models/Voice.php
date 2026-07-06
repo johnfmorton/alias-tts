@@ -194,4 +194,20 @@ class Voice extends Model
     {
         return in_array($this->slug, self::builtinSlugs(), true);
     }
+
+    /**
+     * Absolute path to the bundled seed clip for this built-in voice, or null
+     * for custom voices. The file ships in the repo, so a built-in's stored
+     * reference clip can always be restored from it (see VoiceReference).
+     */
+    public function builtinSeedAsset(): ?string
+    {
+        $asset = match ($this->slug) {
+            self::defaultSlug() => 'default-male.wav',
+            self::femaleDefaultSlug() => 'default-female.wav',
+            default => null,
+        };
+
+        return $asset === null ? null : database_path('seeders/voices/'.$asset);
+    }
 }

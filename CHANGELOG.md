@@ -4,6 +4,29 @@ All notable changes to this project are documented in this file. The format is
 based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this
 project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Changed
+- **The bundled default voices are replaced with LibriVox-derived recordings.**
+  The previous VCTK-derived clips had to be withdrawn for license reasons. The
+  built-in `default` (male) and `default-female` voices now use short excerpts
+  of public-domain LibriVox audiobook recordings (see `CREDITS.md`), processed
+  with the app's own reference normalization so they match uploaded clips. A
+  migration rolls the new audio out to existing installs — it replaces a stored
+  clip only when its content hash matches the old bundled assets, so a custom
+  clip an admin attached to a built-in voice is never overwritten, and it clears
+  the local cache copy so the old voice can't keep playing from cache.
+
+### Fixed
+- **A missing built-in reference clip now restores itself instead of silently
+  changing the voice.** If a built-in voice's stored clip disappears (for
+  example after moving storage or changing `TTS_STORAGE_ROOT`), the app
+  re-copies it from the bundled seed asset at synthesis time. Previously the
+  request went to Chatterbox with no reference prompt at all, and a warm
+  container would answer in whatever voice it cloned last — audibly wrong
+  output with no error. Any other voice whose reference clip is missing now
+  logs a warning naming the voice, path, and disk instead of failing silently.
+
 ## [0.31.1] - 2026-07-05
 
 ### Fixed

@@ -75,7 +75,7 @@ return [
     ],
 
     // The always-present built-in voices, shipped with a bundled reference clip
-    // each (a neutral US male and female from the VCTK corpus) so a fresh install
+    // each (a neutral US male and female, public-domain source) so a fresh install
     // produces a consistent, distinct voice immediately without uploading a custom
     // one. Seeded by migration, offered in Studio and the /v1 API (voice_id = the
     // slug), and protected from deletion in the admin UI. `default_voice_slug` is

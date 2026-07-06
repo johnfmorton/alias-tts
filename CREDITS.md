@@ -1,19 +1,17 @@
 # Credits & third-party attributions
 
-## Bundled default voices — CSTR VCTK Corpus (CC BY 4.0)
+## Bundled default voices — LibriVox (public domain)
 
 The built-in default voices (`default` / male and `default-female` / female) use
-reference audio derived from the **CSTR VCTK Corpus (version 0.92)**:
+reference audio derived from **LibriVox** audiobook recordings — the male voice
+from *The Three Musketeers* (Alexandre Dumas), chapter 22, and the female voice
+from *The Count of Monte Cristo* (Alexandre Dumas), chapter 9. LibriVox
+volunteers dedicate all of their recordings to the **public domain**, so the
+clips carry no license obligations; this credit is a courtesy.
 
-> *CSTR VCTK Corpus: English Multi-speaker Corpus for CSTR Voice Cloning
-> Toolkit (version 0.92)* — Junichi Yamagishi, Christophe Veaux, and Kirsten
-> MacDonald, The Centre for Speech Technology Research (CSTR), University of
-> Edinburgh, 2019.
+The clips were modified from the original recordings: trimmed to a short
+excerpt, downmixed to mono, silence-trimmed, loudness-normalized, and resampled
+to 44.1 kHz.
 
-Used under the **Creative Commons Attribution 4.0 International (CC BY 4.0)**
-license. The clips (speakers p311 and p333) were modified from the originals:
-resampled to mono 24 kHz, loudness-normalized, and cleaned with background-noise
-reduction / voice isolation.
-
-- Dataset: <https://datashare.ed.ac.uk/handle/10283/3443>
-- License: <https://creativecommons.org/licenses/by/4.0/>
+- LibriVox: <https://librivox.org/>
+- Public domain notice: <https://librivox.org/pages/public-domain/>

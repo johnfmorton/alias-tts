@@ -102,7 +102,7 @@ ddev artisan voice:create "John" ./sample.wav --slug=john   # or add voices from
 ```
 
 A fresh install ships with **two bundled voices** (`default`, male, and
-`default-female` — CC BY 4.0 licensed reference clips), so you can generate
+`default-female` — public-domain reference clips), so you can generate
 audio before cloning a voice of your own.
 
 The local `.env` defaults to `TTS_PROVIDER=fake`, so the app runs with **zero
