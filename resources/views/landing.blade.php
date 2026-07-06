@@ -53,10 +53,11 @@
              class="pointer-events-none absolute left-1/2 top-[62%] -z-10 h-72 w-[42rem] max-w-[120vw] -translate-x-1/2 -translate-y-1/2 blur-3xl"
              style="background: radial-gradient(48% 55% at 50% 50%, rgba(97,100,255,.20), rgba(34,211,238,.10) 46%, transparent 72%);"></div>
 
-        {{-- Brand lockup --}}
-        <div class="rise flex items-center gap-2.5" style="animation-delay: 0ms">
-            <img src="{{ asset('alias-icon-on-dark.svg') }}" alt="" class="h-9 w-9">
-            <span class="text-xl font-bold tracking-tight text-zinc-200">Alias TTS</span>
+        {{-- Brand lockup: the real waveform mark, sized up so the name reads as the
+             brand — "Alias" carries it, "TTS" trails as a quiet descriptor. --}}
+        <div class="rise flex items-center gap-[13px]" style="animation-delay: 0ms">
+            <img src="{{ asset('alias-icon-on-dark.svg') }}" alt="" class="h-11 w-11">
+            <span class="text-[26px] font-bold leading-none tracking-[0.2px] text-[#f4f4f5]">Alias<span class="font-semibold text-[#9aa0a6]"> TTS</span></span>
         </div>
 
         {{-- Thesis: the three pillars as a tricolon — self-hosted, dual-API, cloning. --}}
@@ -115,14 +116,25 @@
                 @endforeach
             </svg>
 
-            {{-- Two addresses, one engine. Dots pick up the waveform's two ends. --}}
-            <div class="mt-5 flex flex-wrap items-center justify-center gap-x-6 gap-y-2 font-mono text-[11px] text-zinc-500">
-                <span class="inline-flex items-center gap-2">
-                    <span class="h-1.5 w-1.5 rounded-full" style="background:#22d3ee"></span>POST /v1/text-to-speech/&#123;voice_id&#125;
-                </span>
-                <span class="inline-flex items-center gap-2">
-                    <span class="h-1.5 w-1.5 rounded-full" style="background:#b129ff"></span>POST /v1/audio/speech
-                </span>
+            {{-- Two addresses, one engine. Each dot picks up its end of the waveform
+                 (cyan = ElevenLabs, magenta = OpenAI) and names the API it speaks. --}}
+            <div class="mt-8 flex flex-wrap items-start justify-center gap-x-14 gap-y-5">
+                <div class="flex items-start gap-[11px] text-left">
+                    <span class="mt-[5px] h-[9px] w-[9px] shrink-0 rounded-full"
+                          style="background:#22d3ee; box-shadow:0 0 10px rgba(34,211,238,.7)"></span>
+                    <div>
+                        <div class="text-sm font-semibold text-[#e9e9ec]">ElevenLabs-compatible</div>
+                        <div class="mt-[3px] font-mono text-[13px] text-[#7c828a]">POST /v1/text-to-speech/&#123;voice_id&#125;</div>
+                    </div>
+                </div>
+                <div class="flex items-start gap-[11px] text-left">
+                    <span class="mt-[5px] h-[9px] w-[9px] shrink-0 rounded-full"
+                          style="background:#b129ff; box-shadow:0 0 10px rgba(177,41,255,.7)"></span>
+                    <div>
+                        <div class="text-sm font-semibold text-[#e9e9ec]">OpenAI-compatible</div>
+                        <div class="mt-[3px] font-mono text-[13px] text-[#7c828a]">POST /v1/audio/speech</div>
+                    </div>
+                </div>
             </div>
         </div>
 

@@ -16,6 +16,13 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   improves the resulting voice.
 - **The reference-clip control now defaults to "Upload a file"** instead of
   "Record with mic"; the in-browser recorder is still one tab away.
+- **Refined the landing-page brand lockup and API legend.** The "Alias TTS"
+  wordmark now reads as the brand — a larger waveform mark alongside "Alias" in
+  bold with "TTS" trailing as a quiet, muted descriptor. The waveform's two
+  endpoints are now labeled with the products they speak: a glowing cyan dot for
+  the **ElevenLabs-compatible** `POST /v1/text-to-speech/{voice_id}` and a
+  glowing magenta dot for the **OpenAI-compatible** `POST /v1/audio/speech`, so
+  the "two APIs" headline is spelled out where it counts.
 
 ## [0.32.0] - 2026-07-06
 
