@@ -157,6 +157,12 @@
             <x-about.shot class="mt-12" file="dashboard.png"
                           url="https://tts.your-domain.com/admin"
                           note="The dashboard home, signed in: the connection panel with base URL, API key, and voice IDs ready to copy into any client."/>
+
+            <p class="mt-8 max-w-2xl leading-relaxed text-zinc-400">
+                And a call doesn't have to end at audio. Any request can leave behind an editable
+                <a href="#studio" class="text-zinc-200 underline decoration-zinc-700 underline-offset-2 transition hover:decoration-zinc-400">Studio project</a>
+                — the power-user move, below.
+            </p>
         </section>
 
         {{-- ===== Voices (bright blue) ===== --}}
@@ -257,18 +263,28 @@
         </section>
 
         {{-- ===== Studio (violet) — the control room. ===== --}}
-        <section class="mt-28">
+        <section id="studio" class="mt-28 scroll-mt-10">
             <div class="flex items-center gap-2.5">
                 <x-about.glyph color="#6164ff"/>
                 <span class="font-mono text-xs font-semibold uppercase tracking-[0.18em] text-[#8b8eff]">Studio</span>
             </div>
             <h2 class="mt-4 text-3xl font-semibold tracking-tight">Fix the sentence, not the file.</h2>
             <p class="mt-4 max-w-2xl leading-relaxed text-zinc-400">
-                Studio is where you take full control. Every project is broken into chunks you can hear, edit,
-                and regenerate one at a time — so a forty-minute build never gets thrown away over one flat line.
+                The APIs are the entry point; Studio is the power move — and it needs no new integration.
+                Flip one setting and the same call your app already makes lands here as an editable project,
+                broken into chunks you can hear, edit, and regenerate one at a time. A forty-minute build
+                never gets thrown away over one flat line.
             </p>
 
             <div class="mt-10 grid gap-x-12 gap-y-8 sm:grid-cols-2">
+                <div>
+                    <h3 class="text-[15px] font-semibold text-zinc-100">Start from the call you already make</h3>
+                    <p class="mt-1.5 text-sm leading-relaxed text-zinc-400">
+                        Set <span class="k">api_project_mode</span> to <span class="k">always</span> and every
+                        request — either dialect — arrives as a project with its chunks and final audio. Or
+                        <span class="k">on_error</span>: a failed call leaves a fixable project, not a dead end.
+                    </p>
+                </div>
                 <div>
                     <h3 class="text-[15px] font-semibold text-zinc-100">Inspector</h3>
                     <p class="mt-1.5 text-sm leading-relaxed text-zinc-400">
@@ -279,8 +295,8 @@
                 <div>
                     <h3 class="text-[15px] font-semibold text-zinc-100">Hear it three ways</h3>
                     <p class="mt-1.5 text-sm leading-relaxed text-zinc-400">
-                        One whole-text call, raw chunk-by-chunk, or stitched the way production joins it — the
-                        fastest way to hunt down a seam artifact.
+                        One whole-text call, raw chunk-by-chunk, or stitched the way production joins it — and
+                        audition any single seam, QA flags inline, before rebuilding the whole file.
                     </p>
                 </div>
                 <div>
@@ -295,13 +311,6 @@
                     <p class="mt-1.5 text-sm leading-relaxed text-zinc-400">
                         Re-roll a chunk until it reads right, A/B the takes, and keep the winner — the exact
                         audio you heard, byte for byte.
-                    </p>
-                </div>
-                <div>
-                    <h3 class="text-[15px] font-semibold text-zinc-100">Seam preview</h3>
-                    <p class="mt-1.5 text-sm leading-relaxed text-zinc-400">
-                        Audition the stitch across any boundary — with QA flags shown inline on each chunk —
-                        before rebuilding the whole file.
                     </p>
                 </div>
                 <div>

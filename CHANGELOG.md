@@ -4,6 +4,25 @@ All notable changes to this project are documented in this file. The format is
 based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this
 project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Changed
+- **The landing page now tells the whole ladder — APIs in, Studio at the
+  center.** The legend under the waveform is a signal-flow junction: the two
+  API entries sit side by side, each dropping a hairline that converges — cyan
+  and magenta fading into the gradient's violet — on a Studio plate ("Any call
+  can land as an editable project — fix a sentence, re-roll a take, seal the
+  final"). The lines draw themselves in as the page loads, and the closing
+  line now sequences the pitch: point an app at it first, graduate to Studio
+  when a take needs directing.
+- **The About page now bridges the APIs to Studio.** The API section closes by
+  noting a call doesn't have to end at audio, linking down to Studio; the
+  Studio section leads with the bridge — set `api_project_mode` to `always`
+  and the same call an app already makes lands as an editable project, or
+  `on_error` to turn a failed call into a fixable project instead of a dead
+  end — via a new lead card. The seam-preview card merged into "Hear it three
+  ways" to make room.
+
 ## [0.34.0] - 2026-07-06
 
 ### Added
