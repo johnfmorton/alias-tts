@@ -3,26 +3,23 @@
 # the repo's visibility (private) — grant pull access per user in the
 # package's settings on GitHub.
 #
-# Runs on every vX.Y.Z tag push (the /commitchange release flow), so cutting
-# a release publishes ghcr.io/johnfmorton/alias-tts:X.Y.Z + :latest. The
-# arm64 leg builds under QEMU on the amd64 runner, which is slow but free;
-# the asset/vendor stages are pinned to the build platform in the Dockerfile
-# so only the runtime stage pays the emulation tax.
-#
-# Manual runs (Actions → Docker image → Run workflow): leave the tag input
-# empty for a smoke build published as :main, or set it (e.g. "0.36.0") to
-# also publish that tag + :latest — used to backfill a release cut before
-# this workflow existed.
+# MANUAL-ONLY by design: releases are cut far more often than image users
+# need them, and each run costs 30-60 private-repo Actions minutes (the
+# arm64 leg builds under QEMU; the asset/vendor stages are pinned to the
+# build platform in the Dockerfile so only the runtime stage pays the
+# emulation tax). To publish a version: Actions → Docker image → Run
+# workflow, set the tag input to the version (e.g. "0.36.0") — that
+# publishes ghcr.io/johnfmorton/alias-tts:0.36.0 + :latest from the chosen
+# ref. Leave the input empty for a :main smoke build. If image users ever
+# want every release, restore an `on: push: tags: ["v*"]` trigger.
 
 name: Docker image
 
 on:
-  push:
-    tags: ["v*"]
   workflow_dispatch:
     inputs:
       tag:
-        description: "Extra image tag (e.g. 0.36.0); also tags :latest. Empty = branch-name smoke build."
+        description: "Image tag to publish (e.g. 0.36.0); also tags :latest. Empty = branch-name smoke build."
         required: false
         default: ""
 

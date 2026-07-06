@@ -15,8 +15,9 @@ backed up the install.
 ## Quick start
 
 Released images live on the GitHub Container Registry as
-**`ghcr.io/johnfmorton/alias-tts`** (every `vX.Y.Z` tag publishes `X.Y.Z` +
-`latest` for amd64 and arm64, via `.github/workflows/docker-publish.yml`).
+**`ghcr.io/johnfmorton/alias-tts`** (`X.Y.Z` + `latest`, amd64 and arm64 —
+published per chosen release by a manual run of
+`.github/workflows/docker-publish.yml`, so not every git tag has an image).
 The package is **private**: you need pull access granted on GitHub, then a
 one-time login with a [personal access token](https://github.com/settings/tokens)
 that has the `read:packages` scope:
