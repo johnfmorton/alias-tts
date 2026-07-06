@@ -4,6 +4,16 @@ All notable changes to this project are documented in this file. The format is
 based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this
 project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+- **Releases now publish the Docker image automatically.** Pushing a version
+  tag builds the single-image package for amd64 + arm64 and pushes it to the
+  private GitHub Container Registry (`ghcr.io/johnfmorton/alias-tts`, tagged
+  `X.Y.Z` + `latest`); docs/DOCKER.md explains granting pull access and
+  logging in. The asset and PHP-dependency build stages are pinned to the
+  build platform so CI's emulated arm64 leg only pays for the runtime stage.
+
 ## [0.36.0] - 2026-07-06
 
 ### Added

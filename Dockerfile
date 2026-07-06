@@ -24,7 +24,9 @@ RUN install-php-extensions bcmath intl pcntl pdo_mysql zip opcache \
 
 # ─── Dashboard assets (Vite + Tailwind) ───────────────────────────────────────
 # glibc image (not alpine): the rolldown/vite native binding is happiest there.
-FROM node:22-bookworm-slim AS assets
+# Pinned to the BUILD platform: the output (public/build) is arch-independent,
+# so a multi-arch CI build runs this once natively instead of under QEMU.
+FROM --platform=$BUILDPLATFORM node:22-bookworm-slim AS assets
 WORKDIR /app
 COPY package.json package-lock.json ./
 RUN npm ci
@@ -32,7 +34,9 @@ COPY . .
 RUN npm run build
 
 # ─── PHP dependencies ─────────────────────────────────────────────────────────
-FROM base AS vendor
+# Also build-platform-pinned: vendor/ and bootstrap/cache are plain PHP files,
+# identical for every target arch.
+FROM --platform=$BUILDPLATFORM base AS vendor
 WORKDIR /var/www/html
 ENV COMPOSER_ALLOW_SUPERUSER=1
 COPY --from=composer:2 /usr/bin/composer /usr/local/bin/composer

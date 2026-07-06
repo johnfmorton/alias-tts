@@ -14,8 +14,15 @@ backed up the install.
 
 ## Quick start
 
+Released images live on the GitHub Container Registry as
+**`ghcr.io/johnfmorton/alias-tts`** (every `vX.Y.Z` tag publishes `X.Y.Z` +
+`latest` for amd64 and arm64, via `.github/workflows/docker-publish.yml`).
+The package is **private**: you need pull access granted on GitHub, then a
+one-time login with a [personal access token](https://github.com/settings/tokens)
+that has the `read:packages` scope:
+
 ```bash
-docker build -t alias-tts .   # from a repo checkout
+docker login ghcr.io -u <your-github-username>   # password: the PAT
 
 docker run -d --name alias-tts \
   -p 8080:80 \
@@ -23,8 +30,11 @@ docker run -d --name alias-tts \
   -e REPLICATE_API_TOKEN=r8_xxx \
   -e ADMIN_EMAIL=you@example.com \
   -e ADMIN_PASSWORD=a-strong-password \
-  alias-tts
+  ghcr.io/johnfmorton/alias-tts:latest
 ```
+
+(With repo access you can instead build it yourself:
+`docker build -t alias-tts .` from a checkout.)
 
 Then open <http://localhost:8080> and sign in with the admin credentials. The
 first boot generates `APP_KEY` and the app↔runner shared secret, migrates the
@@ -40,7 +50,7 @@ Prefer compose? The same thing:
 ```yaml
 services:
   alias-tts:
-    image: alias-tts
+    image: ghcr.io/johnfmorton/alias-tts:latest
     ports:
       - "8080:80"
     volumes:
