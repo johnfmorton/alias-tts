@@ -20,6 +20,19 @@ class AboutPageTest extends TestCase
             ->assertSee('Fix the sentence, not the file.');
     }
 
+    public function test_about_page_walks_the_signal_with_an_anchored_map(): void
+    {
+        // The waveform map after the hero anchors to every section of the tour.
+        $this->get(route('about'))
+            ->assertOk()
+            ->assertSee('The rest of this page walks that signal.')
+            ->assertSee('id="api"', false)
+            ->assertSee('id="voices"', false)
+            ->assertSee('id="quality"', false)
+            ->assertSee('id="studio"', false)
+            ->assertSee('id="provenance"', false);
+    }
+
     public function test_landing_page_links_to_the_about_page(): void
     {
         $this->get(route('landing'))

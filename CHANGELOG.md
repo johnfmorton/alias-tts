@@ -22,6 +22,15 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   `on_error` to turn a failed call into a fixable project instead of a dead
   end — via a new lead card. The seam-preview card merged into "Hear it three
   ways" to make room.
+- **The About page walks the waveform.** The landing page's waveform reappears
+  after the hero as a clickable map of the tour — five labeled stops (The API,
+  Voices, Quality, Studio, Provenance), each dot in its section's gradient
+  color, each anchoring to its section — captioned "a call enters at the cyan
+  end and leaves the magenta end as a sealed file." Section kickers carry
+  stage phrases ("the signal enters" … "it leaves, sealed"), and the landing
+  junction mark appears in miniature where the API section hands off to
+  Studio. The "Your team" ownership card is parked as the least compelling of
+  the grid.
 
 ## [0.34.0] - 2026-07-06
 

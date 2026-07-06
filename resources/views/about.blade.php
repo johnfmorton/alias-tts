@@ -95,11 +95,71 @@
             </div>
         </section>
 
+        {{-- ===== The map: the landing page's waveform with every stop labeled.
+             The page below walks the signal left to right — each section's key
+             color is a band of this gradient, and each stop is an anchor. ===== --}}
+        @php
+            $N = 57; $W = 1140; $H = 120; $bw = 8; $pitch = $W / $N; $maxH = $H * 0.92;
+            $mapBars = [];
+            for ($i = 0; $i < $N; $i++) {
+                $t = $i / ($N - 1);
+                $env = 0.30 + 0.70 * sin(M_PI * $t);
+                $detail = 0.55 + 0.45 * abs(sin($t * M_PI * 6.3 + 0.6)) * (0.6 + 0.4 * sin($t * M_PI * 12.7));
+                $mapBars[] = [
+                    round($i * $pitch + ($pitch - $bw) / 2, 2),
+                    round(($H - max(0.08, min(1.0, $env * $detail)) * $maxH) / 2, 2),
+                    round(max(0.08, min(1.0, $env * $detail)) * $maxH, 2),
+                ];
+            }
+            $mapStops = [
+                ['#api',        '#22d3ee', 'rgba(34,211,238,.7)',  'The API'],
+                ['#voices',     '#009ff5', 'rgba(0,159,245,.7)',   'Voices'],
+                ['#quality',    '#246cff', 'rgba(36,108,255,.7)',  'Quality'],
+                ['#studio',     '#6164ff', 'rgba(97,100,255,.7)',  'Studio'],
+                ['#provenance', '#b129ff', 'rgba(177,41,255,.7)',  'Provenance'],
+            ];
+        @endphp
+        <section class="rise mt-24" style="animation-delay: 260ms" aria-label="Page map">
+            <div class="mx-auto max-w-3xl">
+                <svg viewBox="0 0 {{ $W }} {{ $H }}" class="h-12 w-full" aria-hidden="true" preserveAspectRatio="xMidYMid meet">
+                    <defs>
+                        <linearGradient id="wf-map" x1="0" y1="0" x2="1" y2="0">
+                            <stop offset="0" stop-color="#22d3ee"/>
+                            <stop offset="0.22" stop-color="#009ff5"/>
+                            <stop offset="0.45" stop-color="#246cff"/>
+                            <stop offset="0.68" stop-color="#6164ff"/>
+                            <stop offset="1" stop-color="#b129ff"/>
+                        </linearGradient>
+                    </defs>
+                    @foreach ($mapBars as [$x, $y, $bh])
+                        <rect x="{{ $x }}" y="{{ $y }}" width="{{ $bw }}" height="{{ $bh }}"
+                              rx="{{ $bw / 2 }}" fill="url(#wf-map)"/>
+                    @endforeach
+                </svg>
+
+                <nav class="mt-6 flex flex-wrap items-center justify-center gap-x-8 gap-y-3" aria-label="Sections">
+                    @foreach ($mapStops as [$href, $dot, $glow, $label])
+                        <a href="{{ $href }}" class="group flex items-center gap-[8px]">
+                            <span class="h-[8px] w-[8px] shrink-0 rounded-full"
+                                  style="background:{{ $dot }}; box-shadow:0 0 9px {{ $glow }}"></span>
+                            <span class="text-[13px] font-medium text-zinc-400 transition group-hover:text-zinc-100">{{ $label }}</span>
+                        </a>
+                    @endforeach
+                </nav>
+
+                <p class="mt-4 text-center text-xs leading-relaxed text-zinc-500">
+                    A call enters at the cyan end and leaves the magenta end as a sealed file.
+                    The rest of this page walks that signal.
+                </p>
+            </div>
+        </section>
+
         {{-- ===== The API (cyan — the left edge of the waveform) ===== --}}
-        <section class="mt-28">
+        <section id="api" class="mt-28 scroll-mt-10">
             <div class="flex items-center gap-2.5">
                 <x-about.glyph color="#22d3ee"/>
                 <span class="font-mono text-xs font-semibold uppercase tracking-[0.18em] text-[#22d3ee]">The API</span>
+                <span class="text-xs text-zinc-600">— the signal enters</span>
             </div>
             <h2 class="mt-4 text-3xl font-semibold tracking-tight">Two dialects. One engine.</h2>
             <p class="mt-4 max-w-2xl leading-relaxed text-zinc-400">
@@ -158,18 +218,38 @@
                           url="https://tts.your-domain.com/admin"
                           note="The dashboard home, signed in: the connection panel with base URL, API key, and voice IDs ready to copy into any client."/>
 
-            <p class="mt-8 max-w-2xl leading-relaxed text-zinc-400">
-                And a call doesn't have to end at audio. Any request can leave behind an editable
-                <a href="#studio" class="text-zinc-200 underline decoration-zinc-700 underline-offset-2 transition hover:decoration-zinc-400">Studio project</a>
-                — the power-user move, below.
-            </p>
+            {{-- The landing page's junction in miniature: both dialects converging
+                 on Studio. Same promise, same mark. --}}
+            <div class="mt-8 flex max-w-2xl items-center gap-5">
+                <svg width="64" height="30" viewBox="0 0 64 30" fill="none" aria-hidden="true" class="shrink-0">
+                    <defs>
+                        <linearGradient id="hk-l" x1="4" y1="0" x2="32" y2="0" gradientUnits="userSpaceOnUse">
+                            <stop offset="0" stop-color="#22d3ee"/><stop offset="1" stop-color="#6164ff"/>
+                        </linearGradient>
+                        <linearGradient id="hk-r" x1="60" y1="0" x2="32" y2="0" gradientUnits="userSpaceOnUse">
+                            <stop offset="0" stop-color="#b129ff"/><stop offset="1" stop-color="#6164ff"/>
+                        </linearGradient>
+                    </defs>
+                    <circle cx="4" cy="4" r="2" fill="#22d3ee"/>
+                    <circle cx="60" cy="4" r="2" fill="#b129ff"/>
+                    <path d="M4 6 C 4 17, 32 11, 32 23" stroke="url(#hk-l)" stroke-width="1.25" stroke-linecap="round" opacity=".6"/>
+                    <path d="M60 6 C 60 17, 32 11, 32 23" stroke="url(#hk-r)" stroke-width="1.25" stroke-linecap="round" opacity=".6"/>
+                    <circle cx="32" cy="25" r="2.5" fill="#6164ff" style="filter: drop-shadow(0 0 4px rgba(97,100,255,.8))"/>
+                </svg>
+                <p class="leading-relaxed text-zinc-400">
+                    And a call doesn't have to end at audio. Any request can leave behind an editable
+                    <a href="#studio" class="text-zinc-200 underline decoration-zinc-700 underline-offset-2 transition hover:decoration-zinc-400">Studio project</a>
+                    — the power-user move, below.
+                </p>
+            </div>
         </section>
 
         {{-- ===== Voices (bright blue) ===== --}}
-        <section class="mt-28">
+        <section id="voices" class="mt-28 scroll-mt-10">
             <div class="flex items-center gap-2.5">
                 <x-about.glyph color="#009ff5"/>
                 <span class="font-mono text-xs font-semibold uppercase tracking-[0.18em] text-[#2eb4ff]">Voices</span>
+                <span class="text-xs text-zinc-600">— it sounds like you</span>
             </div>
             <h2 class="mt-4 text-3xl font-semibold tracking-tight">Clone a voice from thirty seconds of audio.</h2>
             <p class="mt-4 max-w-2xl leading-relaxed text-zinc-400">
@@ -216,10 +296,11 @@
         </section>
 
         {{-- ===== Quality (mid blue) ===== --}}
-        <section class="mt-28">
+        <section id="quality" class="mt-28 scroll-mt-10">
             <div class="flex items-center gap-2.5">
                 <x-about.glyph color="#246cff"/>
                 <span class="font-mono text-xs font-semibold uppercase tracking-[0.18em] text-[#5b8dff]">Quality</span>
+                <span class="text-xs text-zinc-600">— every take, listened to</span>
             </div>
             <h2 class="mt-4 text-3xl font-semibold tracking-tight">QA that listens to every take.</h2>
             <p class="mt-4 max-w-2xl leading-relaxed text-zinc-400">
@@ -267,6 +348,7 @@
             <div class="flex items-center gap-2.5">
                 <x-about.glyph color="#6164ff"/>
                 <span class="font-mono text-xs font-semibold uppercase tracking-[0.18em] text-[#8b8eff]">Studio</span>
+                <span class="text-xs text-zinc-600">— you direct it</span>
             </div>
             <h2 class="mt-4 text-3xl font-semibold tracking-tight">Fix the sentence, not the file.</h2>
             <p class="mt-4 max-w-2xl leading-relaxed text-zinc-400">
@@ -328,10 +410,11 @@
         </section>
 
         {{-- ===== Provenance (magenta — the right edge of the waveform) ===== --}}
-        <section class="mt-28">
+        <section id="provenance" class="mt-28 scroll-mt-10">
             <div class="flex items-center gap-2.5">
                 <x-about.glyph color="#b129ff"/>
                 <span class="font-mono text-xs font-semibold uppercase tracking-[0.18em] text-[#c55dff]">Provenance</span>
+                <span class="text-xs text-zinc-600">— it leaves, sealed</span>
             </div>
             <h2 class="mt-4 text-3xl font-semibold tracking-tight">Approve it. Seal it. Prove it.</h2>
             <p class="mt-4 max-w-2xl leading-relaxed text-zinc-400">
@@ -400,12 +483,14 @@
                         a monthly subscription.
                     </p>
                 </div>
+                {{-- Parked as the least compelling card; restore if the grid needs a sixth again.
                 <div>
                     <h3 class="text-[15px] font-semibold text-zinc-100">Your team</h3>
                     <p class="mt-1.5 text-sm leading-relaxed text-zinc-400">
                         A multi-user dashboard: every account gets its own keys, voices, dictionary, and settings.
                     </p>
                 </div>
+                --}}
                 <div>
                     <h3 class="text-[15px] font-semibold text-zinc-100">Your health checks</h3>
                     <p class="mt-1.5 text-sm leading-relaxed text-zinc-400">
