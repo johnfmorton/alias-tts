@@ -6,7 +6,30 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Added
+- **Record a reference clip in the browser.** The Add-a-Voice and Edit-voice
+  pages now let you record a voice sample directly with your microphone — read
+  one of three built-in scripts on an on-screen teleprompter, watch a live
+  input-level meter with length guidance, and review the take — as an
+  alternative to uploading a file. Progressive enhancement: it appears only when
+  the browser supports it, and file upload still works everywhere.
+- **Optional AI cleanup of reference clips.** Recorded and uploaded clips can be
+  cleaned up automatically — denoise + enhance via
+  [resemble-enhance](https://github.com/resemble-ai/resemble-enhance) on
+  Replicate — with an Original-vs-Cleaned-up preview before saving; the take you
+  pick is exactly what gets stored. Cleanup is on by default, reuses the
+  existing `REPLICATE_API_TOKEN`, and degrades safely to the original clip if it
+  can't run (turn it off with `TTS_ENHANCE_ENABLED=false`). A daily
+  `voices:prune-clips` task clears abandoned previews.
+
 ### Changed
+- **Redesigned the Add-a-Voice and Edit-voice pages.** A wider, sectioned layout
+  (Identity, Default tuning, Reference clip, Tune by ear) with the primary Save
+  action moved to the top-right so it's reachable without scrolling. The
+  reference-clip area is a segmented Upload / Record control with a large
+  teleprompter for the reading script; the default-tuning knobs pair a number
+  field with a slider that are two views of one value; and "Tune by ear" is a
+  scannable table.
 - **The bundled default voices are replaced with LibriVox-derived recordings.**
   The previous VCTK-derived clips had to be withdrawn for license reasons. The
   built-in `default` (male) and `default-female` voices now use short excerpts
