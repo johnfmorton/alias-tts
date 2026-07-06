@@ -16,15 +16,18 @@
         @csrf
         @method('PUT')
 
-        {{-- Header: title left, primary actions top-right (reachable without scrolling). --}}
-        <div class="mb-8 flex flex-wrap items-end justify-between gap-5">
-            <div>
-                <h1 class="text-[27px] font-bold tracking-[-0.015em] text-zinc-100">Edit voice</h1>
-                <p class="mt-1.5 text-sm text-zinc-500">Rename the voice_id, set default tuning, or replace the reference clip.</p>
-            </div>
-            <div class="flex flex-shrink-0 items-center gap-2">
-                <a href="{{ route('admin.voices.index') }}" class="px-3.5 py-2.5 text-sm text-zinc-400 transition hover:text-zinc-200">Cancel</a>
-                <button type="submit" class="rounded-[9px] bg-accent px-5 py-2.5 text-sm font-semibold text-accent-on transition hover:brightness-110">Save changes</button>
+        {{-- Header: pinned like the Studio command bar so Save/Cancel stay reachable
+             no matter how far the form is scrolled. --}}
+        <div class="sticky top-0 z-30 -mx-4 mb-8 border-b border-white/[0.09] bg-sticky px-4 py-4 shadow-[0_12px_26px_-14px_rgba(0,0,0,0.85)]">
+            <div class="flex flex-wrap items-end justify-between gap-5">
+                <div>
+                    <h1 class="text-[27px] font-bold tracking-[-0.015em] text-zinc-100">Edit voice</h1>
+                    <p class="mt-1.5 text-sm text-zinc-500">Rename the voice_id, set default tuning, or replace the reference clip.</p>
+                </div>
+                <div class="flex flex-shrink-0 items-center gap-2">
+                    <a href="{{ route('admin.voices.index') }}" class="px-3.5 py-2.5 text-sm text-zinc-400 transition hover:text-zinc-200">Cancel</a>
+                    <button type="submit" class="rounded-[9px] bg-accent px-5 py-2.5 text-sm font-semibold text-accent-on transition hover:brightness-110">Save changes</button>
+                </div>
             </div>
         </div>
 
@@ -58,10 +61,14 @@
 
         @include('admin.voices._clip_source', [
             'replace' => true,
-            'hint' => 'optional · '.($voice->reference_audio_path ? 'current clip present' : 'no clip yet'),
+            'hint' => 'optional, but recommended · '.($voice->reference_audio_path ? 'current clip present' : 'no clip yet'),
             'fileHelp' => 'Leave empty to keep the current clip ('.($voice->reference_audio_path ? 'present' : 'none').').',
         ])
-    </form>
 
-    @include('admin.voices._tuning_bench', ['voice' => $voice, 'presets' => $presets])
+        {{-- The bench lives inside the form so the sticky header's containing block
+             spans the whole page (keeping it pinned past the clip section). It's safe:
+             every control is type=button and it has no named inputs, so nothing here
+             is submitted with the voice form. --}}
+        @include('admin.voices._tuning_bench', ['voice' => $voice, 'presets' => $presets])
+    </form>
 </x-layout>

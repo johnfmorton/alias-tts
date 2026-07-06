@@ -7,14 +7,18 @@
           data-busy-message="Cleaning up and normalizing the reference clip can take up to a minute — keep this page open.">
         @csrf
 
-        <div class="mb-8 flex flex-wrap items-end justify-between gap-5">
-            <div>
-                <h1 class="text-[27px] font-bold tracking-[-0.015em] text-zinc-100">Add a voice</h1>
-                <p class="mt-1.5 text-sm text-zinc-500">Record or upload a clean ~15–30s reference clip. It's normalized and registered instantly (zero-shot — no training job).</p>
-            </div>
-            <div class="flex flex-shrink-0 items-center gap-2">
-                <a href="{{ route('admin.voices.index') }}" class="px-3.5 py-2.5 text-sm text-zinc-400 transition hover:text-zinc-200">Cancel</a>
-                <button type="submit" class="rounded-[9px] bg-accent px-5 py-2.5 text-sm font-semibold text-accent-on transition hover:brightness-110">Save voice</button>
+        {{-- Header: pinned like the Studio command bar so Save/Cancel stay reachable
+             no matter how far the form is scrolled. --}}
+        <div class="sticky top-0 z-30 -mx-4 mb-8 border-b border-white/[0.09] bg-sticky px-4 py-4 shadow-[0_12px_26px_-14px_rgba(0,0,0,0.85)]">
+            <div class="flex flex-wrap items-end justify-between gap-5">
+                <div>
+                    <h1 class="text-[27px] font-bold tracking-[-0.015em] text-zinc-100">Add a voice</h1>
+                    <p class="mt-1.5 text-sm text-zinc-500">Record or upload a clean ~15–30s reference clip. It's normalized and registered instantly (zero-shot — no training job).</p>
+                </div>
+                <div class="flex flex-shrink-0 items-center gap-2">
+                    <a href="{{ route('admin.voices.index') }}" class="px-3.5 py-2.5 text-sm text-zinc-400 transition hover:text-zinc-200">Cancel</a>
+                    <button type="submit" class="rounded-[9px] bg-accent px-5 py-2.5 text-sm font-semibold text-accent-on transition hover:brightness-110">Save voice</button>
+                </div>
             </div>
         </div>
 
@@ -34,7 +38,7 @@
 
         @include('admin.voices._clip_source', [
             'replace' => false,
-            'hint' => 'optional',
+            'hint' => 'optional, but recommended',
             'fileHelp' => "WAV/MP3/M4A/OGG/FLAC, up to 20 MB. A clean, quiet ~15–30s sample works best. Leave blank to use Chatterbox's built-in voice (no cloning).",
         ])
     </form>

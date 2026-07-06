@@ -4,6 +4,19 @@ All notable changes to this project are documented in this file. The format is
 based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this
 project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Changed
+- **Pinned the Save action on the Add-a-Voice and Edit-voice pages.** The header
+  — title plus Cancel and Save — now sticks to the top while you scroll, matching
+  the Studio project command bar, so the Save button stays reachable no matter
+  how far down the long voice forms you are.
+- **Labeled the reference clip "optional, but recommended."** The hint on the
+  Reference clip section now makes clear that a clip is optional but strongly
+  improves the resulting voice.
+- **The reference-clip control now defaults to "Upload a file"** instead of
+  "Record with mic"; the in-browser recorder is still one tab away.
+
 ## [0.32.0] - 2026-07-06
 
 ### Added

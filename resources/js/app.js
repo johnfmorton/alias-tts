@@ -2429,14 +2429,12 @@ function initVoiceRecorder() {
     }
     modeButtons.forEach((b) => b.addEventListener('click', () => setMode(b.dataset.clipMode)));
 
-    if (canRecord) {
-        setMode('record'); // headline the recorder; the user can tab to Upload
-    } else {
+    if (!canRecord) {
         // Non-secure context / unsupported browser: hide the segmented bar, upload only.
         const recBtn = widget.querySelector('[data-clip-mode="record"]');
         if (recBtn) recBtn.parentElement.classList.add('hidden');
-        setMode('upload');
     }
+    setMode('upload'); // default to Upload; the user can switch to Record when available
 
     function refreshPreviewBtn() {
         const show = !!hasSource() && enhanceBox && enhanceBox.checked && !tokenInput.value;
