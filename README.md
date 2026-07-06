@@ -394,4 +394,7 @@ management API, real streaming, additional provider drivers, a Docker image).
 
 ## License
 
-[MIT](LICENSE) © John F. Morton
+Copyright © 2026 John F. Morton. All rights reserved.
+
+This is proprietary software — not open source (for now). See
+[LICENSE](LICENSE) for details.

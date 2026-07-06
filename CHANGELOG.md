@@ -4,6 +4,26 @@ All notable changes to this project are documented in this file. The format is
 based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this
 project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+- **A public About page.** `/about` is a feature tour of the whole product —
+  the two API dialects, thirty-second voice cloning, QA that listens to every
+  take, chunk-level Studio editing, sealed receipts with public verification,
+  and the self-hosted "yours, all the way down" pitch — with screenshot slots
+  that fill in automatically once captures are dropped at
+  `public/images/about/`. The landing page hero now links to it ("About →").
+
+### Changed
+- **Alias TTS is now proprietary software; the MIT license is removed.** The
+  `LICENSE` file is a "Copyright © 2026 John F. Morton. All rights reserved."
+  notice, `composer.json` declares `proprietary`, and the README's License
+  section matches. The About page's "MIT licensed" card is gone.
+- **GitHub links are hidden while the repository is private.** The "View on
+  GitHub" buttons and the nav/footer GitHub links on the landing and About
+  pages are commented out in the templates, ready to restore if the repo goes
+  public again.
+
 ## [0.33.0] - 2026-07-06
 
 ### Changed
