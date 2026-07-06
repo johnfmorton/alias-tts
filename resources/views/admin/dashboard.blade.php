@@ -1,57 +1,181 @@
-<x-layout title="Dashboard" description="Overview and connection details for any ElevenLabs-compatible app.">
-    <div class="grid grid-cols-2 gap-4 sm:grid-cols-3">
-        @foreach(['Voices' => $stats['voices'], 'API keys' => $stats['apiKeys'], 'Generations' => $stats['speeches']] as $label => $value)
-            <div class="rounded-xl border border-zinc-800 bg-zinc-900/50 p-5">
-                <div class="text-sm text-zinc-500">{{ $label }}</div>
-                <div class="mt-1 text-2xl font-semibold">{{ $value }}</div>
+@php
+    use Illuminate\Support\Facades\Route as RouteFacade;
+
+    $navUser = auth()->user();
+
+    // Destination cards — each is a full-card link to its "Manage" page (via a
+    // stretched ::after link) plus a distinct "+ Add" secondary target lifted
+    // above it with z-10. Counts come from the controller's per-user stats.
+    $cards = [
+        [
+            'icon' => 'voices',
+            'title' => 'Voices',
+            'desc' => 'Custom & default voices',
+            'count' => $stats['voices'],
+            'manage' => ['label' => 'Manage voices', 'route' => 'admin.voices.index'],
+            'add' => ['label' => '+ Add voice', 'route' => 'admin.voices.create'],
+        ],
+        [
+            'icon' => 'key',
+            'title' => 'API Keys',
+            'desc' => 'Active credentials',
+            'count' => $stats['apiKeys'],
+            'manage' => ['label' => 'Manage API keys', 'route' => 'admin.api-keys.index'],
+            'add' => ['label' => '+ New key', 'route' => 'admin.api-keys.create'],
+        ],
+        [
+            'icon' => 'pronunciations',
+            'title' => 'Pronunciations',
+            'desc' => 'Custom word overrides',
+            'count' => $stats['pronunciations'],
+            'manage' => ['label' => 'Manage pronunciations', 'route' => 'admin.pronunciations.index'],
+            'add' => ['label' => '+ Add rule', 'route' => 'admin.pronunciations.create'],
+        ],
+        [
+            'icon' => 'projects',
+            'title' => 'Projects',
+            'desc' => "Scripts you're producing",
+            'count' => $stats['projects'],
+            'manage' => ['label' => 'Open in Studio', 'route' => 'admin.studio.index'],
+            'add' => ['label' => '+ New project', 'route' => 'admin.studio.projects.create'],
+        ],
+    ];
+@endphp
+
+<x-layout title="Dashboard" :heading="false" contentWidth="max-w-[1080px]">
+    {{-- Page header --}}
+    <div class="mb-7">
+        <h1 class="text-[27px] font-bold tracking-[-0.015em] text-zinc-100">Dashboard</h1>
+        <p class="mt-1.5 text-sm text-zinc-400">Everything in Alias, one hop away — plus connection details for any ElevenLabs-compatible app.</p>
+    </div>
+
+    {{-- Destination cards --}}
+    <div class="mb-3.5 text-xs font-bold uppercase tracking-[0.1em] text-accent">Manage</div>
+    <div class="mb-4 grid grid-cols-1 gap-4 sm:grid-cols-2">
+        @foreach($cards as $card)
+            <div class="relative flex flex-col rounded-[14px] border border-white/8 bg-panel px-6 py-[22px] transition hover:border-white/[0.14]">
+                <div class="flex items-start justify-between">
+                    <div class="flex items-center gap-3.5">
+                        {{-- Icon tile (40px, cyan-tinted) --}}
+                        <span class="flex h-10 w-10 shrink-0 items-center justify-center rounded-[11px] border border-accent/30 bg-accent/10 text-accent">
+                            @switch($card['icon'])
+                                @case('voices')
+                                    <span class="flex items-end gap-[2px]">
+                                        <span class="w-[2.5px] rounded-[2px] bg-accent" style="height:8px"></span>
+                                        <span class="w-[2.5px] rounded-[2px] bg-accent" style="height:15px"></span>
+                                        <span class="w-[2.5px] rounded-[2px] bg-accent" style="height:11px"></span>
+                                        <span class="w-[2.5px] rounded-[2px] bg-accent" style="height:6px"></span>
+                                    </span>
+                                    @break
+                                @case('key')
+                                    <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                                        <circle cx="8" cy="8" r="4.5"></circle>
+                                        <path d="M11 11l8 8"></path>
+                                        <path d="M16 16l2-2"></path>
+                                    </svg>
+                                    @break
+                                @case('pronunciations')
+                                    <span class="font-mono text-[15px] font-bold leading-none">əˈ</span>
+                                    @break
+                                @case('projects')
+                                    <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                                        <rect x="4" y="4" width="12" height="12" rx="2.5"></rect>
+                                        <rect x="9" y="9" width="12" height="12" rx="2.5" fill="var(--color-panel)"></rect>
+                                    </svg>
+                                    @break
+                            @endswitch
+                        </span>
+                        <div>
+                            <div class="text-[15px] font-semibold text-zinc-100">{{ $card['title'] }}</div>
+                            <div class="mt-0.5 text-[12.5px] text-zinc-500">{{ $card['desc'] }}</div>
+                        </div>
+                    </div>
+                    <div class="text-[32px] font-bold leading-none tracking-[-1px] text-zinc-100">{{ $card['count'] }}</div>
+                </div>
+
+                <div class="mt-5 flex items-center justify-between border-t border-white/8 pt-4">
+                    {{-- Primary target: the whole card links here via the stretched ::after. --}}
+                    <a href="{{ route($card['manage']['route']) }}"
+                       class="text-sm font-semibold text-accent after:absolute after:inset-0 after:content-['']">
+                        {{ $card['manage']['label'] }} →
+                    </a>
+                    {{-- Secondary target: lifted above the stretched link with z-10. --}}
+                    <a href="{{ route($card['add']['route']) }}"
+                       class="relative z-10 text-[12.5px] text-zinc-500 transition hover:text-zinc-300">
+                        {{ $card['add']['label'] }}
+                    </a>
+                </div>
             </div>
         @endforeach
     </div>
 
-    <div class="mt-8 rounded-xl border border-zinc-800 bg-zinc-900/50">
-        <div class="border-b border-zinc-800 px-5 py-4">
-            <h2 class="font-semibold">Connect your app</h2>
-            <p class="mt-1 text-sm text-zinc-400">Alias speaks the ElevenLabs v1 API, so any ElevenLabs-compatible app works — including the Bespoken Craft CMS plugin. Paste these into its API settings.</p>
+    {{-- Generations — a usage metric, not a destination. --}}
+    <div class="mb-8 flex items-center gap-4 rounded-xl border border-white/8 bg-inset px-[22px] py-4">
+        <span class="flex h-[34px] w-[34px] shrink-0 items-center justify-center rounded-[9px] border border-ok/[0.28] bg-ok/10 text-base text-ok">✦</span>
+        <div>
+            <div class="text-sm font-semibold text-zinc-200">{{ $stats['speeches'] }} {{ $stats['speeches'] === 1 ? 'generation' : 'generations' }}</div>
+            <div class="mt-px text-[12.5px] text-zinc-500">Lifetime audio generated across all projects.</div>
         </div>
-        <div class="space-y-5 p-5">
-            <div>
-                <div class="mb-1.5 text-sm font-medium">Base URL</div>
-                <div class="flex items-center gap-2">
-                    <code class="flex-1 truncate rounded-lg border border-zinc-800 bg-zinc-950 px-3 py-2 font-mono text-sm text-zinc-300">{{ $connect['baseUrl'] }}</code>
-                    <button data-copy="{{ $connect['baseUrl'] }}" class="rounded-lg border border-zinc-700 px-3 py-2 text-sm hover:bg-zinc-800">Copy</button>
-                </div>
-            </div>
+        <span class="ml-auto text-sm text-zinc-500">Usage metric · not a page</span>
+    </div>
 
-            <div>
-                <div class="mb-1.5 text-sm font-medium">API key <span class="font-mono text-xs text-zinc-500">(xi-api-key)</span></div>
-                @if($connect['apiKey'])
-                    <div class="flex items-center gap-2">
-                        <code class="flex-1 truncate rounded-lg border border-zinc-800 bg-zinc-950 px-3 py-2 font-mono text-sm text-zinc-300">{{ $connect['apiKey'] }}</code>
-                        <button data-copy="{{ $connect['apiKey'] }}" class="rounded-lg border border-zinc-700 px-3 py-2 text-sm hover:bg-zinc-800">Copy</button>
-                        <form method="POST" action="{{ route('admin.dashboard.reset-key') }}"
-                              onsubmit="return confirm('Reset this API key? The current value stops working immediately — you will need to update your app with the new key.')">
-                            @csrf
-                            <button class="rounded-lg border border-red-500/30 px-3 py-2 text-sm text-red-400 hover:bg-red-500/10" title="Issue a new key if this one leaked">Reset</button>
-                        </form>
-                    </div>
-                    <p class="mt-1.5 text-xs text-zinc-500">Leaked? <span class="text-zinc-400">Reset</span> issues a new key and immediately revokes this one.</p>
-                @else
-                    <p class="text-sm text-zinc-500">No active key yet — <a class="text-cyan-400 hover:underline" href="{{ route('admin.api-keys.create') }}">create one</a>.</p>
-                @endif
-            </div>
+    {{-- Connect your app --}}
+    <div class="mb-7 rounded-[14px] border border-white/8 bg-panel px-7 py-6">
+        <h2 class="text-[17px] font-bold text-zinc-100">Connect your app</h2>
+        <p class="mt-2 max-w-[820px] text-[13.5px] leading-relaxed text-zinc-400">Alias speaks the ElevenLabs v1 API, so any ElevenLabs-compatible app works — including the Bespoken Craft CMS plugin. Paste these into its API settings.</p>
 
-            <div>
-                <div class="mb-1.5 text-sm font-medium">Voice IDs</div>
-                @if(count($connect['voiceIds']))
-                    <div class="flex flex-wrap gap-2">
-                        @foreach($connect['voiceIds'] as $vid)
-                            <button data-copy="{{ $vid }}" class="rounded-lg border border-zinc-700 px-3 py-1.5 font-mono text-sm hover:bg-zinc-800">{{ $vid }}</button>
-                        @endforeach
-                    </div>
-                @else
-                    <p class="text-sm text-zinc-500">No voices yet — <a class="text-cyan-400 hover:underline" href="{{ route('admin.voices.create') }}">add one</a>.</p>
-                @endif
-            </div>
+        <div class="my-5 h-px bg-white/8"></div>
+
+        {{-- Base URL --}}
+        <div class="mb-1.5 text-[13px] font-semibold text-zinc-300">Base URL</div>
+        <div class="mb-5 flex items-center gap-2.5">
+            <code class="flex-1 truncate rounded-[9px] border border-white/12 bg-inset px-3.5 py-3 font-mono text-sm text-zinc-200">{{ $connect['baseUrl'] }}</code>
+            <button data-copy="{{ $connect['baseUrl'] }}" class="rounded-[9px] border border-white/[0.14] px-4.5 py-3 text-sm text-zinc-300 transition hover:bg-white/[0.04]">Copy</button>
         </div>
+
+        {{-- API key --}}
+        <div class="mb-1.5 text-[13px] font-semibold text-zinc-300">API key <span class="font-mono text-xs font-normal text-zinc-500">(xi-api-key)</span></div>
+        @if($connect['apiKey'])
+            <div class="flex items-center gap-2.5">
+                <code class="flex-1 truncate rounded-[9px] border border-white/12 bg-inset px-3.5 py-3 font-mono text-sm text-zinc-200">{{ $connect['apiKey'] }}</code>
+                <button data-copy="{{ $connect['apiKey'] }}" class="rounded-[9px] border border-white/[0.14] px-4.5 py-3 text-sm text-zinc-300 transition hover:bg-white/[0.04]">Copy</button>
+                <form method="POST" action="{{ route('admin.dashboard.reset-key') }}"
+                      onsubmit="return confirm('Reset this API key? The current value stops working immediately — you will need to update your app with the new key.')">
+                    @csrf
+                    <button class="rounded-[9px] border border-bad/40 px-4.5 py-3 text-sm text-bad transition hover:bg-bad/10" title="Issue a new key if this one leaked">Reset</button>
+                </form>
+            </div>
+            <p class="mt-2 text-[12.5px] text-zinc-500">Leaked? <span class="text-zinc-300">Reset</span> issues a new key and immediately revokes this one.</p>
+        @else
+            <p class="text-sm text-zinc-500">No active key yet — <a class="text-accent hover:underline" href="{{ route('admin.api-keys.create') }}">create one</a>.</p>
+        @endif
+
+        {{-- Voice IDs --}}
+        <div class="mt-5 mb-2.5 text-[13px] font-semibold text-zinc-300">Voice IDs</div>
+        @if(count($connect['voiceIds']))
+            <div class="flex flex-wrap gap-2.5">
+                @foreach($connect['voiceIds'] as $vid)
+                    <button data-copy="{{ $vid }}" class="rounded-lg border border-white/[0.14] px-3.5 py-2 font-mono text-[13px] text-zinc-200 transition hover:bg-white/[0.04]" title="Click to copy">{{ $vid }}</button>
+                @endforeach
+            </div>
+        @else
+            <p class="text-sm text-zinc-500">No voices yet — <a class="text-accent hover:underline" href="{{ route('admin.voices.create') }}">add one</a>.</p>
+        @endif
+    </div>
+
+    {{-- System --}}
+    <div class="mb-3 text-xs font-bold uppercase tracking-[0.1em] text-zinc-500">System</div>
+    <div class="flex flex-wrap gap-3">
+        {{-- Health: a plain link only. No status indicator — status is only known
+             after the Health page runs its full test suite. --}}
+        <a href="{{ route('admin.health') }}" class="inline-flex items-center gap-2 rounded-[10px] border border-white/12 px-4 py-[11px] text-sm text-zinc-300 transition hover:bg-white/[0.04]">Health</a>
+        <a href="{{ route('admin.settings.index') }}" class="inline-flex items-center gap-2 rounded-[10px] border border-white/12 px-4 py-[11px] text-sm text-zinc-300 transition hover:bg-white/[0.04]">Settings</a>
+        {{-- Users: SuperAdmin only, and only once its routes exist (gated on the server too). --}}
+        @if($navUser?->isSuperAdmin() && RouteFacade::has('admin.users.index'))
+            <a href="{{ route('admin.users.index') }}" class="inline-flex items-center gap-2 rounded-[10px] border border-accent/30 bg-accent/[0.05] px-4 py-[11px] text-sm text-zinc-200 transition hover:bg-accent/10">
+                Users
+                <span class="rounded-[5px] bg-accent/[0.14] px-1.5 py-0.5 text-[10px] font-bold text-accent">ADMIN</span>
+            </a>
+        @endif
     </div>
 </x-layout>

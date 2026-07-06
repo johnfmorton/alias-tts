@@ -23,6 +23,17 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   `voices:prune-clips` task clears abandoned previews.
 
 ### Changed
+- **Redesigned the Dashboard into a launchpad.** The three inert stat cards
+  (Voices / API keys / Generations) that left the right half of the page empty
+  are replaced by four live destination cards — Voices, API Keys,
+  Pronunciations, and Projects — each pairing its count with a one-line
+  description, a primary "Manage … →" action (the whole card is the link), and a
+  "+ Add" quick action. This gives a visible home to destinations that
+  previously lived only in the account dropdown. Generations, being a usage
+  metric rather than a page, is now an honestly labeled read-only strip; Health,
+  Settings, and Users move to a quiet System row (Users is SuperAdmin-only).
+  Connect-your-app is preserved. Health remains a plain link with no status
+  indicator, so the dashboard never triggers its test suite on load.
 - **Redesigned the Add-a-Voice and Edit-voice pages.** A wider, sectioned layout
   (Identity, Default tuning, Reference clip, Tune by ear) with the primary Save
   action moved to the top-right so it's reachable without scrolling. The

@@ -4,7 +4,9 @@ namespace App\Http\Controllers\Admin;
 
 use App\Http\Controllers\Controller;
 use App\Models\ApiKey;
+use App\Models\PronunciationEntry;
 use App\Models\Speech;
+use App\Models\TtsProject;
 use App\Models\Voice;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -23,6 +25,11 @@ class DashboardController extends Controller
             // Per-user: your own keys and your own generations, not the whole server's.
             'apiKeys' => $keyIds->count(),
             'speeches' => Speech::whereIn('api_key_id', $keyIds)->count(),
+            // Pronunciations are a strictly private per-user lexicon.
+            'pronunciations' => PronunciationEntry::ownedBy($user->id)->count(),
+            // Match Studio's scoping so the card count equals what "Open in Studio"
+            // lists: SuperAdmins see every project, everyone else only their own.
+            'projects' => TtsProject::when(! $user->isSuperAdmin(), fn ($q) => $q->where('user_id', $user->id))->count(),
         ];
 
         // Copy-paste connection details for the Bespoken Craft plugin. The key is the
