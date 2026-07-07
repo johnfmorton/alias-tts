@@ -101,6 +101,32 @@ class InternalPipelineTest extends TestCase
             ]);
     }
 
+    public function test_chunk_honors_an_explicit_sentence_mode(): void
+    {
+        // Two sentences that packed mode (default chunk_chars) would combine.
+        $text = 'This is the first reasonably long sentence right here. '
+            .'This is the second reasonably long sentence right here.';
+
+        $packed = $this->withHeaders($this->headers())
+            ->postJson('/v1/internal/chunk', ['text' => $text])
+            ->assertStatus(200)
+            ->json('chunks');
+        $this->assertCount(1, $packed);
+
+        $perSentence = $this->withHeaders($this->headers())
+            ->postJson('/v1/internal/chunk', ['text' => $text, 'chunk_mode' => 'sentence'])
+            ->assertStatus(200)
+            ->json('chunks');
+        $this->assertCount(2, $perSentence);
+    }
+
+    public function test_chunk_rejects_an_unknown_chunk_mode(): void
+    {
+        $this->withHeaders($this->headers())
+            ->postJson('/v1/internal/chunk', ['text' => 'Hi there.', 'chunk_mode' => 'words'])
+            ->assertStatus(422);
+    }
+
     public function test_generate_returns_audio_for_a_known_voice(): void
     {
         Voice::create(['slug' => 'my-voice', 'name' => 'My Voice']);

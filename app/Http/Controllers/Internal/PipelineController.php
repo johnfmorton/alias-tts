@@ -46,11 +46,18 @@ class PipelineController extends Controller
         private VoiceSettingsResolver $settingsResolver,
     ) {}
 
-    /** Normalize + chunk text into the pieces the pipeline will synthesize. */
+    /**
+     * Normalize + chunk text into the pieces the pipeline will synthesize.
+     *
+     * These stateless endpoints run with no user, so config holds the instance
+     * defaults; chunk_mode may be passed explicitly (the Genblaze runner forwards
+     * the dispatching user's setting, resolved by RunGenblazeJob).
+     */
     public function chunk(Request $request): Response
     {
         $data = $request->validate([
             'text' => ['required', 'string'],
+            'chunk_mode' => ['sometimes', 'string', 'in:'.TextChunker::MODE_PACKED.','.TextChunker::MODE_SENTENCE],
         ]);
 
         $normalized = $this->normalizer->normalize($data['text']);
@@ -61,6 +68,7 @@ class PipelineController extends Controller
             (int) config('tts.block_space_run', 4),
             (int) config('tts.min_chunk_chars', 30),
             (int) config('tts.short_trailer_words', 3),
+            (string) ($data['chunk_mode'] ?? config('tts.chunk_mode', TextChunker::MODE_PACKED)),
         );
 
         $chunks = [];

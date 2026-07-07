@@ -24,6 +24,12 @@ namespace App\Services;
  */
 class TextChunker
 {
+    /** Pack sentences greedily up to the character budget (the default). */
+    public const MODE_PACKED = 'packed';
+
+    /** One sentence per chunk (over-long sentences still fall back to clause/word splits). */
+    public const MODE_SENTENCE = 'sentence';
+
     /**
      * Back-compat helper returning just the chunk strings (no pause tags).
      *
@@ -50,9 +56,15 @@ class TextChunker
      * short TRAILING utterance (it ends generation early), but renders a short
      * LEADING phrase reliably. Pass 0 to disable. See {@see self::liftShortTrailers()}.
      *
+     * $mode picks the packing strategy: MODE_PACKED (default) packs sentences
+     * greedily up to $targetChars; MODE_SENTENCE gives every sentence its own
+     * chunk. Both merge/lift guards still apply in sentence mode — a bare "Why?"
+     * synthesized alone is exactly the input Chatterbox garbles, so very short
+     * sentences still ride with a neighbor.
+     *
      * @return array<int, array{text: string, breakAfter: 'sentence'|'paragraph'}>
      */
-    public function segment(string $text, int $targetChars = 280, int $blockSpaceRun = 4, int $minChars = 0, int $shortTrailerWords = 0): array
+    public function segment(string $text, int $targetChars = 280, int $blockSpaceRun = 4, int $minChars = 0, int $shortTrailerWords = 0, string $mode = self::MODE_PACKED): array
     {
         $targetChars = max(1, $targetChars);
 
@@ -65,7 +77,9 @@ class TextChunker
         $lastBlock = count($blocks) - 1;
 
         foreach ($blocks as $bi => $block) {
-            $chunks = $this->packBlock($block, $targetChars);
+            $chunks = $mode === self::MODE_SENTENCE
+                ? $this->sentenceChunks($block, $targetChars)
+                : $this->packBlock($block, $targetChars);
             $lastChunk = count($chunks) - 1;
 
             foreach ($chunks as $ci => $chunk) {
@@ -287,6 +301,32 @@ class TextChunker
 
         if ($current !== '') {
             $chunks[] = $current;
+        }
+
+        return array_values(array_filter($chunks, static fn ($c) => trim($c) !== ''));
+    }
+
+    /**
+     * MODE_SENTENCE packing: every sentence of a cleaned block becomes its own
+     * chunk. $targetChars is not a packing budget here — it only bounds the
+     * clause/word fallback for a single sentence that is itself over-long.
+     *
+     * @return array<int, string>
+     */
+    private function sentenceChunks(string $block, int $targetChars): array
+    {
+        $chunks = [];
+
+        foreach ($this->sentences($block) as $sentence) {
+            if (mb_strlen($sentence) > $targetChars) {
+                foreach ($this->splitLong($sentence, $targetChars) as $piece) {
+                    $chunks[] = $piece;
+                }
+
+                continue;
+            }
+
+            $chunks[] = $sentence;
         }
 
         return array_values(array_filter($chunks, static fn ($c) => trim($c) !== ''));

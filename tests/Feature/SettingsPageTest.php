@@ -57,6 +57,7 @@ class SettingsPageTest extends TestCase
             'tts_api_project_mode' => 'never',
             'tts_pronunciation_llm_provider' => 'gemini',
             'tts_project_output_format' => 'mp3_44100_128',
+            'tts_chunk_mode' => 'packed',
         ], $overrides);
     }
 
@@ -251,6 +252,49 @@ class SettingsPageTest extends TestCase
         $res->assertSee('Audio output');
         $res->assertSee('Final audio format');
         $res->assertSee('WAV — 44.1 kHz, 16-bit (uncompressed)');
+    }
+
+    public function test_generation_group_renders_with_chunk_mode_labels(): void
+    {
+        $res = $this->actingAs($this->admin())->get(route('admin.settings.index'));
+
+        $res->assertOk();
+        $res->assertSee('Speech generation');
+        $res->assertSee('Chunking');
+        $res->assertSee('Per sentence — every sentence is its own chunk');
+    }
+
+    public function test_saving_persists_the_chunk_mode(): void
+    {
+        config(['tts.asr.enabled' => true]);
+        $this->setLocked('tts.asr.enabled', true);
+
+        $user = $this->user();
+
+        $this->actingAs($user)
+            ->put(route('admin.settings.update'), $this->validPayload([
+                'tts_chunk_mode' => 'sentence',
+            ]))
+            ->assertRedirect(route('admin.settings.index'))
+            ->assertSessionHas('success');
+
+        $this->assertSame('sentence', $this->row($user, 'tts.chunk_mode')->value);
+    }
+
+    public function test_an_unknown_chunk_mode_is_rejected(): void
+    {
+        config(['tts.asr.enabled' => true]);
+        $this->setLocked('tts.asr.enabled', true);
+
+        $admin = $this->admin();
+
+        $this->actingAs($admin)
+            ->put(route('admin.settings.update'), $this->validPayload([
+                'tts_chunk_mode' => 'words', // not an offered option
+            ]))
+            ->assertSessionHasErrors('tts_chunk_mode');
+
+        $this->assertNull($this->row($admin, 'tts.chunk_mode'));
     }
 
     public function test_saving_persists_the_project_output_format(): void

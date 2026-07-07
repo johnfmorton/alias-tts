@@ -52,7 +52,7 @@ class GenblazeRunnerClient
      *
      * @return array<string, mixed>
      */
-    public function run(string $text, string $voice, ?int $seed = null, ?string $outputFormat = null, ?string $runId = null): array
+    public function run(string $text, string $voice, ?int $seed = null, ?string $outputFormat = null, ?string $runId = null, ?string $chunkMode = null): array
     {
         if (! $this->configured()) {
             throw new RuntimeException('The Genblaze runner URL is not configured (TTS_GENBLAZE_RUNNER_URL).');
@@ -65,6 +65,9 @@ class GenblazeRunnerClient
             'output_format' => $outputFormat,
             // Echoed back on the runner's progress pings so they land on this run.
             'run_id' => $runId,
+            // The dispatching user's chunking mode: the runner's /v1/internal/chunk
+            // call runs with no user, so the setting must travel with the job.
+            'chunk_mode' => $chunkMode,
         ], fn ($v) => $v !== null);
 
         $res = Http::timeout((int) config('tts.genblaze.timeout', 600))

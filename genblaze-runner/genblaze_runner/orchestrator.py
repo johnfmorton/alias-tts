@@ -148,6 +148,7 @@ class Orchestrator:
         base_seed: int | None = None,
         max_concurrency: int = 2,
         run_id: str | None = None,
+        chunk_mode: str | None = None,
     ) -> ProjectResult:
         # Report each stage as it happens so the Studio panel can light up its
         # pipeline checklist LIVE (the /run call itself is blocking). Best-effort
@@ -156,7 +157,7 @@ class Orchestrator:
             if run_id and self.client is not None:
                 self.client.report_progress(run_id, step, detail)
 
-        segments = self.client.chunk(text)
+        segments = self.client.chunk(text, chunk_mode=chunk_mode)
         if not segments:
             raise ValueError("No chunks were produced from the input text.")
         report(

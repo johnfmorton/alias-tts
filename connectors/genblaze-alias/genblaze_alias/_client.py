@@ -119,10 +119,19 @@ class AliasClient:
 
     # --- Posture B: pipeline primitives ------------------------------------
 
-    def chunk(self, text: str) -> list[dict]:
-        """Normalize + segment text into chunk descriptors."""
+    def chunk(self, text: str, *, chunk_mode: str | None = None) -> list[dict]:
+        """Normalize + segment text into chunk descriptors.
+
+        ``chunk_mode`` ('packed'/'sentence') overrides the app instance's
+        default — the internal endpoints run userless, so the dispatching
+        user's chunking setting must be forwarded explicitly. ``None`` keeps
+        the app's default.
+        """
+        payload: dict = {"text": text}
+        if chunk_mode is not None:
+            payload["chunk_mode"] = chunk_mode
         with self._http(internal=True) as client:
-            resp = client.post("/v1/internal/chunk", json={"text": text})
+            resp = client.post("/v1/internal/chunk", json=payload)
             resp.raise_for_status()
             return resp.json().get("chunks", [])
 

@@ -39,6 +39,20 @@ $keys = [
         'help' => 'Default format for the final audio file your projects build. MP3 suits most uses; WAV is uncompressed (roughly ten times larger) for editing or archival. Applies to projects you create from now on; an existing project keeps its format until you change it on the project itself. Direct /v1/text-to-speech calls (including the Bespoken plugin) are unaffected and stay MP3 unless the request asks otherwise.',
     ],
     [
+        'group' => 'generation',
+        'key' => 'chunk_mode',
+        'config' => 'tts.chunk_mode',
+        'env' => 'TTS_CHUNK_MODE',
+        'type' => 'enum',
+        'options' => ['packed', 'sentence'],
+        'option_labels' => [
+            'packed' => 'Packed — group sentences up to the chunk budget (default)',
+            'sentence' => 'Per sentence — every sentence is its own chunk',
+        ],
+        'label' => 'Chunking',
+        'help' => 'How your text is split into the pieces sent to the voice model. "Packed" groups sentences together up to the chunk budget — fewer, longer generation calls. "Per sentence" gives each sentence its own chunk — more calls, but in Studio each sentence becomes its own segment you can re-roll or edit independently. Either way, very short sentences still ride along with a neighbor so they are not garbled. Applies to everything you generate: projects, Studio, and your API keys.',
+    ],
+    [
         'group' => 'asr',
         'key' => 'enabled',
         'config' => 'tts.asr.enabled',

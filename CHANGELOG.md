@@ -28,6 +28,19 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   voice_id or ID and lists the owners when a voice_id matches more than one.
 
 ### Added
+- **A per-user "Chunking" setting: packed or per sentence.** A new Speech
+  generation section on the Settings page chooses how text is split into the
+  pieces sent to the voice model. *Packed* (the default, unchanged) groups
+  sentences up to the chunk budget for fewer, longer generation calls;
+  *Per sentence* gives every sentence its own chunk — more calls, but each
+  sentence becomes its own Studio segment you can re-roll or edit
+  independently. Either way, very short sentences still merge with a neighbor
+  so they are never synthesized alone (the input Chatterbox tends to garble),
+  and over-long sentences still fall back to clause/word splitting. The
+  setting follows you everywhere you generate — projects, the Studio
+  inspector, your API keys, and Genblaze runs (the runner forwards your
+  choice, since the internal pipeline endpoints run without a user) — and can
+  be pinned instance-wide with `TTS_CHUNK_MODE`.
 - **A workflow to publish the Docker image.** A manual Actions run builds the
   single-image package for amd64 + arm64 and pushes it to the private GitHub
   Container Registry (`ghcr.io/johnfmorton/alias-tts`, tagged `X.Y.Z` +

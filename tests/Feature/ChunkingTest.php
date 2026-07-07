@@ -3,6 +3,8 @@
 namespace Tests\Feature;
 
 use App\Models\ApiKey;
+use App\Models\User;
+use App\Models\UserSetting;
 use App\Models\Voice;
 use App\Services\TextChunker;
 use App\Services\Tts\TtsProvider;
@@ -22,9 +24,9 @@ class ChunkingTest extends TestCase
         Storage::fake('local');
     }
 
-    public function test_long_text_is_chunked_and_concatenated(): void
+    /** Bind a counting provider that returns a short silent WAV per call. */
+    private function countingProvider(): TtsProvider
     {
-        // Counting provider that returns a short silent WAV per call.
         $provider = new class implements TtsProvider
         {
             public int $calls = 0;
@@ -50,6 +52,13 @@ class ChunkingTest extends TestCase
 
         $this->app->instance(TtsProvider::class, $provider);
 
+        return $provider;
+    }
+
+    public function test_long_text_is_chunked_and_concatenated(): void
+    {
+        $provider = $this->countingProvider();
+
         $key = ApiKey::generate('chunk');
         Voice::create(['slug' => 'v', 'name' => 'V']);
 
@@ -63,5 +72,28 @@ class ChunkingTest extends TestCase
         $response->assertOk();
         $this->assertStringStartsWith('audio/mpeg', (string) $response->headers->get('content-type'));
         $this->assertSame($expectedChunks, $provider->calls, 'Provider should be called once per chunk.');
+    }
+
+    public function test_a_users_sentence_chunk_mode_setting_drives_one_call_per_sentence(): void
+    {
+        $provider = $this->countingProvider();
+
+        $user = User::factory()->create();
+        UserSetting::create(['user_id' => $user->id, 'key' => 'tts.chunk_mode', 'value' => 'sentence']);
+
+        $key = ApiKey::generate('chunk', null, $user->id);
+        Voice::create(['slug' => 'v', 'name' => 'V']);
+
+        // Four sentences: packed mode at 120 chars would combine them two per
+        // chunk; the user's per-sentence setting must yield one call each.
+        $sentences = 4;
+        $text = trim(str_repeat('This is a sentence that is reasonably long and clear. ', $sentences));
+        $this->assertLessThan($sentences, count((new TextChunker)->split($text, 120)));
+
+        $this->withHeaders(['xi-api-key' => $key->key])
+            ->postJson('/v1/text-to-speech/v', ['text' => $text])
+            ->assertOk();
+
+        $this->assertSame($sentences, $provider->calls, 'Provider should be called once per sentence.');
     }
 }

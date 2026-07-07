@@ -167,4 +167,56 @@ class TextChunkerTest extends TestCase
 
         $this->assertStringEndsWith('Why?', $segments[0]['text']);
     }
+
+    public function test_sentence_mode_gives_each_sentence_its_own_chunk(): void
+    {
+        // Packed mode would fit all three sentences in one 280-char chunk;
+        // sentence mode keeps them separate.
+        $text = 'This is the first full sentence of the block. '
+            .'This is the second full sentence of the block. '
+            .'This is the third full sentence of the block.';
+        $segments = (new TextChunker)->segment($text, 280, 4, 0, 0, TextChunker::MODE_SENTENCE);
+
+        $this->assertSame([
+            'This is the first full sentence of the block.',
+            'This is the second full sentence of the block.',
+            'This is the third full sentence of the block.',
+        ], array_map(static fn ($s) => $s['text'], $segments));
+        $this->assertSame('sentence', $segments[0]['breakAfter']);
+    }
+
+    public function test_sentence_mode_tags_paragraph_seams_between_blocks(): void
+    {
+        $text = "First sentence of the opening block. Second sentence of the opening block.\n\nThe next block opens right here.";
+        $segments = (new TextChunker)->segment($text, 280, 4, 0, 0, TextChunker::MODE_SENTENCE);
+
+        $this->assertCount(3, $segments);
+        $this->assertSame('sentence', $segments[0]['breakAfter']);
+        $this->assertSame('paragraph', $segments[1]['breakAfter']);
+    }
+
+    public function test_sentence_mode_still_splits_an_oversized_sentence(): void
+    {
+        $text = trim(str_repeat('word ', 40)); // ~199 chars, no sentence punctuation
+        $segments = (new TextChunker)->segment($text, 80, 4, 0, 0, TextChunker::MODE_SENTENCE);
+
+        $this->assertGreaterThan(1, count($segments));
+        foreach ($segments as $segment) {
+            $this->assertLessThanOrEqual(80, mb_strlen($segment['text']));
+        }
+    }
+
+    public function test_sentence_mode_still_merges_very_short_sentences(): void
+    {
+        // A bare "Why?" is exactly the input Chatterbox garbles, so the
+        // min-chars merge guard applies in sentence mode too.
+        $text = 'This opening sentence is comfortably long on its own. Why? '
+            .'This closing sentence is also comfortably long here.';
+        $segments = (new TextChunker)->segment($text, 280, 4, 30, 0, TextChunker::MODE_SENTENCE);
+
+        $this->assertSame([
+            'This opening sentence is comfortably long on its own.',
+            'Why? This closing sentence is also comfortably long here.',
+        ], array_map(static fn ($s) => $s['text'], $segments));
+    }
 }

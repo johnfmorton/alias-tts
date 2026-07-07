@@ -27,6 +27,7 @@ class RunRequest(BaseModel):
     seed: int | None = None
     settings: dict | None = None
     run_id: str | None = None  # opaque Studio run id; echoed back on progress pings
+    chunk_mode: str | None = None  # the dispatching user's chunking mode ('packed'/'sentence')
 
 
 class PronounceRequest(BaseModel):
@@ -65,6 +66,7 @@ async def run(req: RunRequest) -> dict:
         base_seed=req.seed,
         max_concurrency=_config.max_concurrency,
         run_id=req.run_id,
+        chunk_mode=req.chunk_mode,
     )
     return {
         "final_url": result.final.url,

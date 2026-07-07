@@ -76,6 +76,10 @@ class RunGenblazeJob implements ShouldQueue
                 voice: $this->voice,
                 seed: $this->seed,
                 runId: $this->runId,
+                // Resolved AFTER applyForUser above, so this is the dispatching
+                // user's setting; the runner forwards it to /v1/internal/chunk,
+                // which otherwise runs userless on instance defaults.
+                chunkMode: (string) config('tts.chunk_mode', 'packed'),
             );
 
             // Rides through GenblazeController::status() untouched so the panel can
