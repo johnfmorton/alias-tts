@@ -1351,4 +1351,234 @@ class StudioProjectTest extends TestCase
         $this->assertSame('legacy', $takes->first()->source);
         $this->assertSame($audioPath, $takes->first()->audio_path); // references the file in place
     }
+
+    // --- Duplicate project ------------------------------------------------------
+
+    /** Generate every chunk and build the final, returning the refreshed project. */
+    private function generateAndBuild(TtsProject $project, User $admin): TtsProject
+    {
+        foreach ($project->chunks()->get() as $chunk) {
+            $this->actingAs($admin)->post(route('admin.studio.projects.chunks.generate', [$project, $chunk]));
+        }
+        $this->actingAs($admin)->postJson(route('admin.studio.projects.rebuild', $project))->assertOk();
+
+        return $project->refresh();
+    }
+
+    /** The project created by the duplicate POST (the only row besides the source). */
+    private function duplicateOf(TtsProject $source): TtsProject
+    {
+        return TtsProject::where('id', '!=', $source->id)->latest('id')->firstOrFail();
+    }
+
+    public function test_duplicate_creates_an_independent_copy(): void
+    {
+        $admin = $this->admin();
+        $project = $this->generateAndBuild($this->project(), $admin);
+
+        $response = $this->actingAs($admin)->post(route('admin.studio.projects.duplicate', $project));
+
+        $copy = $this->duplicateOf($project);
+        $response->assertRedirect(route('admin.studio.projects.show', $copy));
+
+        $this->assertSame('My project copy', $copy->title);
+        $this->assertSame($admin->id, $copy->user_id);
+        $this->assertSame(ProjectStatus::Ready, $copy->status);
+
+        $disk = Storage::disk('local');
+
+        // The final is an independent, byte-identical file under the copy's tree.
+        $this->assertNotSame($project->final_audio_path, $copy->final_audio_path);
+        $this->assertStringContainsString('/projects/'.$copy->id.'/', $copy->final_audio_path);
+        $this->assertSame($disk->get($project->final_audio_path), $disk->get($copy->final_audio_path));
+
+        // Every chunk copied in order, each with its own byte-identical file.
+        $sourceChunks = $project->chunks()->get();
+        $copyChunks = $copy->chunks()->get();
+        $this->assertCount($sourceChunks->count(), $copyChunks);
+        foreach ($copyChunks as $i => $copyChunk) {
+            $sourceChunk = $sourceChunks[$i];
+            $this->assertSame($sourceChunk->text, $copyChunk->text);
+            $this->assertSame(ChunkStatus::Completed, $copyChunk->status);
+            $this->assertNotSame($sourceChunk->audio_path, $copyChunk->audio_path);
+            $this->assertStringContainsString('/projects/'.$copy->id.'/chunks/'.$copyChunk->id.'/takes/', $copyChunk->audio_path);
+            $this->assertSame($disk->get($sourceChunk->audio_path), $disk->get($copyChunk->audio_path));
+        }
+    }
+
+    public function test_duplicate_copies_only_the_selected_take(): void
+    {
+        $admin = $this->admin();
+        $project = $this->project();
+        $chunk = $project->chunks()->orderBy('position')->first();
+        $this->actingAs($admin)->post(route('admin.studio.projects.chunks.generate', [$project, $chunk]));
+        $this->actingAs($admin)->postJson(route('admin.studio.projects.chunks.reroll', [$project, $chunk]))->assertOk();
+        $this->actingAs($admin)->postJson(route('admin.studio.projects.chunks.reroll', [$project, $chunk]))->assertOk();
+        $this->assertCount(3, $chunk->refresh()->takes()->get());
+
+        $this->actingAs($admin)->post(route('admin.studio.projects.duplicate', $project));
+
+        $copy = $this->duplicateOf($project);
+        $copyChunk = $copy->chunks()->orderBy('position')->first();
+        $takes = $copyChunk->takes()->get();
+        $this->assertCount(1, $takes);
+        $this->assertSame('duplicate', $takes->first()->source);
+        $this->assertSame($copyChunk->audio_path, $takes->first()->audio_path);
+        $this->assertSame($chunk->text, $takes->first()->text);
+        $this->assertSame(
+            Storage::disk('local')->get($chunk->audio_path),
+            Storage::disk('local')->get($copyChunk->audio_path),
+        );
+    }
+
+    public function test_duplicate_clears_the_seal(): void
+    {
+        $admin = $this->admin();
+        $project = $this->generateAndBuild($this->project(), $admin);
+        app(ProjectService::class)->seal($project, $admin);
+        $project->refresh();
+
+        $this->actingAs($admin)->post(route('admin.studio.projects.duplicate', $project));
+
+        $copy = $this->duplicateOf($project);
+        $this->assertFalse($copy->isSealed());
+        $this->assertNull($copy->final_sha256);
+        $this->assertNull($copy->final_bytes);
+        $this->assertNull($copy->sealed_audio_path);
+        $this->assertNull($copy->sealed_at);
+        $this->assertNull($copy->sealed_by_id);
+        $this->assertSame([], Storage::disk('local')->allFiles('speech/projects/'.$copy->id.'/sealed'));
+
+        // The copy still carries the final audio; the source's seal is untouched.
+        $this->assertSame(ProjectStatus::Ready, $copy->status);
+        $this->assertTrue(Storage::disk('local')->exists($copy->final_audio_path));
+        $this->assertTrue($project->refresh()->isSealed());
+        $this->assertTrue(Storage::disk('local')->exists($project->sealed_audio_path));
+    }
+
+    public function test_deleting_the_original_does_not_affect_the_duplicate(): void
+    {
+        $admin = $this->admin();
+        $project = $this->generateAndBuild($this->project(), $admin);
+
+        $this->actingAs($admin)->post(route('admin.studio.projects.duplicate', $project));
+        $copy = $this->duplicateOf($project);
+        $copyPaths = $copy->chunks()->pluck('audio_path')->push($copy->final_audio_path)->all();
+
+        // Deleting a chunk in the original wipes only its own directory…
+        $this->actingAs($admin)
+            ->deleteJson(route('admin.studio.projects.chunks.destroy', [$project, $project->chunks()->first()]))
+            ->assertOk();
+        // …and deleting the whole original wipes only its own tree.
+        $this->actingAs($admin)->delete(route('admin.studio.projects.destroy', $project));
+        $this->assertNull(TtsProject::find($project->id));
+
+        foreach ($copyPaths as $path) {
+            $this->assertTrue(Storage::disk('local')->exists($path), "missing: {$path}");
+        }
+        $this->actingAs($admin)->get(route('admin.studio.projects.show', $copy))->assertOk();
+    }
+
+    public function test_duplicate_resets_ownership_and_recovery_metadata(): void
+    {
+        $project = $this->project();
+        $project->update([
+            'api_key_id' => '11111111-1111-1111-1111-111111111111',
+            'origin' => 'api_failure',
+            'source_speech_id' => '22222222-2222-2222-2222-222222222222',
+            'failure_reason' => 'Provider exploded',
+            'failed_chunk_index' => 1,
+            'expires_at' => now()->addDay(),
+        ]);
+
+        $admin = $this->admin();
+        $this->actingAs($admin)->post(route('admin.studio.projects.duplicate', $project));
+
+        $copy = $this->duplicateOf($project);
+        $this->assertSame($admin->id, $copy->user_id);
+        $this->assertNull($copy->api_key_id);
+        $this->assertNull($copy->origin);
+        $this->assertNull($copy->source_speech_id);
+        $this->assertNull($copy->failure_reason);
+        $this->assertNull($copy->failed_chunk_index);
+        $this->assertNull($copy->expires_at);
+        // An ungenerated source stays Draft with no final on the copy.
+        $this->assertSame(ProjectStatus::Draft, $copy->status);
+        $this->assertNull($copy->final_audio_path);
+    }
+
+    public function test_duplicate_of_a_legacy_chunk_without_a_take_row(): void
+    {
+        $project = $this->project();
+        $chunk = $project->chunks()->orderBy('position')->first();
+        // A pre-takes-era chunk: audio in place at chunks/{id}.wav, no take rows.
+        $legacyPath = 'speech/projects/'.$project->id.'/chunks/'.$chunk->id.'.wav';
+        Storage::disk('local')->put($legacyPath, 'RIFFlegacybytes');
+        $chunk->update(['audio_path' => $legacyPath, 'status' => ChunkStatus::Completed]);
+
+        $this->actingAs($this->admin())->post(route('admin.studio.projects.duplicate', $project));
+
+        $copy = $this->duplicateOf($project);
+        $copyChunk = $copy->chunks()->orderBy('position')->first();
+        $this->assertSame(ChunkStatus::Completed, $copyChunk->status);
+        $this->assertStringContainsString('/chunks/'.$copyChunk->id.'/takes/', $copyChunk->audio_path);
+        $this->assertSame('RIFFlegacybytes', Storage::disk('local')->get($copyChunk->audio_path));
+
+        $takes = $copyChunk->takes()->get();
+        $this->assertCount(1, $takes);
+        $this->assertSame('duplicate', $takes->first()->source);
+        $this->assertSame($chunk->text, $takes->first()->text);
+    }
+
+    public function test_duplicate_tolerates_a_missing_chunk_file(): void
+    {
+        $admin = $this->admin();
+        $project = $this->generateAndBuild($this->project(), $admin);
+        [$first, $second] = $project->chunks()->get();
+        Storage::disk('local')->delete($first->audio_path);
+
+        $this->actingAs($admin)
+            ->post(route('admin.studio.projects.duplicate', $project))
+            ->assertRedirect();
+
+        $copy = $this->duplicateOf($project);
+        [$copyFirst, $copySecond] = $copy->chunks()->get();
+
+        // The chunk whose file vanished is downgraded to Pending, not fatal…
+        $this->assertSame(ChunkStatus::Pending, $copyFirst->status);
+        $this->assertNull($copyFirst->audio_path);
+        $this->assertCount(0, $copyFirst->takes()->get());
+
+        // …its sibling copies normally, and the final (still on disk) carries
+        // over as Stale since it no longer matches every chunk.
+        $this->assertSame(ChunkStatus::Completed, $copySecond->status);
+        $this->assertSame(
+            Storage::disk('local')->get($second->audio_path),
+            Storage::disk('local')->get($copySecond->audio_path),
+        );
+        $this->assertSame(ProjectStatus::Stale, $copy->status);
+        $this->assertTrue(Storage::disk('local')->exists($copy->final_audio_path));
+    }
+
+    public function test_duplicate_requires_project_access(): void
+    {
+        $owner = User::factory()->create(['is_super_admin' => false]);
+        $voice = Voice::create(['slug' => 'v', 'name' => 'V']);
+        $project = app(ProjectService::class)->createFromText(
+            title: 'Private project',
+            voice: $voice,
+            text: 'A paragraph long enough to become a chunk of its very own here.',
+            settings: config('tts.default_voice_settings'),
+            modelId: config('tts.default_model_id'),
+            outputFormat: config('tts.default_output_format'),
+            seed: null,
+            userId: $owner->id,
+        );
+
+        $this->actingAs(User::factory()->create(['is_super_admin' => false]))
+            ->post(route('admin.studio.projects.duplicate', $project))
+            ->assertForbidden();
+
+        $this->assertSame(1, TtsProject::count());
+    }
 }

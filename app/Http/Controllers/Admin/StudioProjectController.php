@@ -393,6 +393,18 @@ class StudioProjectController extends Controller
         return redirect()->route('admin.studio.index')->with('success', 'Project deleted.');
     }
 
+    /**
+     * Deep-copy the project (rows AND audio files) into an independent duplicate
+     * owned by the current user, then land on the copy.
+     */
+    public function duplicate(Request $request, TtsProject $project): RedirectResponse
+    {
+        $copy = $this->projects->duplicate($project, $request->user());
+
+        return redirect()->route('admin.studio.projects.show', $copy)
+            ->with('success', 'Project duplicated — you are now viewing the copy.');
+    }
+
     /** Source-text editor for "Start over" (re-chunk from scratch). */
     public function edit(TtsProject $project): View
     {

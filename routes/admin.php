@@ -112,6 +112,8 @@ Route::prefix('studio')->name('studio.')->group(function () {
             Route::delete('/{project}', [StudioProjectController::class, 'destroy'])->name('destroy');
             Route::get('/{project}/edit', [StudioProjectController::class, 'edit'])->name('edit');
             Route::post('/{project}/reset', [StudioProjectController::class, 'reset'])->name('reset');
+            // Deep copy: new rows + byte-copied audio, so the two projects share nothing.
+            Route::post('/{project}/duplicate', [StudioProjectController::class, 'duplicate'])->name('duplicate');
             Route::get('/{project}/audio', [StudioProjectController::class, 'finalAudio'])->name('audio');
             Route::post('/{project}/preview', [StudioProjectController::class, 'previewConcat'])->name('preview');
             Route::post('/{project}/rebuild', [StudioProjectController::class, 'rebuild'])->name('rebuild');

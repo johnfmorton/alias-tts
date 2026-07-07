@@ -4,6 +4,21 @@ All notable changes to this project are documented in this file. The format is
 based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this
 project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+- **Duplicate a project in the Studio.** The project page's ⋯ menu gains a
+  *Duplicate project* action that makes a fully independent copy — its own
+  text, chunks, and audio files, byte-copied into the copy's own storage
+  space. Nothing is shared between the two projects, so regenerating,
+  deleting chunks, pruning takes, or deleting either project never touches
+  the other. The copy carries each chunk's currently selected take (its
+  take history starts fresh), keeps the built final so it's playable
+  immediately, and always starts unapproved — an approval belongs to the
+  exact project it was granted on, so a copy must earn its own. A chunk
+  whose audio file has gone missing from storage doesn't block the
+  duplicate; it comes over as ungenerated, ready to regenerate.
+
 ## [0.37.0] - 2026-07-07
 
 ### Changed

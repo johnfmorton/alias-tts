@@ -961,6 +961,171 @@ class ProjectService
         ]);
     }
 
+    /**
+     * Deep-copy a project into a fully independent duplicate owned by $user:
+     * new project/chunk/take rows AND byte-copied audio under the copy's own
+     * projects/{id}/ tree. Nothing is shared, because deleteProject/deleteChunk
+     * wipe by directory and pruneTakes deletes by path — a shared file would be
+     * ripped out from under whichever project outlived the other.
+     *
+     * Only each chunk's currently selected take is carried over (one file per
+     * generated chunk), and the copy is always unsealed: a seal approves one
+     * specific project's final, so the copy must earn its own.
+     *
+     * A chunk whose audio file is missing from the disk (e.g. a stranded-object
+     * incident) is downgraded to Pending in the copy rather than aborting the
+     * whole duplicate; the copy's final is then Stale, prompting a rebuild.
+     */
+    public function duplicate(TtsProject $source, User $user): TtsProject
+    {
+        $disk = Storage::disk($this->disk());
+        $base = config('tts.storage_path').'/projects/';
+        $newProjectId = (string) Str::uuid7();
+
+        try {
+            // Phase A — copy the files first, planning the rows in memory. This
+            // keeps network I/O out of the DB transaction below, and committed
+            // rows can never point at files that weren't written.
+            $finalPath = null;
+            if ($source->final_audio_path && $disk->exists($source->final_audio_path)) {
+                $ext = pathinfo($source->final_audio_path, PATHINFO_EXTENSION) ?: 'mp3';
+                $finalPath = $base.$newProjectId.'/final.'.$ext;
+                if (! $disk->copy($source->final_audio_path, $finalPath)) {
+                    throw new RuntimeException('Could not copy the final audio file.');
+                }
+            }
+
+            $downgraded = false;
+            $plans = [];
+            foreach ($source->chunks as $chunk) {
+                $plan = [
+                    'chunk' => $chunk,
+                    'id' => (string) Str::uuid7(),
+                    'audio_path' => null,
+                    'take' => null,
+                    'downgraded' => false,
+                ];
+
+                if ($chunk->audio_path !== null) {
+                    if ($disk->exists($chunk->audio_path)) {
+                        // The take whose audio the chunk currently points at. The
+                        // relation is newest-first, which also disambiguates legacy
+                        // takes sharing one in-place file. Null = a pre-takes-era
+                        // chunk; its metadata is synthesized from the chunk itself.
+                        $selected = $chunk->takes()->where('audio_path', $chunk->audio_path)->first();
+
+                        $takeId = (string) Str::uuid7();
+                        $ext = pathinfo($chunk->audio_path, PATHINFO_EXTENSION) ?: 'wav';
+                        $path = $base.$newProjectId.'/chunks/'.$plan['id'].'/takes/'.$takeId.'.'.$ext;
+                        if (! $disk->copy($chunk->audio_path, $path)) {
+                            throw new RuntimeException('Could not copy a chunk audio file.');
+                        }
+
+                        $plan['audio_path'] = $path;
+                        $plan['take'] = [
+                            'id' => $takeId,
+                            'text' => $selected->text ?? $chunk->text,
+                            'settings' => $selected?->settings,
+                            'seed' => $selected?->seed,
+                            'characters' => $selected->characters ?? $chunk->characters,
+                            'asr_score' => $selected ? $selected->asr_score : $chunk->asr_score,
+                            'asr_report' => $selected ? $selected->asr_report : $chunk->asr_report,
+                        ];
+                    } else {
+                        Log::warning('Duplicate skipped a chunk whose audio file is missing', [
+                            'project' => $source->id,
+                            'chunk' => $chunk->id,
+                            'path' => $chunk->audio_path,
+                        ]);
+                        $plan['downgraded'] = true;
+                        $downgraded = true;
+                    }
+                }
+
+                $plans[] = $plan;
+            }
+
+            // The copy starts Draft with no final; a copied final keeps the
+            // source's Ready/Stale — unless a chunk was downgraded, which makes
+            // the final no longer match every chunk (the definition of Stale).
+            $status = match (true) {
+                $finalPath === null => ProjectStatus::Draft,
+                $downgraded => ProjectStatus::Stale,
+                default => $source->status,
+            };
+
+            // Phase B — create the rows. forceFill: the models don't list `id`
+            // in $fillable, and the copied paths must embed the REAL row ids so
+            // deleteChunk's directory wipe finds the files.
+            return DB::transaction(function () use ($source, $user, $newProjectId, $finalPath, $status, $plans) {
+                $copy = new TtsProject;
+                $copy->forceFill([
+                    'id' => $newProjectId,
+                    // The duplicator owns the copy; API/recovery provenance
+                    // (api_key_id, origin, expires_at, failure fields) and the
+                    // seal all stay at their null defaults.
+                    'user_id' => $user->id,
+                    'title' => mb_substr((string) $source->title, 0, 195).' copy',
+                    'voice_id' => $source->voice_id,
+                    'settings' => $source->settings,
+                    'model_id' => $source->model_id,
+                    'output_format' => $source->output_format,
+                    'seed' => $source->seed,
+                    'source_text' => $source->source_text,
+                    'normalized_text' => $source->normalized_text,
+                    'status' => $status,
+                    'final_audio_path' => $finalPath,
+                    'mime_type' => $finalPath !== null ? $source->mime_type : null,
+                ])->save();
+
+                foreach ($plans as $plan) {
+                    $chunk = $plan['chunk'];
+
+                    $newChunk = new TtsChunk;
+                    $newChunk->forceFill([
+                        'id' => $plan['id'],
+                        'tts_project_id' => $newProjectId,
+                        'position' => $chunk->position,
+                        'text' => $chunk->text,
+                        'break_after' => $chunk->break_after,
+                        'voice_id' => $chunk->voice_id,
+                        'settings' => $chunk->settings,
+                        'characters' => $chunk->characters,
+                        'status' => $plan['downgraded'] ? ChunkStatus::Pending : $chunk->status,
+                        'audio_path' => $plan['audio_path'],
+                        'error_message' => $plan['downgraded'] ? null : $chunk->error_message,
+                        'asr_score' => $plan['downgraded'] ? null : $chunk->asr_score,
+                        'asr_report' => $plan['downgraded'] ? null : $chunk->asr_report,
+                    ])->save();
+
+                    if ($plan['take'] !== null) {
+                        $take = new TtsChunkTake;
+                        $take->forceFill([
+                            'id' => $plan['take']['id'],
+                            'tts_chunk_id' => $plan['id'],
+                            'audio_path' => $plan['audio_path'],
+                            'text' => $plan['take']['text'],
+                            'settings' => $plan['take']['settings'],
+                            'source' => 'duplicate',
+                            'asr_score' => $plan['take']['asr_score'],
+                            'asr_report' => $plan['take']['asr_report'],
+                            'characters' => $plan['take']['characters'],
+                            'seed' => $plan['take']['seed'],
+                        ])->save();
+                    }
+                }
+
+                return $copy;
+            });
+        } catch (Throwable $e) {
+            // A failed duplicate must not strand half a file tree: no committed
+            // row references anything under the new id, so wipe it wholesale.
+            $disk->deleteDirectory($base.$newProjectId);
+
+            throw $e;
+        }
+    }
+
     /** Delete a project, its chunks (cascade), and all of its stored audio. */
     public function deleteProject(TtsProject $project): void
     {
