@@ -90,12 +90,13 @@ class VoiceTransferTest extends TestCase
         // Old ".bespoken-voice.zip" name on purpose: import is content-based
         // (reads voice.json), so archives exported before the Alias rename still import.
         $upload = UploadedFile::fake()->createWithContent('dash-voice.bespoken-voice.zip', $zipBytes);
-        $this->actingAs($admin)->post(route('admin.voices.import'), ['archive' => $upload])
-            ->assertRedirect(route('admin.voices.index'));
+        $response = $this->actingAs($admin)->post(route('admin.voices.import'), ['archive' => $upload]);
 
         $imported = Voice::firstWhere('slug', 'dash-voice');
         $this->assertNotNull($imported);
         $this->assertSame(7, $imported->settings['seed']);
+        // Import lands on the restored voice's edit page, ready to rename/retune.
+        $response->assertRedirect(route('admin.voices.edit', $imported));
     }
 
     private function silentWav(float $seconds): string

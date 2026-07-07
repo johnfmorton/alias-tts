@@ -2252,6 +2252,73 @@ function initAccountMenu() {
 }
 initAccountMenu();
 
+// Voices page: "Add voice" split-button. The main segment links straight to the
+// New voice screen; the caret opens a menu whose second item ("Import a voice
+// file…") drives a hidden file input + form — picking a file submits the import
+// immediately, with the split button marked busy for the slow server-side unzip.
+function initVoicesAddMenu() {
+    const main = document.getElementById('add-voice-main');
+    const caret = document.getElementById('add-voice-caret');
+    const menu = document.getElementById('add-voice-menu');
+    if (!main || !caret || !menu) return;
+
+    const items = [...menu.querySelectorAll('[role=menuitem]')];
+    const isOpen = () => !menu.classList.contains('hidden');
+    const close = (refocus = false) => {
+        menu.classList.add('hidden');
+        caret.setAttribute('aria-expanded', 'false');
+        if (refocus) caret.focus();
+    };
+    const open = () => {
+        menu.classList.remove('hidden');
+        caret.setAttribute('aria-expanded', 'true');
+        items[0]?.focus();
+    };
+
+    caret.addEventListener('click', (e) => {
+        e.stopPropagation();
+        isOpen() ? close() : open();
+    });
+    document.addEventListener('click', (e) => {
+        if (isOpen() && !menu.contains(e.target)) close();
+    });
+    document.addEventListener('keydown', (e) => {
+        if (!isOpen()) return;
+        if (e.key === 'Escape') {
+            close(true);
+        } else if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+            e.preventDefault();
+            const idx = items.indexOf(document.activeElement);
+            items[Math.min(Math.max(idx + (e.key === 'ArrowDown' ? 1 : -1), 0), items.length - 1)]?.focus();
+        }
+    });
+
+    const importBtn = document.getElementById('add-voice-import');
+    const form = document.getElementById('voice-import-form');
+    const file = document.getElementById('voice-import-file');
+    if (!importBtn || !form || !file) return;
+
+    importBtn.addEventListener('click', () => {
+        close();
+        file.click();
+    });
+    file.addEventListener('change', () => {
+        if (!file.files.length) return;
+        startBusy(main, 'Importing…');
+        startBusy(caret, '▾');
+        form.submit();
+    });
+    // bfcache can restore this page with the button stuck mid-import — reset it.
+    window.addEventListener('pageshow', (e) => {
+        if (e.persisted) {
+            endBusy(main);
+            endBusy(caret);
+            file.value = '';
+        }
+    });
+}
+initVoicesAddMenu();
+
 // Account screen: "Change photo" opens the file picker and auto-submits on pick;
 // "Change password" and "Delete account" reveal their inline forms.
 function initAccount() {

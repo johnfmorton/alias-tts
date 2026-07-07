@@ -1,13 +1,48 @@
 <x-layout title="Voices" description="Each voice maps a voice_id to a reference clip for zero-shot cloning. Your voices are yours alone — other users only ever see the built-ins and their own.">
-    <div class="mb-4 flex flex-wrap items-center justify-between gap-3">
-        <form method="POST" action="{{ route('admin.voices.import') }}" enctype="multipart/form-data"
-              data-busy data-busy-label="Importing…" class="flex items-center gap-2">
-            @csrf
-            <input type="file" name="archive" accept=".zip" required
-                   class="block text-sm text-zinc-400 file:mr-3 file:rounded-lg file:border-0 file:bg-zinc-800 file:px-3 file:py-1.5 file:text-sm file:text-zinc-200 hover:file:bg-zinc-700">
-            <button type="submit" class="rounded-lg border border-zinc-700 px-3 py-1.5 text-sm hover:bg-zinc-800">Import</button>
-        </form>
-        <a href="{{ route('admin.voices.create') }}" class="rounded-lg bg-cyan-500 px-4 py-2 text-sm font-medium text-zinc-950 hover:bg-cyan-400">Add voice</a>
+    <div class="mb-4 flex justify-end">
+        {{-- Single "Add voice" entry point: the main segment goes straight to the
+             New voice screen (the common path); the caret menu adds the import
+             path, replacing the old always-visible Choose File → Import pair. --}}
+        <div id="add-voice" class="relative">
+            <div class="flex items-stretch">
+                <a id="add-voice-main" href="{{ route('admin.voices.create') }}"
+                   class="inline-flex items-center rounded-l-[9px] bg-accent px-4 py-[9px] text-sm font-semibold text-accent-on transition hover:bg-accent/90">+ Add voice</a>
+                <button type="button" id="add-voice-caret" aria-haspopup="menu" aria-expanded="false"
+                        aria-controls="add-voice-menu" aria-label="More ways to add a voice"
+                        class="inline-flex w-9 items-center justify-center rounded-r-[9px] border-l border-accent-on/25 bg-accent text-sm leading-none text-accent-on transition hover:bg-accent/90">▾</button>
+            </div>
+
+            <div id="add-voice-menu" role="menu" aria-labelledby="add-voice-caret"
+                 class="absolute right-0 top-[calc(100%+8px)] z-20 hidden w-[300px] rounded-[13px] border border-white/12 bg-menu p-1.5 shadow-[0_24px_50px_-14px_rgba(0,0,0,0.7)]">
+                <a role="menuitem" href="{{ route('admin.voices.create') }}"
+                   class="flex items-start gap-3 rounded-[9px] border border-accent/20 bg-accent/[0.07] p-3 hover:bg-accent/[0.12] focus:outline-none focus-visible:ring-1 focus-visible:ring-accent/60">
+                    <span aria-hidden="true" class="flex h-8 w-8 flex-shrink-0 items-end justify-center gap-[2px] rounded-[9px] border border-accent/30 bg-accent/[0.12] pb-[9px]">
+                        <span class="h-[7px] w-[2.5px] rounded-sm bg-accent"></span>
+                        <span class="h-[13px] w-[2.5px] rounded-sm bg-accent"></span>
+                        <span class="h-[9px] w-[2.5px] rounded-sm bg-accent"></span>
+                    </span>
+                    <span>
+                        <span class="block text-sm font-semibold text-zinc-100">Record or upload a clip</span>
+                        <span class="mt-0.5 block text-xs leading-snug text-zinc-500">Create a new voice from a reference recording.</span>
+                    </span>
+                </a>
+                <div class="mx-2 my-1.5 h-px bg-white/[0.07]"></div>
+                <button type="button" role="menuitem" id="add-voice-import"
+                        class="flex w-full items-start gap-3 rounded-[9px] p-3 text-left hover:bg-white/[0.04] focus:outline-none focus-visible:ring-1 focus-visible:ring-accent/60">
+                    <span aria-hidden="true" class="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-[9px] border border-white/14 bg-white/[0.05] text-[15px] text-zinc-300">↧</span>
+                    <span>
+                        <span class="block text-sm font-semibold text-zinc-200">Import a voice file…</span>
+                        <span class="mt-0.5 block text-xs leading-snug text-zinc-500">Restore a voice exported from Alias <span class="font-mono">(.zip)</span>.</span>
+                    </span>
+                </button>
+            </div>
+
+            <form id="voice-import-form" method="POST" action="{{ route('admin.voices.import') }}"
+                  enctype="multipart/form-data" class="hidden" aria-hidden="true">
+                @csrf
+                <input type="file" name="archive" accept=".zip" id="voice-import-file" tabindex="-1">
+            </form>
+        </div>
     </div>
 
     @if($voices->count() > 1)

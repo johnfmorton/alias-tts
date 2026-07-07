@@ -7,6 +7,16 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 ## [Unreleased]
 
 ### Changed
+- **One "Add voice" entry point on the Voices page.** The toolbar's stray
+  Choose File → Import pair is gone; adding a voice is now a single
+  split-button. Its main segment jumps straight to the New voice screen (the
+  common path), while the caret opens a menu offering *Record or upload a
+  clip* or *Import a voice file…* — the latter opens the file picker directly
+  and imports on selection. The menu closes on outside click or Escape and
+  supports arrow-key navigation.
+- **Importing a voice now lands you on the imported voice.** Instead of
+  bouncing back to the list, a successful import opens the restored voice's
+  edit page — clip and tuning already in place — ready to rename or retune.
 - **Voice IDs are now yours, not global.** A voice_id only has to be unique
   within your own voices (plus the shared built-ins), so importing a voice
   archive — or creating a voice — no longer fails just because another user

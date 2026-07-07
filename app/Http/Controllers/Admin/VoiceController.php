@@ -272,7 +272,8 @@ class VoiceController extends Controller
             return redirect()->route('admin.voices.index')->with('error', 'Import failed: '.$e->getMessage());
         }
 
-        return redirect()->route('admin.voices.index')->with('success', "Voice '{$voice->slug}' imported.");
+        return redirect()->route('admin.voices.edit', $voice)
+            ->with('success', "Voice '{$voice->slug}' imported — clip and tuning restored. Rename or retune it here.");
     }
 
     public function destroy(Request $request, Voice $voice): RedirectResponse
