@@ -37,15 +37,22 @@ class VoiceService
     ): Voice {
         $slug = $slug ?: Str::slug($name);
 
-        // Re-registering YOUR OWN slug updates it, but a slug that exists under
-        // another owner (or a shared built-in) must never be silently taken
-        // over — that would replace someone else's voice reference.
-        $existing = Voice::where('slug', $slug)->first();
+        // A voice_id only has to be unique among the voices its owner can
+        // reach — their own plus the shared built-ins — because resolveFor()
+        // looks up slugs inside exactly that union. Re-registering YOUR OWN
+        // slug updates it; a slug held by a shared voice is refused (that
+        // would take over a built-in). A shared voice (null owner) appears in
+        // EVERY user's union, so creating one conflicts with any owner's slug.
+        $scope = Voice::where('slug', $slug);
+        if ($ownerId !== null) {
+            $scope->where(fn ($q) => $q->whereNull('user_id')->orWhere('user_id', $ownerId));
+        }
+        $existing = $scope->first();
         if ($existing && $existing->user_id !== $ownerId) {
             throw new RuntimeException("The voice_id '{$slug}' is already in use.");
         }
 
-        $attributes = ['name' => $name, 'user_id' => $ownerId];
+        $attributes = ['name' => $name];
 
         if ($audioBytes !== null) {
             $bytes = $audioBytes;
@@ -56,7 +63,7 @@ class VoiceService
                 $extension = 'wav';
             }
 
-            $referencePath = config('tts.reference_path').'/'.$slug.'.'.$extension;
+            $referencePath = $this->referencePath($ownerId, $slug, $extension);
             Storage::disk(config('tts.storage_disk'))->put($referencePath, $bytes);
 
             $attributes['reference_audio_path'] = $referencePath;
@@ -70,7 +77,22 @@ class VoiceService
             $attributes['settings'] = $settings;
         }
 
-        return Voice::updateOrCreate(['slug' => $slug], $attributes);
+        return Voice::updateOrCreate(['slug' => $slug, 'user_id' => $ownerId], $attributes);
+    }
+
+    /**
+     * Where a voice's reference clip is stored. Owned voices are namespaced
+     * per owner (u{id}/) so two users' identically-named voice_ids never share
+     * a clip file; shared voices keep the flat path — it is the canonical
+     * location the built-in self-heal expects (see VoiceReference).
+     */
+    private function referencePath(?int $ownerId, string $slug, string $extension): string
+    {
+        $dir = config('tts.reference_path');
+
+        return $ownerId === null
+            ? "{$dir}/{$slug}.{$extension}"
+            : "{$dir}/u{$ownerId}/{$slug}.{$extension}";
     }
 
     /**
@@ -102,7 +124,7 @@ class VoiceService
                 $bytes = $this->converter->normalizeReference($audioBytes);
                 $extension = 'wav';
             }
-            $newPath = config('tts.reference_path').'/'.$slug.'.'.$extension;
+            $newPath = $this->referencePath($voice->user_id, $slug, $extension);
             $disk->put($newPath, $bytes);
             if ($referencePath && $referencePath !== $newPath) {
                 $disk->delete($referencePath);
@@ -110,7 +132,7 @@ class VoiceService
             $referencePath = $newPath;
         } elseif ($referencePath && $slug !== $voice->slug) {
             $extension = strtolower(pathinfo($referencePath, PATHINFO_EXTENSION)) ?: 'wav';
-            $newPath = config('tts.reference_path').'/'.$slug.'.'.$extension;
+            $newPath = $this->referencePath($voice->user_id, $slug, $extension);
             if ($newPath !== $referencePath && $disk->exists($referencePath)) {
                 $disk->move($referencePath, $newPath);
                 $referencePath = $newPath;
@@ -154,7 +176,12 @@ class VoiceService
     {
         $base = $source->slug.'-copy';
         $slug = $base;
-        for ($i = 2; Voice::where('slug', $slug)->exists(); $i++) {
+        // Collisions only matter inside the owner's reachable set (their own
+        // voices + the shared ones) — another user's "-copy" doesn't block ours.
+        $taken = fn (string $candidate) => Voice::where('slug', $candidate)
+            ->where(fn ($q) => $q->whereNull('user_id')->orWhere('user_id', $ownerId))
+            ->exists();
+        for ($i = 2; $taken($slug); $i++) {
             $slug = $base.'-'.$i;
         }
 
@@ -167,7 +194,7 @@ class VoiceService
         $disk = Storage::disk(config('tts.storage_disk'));
         if ($source->reference_audio_path && $disk->exists($source->reference_audio_path)) {
             $extension = strtolower(pathinfo($source->reference_audio_path, PATHINFO_EXTENSION)) ?: 'wav';
-            $path = config('tts.reference_path').'/'.$slug.'.'.$extension;
+            $path = $this->referencePath($ownerId, $slug, $extension);
             $disk->copy($source->reference_audio_path, $path);
             $attributes['reference_audio_path'] = $path;
         }
@@ -250,7 +277,9 @@ class VoiceService
     /**
      * Import a voice from a .zip produced by export(). The reference is stored
      * as-is (it was already normalized on export). Returns the created/updated
-     * voice; an existing voice with the same slug is overwritten.
+     * voice; the owner's own voice with the same slug is overwritten, while the
+     * same slug under a DIFFERENT owner imports cleanly as a separate voice —
+     * only a shared built-in's slug conflicts.
      */
     public function import(string $zipBytes, ?int $ownerId = null): Voice
     {

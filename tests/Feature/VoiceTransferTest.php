@@ -43,6 +43,28 @@ class VoiceTransferTest extends TestCase
         Storage::disk('local')->assertExists($imported->reference_audio_path);
     }
 
+    public function test_the_same_voice_id_imports_cleanly_for_a_second_user(): void
+    {
+        // voice_ids are only unique per owner: an archive exported from one
+        // account must import on another even when the exporter still has the
+        // original — each user ends up with their own row and clip file.
+        $service = app(VoiceService::class);
+        $exporter = User::factory()->create();
+        $importer = User::factory()->create();
+
+        $original = $service->register('John', 'johnfmorton', $this->silentWav(0.2), 'wav', false, null, ownerId: $exporter->id);
+        $zip = $service->export($original);
+
+        $imported = $service->import($zip, ownerId: $importer->id);
+
+        $this->assertSame('johnfmorton', $imported->slug);
+        $this->assertSame($importer->id, $imported->user_id);
+        $this->assertNotSame($original->id, $imported->id);
+        $this->assertNotSame($original->reference_audio_path, $imported->reference_audio_path);
+        Storage::disk('local')->assertExists($imported->reference_audio_path);
+        Storage::disk('local')->assertExists($original->refresh()->reference_audio_path);
+    }
+
     public function test_import_rejects_a_non_archive(): void
     {
         $this->expectException(Throwable::class);

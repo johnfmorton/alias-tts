@@ -162,7 +162,9 @@ class VoicePerUserTest extends TestCase
         $this->assertSame($me->id, $copy->user_id);
         $this->assertSame('Shared-voice copy', $copy->name);
         $this->assertSame(['exaggeration' => 0.9, 'seed' => 7], $copy->settings);
-        $this->assertSame('clip-bytes', Storage::disk('local')->get('voices/shared-voice-copy.wav'));
+        // The copy's clip lands in the owner's namespace, not the shared root.
+        $this->assertSame("voices/u{$me->id}/shared-voice-copy.wav", $copy->reference_audio_path);
+        $this->assertSame('clip-bytes', Storage::disk('local')->get($copy->reference_audio_path));
 
         // The original is untouched, and the copy IS tunable by its owner.
         $this->assertSame(['exaggeration' => 0.9, 'seed' => 7], $voice->refresh()->settings);
@@ -212,24 +214,77 @@ class VoicePerUserTest extends TestCase
         $res->assertRedirect(route('admin.voices.edit', $voice));
     }
 
-    public function test_registering_an_existing_slug_of_another_owner_is_refused(): void
+    public function test_registering_another_owners_slug_creates_a_separate_voice(): void
     {
-        $victim = $this->user();
-        $this->voiceFor($victim, 'precious', 'Original');
+        // voice_ids are only unique per owner: two users may each have a
+        // "precious" — this is what lets an exported voice import cleanly on
+        // an account that never saw the original.
+        $other = $this->user();
+        $this->voiceFor($other, 'precious', 'Original');
+
+        $me = $this->user();
+        $mine = app(VoiceService::class)->register(
+            name: 'Mine too', slug: 'precious', audioBytes: null, ext: null,
+            normalize: false, seed: null, ownerId: $me->id,
+        );
+
+        $this->assertSame($me->id, $mine->user_id);
+        $this->assertCount(2, Voice::where('slug', 'precious')->get());
+
+        // The other user's voice is untouched.
+        $theirs = Voice::where('slug', 'precious')->where('user_id', $other->id)->sole();
+        $this->assertSame('Original', $theirs->name);
+    }
+
+    public function test_registering_a_shared_voices_slug_is_refused(): void
+    {
+        // A shared voice sits in every user's picker, so taking its slug would
+        // make lookups inside that user's set ambiguous.
+        $this->voiceFor(null, 'shared-voice', 'Shared original');
 
         try {
             app(VoiceService::class)->register(
-                name: 'Takeover', slug: 'precious', audioBytes: null, ext: null,
+                name: 'Takeover', slug: 'shared-voice', audioBytes: null, ext: null,
                 normalize: false, seed: null, ownerId: $this->user()->id,
             );
-            $this->fail('Registering an already-owned slug should be refused.');
+            $this->fail('Registering a shared slug should be refused.');
         } catch (RuntimeException $e) {
             $this->assertStringContainsString('already in use', $e->getMessage());
         }
 
-        // The victim's voice is untouched.
+        $this->assertSame('Shared original', Voice::firstWhere('slug', 'shared-voice')->name);
+    }
+
+    public function test_a_shared_voice_cannot_take_a_slug_any_user_owns(): void
+    {
+        // The mirror rule: a new shared voice lands in EVERY user's set, so it
+        // may not collide with any owner's slug.
+        $this->voiceFor($this->user(), 'precious', 'Original');
+
+        try {
+            app(VoiceService::class)->register(
+                name: 'Shared takeover', slug: 'precious', audioBytes: null, ext: null,
+                normalize: false, seed: null, ownerId: null,
+            );
+            $this->fail('A shared voice must not take over a user-owned slug.');
+        } catch (RuntimeException $e) {
+            $this->assertStringContainsString('already in use', $e->getMessage());
+        }
+
         $this->assertSame('Original', Voice::firstWhere('slug', 'precious')->name);
-        $this->assertSame($victim->id, Voice::firstWhere('slug', 'precious')->user_id);
+    }
+
+    public function test_same_slug_voices_store_their_clips_at_distinct_paths(): void
+    {
+        // Reference clips are namespaced per owner — without that, the second
+        // "narrator" would silently overwrite the first user's clip file.
+        $service = app(VoiceService::class);
+        $mine = $service->register('Narrator', 'narrator', 'clip-a', 'wav', false, null, ownerId: $this->user()->id);
+        $theirs = $service->register('Narrator', 'narrator', 'clip-b', 'wav', false, null, ownerId: $this->user()->id);
+
+        $this->assertNotSame($mine->reference_audio_path, $theirs->reference_audio_path);
+        $this->assertSame('clip-a', Storage::disk('local')->get($mine->reference_audio_path));
+        $this->assertSame('clip-b', Storage::disk('local')->get($theirs->reference_audio_path));
     }
 
     // ---- API scoping ----------------------------------------------------------

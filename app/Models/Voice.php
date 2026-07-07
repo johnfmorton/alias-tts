@@ -15,7 +15,10 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
  *
  * Voices are PER USER: a custom voice belongs to whoever created it and is
  * visible only to them (SuperAdmins see everything on the Voices page). A NULL
- * owner means shared — the bundled built-in defaults every user sees.
+ * owner means shared — the bundled built-in defaults every user sees. The slug
+ * is unique per owner, NOT globally: two users may each own a "narrator", so
+ * slug lookups are only unambiguous inside one user's reachable set (their own
+ * voices + the shared ones) — always resolve through resolveFor() or by UUID.
  */
 class Voice extends Model
 {
@@ -34,11 +37,6 @@ class Voice extends Model
     protected $casts = [
         'settings' => 'array',
     ];
-
-    public function getRouteKeyName(): string
-    {
-        return 'slug';
-    }
 
     public function speeches(): HasMany
     {
@@ -114,7 +112,9 @@ class Voice extends Model
      *
      * Unscoped — for trusted internal callers only. User-facing paths (admin
      * pages, /v1 keys) must use {@see resolveFor()} so one user can never
-     * generate with another's voice.
+     * generate with another's voice. Slugs are only unique per owner, so an
+     * unscoped slug match can be ambiguous — internal callers should pass the
+     * UUID whenever they have one.
      */
     public static function resolve(string $voiceId): ?self
     {

@@ -58,7 +58,8 @@ class GenblazeController extends Controller
             return response()->json(['message' => $validator->errors()->first()], 422);
         }
 
-        if (! Voice::resolveFor((string) $request->input('voice'), $request->user()->id)) {
+        $voice = Voice::resolveFor((string) $request->input('voice'), $request->user()->id);
+        if (! $voice) {
             return response()->json(['message' => 'Unknown voice.'], 422);
         }
 
@@ -68,7 +69,9 @@ class GenblazeController extends Controller
         RunGenblazeJob::dispatch(
             $id,
             (string) $request->input('text'),
-            (string) $request->input('voice'),
+            // The runner echoes this into the UNSCOPED internal generate
+            // endpoint, and slugs are only unique per user — hand it the UUID.
+            $voice->id,
             $request->filled('seed') ? (int) $request->input('seed') : null,
             $request->user()?->id,
         );

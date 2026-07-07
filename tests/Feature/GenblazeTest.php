@@ -112,8 +112,12 @@ class GenblazeTest extends TestCase
             ->assertJsonPath('result.final_play_url', route('admin.studio.genblaze.asset', ['key' => 'genblaze/runs/x/assets/final.mp3']))
             ->assertJsonPath('result.chunks.0.play_url', route('admin.studio.genblaze.asset', ['key' => 'genblaze/runs/x/assets/c0.wav']));
 
+        // The runner is handed the voice's UUID, not the slug — it echoes the
+        // value into the unscoped internal generate endpoint, and slugs are
+        // only unique per user.
+        $voiceId = Voice::firstWhere('slug', 'v')->id;
         Http::assertSent(fn ($req) => str_contains($req->url(), 'runner.test/run')
-            && $req['text'] === 'Hello there.' && $req['voice'] === 'v');
+            && $req['text'] === 'Hello there.' && $req['voice'] === $voiceId);
     }
 
     public function test_play_urls_strip_a_shared_bucket_storage_root(): void

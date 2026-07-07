@@ -6,6 +6,17 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Changed
+- **Voice IDs are now yours, not global.** A voice_id only has to be unique
+  within your own voices (plus the shared built-ins), so importing a voice
+  archive — or creating a voice — no longer fails just because another user
+  already has one with the same voice_id. Each user's reference clip is
+  stored in their own space so identically-named voices can never overwrite
+  each other's audio, and the built-in voice_ids remain reserved for
+  everyone. Admin voice URLs now use the voice's ID, since a voice_id no
+  longer names a single voice across users; `voice:export` accepts a
+  voice_id or ID and lists the owners when a voice_id matches more than one.
+
 ### Added
 - **A workflow to publish the Docker image.** A manual Actions run builds the
   single-image package for amd64 + arm64 and pushes it to the private GitHub
