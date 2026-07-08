@@ -62,9 +62,7 @@ class TwoFactorChallengeController extends Controller
         Auth::login($user, $remember);
         $request->session()->regenerate();
 
-        $home = config('tts.genblaze.runner_url') ? 'admin.studio.genblaze' : 'admin.dashboard';
-
-        return redirect()->intended(route($home));
+        return redirect()->intended(route('admin.dashboard'));
     }
 
     private function clearPending(Request $request): void

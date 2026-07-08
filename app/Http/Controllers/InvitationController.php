@@ -45,8 +45,6 @@ class InvitationController extends Controller
         Auth::login($user);
         $request->session()->regenerate();
 
-        $home = config('tts.genblaze.runner_url') ? 'admin.studio.genblaze' : 'admin.dashboard';
-
-        return redirect()->route($home)->with('success', 'Your password is set. Welcome!');
+        return redirect()->route('admin.dashboard')->with('success', 'Your password is set. Welcome!');
     }
 }

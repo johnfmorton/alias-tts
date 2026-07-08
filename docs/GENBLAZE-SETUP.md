@@ -7,8 +7,8 @@ back into the app's internal pipeline API, and archives **every take plus a
 verifiable provenance manifest** to a **Backblaze B2** bucket. It powers:
 
 - **Generate via Genblaze** — the Studio page that is the app's primary
-  generation workflow (and the post-login landing page once
-  `TTS_GENBLAZE_RUNNER_URL` is set), and
+  generation workflow (surfaced in the nav as "Genblaze Demo" when
+  `TTS_GENBLAZE_DEMO=true`), and
 - the **pronunciation pre-processor**'s LLM step (`POST /pronounce`) — see
   [ALIAS-PRONUNCIATION-PREPROCESSOR.md](ALIAS-PRONUNCIATION-PREPROCESSOR.md).
 
@@ -69,8 +69,9 @@ this bucket even if generated speech itself stays on `TTS_STORAGE_DISK=local`.
 
 ```env
 TTS_INTERNAL_SECRET=<long random string>   # mounts /v1/internal/*; empty = API disabled (503)
-TTS_GENBLAZE_RUNNER_URL=http://127.0.0.1:8800   # empty hides the Studio page
+TTS_GENBLAZE_RUNNER_URL=http://127.0.0.1:8800   # the default; empty disables the runner
 TTS_GENBLAZE_TIMEOUT=600                   # seconds the app waits on the runner (default 600)
+TTS_GENBLAZE_DEMO=false                    # true shows the judge-facing "Genblaze Demo" nav page
 TTS_ASR_ENABLED=true                       # optional: enables the re-roll quality gate
 # AWS_* → the B2 bucket, for the Studio audio proxy (see above)
 ```
@@ -226,8 +227,9 @@ on the dashboard's Health page). For a deeper probe, `curl
 http://127.0.0.1:8800/health` on the server, then run the smoke
 (`source runner-venv/bin/activate`, export the same env, and
 `python -m genblaze_runner.smoke`) and confirm new objects under
-`genblaze/runs/...` in your bucket. In Studio, **Generate via Genblaze**
-appears once `TTS_GENBLAZE_RUNNER_URL` is set.
+`genblaze/runs/...` in your bucket. The **Genblaze Demo** nav page appears
+once `TTS_GENBLAZE_DEMO=true` (the page needs the runner reachable at
+`TTS_GENBLAZE_RUNNER_URL` to actually run).
 
 ## Troubleshooting
 

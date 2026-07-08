@@ -49,11 +49,9 @@ return Application::configure(basePath: dirname(__DIR__))
         );
 
         $middleware->redirectGuestsTo(fn () => route('login'));
-        // Already-authenticated users hitting a guest route (e.g. /login) land on the
-        // headline Genblaze page when it's live, else the dashboard.
-        $middleware->redirectUsersTo(fn () => route(
-            config('tts.genblaze.runner_url') ? 'admin.studio.genblaze' : 'admin.dashboard'
-        ));
+        // Already-authenticated users hitting a guest route (e.g. /login) land on
+        // the dashboard.
+        $middleware->redirectUsersTo(fn () => route('admin.dashboard'));
     })
     ->withExceptions(function (Exceptions $exceptions): void {
         $exceptions->shouldRenderJsonWhen(

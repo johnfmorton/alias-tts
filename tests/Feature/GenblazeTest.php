@@ -22,7 +22,7 @@ class GenblazeTest extends TestCase
     protected function setUp(): void
     {
         parent::setUp();
-        config(['tts.genblaze.runner_url' => 'http://runner.test']);
+        config(['tts.genblaze.runner_url' => 'http://runner.test', 'tts.genblaze.demo' => true]);
     }
 
     private function admin(): User
@@ -72,6 +72,17 @@ class GenblazeTest extends TestCase
         $this->assertMatchesRegularExpression('#/admin/studio/genblaze"[^>]*border-accent/40#', $html);
         $this->assertMatchesRegularExpression('#/admin/studio"[^>]*text-zinc-400#', $html);
         $this->assertDoesNotMatchRegularExpression('#/admin/studio"[^>]*text-accent#', $html);
+    }
+
+    public function test_demo_nav_pill_is_hidden_unless_the_demo_flag_is_on(): void
+    {
+        // A configured runner alone must not surface the judge-facing demo page.
+        config(['tts.genblaze.demo' => false]);
+
+        $this->actingAs($this->admin())
+            ->get(route('admin.dashboard'))
+            ->assertOk()
+            ->assertDontSee('Genblaze Demo');
     }
 
     public function test_run_dispatches_and_status_returns_provenance_with_proxied_play_urls(): void

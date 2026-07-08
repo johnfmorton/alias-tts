@@ -4,6 +4,23 @@ All notable changes to this project are documented in this file. The format is
 based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this
 project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Changed
+- **Signing in always lands on the Dashboard.** Previously, when the Genblaze
+  runner was configured, every sign-in (password, two-factor, social, and
+  invitation acceptance) landed on the Genblaze demo page instead. The
+  Dashboard is the app's front door; the demo page no longer hijacks it.
+- **The Genblaze runner is part of a standard install, and the app now
+  assumes it.** `TTS_GENBLAZE_RUNNER_URL` defaults to
+  `http://127.0.0.1:8800` — where the setup guide's daemon runs — so a
+  default install gets the pronunciation pre-processor and QA-gated
+  generation without extra configuration. Set it empty to run without the
+  runner.
+- **The "Genblaze Demo" nav page is now opt-in.** It exists for hackathon
+  judging, so it's hidden unless `TTS_GENBLAZE_DEMO=true` — configuring the
+  runner alone no longer surfaces it.
+
 ## [0.38.0] - 2026-07-07
 
 ### Added

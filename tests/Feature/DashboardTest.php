@@ -40,7 +40,6 @@ class DashboardTest extends TestCase
 
     public function test_admin_can_log_in_and_out(): void
     {
-        config(['tts.genblaze.runner_url' => '']); // no Genblaze → dashboard landing
         $admin = User::factory()->create(['is_super_admin' => true, 'password' => 'secret123']);
 
         $this->post(route('login.submit'), ['email' => $admin->email, 'password' => 'secret123'])
@@ -114,7 +113,6 @@ class DashboardTest extends TestCase
 
     public function test_authenticated_user_is_sent_from_login_to_dashboard(): void
     {
-        config(['tts.genblaze.runner_url' => '']); // no Genblaze → dashboard landing
         $this->actingAs($this->admin())
             ->get('/login')
             ->assertRedirect(route('admin.dashboard'));

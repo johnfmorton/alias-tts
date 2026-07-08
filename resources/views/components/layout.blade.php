@@ -7,10 +7,10 @@
     $navFirstName = $navUser ? (Str::before(trim($navUser->name), ' ') ?: $navUser->name) : '';
 
     // Primary nav — the three flat, always-visible destinations. Everything else
-    // lives under the account menu. Genblaze (the headline demo) leads when the
-    // runner is configured; it's an emphasized pill, not a plain link.
+    // lives under the account menu. Genblaze (the judge-facing demo page) leads
+    // only when TTS_GENBLAZE_DEMO is on; it's an emphasized pill, not a plain link.
     $primaryNav = [];
-    if (config('tts.genblaze.runner_url')) {
+    if (config('tts.genblaze.demo')) {
         $primaryNav[] = ['route' => 'admin.studio.genblaze', 'pattern' => 'admin.studio.genblaze', 'label' => 'Genblaze Demo', 'demo' => true];
     }
     $primaryNav[] = ['route' => 'admin.dashboard', 'pattern' => 'admin.dashboard', 'label' => 'Dashboard'];

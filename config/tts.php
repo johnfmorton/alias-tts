@@ -116,14 +116,18 @@ return [
     |
     | The Genblaze-owned orchestrator (the genblaze-runner FastAPI service) that
     | drives generate → QA-gated re-roll → stitch and persists every take + a
-    | provenance manifest to Backblaze B2. The Studio "Generate via Genblaze"
-    | button proxies to its POST /run. Leave the URL empty to hide the button.
+    | provenance manifest to Backblaze B2. The app depends on it (pronunciation
+    | pre-processor, QA-gated generation), so the URL defaults to where a
+    | standard install runs the daemon; set it empty only to disable the runner.
+    | The judge-facing "Genblaze Demo" nav page is separate — off unless
+    | TTS_GENBLAZE_DEMO=true.
     |
     */
     'genblaze' => [
-        'runner_url' => rtrim((string) env('TTS_GENBLAZE_RUNNER_URL', ''), '/'),
+        'runner_url' => rtrim((string) env('TTS_GENBLAZE_RUNNER_URL', 'http://127.0.0.1:8800'), '/'),
         'timeout' => (int) env('TTS_GENBLAZE_TIMEOUT', 600),
         'docs_url' => env('TTS_GENBLAZE_DOCS_URL', 'https://github.com/johnfmorton/alias-tts/blob/main/docs/GENBLAZE-SETUP.md'),
+        'demo' => (bool) env('TTS_GENBLAZE_DEMO', false),
     ],
 
     /*

@@ -150,9 +150,7 @@ class SocialAuthController extends Controller
         Auth::login($user, false);
         request()->session()->regenerate();
 
-        $home = config('tts.genblaze.runner_url') ? 'admin.studio.genblaze' : 'admin.dashboard';
-
-        return redirect()->route($home);
+        return redirect()->route('admin.dashboard');
     }
 
     private function assertProvider(string $provider): void
