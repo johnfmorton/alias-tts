@@ -17,6 +17,12 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   text and avoids a hard model failure on very short inputs. Re-testing an
   unchanged respelling replays instantly from the speech cache instead of
   generating again.
+- **Branded error pages.** 404, 403, 419, 500, and 503 no longer show the
+  framework's bare white default. Each renders in the app's dark style with
+  the status code presented as a pronunciation-dictionary entry (404 →
+  "four oh four"), a plain-language explanation, and a way home — the
+  Dashboard when signed in, the home page otherwise. API responses under
+  /v1 are unaffected and stay JSON.
 
 ### Changed
 - **Duplicating a project now shows its progress.** *Duplicate project*
