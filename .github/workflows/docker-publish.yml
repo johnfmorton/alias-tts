@@ -7,11 +7,13 @@
 # need them, and each run costs 30-60 private-repo Actions minutes (the
 # arm64 leg builds under QEMU; the asset/vendor stages are pinned to the
 # build platform in the Dockerfile so only the runtime stage pays the
-# emulation tax). To publish a version: Actions → Docker image → Run
-# workflow, set the tag input to the version (e.g. "0.36.0") — that
-# publishes ghcr.io/johnfmorton/alias-tts:0.36.0 + :latest from the chosen
-# ref. Leave the input empty for a :main smoke build. If image users ever
-# want every release, restore an `on: push: tags: ["v*"]` trigger.
+# emulation tax). To publish: Actions → Docker image → Run workflow. With
+# no inputs it publishes the LATEST GitHub release — the code is checked
+# out from that release's tag, tagged :<version> + :latest. Type a version
+# (e.g. "0.36.0") to publish that release instead. Tick "smoke" to build
+# :main from the dispatched branch without touching :latest. If image
+# users ever want every release, restore an `on: push: tags: ["v*"]`
+# trigger.
 
 name: Docker image
 
@@ -19,9 +21,13 @@ on:
   workflow_dispatch:
     inputs:
       tag:
-        description: "Image tag to publish (e.g. 0.36.0); also tags :latest. Empty = branch-name smoke build."
+        description: "Version to publish (e.g. 0.36.0); also tags :latest. Empty = the latest GitHub release."
         required: false
         default: ""
+      smoke:
+        description: "Smoke build — :main from the dispatched branch, no version tag, no :latest"
+        type: boolean
+        default: false
 
 concurrency:
   group: docker-publish-${{ github.ref }}
@@ -36,7 +42,32 @@ jobs:
       packages: write
 
     steps:
+      # The version to publish: the typed input, or the latest GitHub release.
+      # Resolved BEFORE checkout so the build uses that release's own tree —
+      # a version label must never be stamped onto whatever main happens to be.
+      # (Dispatching on the tag ref itself wouldn't work for tags that predate
+      # this workflow file, so we always dispatch on main and check out here.)
+      - name: Resolve the version to publish
+        id: version
+        if: ${{ !inputs.smoke }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+          INPUT_TAG: ${{ inputs.tag }}
+        run: |
+          if [ -n "$INPUT_TAG" ]; then
+            version="${INPUT_TAG#v}"
+          else
+            version="$(gh api "repos/$GITHUB_REPOSITORY/releases/latest" --jq '.tag_name')"
+            version="${version#v}"
+          fi
+          [ -n "$version" ] || { echo "::error::Could not resolve a version to publish"; exit 1; }
+          echo "Publishing v$version"
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+
       - uses: actions/checkout@v4
+        with:
+          # The release's tag for a publish; the dispatched ref for a smoke build.
+          ref: ${{ steps.version.outputs.version && format('refs/tags/v{0}', steps.version.outputs.version) || github.ref }}
 
       - name: Set up QEMU (arm64 build on the amd64 runner)
         uses: docker/setup-qemu-action@v3
@@ -57,10 +88,9 @@ jobs:
         with:
           images: ghcr.io/${{ github.repository }}
           tags: |
-            type=semver,pattern={{version}}
-            type=ref,event=branch
-            type=raw,value=${{ inputs.tag }},enable=${{ inputs.tag != '' }}
-            type=raw,value=latest,enable=${{ inputs.tag != '' }}
+            type=ref,event=branch,enable=${{ inputs.smoke }}
+            type=raw,value=${{ steps.version.outputs.version }},enable=${{ steps.version.outputs.version != '' }}
+            type=raw,value=latest,enable=${{ steps.version.outputs.version != '' }}
 
       - name: Build and push
         uses: docker/build-push-action@v6
