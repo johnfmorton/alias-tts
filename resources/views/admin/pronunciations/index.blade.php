@@ -3,6 +3,8 @@
         <a href="{{ route('admin.pronunciations.create') }}" class="rounded-lg bg-cyan-500 px-4 py-2 text-sm font-medium text-zinc-950 hover:bg-cyan-400">Add pronunciation</a>
     </div>
 
+    <p id="pron-test-status" role="status" aria-live="polite" class="mb-2 text-sm text-zinc-400"></p>
+
     <div class="overflow-x-auto rounded-xl border border-zinc-800">
         <table class="w-full text-left text-sm">
             <thead class="bg-zinc-900/60 text-xs uppercase tracking-wide text-zinc-500">
@@ -20,7 +22,15 @@
                 @forelse($entries as $entry)
                     <tr class="align-top hover:bg-zinc-900/40">
                         <td class="px-4 py-3 font-mono text-zinc-200">{{ $entry->term }}</td>
-                        <td class="px-4 py-3 text-zinc-300">{{ $entry->phonetic }}</td>
+                        <td class="px-4 py-3 text-zinc-300">
+                            <div class="flex items-center gap-2">
+                                <span>{{ $entry->phonetic }}</span>
+                                <button type="button" data-pron-test data-url="{{ route('admin.pronunciations.test') }}"
+                                        data-phonetic="{{ $entry->phonetic }}" aria-label="Hear “{{ $entry->phonetic }}”"
+                                        title="Hear this respelling spoken by your default voice"
+                                        class="inline-flex items-center rounded-md border border-zinc-700 px-2 py-0.5 text-xs text-zinc-400 hover:bg-zinc-800 hover:text-zinc-200">▶</button>
+                            </div>
+                        </td>
                         <td class="px-4 py-3 text-zinc-400">{{ $entry->match_mode === 'case_insensitive' ? 'any case' : 'exact case' }}</td>
                         <td class="px-4 py-3 text-zinc-400">{{ $entry->category ? str_replace('_', ' ', $entry->category) : '—' }}</td>
                         <td class="px-4 py-3 text-zinc-400">{{ $entry->source }}</td>

@@ -4,6 +4,27 @@ All notable changes to this project are documented in this file. The format is
 based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this
 project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+- **Hear a pronunciation before you approve it.** Every pronunciation screen
+  gains a *▶ Test* button: each suggestion row on the review screen (spoken
+  with the project's voice, and it reads the field live, so an edited
+  respelling is what you hear), the Respelling field on the add/edit forms,
+  and each row of the dictionary table (spoken with your default voice). The
+  respelling is spoken inside a short carrier sentence — "Your pronunciation
+  will sound like this: …" — which mirrors how it will be heard inside real
+  text and avoids a hard model failure on very short inputs. Re-testing an
+  unchanged respelling replays instantly from the speech cache instead of
+  generating again.
+
+### Changed
+- **Duplicating a project now shows its progress.** *Duplicate project*
+  byte-copies every audio file before it finishes, which could take long
+  enough to make the page look frozen. The menu button now switches to a
+  spinner with "Duplicating…", a status line announces what's happening, and
+  repeat clicks can't create a second copy.
+
 ## [0.39.0] - 2026-07-08
 
 ### Changed

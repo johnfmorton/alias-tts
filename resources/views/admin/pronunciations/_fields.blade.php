@@ -7,9 +7,15 @@
 </div>
 <div>
     <label for="phonetic" class="mb-1.5 block text-sm font-medium">Respelling</label>
-    <input id="phonetic" name="phonetic" value="{{ old('phonetic', $entry->phonetic ?? '') }}" required placeholder="e.g. dee dev"
-           class="w-full rounded-lg border border-zinc-700 bg-zinc-900 px-3 py-2 text-sm focus:border-cyan-500 focus:outline-none focus:ring-2 focus:ring-cyan-500/30">
+    <div class="flex items-center gap-2">
+        <input id="phonetic" name="phonetic" value="{{ old('phonetic', $entry->phonetic ?? '') }}" required placeholder="e.g. dee dev"
+               class="w-full rounded-lg border border-zinc-700 bg-zinc-900 px-3 py-2 text-sm focus:border-cyan-500 focus:outline-none focus:ring-2 focus:ring-cyan-500/30">
+        <button type="button" data-pron-test data-url="{{ route('admin.pronunciations.test') }}" data-input="#phonetic"
+                title="Hear this respelling spoken by your default voice"
+                class="inline-flex shrink-0 items-center gap-1.5 rounded-lg border border-zinc-700 px-3 py-2 text-sm text-zinc-300 hover:bg-zinc-800">▶ Test</button>
+    </div>
     <p class="mt-1 text-xs text-zinc-500">Plain ASCII the voice reads correctly. Avoid stray capitals — the voice reads a lone capital as emphasis.</p>
+    <p id="pron-test-status" role="status" aria-live="polite" class="mt-1 text-sm text-zinc-400"></p>
 </div>
 <div>
     <label for="match_mode" class="mb-1.5 block text-sm font-medium">Match</label>

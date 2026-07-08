@@ -1730,6 +1730,21 @@ function initStudioProject() {
         });
     }
 
+    // Duplicating byte-copies every audio file before the redirect, so the POST
+    // can run for a while — show a pending state (spinner in the menu + the
+    // aria-live status line) instead of appearing frozen, and swallow repeat
+    // submits so a second click can't mint a second copy.
+    const duplicateForm = document.getElementById('project-duplicate-form');
+    const duplicateBtn = document.getElementById('project-duplicate');
+    if (duplicateForm && duplicateBtn) {
+        duplicateForm.addEventListener('submit', (e) => {
+            if (duplicateForm.dataset.submitting) { e.preventDefault(); return; }
+            duplicateForm.dataset.submitting = '1';
+            startBusy(duplicateBtn, 'Duplicating…');
+            setStatus(finalStatus, 'Duplicating project — copying every chunk and its audio. This can take a moment…');
+        });
+    }
+
     // Overflow ⋯ menu (Start over / Delete / receipt). Same toggle idiom as the nav.
     const overflowBtn = document.getElementById('project-overflow');
     const overflowMenu = document.getElementById('project-overflow-menu');
@@ -2776,3 +2791,53 @@ function initVoiceTuningDials() {
     });
 }
 initVoiceTuningDials();
+
+// Pronunciation "▶ Test" buttons (review screen, dictionary form + table):
+// speak a respelling so the writer can judge it before approving. Buttons wired
+// to an input (data-input) read its CURRENT value, so edits count; table rows
+// carry a fixed data-phonetic. data-voice pins the voice (the review screen
+// passes the project's); without it the server uses the writer's default.
+function initPronunciationTest() {
+    const buttons = document.querySelectorAll('[data-pron-test]');
+    if (!buttons.length) return;
+    const status = document.getElementById('pron-test-status');
+    const player = new Audio(); // shared — starting a new test replaces the last
+    buttons.forEach((btn) => {
+        btn.addEventListener('click', async () => {
+            const input = btn.dataset.input ? document.querySelector(btn.dataset.input) : null;
+            const phonetic = (input ? input.value : btn.dataset.phonetic || '').trim();
+            if (!phonetic) {
+                setStatus(status, 'Type a respelling first.', 'error');
+                input?.focus();
+                return;
+            }
+            startBusy(btn, input ? 'Testing…' : '');
+            setStatus(status, `Generating “${phonetic}”…`);
+            try {
+                const res = await fetch(btn.dataset.url, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'X-CSRF-TOKEN': csrfToken(),
+                        // JSON Accept so a validation failure comes back as a
+                        // 422 body, not a redirect; the audio bytes still flow.
+                        'Accept': 'application/json',
+                    },
+                    body: JSON.stringify({ phonetic, voice: btn.dataset.voice || null }),
+                });
+                if (!res.ok) throw new Error(await errorMessage(res));
+                const blob = await res.blob();
+                player.pause();
+                if (player.src) URL.revokeObjectURL(player.src);
+                player.src = URL.createObjectURL(blob);
+                await player.play();
+                setStatus(status, `✓ Played “${phonetic}”.`, 'ok');
+            } catch (err) {
+                setStatus(status, `✗ ${err.message}`, 'error');
+            } finally {
+                endBusy(btn);
+            }
+        });
+    });
+}
+initPronunciationTest();

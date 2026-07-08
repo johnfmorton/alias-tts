@@ -23,7 +23,13 @@
                     <span class="text-zinc-500" aria-hidden="true">&rarr;</span>
 
                     <input name="substitutions[{{ $i }}][phonetic]" value="{{ $s['phonetic'] }}" aria-label="Spoken respelling for {{ $s['term'] }}"
+                           id="pron-phonetic-{{ $i }}"
                            class="w-48 rounded-lg border border-zinc-700 bg-zinc-950 px-2 py-1 text-sm focus:border-cyan-500 focus:outline-none focus:ring-2 focus:ring-cyan-500/30">
+
+                    <button type="button" data-pron-test data-url="{{ route('admin.pronunciations.test') }}"
+                            data-input="#pron-phonetic-{{ $i }}" data-voice="{{ $voice->id }}"
+                            title="Hear this respelling spoken by the project's voice — edits to the field count"
+                            class="inline-flex items-center gap-1.5 rounded-md border border-zinc-700 px-2.5 py-1 text-xs text-zinc-300 hover:bg-zinc-800">▶ Test</button>
 
                     <input type="hidden" name="substitutions[{{ $i }}][term]" value="{{ $s['term'] }}">
                     <input type="hidden" name="substitutions[{{ $i }}][category]" value="{{ $s['category'] ?? '' }}">
@@ -44,7 +50,8 @@
             @endforeach
         </div>
 
-        <p class="text-xs text-zinc-500">Unchecked terms are skipped — your text is created as-is for those. Edit a respelling before applying if it reads wrong.</p>
+        <p class="text-xs text-zinc-500">Unchecked terms are skipped — your text is created as-is for those. Edit a respelling before applying if it reads wrong, and use <span class="text-zinc-400">▶ Test</span> to hear it before you decide.</p>
+        <p id="pron-test-status" role="status" aria-live="polite" class="text-sm text-zinc-400"></p>
 
         <div class="flex items-center gap-3">
             <button type="submit" class="rounded-lg bg-cyan-500 px-4 py-2 text-sm font-medium text-zinc-950 hover:bg-cyan-400">Apply approved &amp; continue</button>

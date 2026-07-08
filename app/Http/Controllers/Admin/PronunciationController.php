@@ -3,12 +3,19 @@
 namespace App\Http\Controllers\Admin;
 
 use App\Http\Controllers\Controller;
+use App\Models\ApiKey;
 use App\Models\PronunciationEntry;
+use App\Models\Voice;
 use App\Services\Pronunciation\PronunciationDictionary;
+use App\Services\SpeechService;
+use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
+use Illuminate\Http\Response;
+use Illuminate\Support\Facades\Validator;
 use Illuminate\Validation\Rule;
 use Illuminate\View\View;
+use Throwable;
 
 /**
  * Manage the signed-in writer's pronunciation dictionary — the per-user lexicon
@@ -24,7 +31,10 @@ class PronunciationController extends Controller
     /** @var list<string> */
     private const CONFIDENCES = ['high', 'medium', 'low'];
 
-    public function __construct(private readonly PronunciationDictionary $dictionary) {}
+    public function __construct(
+        private readonly PronunciationDictionary $dictionary,
+        private readonly SpeechService $speech,
+    ) {}
 
     public function index(Request $request): View
     {
@@ -81,6 +91,65 @@ class PronunciationController extends Controller
 
         return redirect()->route('admin.pronunciations.index')
             ->with('success', 'Pronunciation removed.');
+    }
+
+    /**
+     * Speak a respelling out loud (AJAX) so the writer can audition it before
+     * approving. Sits BELOW the pronunciation pre-processor, so the dictionary
+     * can never re-substitute the very text being tested. With no voice given,
+     * falls back to the writer's default (first in their picker order).
+     */
+    public function test(Request $request): Response|JsonResponse
+    {
+        // Explicit JSON 422s — admin paths don't auto-render validation as JSON
+        // (only api/*, v1/* do), and this endpoint is only ever called via fetch.
+        $validator = Validator::make($request->all(), [
+            'phonetic' => ['required', 'string', 'max:255'],
+            'voice' => ['nullable', 'string', 'max:255'],
+        ]);
+        if ($validator->fails()) {
+            return response()->json(['message' => $validator->errors()->first()], 422);
+        }
+        $data = $validator->validated();
+
+        $userId = $request->user()->id;
+        $voice = filled($data['voice'] ?? null)
+            ? Voice::resolveFor($data['voice'], $userId)
+            : Voice::orderedFor($userId)->first();
+
+        if (! $voice) {
+            return response()->json(['message' => 'No voice available to test with.'], 422);
+        }
+
+        // Embed the respelling in a fixed carrier sentence. Respellings are
+        // usually a word or two, and Chatterbox hard-fails (CUDA assert) on very
+        // short inputs — the same hazard min_chunk_chars guards in the chunker.
+        // The carrier also mirrors production, where a respelling is always
+        // heard inside a sentence, never bare.
+        $text = 'Your pronunciation will sound like this: '.trim($data['phonetic']);
+        if (! preg_match('/[.!?]$/', $text)) {
+            $text .= '.';
+        }
+
+        try {
+            // Cached (no forceRefresh): re-testing an unchanged respelling
+            // replays instantly instead of paying for another generation.
+            $speech = $this->speech->synthesize(
+                apiKey: ApiKey::dashboardFor($userId),
+                voice: $voice,
+                text: $text,
+                settings: config('tts.default_voice_settings'),
+                modelId: config('tts.default_model_id'),
+                outputFormat: config('tts.default_output_format'),
+            );
+        } catch (Throwable $e) {
+            report($e);
+
+            return response()->json(['message' => 'Test failed: '.$e->getMessage()], 502);
+        }
+
+        return response($this->speech->audioBytes($speech), 200)
+            ->header('Content-Type', $speech->mime_type ?: 'audio/mpeg');
     }
 
     /** A writer may only touch their own entries. */

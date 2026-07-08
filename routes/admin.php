@@ -153,6 +153,7 @@ Route::delete('/api-keys/{apiKey}', [ApiKeyController::class, 'destroy'])->name(
 Route::get('/pronunciations', [PronunciationController::class, 'index'])->name('pronunciations.index');
 Route::get('/pronunciations/create', [PronunciationController::class, 'create'])->name('pronunciations.create');
 Route::post('/pronunciations', [PronunciationController::class, 'store'])->name('pronunciations.store');
+Route::post('/pronunciations/test', [PronunciationController::class, 'test'])->name('pronunciations.test');
 Route::get('/pronunciations/{entry}/edit', [PronunciationController::class, 'edit'])->name('pronunciations.edit');
 Route::put('/pronunciations/{entry}', [PronunciationController::class, 'update'])->name('pronunciations.update');
 Route::delete('/pronunciations/{entry}', [PronunciationController::class, 'destroy'])->name('pronunciations.destroy');
