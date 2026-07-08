@@ -40,13 +40,16 @@ class AboutPageTest extends TestCase
             ->assertSee(route('about'), false);
     }
 
-    public function test_about_page_shows_screenshot_placeholders_until_captures_exist(): void
+    public function test_about_page_renders_the_bundled_screenshots(): void
     {
-        // No screenshots are bundled in the repo; the frame should render the
-        // placeholder with the drop path so the page never looks broken.
-        $this->get(route('about'))
+        // Real captures ship in public/images/about; every frame should render
+        // its screenshot instead of the "on the way" placeholder.
+        $response = $this->get(route('about'))
             ->assertOk()
-            ->assertSee('Screenshot on the way')
-            ->assertSee('public/images/about/studio.png');
+            ->assertDontSee('Screenshot on the way');
+
+        foreach (['dashboard', 'voices', 'studio', 'verify'] as $shot) {
+            $response->assertSee('images/about/'.$shot.'.png', false);
+        }
     }
 }
