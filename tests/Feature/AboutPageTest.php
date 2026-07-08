@@ -52,4 +52,17 @@ class AboutPageTest extends TestCase
             $response->assertSee('images/about/'.$shot.'.png', false);
         }
     }
+
+    public function test_about_page_screenshots_open_in_a_lightbox(): void
+    {
+        // Each capture is a button that opens the shared lightbox dialog; the
+        // dialog itself must render exactly once.
+        $html = $this->get(route('about'))
+            ->assertOk()
+            ->assertSee('data-shot-trigger', false)
+            ->getContent();
+
+        $this->assertSame(4, substr_count($html, '<button type="button" data-shot-trigger'));
+        $this->assertSame(1, substr_count($html, 'id="shot-lb"'));
+    }
 }
