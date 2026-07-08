@@ -85,12 +85,22 @@ jobs:
       - name: Image tags
         id: meta
         uses: docker/metadata-action@v5
+        # Emit OCI annotations at BOTH the per-platform manifest and the top
+        # image index. GHCR reads a multi-arch package's description from the
+        # *index* annotation, so without "index" here the package page shows
+        # "No description provided" even though the Dockerfile sets the label.
+        env:
+          DOCKER_METADATA_ANNOTATIONS_LEVELS: manifest,index
         with:
           images: ghcr.io/${{ github.repository }}
           tags: |
             type=ref,event=branch,enable=${{ inputs.smoke }}
             type=raw,value=${{ steps.version.outputs.version }},enable=${{ steps.version.outputs.version != '' }}
             type=raw,value=latest,enable=${{ steps.version.outputs.version != '' }}
+          # Pin the description here (not just the repo's GitHub blurb) so it
+          # stays in lockstep with the Dockerfile LABEL of the same key.
+          labels: |
+            org.opencontainers.image.description=Self-hosted TTS server speaking the ElevenLabs and OpenAI API dialects, with voice cloning, transcript QA, and provenance — complete in one image.
 
       - name: Build and push
         uses: docker/build-push-action@v6
@@ -100,5 +110,6 @@ jobs:
           push: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
+          annotations: ${{ steps.meta.outputs.annotations }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
