@@ -85,7 +85,7 @@
         <div class="rise mt-9 flex items-center gap-3" style="animation-delay: 240ms">
             <a href="{{ auth()->check() ? route('admin.dashboard') : route('login') }}"
                class="rounded-lg bg-[#22d3ee] px-5 py-2.5 text-sm font-semibold text-[#062326] transition hover:brightness-110">
-                Open dashboard
+                {{ auth()->check() ? 'Open dashboard' : 'Log in' }}
             </a>
             {{-- Repo is private for now; restore when it goes public again.
             <a href="https://github.com/johnfmorton/alias-tts"
