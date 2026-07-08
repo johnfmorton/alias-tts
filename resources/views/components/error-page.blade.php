@@ -1,8 +1,8 @@
 {{-- Shared shell for the HTTP error pages (errors/*.blade.php). Standalone like
      the login page — no app layout, since errors must render for guests and
      half-broken requests alike. The status code is presented as one of the
-     app's own pronunciation-dictionary rows: code → respelling + chips. --}}
-@props(['code', 'respelling', 'category', 'title'])
+     app's own pronunciation-dictionary rows: code → respelling. --}}
+@props(['code', 'respelling', 'title'])
 <!DOCTYPE html>
 <html lang="en" class="h-full">
 <head>
@@ -26,8 +26,6 @@
             <span class="font-mono text-2xl font-bold text-zinc-100">{{ $code }}</span>
             <span class="text-zinc-500" aria-hidden="true">&rarr;</span>
             <span class="text-2xl text-cyan-400">&ldquo;{{ $respelling }}&rdquo;</span>
-            <span class="rounded bg-zinc-800 px-2 py-0.5 text-xs text-zinc-400">{{ $category }}</span>
-            <span class="rounded bg-emerald-500/15 px-2 py-0.5 text-xs text-emerald-300">high</span>
         </div>
 
         <h1 class="mt-8 text-lg font-semibold">{{ $title }}</h1>
