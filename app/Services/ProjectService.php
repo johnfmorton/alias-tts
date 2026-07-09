@@ -71,6 +71,7 @@ class ProjectService
         ?ApiKey $apiKey = null,
         array $pronunciationMap = [],
         ?int $userId = null,
+        ?string $origin = null,
     ): TtsProject {
         $normalized = $this->substituter->apply($this->normalizer->normalize($text), $pronunciationMap)['text'];
         $segments = $this->segmentText($normalized);
@@ -80,6 +81,10 @@ class ProjectService
             // Owner: the signed-in panel user, or the API key's owner. Projects
             // are personal (TtsProjectPolicy) — never leave this null on create.
             'user_id' => $userId ?? $apiKey?->user_id,
+            // Provenance: null = made by hand in the panel; 'api_project' = created
+            // by the /v1/projects endpoint (distinct from 'api', which the /v1
+            // text-to-speech endpoints stamp when they persist a generation).
+            'origin' => $origin,
             'title' => $title !== '' ? $title : 'Untitled project',
             'voice_id' => $voice->id,
             'settings' => $settings,
@@ -115,7 +120,14 @@ class ProjectService
         $snippet = trim(mb_substr((string) $speech->text, 0, 40));
 
         $project = $this->createFromText(
-            title: ($failureReason !== null ? 'API failure' : 'API generation').($snippet !== '' ? ': '.$snippet : ''),
+            // A failed generation keeps the "API failure: …" auto-name (dismissing the
+            // recovery banner strips it — see StudioProjectController::dismissFailure).
+            // A successful one is named by its text snippet alone; the violet "API"
+            // badge already marks it as API-made. Empty text → createFromText's
+            // "Untitled project" fallback.
+            title: $failureReason !== null
+                ? 'API failure'.($snippet !== '' ? ': '.$snippet : '')
+                : $snippet,
             voice: $speech->voice,
             text: $speech->text,
             settings: is_array($speech->settings) ? $speech->settings : [],
@@ -161,7 +173,9 @@ class ProjectService
             'user_id' => $speech->apiKey?->user_id,
             'origin' => 'api',
             'source_speech_id' => $speech->id,
-            'title' => 'API generation'.($snippet !== '' ? ': '.$snippet : ''),
+            // Named by its text snippet alone — no "API generation:" prefix; the
+            // violet "API" badge carries the provenance. Empty text → a safe default.
+            'title' => $snippet !== '' ? $snippet : 'Untitled project',
             'voice_id' => $speech->voice->id,
             'settings' => is_array($speech->settings) ? $speech->settings : [],
             'model_id' => $speech->model_id,

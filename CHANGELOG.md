@@ -4,6 +4,23 @@ All notable changes to this project are documented in this file. The format is
 based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this
 project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+- **Studio projects show where they came from.** A project created through the
+  API now carries a violet badge in the Studio list, so it's no longer
+  indistinguishable from one you made by hand. The two API surfaces are told
+  apart: **API** marks a project persisted by a text-to-speech call, and **API
+  project** marks one created by the `/v1/projects` endpoint (previously
+  untagged, so it looked hand-made).
+
+### Changed
+- **API-generated projects are named by their text, not a prefix.** A successful
+  API generation is now titled by its opening snippet alone — the badge already
+  says it came from the API, so the redundant `API generation:` prefix is gone.
+  A *failed* generation still keeps its `API failure: …` auto-name so it reads as
+  needing attention. Existing projects keep their stored titles.
+
 ## [0.41.0] - 2026-07-09
 
 ### Added

@@ -53,6 +53,10 @@ class ProjectApiController extends Controller
             outputFormat: $request->outputFormat(),
             seed: $request->seed(),
             apiKey: $apiKey,
+            // Marks the project as born from the /v1/projects call so the Studio
+            // list can tell it apart from a hand-made project AND from an audio
+            // generation persisted by the text-to-speech endpoints ('api').
+            origin: 'api_project',
         );
 
         return response()->json([

@@ -137,6 +137,11 @@ class ProjectApiTest extends TestCase
 
         // The created project is tagged with the calling API key.
         $this->assertSame($key->id, $project->api_key_id);
+
+        // ...and stamped as coming from the projects endpoint, which the Studio
+        // list uses to tell it apart from a hand-made project and from an audio
+        // generation persisted by the text-to-speech endpoints ('api').
+        $this->assertSame('api_project', $project->origin);
     }
 
     public function test_it_auto_generates_a_title_when_omitted(): void

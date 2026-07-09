@@ -100,6 +100,11 @@ class ApiProjectRecoveryTest extends TestCase
         $this->assertNull($project->failure_reason);
         $this->assertNull($project->expires_at, 'always-mode projects are kept, not auto-pruned');
 
+        // A successful audio project is named by its text snippet alone — the "API"
+        // badge carries the provenance, so there is no "API generation:" prefix
+        // (unlike the "API failure:" auto-name a failed generation keeps).
+        $this->assertSame('Hello world, this is a short test of the', $project->title);
+
         // The finished generation is carried across, not left for the admin to
         // regenerate: every chunk is Completed with its raw audio on disk...
         $chunks = $project->chunks()->get();
@@ -169,6 +174,10 @@ class ApiProjectRecoveryTest extends TestCase
         $this->assertSame(0, $project->failed_chunk_index, 'single-segment text fails at index 0');
         $this->assertNotNull($project->expires_at, 'recovery projects carry a TTL for the prune');
         $this->assertNotNull($project->source_speech_id);
+
+        // A failed generation keeps the "API failure: <snippet>" auto-name so it
+        // reads as needing attention (dismissing the banner strips this prefix).
+        $this->assertSame('API failure: Hello world, this is a short test of the', $project->title);
     }
 
     public function test_sync_failure_surfaces_a_recovery_url_in_the_error_detail(): void
