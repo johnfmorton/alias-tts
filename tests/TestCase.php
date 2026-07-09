@@ -17,5 +17,11 @@ abstract class TestCase extends BaseTestCase
         // live 5s-timeout HTTP calls from tests. Neutralize it here; a test that
         // wants a runner sets this config itself and fakes the HTTP.
         config(['tts.genblaze.runner_url' => '']);
+
+        // The production default is 'always' (every /v1 generation also mints a
+        // Studio project). Pin the pristine 'never' baseline for tests so unrelated
+        // generation tests don't incur a project side-effect; ApiProjectRecoveryTest
+        // sets this config explicitly per case to exercise each mode.
+        config(['tts.api_project_mode' => 'never']);
     }
 }

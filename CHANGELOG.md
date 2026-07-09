@@ -27,6 +27,13 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   (Exaggeration, CFG/Pace, Temperature, Seed), the settings now sit on their own
   row above the Preview / Use this take / Save tuning / Re-roll actions, so
   nothing crowds onto one line.
+- **API generations now create an editable Studio project by default.** The
+  *API → Studio project* setting defaults to **Always** (was *Never*), so every
+  /v1 generation — ElevenLabs `/v1/text-to-speech` and OpenAI `/v1/audio/speech`
+  alike — also lands a ready-to-edit project in the Studio, carrying the finished
+  audio across. Its dropdown now reads **Always / On Error / Never** instead of
+  the raw values. The explicit *Create project* endpoint is unaffected, and a
+  choice you've already saved still overrides the default.
 
 ## [0.40.0] - 2026-07-08
 

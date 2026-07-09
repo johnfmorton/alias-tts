@@ -219,9 +219,10 @@ $keys = [
         'config' => 'tts.api_project_mode',
         'env' => 'TTS_API_PROJECT_MODE',
         'type' => 'enum',
-        'options' => ['never', 'on_error', 'always'],
+        'options' => ['always', 'on_error', 'never'],
+        'option_labels' => ['always' => 'Always', 'on_error' => 'On Error', 'never' => 'Never'],
         'label' => 'API → Studio project',
-        'help' => 'Whether a /v1 API generation also creates an editable Studio project. "never" = stateless (default). "on_error" = only when a generation fails — the failed text becomes a recovery project you can open in Studio, fix, and rebuild. "always" = every call. Does not affect the explicit "Create project" API endpoint.',
+        'help' => 'Whether a /v1 API generation also creates an editable Studio project. "Always" = every call (default). "On Error" = only when a generation fails — the failed text becomes a recovery project you can open in Studio, fix, and rebuild. "Never" = stateless, no project. Does not affect the explicit "Create project" API endpoint.',
     ],
     [
         'group' => 'pronunciation',

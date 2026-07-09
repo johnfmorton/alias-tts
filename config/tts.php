@@ -344,14 +344,14 @@ return [
     'ttl_hours' => (int) env('TTS_TTL_HOURS', 720), // cache generated audio for 30 days
 
     // Whether a /v1 API generation also creates an editable Studio project:
-    //   never    — stateless; no project is created (default).
+    //   always   — every call creates a project (default).
     //   on_error — only when a generation fails, so the failed text becomes a
     //              recovery project you can open in Studio, repair, and rebuild
     //              (a plain panel URL is surfaced in the API error's recovery_url;
     //              the owner opens it after a normal login).
-    //   always   — every call creates a project.
+    //   never    — stateless; no project is created.
     // Does NOT affect the explicit "Create project" API endpoint.
-    'api_project_mode' => env('TTS_API_PROJECT_MODE', 'never'),
+    'api_project_mode' => env('TTS_API_PROJECT_MODE', 'always'),
 
     // How long (hours) an auto-created recovery project (api_project_mode=on_error)
     // is kept before the project prune removes it if it was never opened/edited.
