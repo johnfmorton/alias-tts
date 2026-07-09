@@ -55,11 +55,15 @@ class StudioController extends Controller
         return view('admin.studio.index', [
             'voices' => Voice::orderedFor($user->id)->get(),
             // Projects are personal; a SuperAdmin sees everyone's, labeled by owner.
+            // Paginated so a growing list never buries the Inspector tab; page size
+            // is env-tunable (TTS_STUDIO_PROJECTS_PER_PAGE, default 10). The tab's
+            // count badge reads the paginator total, not the page count.
             'projects' => TtsProject::withCount('chunks')
                 ->when(! $user->isSuperAdmin(), fn ($q) => $q->where('user_id', $user->id))
                 ->when($user->isSuperAdmin(), fn ($q) => $q->with('user:id,name'))
                 ->latest()
-                ->get(),
+                ->paginate(max(1, (int) config('tts.studio_projects_per_page', 10)))
+                ->withQueryString(),
         ]);
     }
 

@@ -479,6 +479,54 @@ initStudio();
 // Studio "Advanced tuning" toggle (per-user, persisted) — reveals the
 // per-preview knobs. The A/B bench lives on the voice edit page (below).
 // ---------------------------------------------------------------------------
+// ---------------------------------------------------------------------------
+// Studio segmented tabs (Projects / Inspector). Only one panel is on screen at a
+// time; the active tab is persisted in the URL (?tab=) so refresh/back and the
+// server-side project paginator (which reloads) land on the right view.
+// ---------------------------------------------------------------------------
+function initStudioTabs() {
+    const root = document.querySelector('[data-studio-tabs]');
+    if (!root) return;
+
+    const buttons = Array.from(root.querySelectorAll('[data-studio-tab]'));
+    const panels = Array.from(document.querySelectorAll('[data-studio-panel]'));
+    if (!buttons.length || !panels.length) return;
+
+    const TAB_ON = ['bg-accent', 'text-accent-on'];
+    const TAB_OFF = ['text-zinc-400', 'hover:text-zinc-100'];
+    const PILL_ON = 'bg-accent-on/25';
+    const PILL_OFF = 'bg-white/8';
+
+    function activate(name, { push = true } = {}) {
+        buttons.forEach((btn) => {
+            const on = btn.dataset.studioTab === name;
+            btn.classList.remove(...TAB_ON, ...TAB_OFF);
+            btn.classList.add(...(on ? TAB_ON : TAB_OFF));
+            btn.setAttribute('aria-selected', on ? 'true' : 'false');
+            const pill = btn.querySelector('[data-tab-count]');
+            if (pill) {
+                pill.classList.remove(PILL_ON, PILL_OFF);
+                pill.classList.add(on ? PILL_ON : PILL_OFF);
+            }
+        });
+        panels.forEach((p) => p.classList.toggle('hidden', p.dataset.studioPanel !== name));
+
+        if (push) {
+            const url = new URL(window.location.href);
+            url.searchParams.set('tab', name);
+            // Page number only belongs to the projects list — drop it elsewhere.
+            if (name !== 'projects') url.searchParams.delete('page');
+            window.history.replaceState({}, '', url);
+        }
+    }
+
+    const params = new URLSearchParams(window.location.search);
+    activate(params.get('tab') === 'inspector' ? 'inspector' : 'projects', { push: false });
+
+    buttons.forEach((btn) => btn.addEventListener('click', () => activate(btn.dataset.studioTab)));
+}
+initStudioTabs();
+
 function initStudioAdvancedToggle() {
     const root = document.getElementById('studio');
     const toggle = document.getElementById('studio-advanced-toggle');

@@ -332,6 +332,10 @@ return [
     // (which can fail with transient CUDA asserts). 0 = no delay (back-to-back).
     'studio_generate_pace_ms' => (int) env('TTS_STUDIO_GENERATE_PACE_MS', 800),
 
+    // Page size for the Studio → Projects tab list. Keeps a long project list from
+    // burying the Inspector tab; the tab's count badge always shows the full total.
+    'studio_projects_per_page' => (int) env('TTS_STUDIO_PROJECTS_PER_PAGE', 10),
+
     // Take history retention per chunk. Every synthesis (Generate, Re-roll,
     // Preview, "Use this take", auto-remediation) is saved as a selectable take so
     // none is ever lost; older takes are auto-pruned. The currently-selected take

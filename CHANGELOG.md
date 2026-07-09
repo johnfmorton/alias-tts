@@ -15,6 +15,19 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   untagged, so it looked hand-made).
 
 ### Changed
+- **The Studio home is now two tabs instead of one long scroll.** Projects and
+  the Inspector used to stack in a single column, so a growing project list kept
+  pushing the paste-and-preview Inspector further down the page. They're now a
+  segmented tab control — only one view is on screen at a time — with the active
+  tab remembered in the URL (`?tab=`) so refresh and back behave. The Projects
+  tab carries a count of your total projects, and its list is a proper
+  Name · Chunks · Updated · Owner · Status table (the API-origin badges still
+  sit before the status). The Inspector is unchanged in function.
+- **The Studio project list is paginated.** It shows a fixed page of projects
+  (default 10 per page, set with `TTS_STUDIO_PROJECTS_PER_PAGE`) with a
+  "1–10 of N" footer and page controls, so a large library no longer renders as
+  one enormous list. The tab's count always reflects the full total, not the
+  current page.
 - **API-generated projects are named by their text, not a prefix.** A successful
   API generation is now titled by its opening snippet alone — the badge already
   says it came from the API, so the redundant `API generation:` prefix is gone.
