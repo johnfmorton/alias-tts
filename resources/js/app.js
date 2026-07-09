@@ -2351,6 +2351,61 @@ function initAccountMenu() {
 }
 initAccountMenu();
 
+// Mobile global nav: the labelled "Menu" button opens a full-screen sheet
+// (Option 6C). Close on ✕, Escape, or crossing to desktop; trap focus and lock
+// body scroll while open. Visibility/transition live in CSS (#mobile-nav-sheet);
+// here we only toggle `.is-open` and manage focus/scroll.
+function initMobileNav() {
+    const btn = document.getElementById('mobile-menu-button');
+    const sheet = document.getElementById('mobile-nav-sheet');
+    const closeBtn = document.getElementById('mobile-menu-close');
+    if (!btn || !sheet) return;
+
+    const desktop = window.matchMedia('(min-width: 768px)');
+    const focusable = () =>
+        [...sheet.querySelectorAll('a[href], button:not([disabled]), [tabindex]:not([tabindex="-1"])')];
+    const isOpen = () => sheet.classList.contains('is-open');
+
+    const open = () => {
+        sheet.classList.add('is-open');
+        btn.setAttribute('aria-expanded', 'true');
+        document.body.style.overflow = 'hidden';
+        (closeBtn || focusable()[0])?.focus();
+    };
+    const close = ({ refocus = true } = {}) => {
+        sheet.classList.remove('is-open');
+        btn.setAttribute('aria-expanded', 'false');
+        document.body.style.overflow = '';
+        if (refocus) btn.focus();
+    };
+
+    btn.addEventListener('click', () => (isOpen() ? close() : open()));
+    closeBtn?.addEventListener('click', () => close());
+    document.addEventListener('keydown', (e) => {
+        if (!isOpen()) return;
+        if (e.key === 'Escape') {
+            close();
+        } else if (e.key === 'Tab') {
+            const items = focusable();
+            if (!items.length) return;
+            const first = items[0];
+            const last = items[items.length - 1];
+            if (e.shiftKey && document.activeElement === first) {
+                e.preventDefault();
+                last.focus();
+            } else if (!e.shiftKey && document.activeElement === last) {
+                e.preventDefault();
+                first.focus();
+            }
+        }
+    });
+    // Resizing up to desktop hides the sheet via CSS — unlock scroll to match.
+    desktop.addEventListener('change', (e) => {
+        if (e.matches && isOpen()) close({ refocus: false });
+    });
+}
+initMobileNav();
+
 // Voices page: "Add voice" split-button. The main segment links straight to the
 // New voice screen; the caret opens a menu whose second item ("Import a voice
 // file…") drives a hidden file input + form — picking a file submits the import

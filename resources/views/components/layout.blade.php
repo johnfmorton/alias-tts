@@ -75,8 +75,9 @@
                     <span class="text-[20px] font-bold tracking-[-0.3px] text-zinc-100">Alias TTS</span>
                 </a>
 
-                {{-- Primary nav — three flat destinations --}}
-                <nav class="flex min-w-0 items-center gap-2 overflow-x-auto text-[15px]">
+                {{-- Primary nav — three flat destinations. Hidden on mobile,
+                     where the full-screen sheet (below) carries navigation. --}}
+                <nav class="hidden min-w-0 items-center gap-2 overflow-x-auto text-[15px] md:flex">
                     @foreach($primaryNav as $item)
                         @php
                             $active = request()->routeIs($item['pattern'])
@@ -98,9 +99,9 @@
                     @endforeach
                 </nav>
 
-                {{-- Account control + dropdown --}}
+                {{-- Account control + dropdown — desktop only; mobile uses the sheet. --}}
                 @auth
-                    <div class="relative ml-auto shrink-0">
+                    <div class="relative ml-auto hidden shrink-0 md:block">
                         <button id="account-pill" type="button" aria-haspopup="true" aria-expanded="false"
                                 class="inline-flex items-center gap-[9px] rounded-[24px] border border-accent/45 bg-accent/[0.06] py-[5px] pr-[6px] pl-3 transition hover:bg-accent/10">
                             <span class="text-sm text-zinc-200">{{ $navFirstName }}</span>
@@ -159,9 +160,95 @@
                             </form>
                         </div>
                     </div>
+
+                    {{-- Mobile: labelled Menu button opens the full-screen sheet (Option 6C) --}}
+                    <button id="mobile-menu-button" type="button"
+                            aria-haspopup="dialog" aria-expanded="false" aria-controls="mobile-nav-sheet"
+                            class="ml-auto inline-flex items-center gap-2 rounded-[10px] border border-white/[0.14] px-[13px] py-2 text-[13px] text-zinc-200 transition hover:bg-white/[0.04] md:hidden">
+                        <span class="flex flex-col gap-[3px]" aria-hidden="true">
+                            <span class="h-0.5 w-3.5 rounded-full bg-zinc-300"></span>
+                            <span class="h-0.5 w-3.5 rounded-full bg-zinc-300"></span>
+                            <span class="h-0.5 w-3.5 rounded-full bg-zinc-300"></span>
+                        </span>
+                        Menu
+                    </button>
                 @endauth
             </div>
         </header>
+
+        @auth
+            @php
+                $demoItem = collect($primaryNav)->first(fn ($i) => $i['demo'] ?? false);
+                $mainNav = collect($primaryNav)->reject(fn ($i) => $i['demo'] ?? false);
+                $secondaryItems = collect($menuSections)->flatMap(fn ($s) => $s['items']);
+            @endphp
+            {{-- Mobile full-screen navigation sheet (Option 6C). Hidden at md+, where
+                 the desktop bar carries everything. Toggled by initMobileNav() in app.js. --}}
+            <div id="mobile-nav-sheet" role="dialog" aria-modal="true" aria-label="Menu"
+                 class="fixed inset-0 z-[60] bg-app">
+                {{-- Header: identity + Close --}}
+                <div class="flex h-[60px] shrink-0 items-center gap-3 border-b border-white/8 px-4">
+                    <x-avatar :user="$navUser" :size="38" />
+                    <div class="min-w-0">
+                        <div class="truncate text-sm font-semibold text-zinc-100">{{ $navUser->name }}</div>
+                        <div class="truncate text-[11px] text-zinc-500">{{ request()->getHost() }}</div>
+                    </div>
+                    <button id="mobile-menu-close" type="button" aria-label="Close menu"
+                            class="ml-auto inline-flex items-center gap-[7px] rounded-[10px] border border-accent/50 bg-accent/10 px-[13px] py-2 text-[13px] text-accent transition hover:bg-accent/[0.16]">
+                        <span aria-hidden="true">✕</span> Close
+                    </button>
+                </div>
+
+                {{-- Body: workspace chip + nav (scrolls) --}}
+                <div class="flex-1 overflow-y-auto px-5 pt-5">
+                    @if($demoItem)
+                        <a href="{{ route($demoItem['route']) }}"
+                           class="mb-3.5 inline-flex items-center gap-[7px] rounded-[9px] border border-accent/40 bg-accent/[0.06] px-[13px] py-[9px] text-[13px] text-zinc-200 transition hover:bg-accent/[0.12]">
+                            {{ $demoItem['label'] }}
+                            <span class="rounded-[5px] border border-accent/40 px-1.5 py-px font-mono text-[9px] font-bold tracking-wide text-accent">DEMO</span>
+                        </a>
+                    @endif
+
+                    <nav class="divide-y divide-white/[0.06]">
+                        @foreach($mainNav as $item)
+                            @php
+                                $active = request()->routeIs($item['pattern'])
+                                    && ! (isset($item['except']) && request()->routeIs($item['except']));
+                            @endphp
+                            <a href="{{ route($item['route']) }}"
+                               class="flex items-center px-1 py-4 text-[21px] {{ $active ? 'font-bold text-accent' : 'font-semibold text-zinc-100' }}">
+                                {{ $item['label'] }}
+                            </a>
+                        @endforeach
+
+                        @foreach($secondaryItems as $it)
+                            @php $rowActive = request()->routeIs($it['pattern']); @endphp
+                            <a href="{{ route($it['route']) }}"
+                               class="flex items-center justify-between px-1 py-[15px] text-base {{ $rowActive ? 'text-accent' : 'text-zinc-300' }}">
+                                {{ $it['label'] }}
+                            </a>
+                        @endforeach
+
+                        @if($navUser->isSuperAdmin() && RouteFacade::has('admin.users.index'))
+                            @php $usersActive = request()->routeIs('admin.users.*'); @endphp
+                            <a href="{{ route('admin.users.index') }}"
+                               class="flex items-center justify-between px-1 py-[15px] text-base {{ $usersActive ? 'text-accent' : 'text-zinc-300' }}">
+                                Users
+                            </a>
+                        @endif
+                    </nav>
+                </div>
+
+                {{-- Footer: Log out + version, pinned --}}
+                <div class="flex shrink-0 items-center justify-between border-t border-white/8 px-5 py-4">
+                    <form method="POST" action="{{ route('logout') }}">
+                        @csrf
+                        <button type="submit" class="text-base font-semibold text-bad">Log out</button>
+                    </form>
+                    <span class="font-mono text-xs text-zinc-500">v{{ config('app.version') }}</span>
+                </div>
+            </div>
+        @endauth
 
         <main class="mx-auto w-full flex-1 px-4 py-8 {{ $contentWidth }}">
             @if($heading)

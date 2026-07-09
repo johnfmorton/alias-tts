@@ -4,6 +4,20 @@ All notable changes to this project are documented in this file. The format is
 based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this
 project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+- **A real mobile navigation menu.** On phones the top bar had room only for the
+  logo and account avatar, leaving Dashboard and Studio with nowhere to go. It
+  now collapses below the `md` breakpoint to a single labelled **Menu** button
+  that opens a full-screen sheet: an identity header (avatar, name, host) with a
+  Close button, the Genblaze Demo chip, large Dashboard/Studio targets, the
+  secondary items (Account, API Keys, Voices, Pronunciations, Health, Settings,
+  and Users for SuperAdmins), and a pinned **Log out** with the version string.
+  The sheet locks page scroll, traps focus, and closes on the Close button,
+  Escape, tapping a destination, or widening back to desktop. The desktop bar is
+  unchanged.
+
 ## [0.42.0] - 2026-07-09
 
 ### Added

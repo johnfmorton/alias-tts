@@ -30,6 +30,41 @@
 }
 
 /*
+ * Mobile global-nav sheet (Option 6C). Display, visibility and the slide-up/fade
+ * transition are owned here rather than via Tailwind `hidden`/`flex` toggling,
+ * which can't animate display:none and hits the hidden-vs-flex conflict. This
+ * un-layered rule beats Tailwind's layered utilities (same trick as .aplayer),
+ * so it also owns the ≥768px hide — the sheet never renders on desktop.
+ * JS (initMobileNav) toggles `.is-open`.
+ */
+#mobile-nav-sheet {
+    display: flex;
+    flex-direction: column;
+    opacity: 0;
+    visibility: hidden;
+    transform: translateY(10px);
+    pointer-events: none;
+    transition:
+        opacity 0.2s ease-out,
+        transform 0.2s ease-out,
+        visibility 0s linear 0.2s;
+}
+#mobile-nav-sheet.is-open {
+    opacity: 1;
+    visibility: visible;
+    transform: translateY(0);
+    pointer-events: auto;
+    transition:
+        opacity 0.2s ease-out,
+        transform 0.2s ease-out;
+}
+@media (min-width: 768px) {
+    #mobile-nav-sheet {
+        display: none;
+    }
+}
+
+/*
  * Studio audio players: only one plays at a time (see app.js), so dim every
  * idle/paused player to gray and keep the actively-playing one full white, so
  * it's obvious which clip is sounding. The `is-playing` class is toggled in JS.
