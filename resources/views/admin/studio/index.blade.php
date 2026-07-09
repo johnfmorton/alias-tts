@@ -89,6 +89,8 @@
                                    :min="0.25" :max="2" :step="0.05" placeholder="0.50" inputClass="studio-exaggeration" class="w-48" />
                     <x-tuning-knob knob="cfg_weight" label="CFG / Pace"
                                    :min="0.2" :max="1" :step="0.05" placeholder="0.50" inputClass="studio-cfg" class="w-48" />
+                    <x-tuning-knob knob="temperature" label="Temperature" hint="neutral 0.8"
+                                   :min="0.5" :max="1.5" :step="0.05" placeholder="0.80" inputClass="studio-temperature" class="w-48" />
                 </div>
                 <p class="mt-2 text-xs text-zinc-500">
                     These knobs shape this preview only — nothing is saved. Like what you hear?

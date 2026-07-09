@@ -36,6 +36,7 @@ class UpdateVoiceRequest extends FormRequest
             // Chatterbox's native knobs — same ranges as the Studio bench.
             'exaggeration' => ['nullable', 'numeric', 'between:0.25,2'],
             'cfg_weight' => ['nullable', 'numeric', 'between:0.2,1'],
+            'temperature' => ['nullable', 'numeric', 'between:0.5,1.5'],
             'raw' => ['sometimes', 'boolean'],
             // Clean up the replacement clip (denoise + enhance) before storing.
             'enhance' => ['sometimes', 'boolean'],

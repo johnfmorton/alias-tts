@@ -7,6 +7,10 @@
     $native = \App\Services\Tts\ChatterboxTuning::resolveNative($tuning);
     $exagValue = isset($tuning['exaggeration']) || isset($tuning['style']) ? $native['exaggeration'] : '';
     $cfgValue = isset($tuning['cfg_weight']) || isset($tuning['stability']) ? $native['cfg_weight'] : '';
+    // Temperature is native-only (no ElevenLabs twin); blank when unset.
+    $temperatureValue = isset($tuning['temperature'])
+        ? \App\Services\Tts\ChatterboxTuning::clampTemperature((float) $tuning['temperature'])
+        : '';
     $inputClass = 'w-full rounded-[9px] border border-white/12 bg-inset px-3.5 py-3 text-[15px] text-zinc-100 placeholder:text-zinc-600 focus:border-accent focus:outline-none focus:ring-2 focus:ring-accent/30';
 @endphp
 <x-layout title="Edit voice" :heading="false" contentWidth="max-w-[1060px]">
@@ -50,13 +54,15 @@
         </x-voice.section>
 
         <x-voice.section label="Default tuning" hint="optional">
-            <div class="grid grid-cols-1 gap-7 sm:grid-cols-2">
+            <div class="grid grid-cols-1 gap-7 sm:grid-cols-3">
                 <x-voice.tuning-dial name="exaggeration" label="Exaggeration" hint="0.25–2 · neutral 0.5"
                                      min="0.25" max="2" :value="old('exaggeration', $exagValue)" />
                 <x-voice.tuning-dial name="cfg_weight" label="CFG / Pace" hint="0.2–1 · neutral 0.5"
                                      min="0.2" max="1" :value="old('cfg_weight', $cfgValue)" />
+                <x-voice.tuning-dial name="temperature" label="Temperature" hint="0.5–1.5 · neutral 0.8"
+                                     min="0.5" max="1.5" neutral="0.8" :value="old('temperature', $temperatureValue)" />
             </div>
-            <p class="mt-4 text-[12.5px] leading-relaxed text-zinc-500">Used when a request doesn't set its own. Higher exaggeration = more animated delivery; lower CFG/Pace = quicker, looser pacing. Blank uses the system defaults.</p>
+            <p class="mt-4 text-[12.5px] leading-relaxed text-zinc-500">Used when a request doesn't set its own. Higher exaggeration = more animated delivery; lower CFG/Pace = quicker, looser pacing; higher temperature = livelier but less predictable. Blank uses the system defaults.</p>
         </x-voice.section>
 
         @include('admin.voices._clip_source', [

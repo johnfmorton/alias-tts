@@ -4,6 +4,30 @@ All notable changes to this project are documented in this file. The format is
 based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this
 project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+- **A Temperature dial across the tuning surface.** Chatterbox's native sampling
+  temperature — lower is flatter and steadier, higher is livelier but less
+  predictable — is now a first-class knob everywhere you tune: per chunk in a
+  Studio project, the Inspector's per-preview knobs, a voice's default tuning,
+  the "Tune by ear" A/B bench, and named presets. It sits alongside Exaggeration
+  and CFG/Pace with a practical 0.5–1.5 range (neutral 0.8). The public /v1 API
+  is unaffected — it has no temperature knob and keeps sending the model's own
+  default.
+- **A per-chunk Seed pin is back in the Studio.** Blank rolls a fresh random
+  draw; type a number to pin it, and every take now shows the seed it rendered
+  at (a number when pinned, "random" otherwise) so a good take can be spotted
+  and re-pinned. It's an honest tool, not a reproduce button: Chatterbox isn't
+  bit-for-bit reproducible even with a seed, so a pin only gets you close — the
+  UI says as much, and Re-roll still forces a fresh random take.
+
+### Changed
+- **The per-chunk tuning area moved to two rows.** With four controls
+  (Exaggeration, CFG/Pace, Temperature, Seed), the settings now sit on their own
+  row above the Preview / Use this take / Save tuning / Re-roll actions, so
+  nothing crowds onto one line.
+
 ## [0.40.0] - 2026-07-08
 
 ### Added

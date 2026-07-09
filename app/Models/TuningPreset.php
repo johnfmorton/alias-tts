@@ -6,18 +6,19 @@ use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
 
 /**
- * A named Chatterbox knob combo (exaggeration/cfg_weight) reusable in the voice
- * tuning bench and as a project/chunk "delivery" pick (e.g. "Calm narration").
- * A null knob means "leave that one to inherit" when applied. Presets are
- * per-user: each user sees and manages only their own.
+ * A named Chatterbox knob combo (exaggeration/cfg_weight/temperature) reusable in
+ * the voice tuning bench and as a project/chunk "delivery" pick (e.g. "Calm
+ * narration"). A null knob means "leave that one to inherit" when applied.
+ * Presets are per-user: each user sees and manages only their own.
  */
 class TuningPreset extends Model
 {
-    protected $fillable = ['user_id', 'name', 'exaggeration', 'cfg_weight'];
+    protected $fillable = ['user_id', 'name', 'exaggeration', 'cfg_weight', 'temperature'];
 
     protected $casts = [
         'exaggeration' => 'float',
         'cfg_weight' => 'float',
+        'temperature' => 'float',
     ];
 
     /** @param  Builder<self>  $query */

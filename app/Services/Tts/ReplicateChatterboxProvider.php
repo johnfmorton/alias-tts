@@ -70,8 +70,16 @@ class ReplicateChatterboxProvider implements TtsProvider
         $input['cfg_weight'] = $native['cfg_weight'];      // [0.2, 1.0]: higher = steadier pacing
         $input['exaggeration'] = $native['exaggeration'];  // [0.25, 2.0]: higher = more animated
 
-        // Pin the seed for reproducible output when provided; otherwise
-        // Chatterbox uses a random seed on each call.
+        // Native-only sampling temperature (no ElevenLabs twin). Defaults to the
+        // model's own 0.8, so an EL-only caller that never sets it is unaffected.
+        $input['temperature'] = ChatterboxTuning::clampTemperature(
+            (float) ($settings['temperature'] ?? ChatterboxTuning::TEMPERATURE_DEFAULT),
+        );
+
+        // Pin the seed when provided so a saved take can name the exact seed it
+        // rendered at; otherwise Chatterbox draws a fresh random seed each call.
+        // NOTE: even a pinned seed is NOT bit-reproducible on Replicate's shared
+        // GPUs — it biases the draw, it doesn't freeze it (see docs/STUDIO-TUNING.md).
         if (isset($settings['seed'])) {
             $input['seed'] = (int) $settings['seed'];
         }

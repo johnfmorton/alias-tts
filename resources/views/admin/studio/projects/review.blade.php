@@ -10,6 +10,7 @@
         @if($params['preset'] !== null)<input type="hidden" name="preset" value="{{ $params['preset'] }}">@endif
         @if($params['exaggeration'] !== null)<input type="hidden" name="exaggeration" value="{{ $params['exaggeration'] }}">@endif
         @if($params['cfg_weight'] !== null)<input type="hidden" name="cfg_weight" value="{{ $params['cfg_weight'] }}">@endif
+        @if($params['temperature'] !== null)<input type="hidden" name="temperature" value="{{ $params['temperature'] }}">@endif
 
         <div class="space-y-2">
             @foreach($suggestions as $i => $s)

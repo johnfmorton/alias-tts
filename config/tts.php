@@ -72,6 +72,11 @@ return [
         'similarity_boost' => 0.75,
         'style' => 0.0,
         'use_speaker_boost' => true,
+        // Chatterbox's native sampling temperature (the Studio speaks native; the
+        // public /v1 API has no equivalent knob so this default is sent verbatim
+        // and matches the model's own default 0.8 — a no-op for existing callers).
+        // Practical UI band 0.5–1.5; see ChatterboxTuning::clampTemperature.
+        'temperature' => 0.8,
     ],
 
     // The always-present built-in voices, shipped with a bundled reference clip

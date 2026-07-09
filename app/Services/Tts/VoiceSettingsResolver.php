@@ -27,10 +27,11 @@ class VoiceSettingsResolver
     /**
      * The tunable keys this resolver owns. `seed` is handled outside it. Both the
      * ElevenLabs-style knobs (stability/style) the public /v1 API speaks AND
-     * Chatterbox's native knobs (exaggeration/cfg_weight) the Studio speaks pass
-     * through; the provider prefers native and falls back to deriving them from EL.
+     * Chatterbox's native knobs (exaggeration/cfg_weight/temperature) the Studio
+     * speaks pass through; the provider prefers native and falls back to deriving
+     * exaggeration/cfg_weight from EL. `temperature` is native-only (no EL twin).
      */
-    private const KEYS = ['stability', 'similarity_boost', 'style', 'use_speaker_boost', 'exaggeration', 'cfg_weight'];
+    private const KEYS = ['stability', 'similarity_boost', 'style', 'use_speaker_boost', 'exaggeration', 'cfg_weight', 'temperature'];
 
     /**
      * @param  array<string, mixed>  $overrides  values the caller explicitly set; only known keys apply
@@ -67,7 +68,7 @@ class VoiceSettingsResolver
      */
     private function cast(array $settings): array
     {
-        foreach (['stability', 'similarity_boost', 'style', 'exaggeration', 'cfg_weight'] as $key) {
+        foreach (['stability', 'similarity_boost', 'style', 'exaggeration', 'cfg_weight', 'temperature'] as $key) {
             if (isset($settings[$key])) {
                 $settings[$key] = (float) $settings[$key];
             }

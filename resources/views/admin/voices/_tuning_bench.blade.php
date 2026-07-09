@@ -8,6 +8,9 @@
     $benchNative = \App\Services\Tts\ChatterboxTuning::resolveNative($benchTuning);
     $benchExag = isset($benchTuning['exaggeration']) || isset($benchTuning['style']) ? $benchNative['exaggeration'] : '';
     $benchCfg = isset($benchTuning['cfg_weight']) || isset($benchTuning['stability']) ? $benchNative['cfg_weight'] : '';
+    $benchTemp = isset($benchTuning['temperature'])
+        ? \App\Services\Tts\ChatterboxTuning::clampTemperature((float) $benchTuning['temperature'])
+        : '';
 @endphp
 <div class="mt-[26px]">
     <div class="mb-3.5 flex items-center gap-2">
@@ -18,11 +21,12 @@
          data-voice-defaults-url="{{ route('admin.studio.voice-defaults') }}"
          data-voice="{{ $voice->slug }}"
          data-exaggeration="{{ $benchExag }}"
-         data-cfg="{{ $benchCfg }}">
+         data-cfg="{{ $benchCfg }}"
+         data-temperature="{{ $benchTemp }}">
         <p class="max-w-[820px] text-[13.5px] leading-[1.55] text-zinc-400">
             Hear <strong class="text-zinc-300">{{ $voice->name }}</strong> read the sample line at different settings, pick the best take,
             and save it as the voice's defaults. Higher exaggeration = more animated delivery; lower CFG/Pace = quicker,
-            looser pacing. Row one starts at the voice's current defaults.
+            looser pacing; higher temperature = livelier but less predictable. Row one starts at the voice's current defaults.
         </p>
 
         <label class="mt-5 block">
@@ -38,7 +42,7 @@
             <span class="text-[13px] text-zinc-500" title="A preset is a named pair of knob values — it changes nothing until you apply it and save">Presets:</span>
             @foreach($presets as $preset)
                 <span class="bench-preset inline-flex items-center gap-1 rounded-full border border-white/12 bg-inset py-0.5 pl-2.5 pr-1.5 text-xs"
-                      data-id="{{ $preset->id }}" data-exaggeration="{{ $preset->exaggeration }}" data-cfg="{{ $preset->cfg_weight }}">
+                      data-id="{{ $preset->id }}" data-exaggeration="{{ $preset->exaggeration }}" data-cfg="{{ $preset->cfg_weight }}" data-temperature="{{ $preset->temperature }}">
                     <button type="button" class="preset-apply text-zinc-200 hover:text-accent">{{ $preset->name }}</button>
                     <button type="button" class="preset-delete text-zinc-500 hover:text-bad" title="Delete preset" aria-label="Delete preset">✕</button>
                 </span>
@@ -50,8 +54,8 @@
         </div>
 
         <div class="mt-4 overflow-hidden rounded-[12px] border border-white/8">
-            <div class="grid grid-cols-[44px_1.4fr_1.4fr_1fr_1.6fr_40px] items-center gap-2 border-b border-white/8 bg-inset px-4 py-3 text-[11px] font-semibold uppercase tracking-[0.05em] text-zinc-500">
-                <div></div><div>Exaggeration</div><div>CFG / Pace</div><div>Preview</div><div>Take</div><div></div>
+            <div class="grid grid-cols-[44px_1.1fr_1.1fr_1.1fr_0.8fr_1.5fr_40px] items-center gap-2 border-b border-white/8 bg-inset px-4 py-3 text-[11px] font-semibold uppercase tracking-[0.05em] text-zinc-500">
+                <div></div><div>Exaggeration</div><div>CFG / Pace</div><div>Temperature</div><div>Preview</div><div>Take</div><div></div>
             </div>
             <ol class="bench-rows"></ol>
         </div>

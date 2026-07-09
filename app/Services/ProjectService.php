@@ -389,10 +389,11 @@ class ProjectService
         $project = $chunk->project;
 
         try {
+            $settings = $this->providerSettings($project, $chunk, pinSeed: ! $reroll);
             $bytes = $this->provider->synthesize(
                 $chunk->text,
                 $this->referencePath($chunk->voice ?? $project->voice),
-                $this->providerSettings($project, $chunk, pinSeed: ! $reroll),
+                $settings,
             );
 
             // Score BEFORE recording so the verdict rides on the take row itself.
@@ -406,6 +407,7 @@ class ProjectService
                 $reroll ? 'reroll' : 'generate',
                 $this->tuningOnly(is_array($chunk->settings) ? $chunk->settings : []),
                 $verdict,
+                seed: $this->seedUsed($settings),
             );
 
             if ($verdict !== null && ! $verdict->ok) {
@@ -463,6 +465,7 @@ class ProjectService
         array $reportExtra = [],
         bool $select = true,
         bool $keepAsrWhenUnscored = false,
+        ?int $seed = null,
     ): TtsChunkTake {
         $takeId = (string) Str::orderedUuid();
         $path = $this->takePath($chunk, $takeId);
@@ -481,6 +484,10 @@ class ProjectService
             'text' => $chunk->text,
             'settings' => $override ?: null,
             'source' => $source,
+            // The seed this take was pinned to, or null when it rolled random
+            // (Replicate doesn't report the random seed it chose). Shown per-take
+            // so a good pinned render can be identified and re-pinned.
+            'seed' => $seed,
             'asr_score' => $verdict?->score,
             'asr_report' => $report,
             'characters' => mb_strlen($chunk->text),
@@ -643,13 +650,15 @@ class ProjectService
         foreach ($typed as $key => $value) {
             $settings[$key] = $value;
         }
-        if ($project->seed !== null) {
+        // Seed precedence mirrors providerSettings(): a typed seed wins, else the
+        // project's pinned seed, else random. A typed seed rode in via $typed above.
+        if (! array_key_exists('seed', $typed) && $project->seed !== null) {
             $settings['seed'] = $project->seed;
         }
 
         $bytes = $this->provider->synthesize($chunk->text, $this->referencePath($chunk->voice ?? $project->voice), $settings);
 
-        $this->recordTake($chunk, $bytes, 'preview', $this->tuningOnly($typed), select: false);
+        $this->recordTake($chunk, $bytes, 'preview', $this->tuningOnly($typed), select: false, seed: $this->seedUsed($settings));
 
         return $bytes;
     }
@@ -673,7 +682,9 @@ class ProjectService
             ? $this->remediator->score($chunk->text, $bytes, "chunk-{$chunk->id}")
             : null;
 
-        $this->recordTake($chunk, $bytes, 'use', $this->tuningOnly($settings), $verdict);
+        // The take was auditioned at the same seed the preview used; keep it on the
+        // take so the promoted clip names the seed it rendered at (null = random).
+        $this->recordTake($chunk, $bytes, 'use', $this->tuningOnly($settings), $verdict, seed: $this->seedUsed($settings));
 
         $this->markFinalOutdated($chunk->project);
 
@@ -1189,9 +1200,14 @@ class ProjectService
 
     /**
      * Provider settings for one chunk: the project's resolved settings overlaid
-     * with the chunk's own stability/style override (Phase 2), plus the pinned
-     * seed. A re-roll passes $pinSeed = false so the provider picks a fresh random
-     * seed — a new "take" to escape a bad generation without editing the text.
+     * with the chunk's own tuning override (exaggeration/cfg_weight/temperature),
+     * plus the effective seed.
+     *
+     * Seed precedence when $pinSeed is true: a chunk-pinned seed (chunk.settings
+     * ['seed'], rides in via the merge below) wins over the project's seed. A
+     * re-roll passes $pinSeed = false, which drops any pinned seed so the provider
+     * draws a fresh random one — a new "take" without editing the text. An absent
+     * seed => the provider chooses randomly (and the take is recorded as "random").
      *
      * @return array<string, mixed>
      */
@@ -1203,7 +1219,9 @@ class ProjectService
             $settings = array_merge($settings, $chunk->settings);
         }
 
-        if ($pinSeed && $project->seed !== null) {
+        if (! $pinSeed) {
+            unset($settings['seed']);
+        } elseif (! array_key_exists('seed', $settings) && $project->seed !== null) {
             $settings['seed'] = $project->seed;
         }
 
@@ -1222,16 +1240,32 @@ class ProjectService
     }
 
     /**
-     * Keep only the tuning knobs from a settings array (drops seed and the
-     * ElevenLabs-compat keys that don't affect the Studio panel). Handles both the
-     * EL form (stability/style) and the native form (exaggeration/cfg_weight).
+     * Keep only the tuning knobs from a settings array (drops seed — shown per-take
+     * from its own column — and the ElevenLabs-compat keys that don't affect the
+     * Studio panel). Handles both the EL form (stability/style) and the native form
+     * (exaggeration/cfg_weight/temperature).
      *
      * @param  array<string, mixed>  $settings
      * @return array<string, mixed>
      */
     private function tuningOnly(array $settings): array
     {
-        return array_intersect_key($settings, array_flip(['stability', 'style', 'exaggeration', 'cfg_weight']));
+        return array_intersect_key($settings, array_flip(['stability', 'style', 'exaggeration', 'cfg_weight', 'temperature']));
+    }
+
+    /**
+     * The seed to record on a take: the effective seed a synthesis was pinned to,
+     * or null when it rolled random. A non-positive seed is treated as random
+     * (Chatterbox's convention is that seed 0 means "pick one"), so a "random" take
+     * never masquerades as a reproducible pin in the take list.
+     *
+     * @param  array<string, mixed>  $settings
+     */
+    private function seedUsed(array $settings): ?int
+    {
+        $seed = isset($settings['seed']) ? (int) $settings['seed'] : 0;
+
+        return $seed > 0 ? $seed : null;
     }
 
     /** Native knob -> the ElevenLabs key it supersedes once the Studio writes native. */

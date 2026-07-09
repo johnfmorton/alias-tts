@@ -113,6 +113,7 @@ class VoiceService
         ?int $seed,
         ?float $exaggeration = null,
         ?float $cfgWeight = null,
+        ?float $temperature = null,
     ): Voice {
         $disk = Storage::disk(config('tts.storage_disk'));
         $referencePath = $voice->reference_audio_path;
@@ -154,6 +155,13 @@ class VoiceService
                 unset($settings[$key]);
             }
             unset($settings[$twin[$key]]);
+        }
+
+        // Temperature is native-only (no ElevenLabs twin to drop).
+        if ($temperature !== null) {
+            $settings['temperature'] = $temperature;
+        } else {
+            unset($settings['temperature']);
         }
 
         $voice->update([

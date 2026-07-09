@@ -257,6 +257,7 @@ function initStudio() {
         voice: document.getElementById('studio-voice'),
         exaggeration: root.querySelector('.studio-exaggeration'),
         cfg: root.querySelector('.studio-cfg'),
+        temperature: root.querySelector('.studio-temperature'),
         status: document.getElementById('studio-status'),
         results: document.getElementById('studio-results'),
         normalized: document.getElementById('studio-normalized'),
@@ -286,6 +287,7 @@ function initStudio() {
         if (els.voice?.value) body.voice = els.voice.value;
         if (els.exaggeration?.value !== '') body.exaggeration = els.exaggeration.value;
         if (els.cfg?.value !== '') body.cfg_weight = els.cfg.value;
+        if (els.temperature?.value !== '') body.temperature = els.temperature.value;
         return new URLSearchParams(body);
     };
 
@@ -463,7 +465,7 @@ function initStudio() {
     // Editing the text invalidates the breakdown — hide it until re-previewed.
     els.text.addEventListener('input', () => els.results.classList.add('hidden'));
 
-    initTuningKnobs(root); // wire the single-shot Exaggeration / CFG-Pace sliders
+    initTuningKnobs(root); // wire the single-shot Exaggeration / CFG-Pace / Temperature sliders
 
     els.wholeBtn?.addEventListener('click', () =>
         generate(urls.synthesize, normalizedText, els.wholeAudio, els.wholeBtn, 'Generating whole…'));
@@ -532,6 +534,7 @@ function initTuningBench(bench) {
         const body = new URLSearchParams({ text, voice });
         if (state.exagIn.value !== '') body.set('exaggeration', state.exagIn.value);
         if (state.cfgIn.value !== '') body.set('cfg_weight', state.cfgIn.value);
+        if (state.tempIn.value !== '') body.set('temperature', state.tempIn.value);
         return body;
     };
 
@@ -563,9 +566,9 @@ function initTuningBench(bench) {
         }
     }
 
-    function addRow(exaggeration, cfg) {
+    function addRow(exaggeration, cfg, temperature) {
         const li = document.createElement('li');
-        li.className = 'grid grid-cols-[44px_1.4fr_1.4fr_1fr_1.6fr_40px] items-center gap-2 border-b border-white/6 px-4 py-3.5 last:border-b-0';
+        li.className = 'grid grid-cols-[44px_1.1fr_1.1fr_1.1fr_0.8fr_1.5fr_40px] items-center gap-2 border-b border-white/6 px-4 py-3.5 last:border-b-0';
 
         const pick = document.createElement('input');
         Object.assign(pick, { type: 'radio', name: 'bench-pick', title: 'Pick this setting to save' });
@@ -573,6 +576,7 @@ function initTuningBench(bench) {
 
         const exagIn = knob(exaggeration, '0.5', '0.25', '2');
         const cfgIn = knob(cfg, '0.5', '0.2', '1');
+        const tempIn = knob(temperature, '0.8', '0.5', '1.5');
 
         const playBtn = document.createElement('button');
         playBtn.type = 'button';
@@ -595,9 +599,9 @@ function initTuningBench(bench) {
         remove.title = 'Remove';
         remove.textContent = '✕';
 
-        li.append(pick, exagIn, cfgIn, playBtn, take, remove);
+        li.append(pick, exagIn, cfgIn, tempIn, playBtn, take, remove);
 
-        const state = { exagIn, cfgIn, audio, pick, placeholder };
+        const state = { exagIn, cfgIn, tempIn, audio, pick, placeholder };
         rows.push(state);
         if (rows.length === 1) pick.checked = true;
 
@@ -631,6 +635,7 @@ function initTuningBench(bench) {
         const body = new URLSearchParams({ voice });
         if (picked.exagIn.value !== '') body.set('exaggeration', picked.exagIn.value);
         if (picked.cfgIn.value !== '') body.set('cfg_weight', picked.cfgIn.value);
+        if (picked.tempIn.value !== '') body.set('temperature', picked.tempIn.value);
         startBusy(els.saveBtn, 'Saving…');
         try {
             const res = await fetch(saveUrl, {
@@ -648,7 +653,7 @@ function initTuningBench(bench) {
         }
     }
 
-    els.addBtn.addEventListener('click', () => addRow(null, null));
+    els.addBtn.addEventListener('click', () => addRow(null, null, null));
     els.genBtn.addEventListener('click', generateAll);
     els.saveBtn.addEventListener('click', savePick);
 
@@ -665,7 +670,7 @@ function initTuningBench(bench) {
 
         const wireChip = (chip) => {
             chip.querySelector('.preset-apply').addEventListener('click', () =>
-                addRow(chip.dataset.exaggeration || null, chip.dataset.cfg || null));
+                addRow(chip.dataset.exaggeration || null, chip.dataset.cfg || null, chip.dataset.temperature || null));
             chip.querySelector('.preset-delete').addEventListener('click', async () => {
                 if (!confirm(`Delete preset "${chip.querySelector('.preset-apply').textContent}"?`)) return;
                 try {
@@ -688,6 +693,7 @@ function initTuningBench(bench) {
             chip.dataset.id = preset.id;
             chip.dataset.exaggeration = preset.exaggeration ?? '';
             chip.dataset.cfg = preset.cfg_weight ?? '';
+            chip.dataset.temperature = preset.temperature ?? '';
             const apply = document.createElement('button');
             apply.type = 'button';
             apply.className = 'preset-apply text-zinc-200 hover:text-cyan-300';
@@ -713,6 +719,7 @@ function initTuningBench(bench) {
             const body = new URLSearchParams({ name });
             if (picked.exagIn.value !== '') body.set('exaggeration', picked.exagIn.value);
             if (picked.cfgIn.value !== '') body.set('cfg_weight', picked.cfgIn.value);
+            if (picked.tempIn.value !== '') body.set('temperature', picked.tempIn.value);
             startBusy(presetSaveBtn, 'Saving…');
             try {
                 const res = await fetch(storeUrl, {
@@ -734,8 +741,8 @@ function initTuningBench(bench) {
 
     // Seed row one with the voice's CURRENT defaults (blank = inherit the
     // system default) and row two with a more-expressive contrast to compare.
-    addRow(bench.dataset.exaggeration || null, bench.dataset.cfg || null);
-    addRow(0.95, 0.8);
+    addRow(bench.dataset.exaggeration || null, bench.dataset.cfg || null, bench.dataset.temperature || null);
+    addRow(0.95, 0.8, 0.9);
 }
 document.querySelectorAll('.tuning-bench').forEach(initTuningBench);
 
@@ -1191,7 +1198,11 @@ function initStudioProject() {
         line1.className = take.selected ? 'text-emerald-300' : 'text-zinc-400';
         line1.textContent = take.source + (take.selected ? ' · selected' : '');
         const line2 = document.createElement('span');
-        line2.textContent = take.tuning_label + (take.created_human ? ' · ' + take.created_human : '');
+        // Show the seed this take rendered at: the pinned number, or "random" when
+        // it rolled unpinned (Replicate doesn't report the seed it chose). Lets a
+        // good pinned take be spotted and re-pinned in the field above.
+        const seedText = take.seed ? `seed ${take.seed}` : 'seed random';
+        line2.textContent = take.tuning_label + ' · ' + seedText + (take.created_human ? ' · ' + take.created_human : '');
         meta.append(line1, line2);
         if (take.asr_badge) {
             const b = document.createElement('span');
@@ -1293,6 +1304,8 @@ function initStudioProject() {
         let previewBlob = null;
         let previewExaggeration = '';
         let previewCfg = '';
+        let previewTemperature = '';
+        let previewSeed = '';
         const keepBtn = card.querySelector('.chunk-tune-keep');
         const invalidatePreview = () => {
             previewBlob = null;
@@ -1368,9 +1381,13 @@ function initStudioProject() {
             const btn = card.querySelector('.chunk-tune-preview');
             const exaggeration = card.querySelector('.chunk-exaggeration').value;
             const cfg = card.querySelector('.chunk-cfg').value;
+            const temperature = card.querySelector('.chunk-temperature').value;
+            const seed = card.querySelector('.chunk-seed').value;
             const body = new URLSearchParams();
             if (exaggeration !== '') body.set('exaggeration', exaggeration);
             if (cfg !== '') body.set('cfg_weight', cfg);
+            if (temperature !== '') body.set('temperature', temperature);
+            if (seed !== '') body.set('seed', seed);
             startBusy(btn, 'Previewing…');
             try {
                 const res = await fetch(card.dataset.previewTuningUrl, {
@@ -1385,6 +1402,8 @@ function initStudioProject() {
                 previewBlob = blob;
                 previewExaggeration = exaggeration;
                 previewCfg = cfg;
+                previewTemperature = temperature;
+                previewSeed = seed;
                 keepBtn?.classList.remove('hidden');
                 refreshTakes(card); // the preview was saved as a (non-selected) take
                 setStatus(finalStatus, '✓ Preview ready — "Use this take" keeps it, or play it from the list.', 'ok');
@@ -1408,6 +1427,8 @@ function initStudioProject() {
                 fd.append('audio', previewBlob, `take.${ext}`);
                 if (previewExaggeration !== '') fd.append('exaggeration', previewExaggeration);
                 if (previewCfg !== '') fd.append('cfg_weight', previewCfg);
+                if (previewTemperature !== '') fd.append('temperature', previewTemperature);
+                if (previewSeed !== '') fd.append('seed', previewSeed);
                 const res = await fetch(card.dataset.usePreviewUrl, {
                     method: 'POST',
                     headers: { 'X-CSRF-TOKEN': csrfToken(), 'Accept': 'application/json' },
@@ -1439,6 +1460,8 @@ function initStudioProject() {
             const btn = card.querySelector('.chunk-tune-save');
             const exaggeration = card.querySelector('.chunk-exaggeration').value;
             const cfg = card.querySelector('.chunk-cfg').value;
+            const temperature = card.querySelector('.chunk-temperature').value;
+            const seed = card.querySelector('.chunk-seed').value;
             startBusy(btn, 'Saving…');
             try {
                 const res = await fetch(card.dataset.tuningUrl, {
@@ -1447,6 +1470,8 @@ function initStudioProject() {
                     body: JSON.stringify({
                         exaggeration: exaggeration === '' ? null : Number(exaggeration),
                         cfg_weight: cfg === '' ? null : Number(cfg),
+                        temperature: temperature === '' ? null : Number(temperature),
+                        seed: seed === '' ? null : Number(seed),
                     }),
                 });
                 if (!res.ok) throw new Error(await errorMessage(res));
@@ -1466,16 +1491,27 @@ function initStudioProject() {
         // the kept clip would no longer match, so retire the "Use this take" offer.
         card.querySelector('.chunk-exaggeration').addEventListener('input', invalidatePreview);
         card.querySelector('.chunk-cfg').addEventListener('input', invalidatePreview);
+        card.querySelector('.chunk-temperature').addEventListener('input', invalidatePreview);
+        card.querySelector('.chunk-seed').addEventListener('input', invalidatePreview);
         card.querySelector('.chunk-text').addEventListener('input', invalidatePreview);
         card.querySelector('.chunk-voice').addEventListener('change', invalidatePreview);
 
-        // "Apply preset" fills the two knobs (dispatching input so the sliders
+        // 🎲 clears the seed field back to a random draw (blank = inherit/random).
+        card.querySelector('.chunk-seed-random')?.addEventListener('click', () => {
+            const seedInput = card.querySelector('.chunk-seed');
+            seedInput.value = '';
+            seedInput.dispatchEvent(new Event('input', { bubbles: true }));
+        });
+
+        // "Apply preset" fills the native knobs (dispatching input so the sliders
         // sync and the preview invalidates); nothing persists until Save tuning.
+        // Seed is deliberately not part of a preset — it's a per-take pin, not a
+        // reusable delivery.
         card.querySelector('.chunk-preset')?.addEventListener('change', (e) => {
             const opt = e.target.selectedOptions[0];
             if (!opt || !opt.value) return;
-            [['exaggeration', '.chunk-exaggeration'], ['cfg', '.chunk-cfg']].forEach(([key, sel]) => {
-                if (opt.dataset[key] === '') return;
+            [['exaggeration', '.chunk-exaggeration'], ['cfg', '.chunk-cfg'], ['temperature', '.chunk-temperature']].forEach(([key, sel]) => {
+                if (opt.dataset[key] === '' || opt.dataset[key] == null) return;
                 const input = card.querySelector(sel);
                 input.value = opt.dataset[key];
                 input.dispatchEvent(new Event('input', { bubbles: true }));
@@ -1526,7 +1562,7 @@ function initStudioProject() {
         }
     });
 
-    initTuningKnobs(root); // wire every per-chunk Exaggeration / CFG-Pace slider
+    initTuningKnobs(root); // wire every per-chunk Exaggeration / CFG-Pace / Temperature slider
 
     generateAllBtn.addEventListener('click', generateAll);
     rebuildBtn.addEventListener('click', rebuild);
@@ -2769,7 +2805,9 @@ function initVoiceTuningDials() {
         if (!number || !slider) return;
 
         const min = Number(slider.min), max = Number(slider.max);
-        const neutral = 0.5;
+        // Resting point when the field is blank (0.5 for exaggeration/cfg, 0.8 for
+        // temperature — the dial declares it via data-neutral).
+        const neutral = Number(dial.dataset.neutral) || 0.5;
         const fill = (val) => {
             const pct = Math.max(0, Math.min(100, ((val - min) / (max - min)) * 100));
             slider.style.setProperty('--fill', pct + '%');

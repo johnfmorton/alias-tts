@@ -125,6 +125,7 @@ class StudioProjectController extends Controller
                 'preset' => $data['preset'] ?? null,
                 'exaggeration' => $data['exaggeration'] ?? null,
                 'cfg_weight' => $data['cfg_weight'] ?? null,
+                'temperature' => $data['temperature'] ?? null,
             ],
             'provenance' => $detection['provenance'] ?? null,
         ]);
@@ -202,10 +203,11 @@ class StudioProjectController extends Controller
             'title' => ['nullable', 'string', 'max:200'],
             'text' => ['required', 'string', 'max:'.(int) config('tts.max_async_text_length', 40000)],
             'voice' => ['required', 'string'],
-            'seed' => ['nullable', 'integer'],
+            'seed' => ['nullable', 'integer', 'min:0'],
             'preset' => ['nullable', 'integer'],
             'exaggeration' => ['nullable', 'numeric', 'between:0.25,2'],
             'cfg_weight' => ['nullable', 'numeric', 'between:0.2,1'],
+            'temperature' => ['nullable', 'numeric', 'between:0.5,1.5'],
         ];
     }
 
@@ -877,6 +879,8 @@ class StudioProjectController extends Controller
                 'audio_url' => route('admin.studio.projects.chunks.takes.audio', [$project, $chunk, $take]),
                 'selected' => $selected,
                 'tuning_label' => $this->tuningLabel(is_array($take->settings) ? $take->settings : []),
+                // The seed this take was pinned to, or null when it rolled random.
+                'seed' => $take->seed,
                 'asr_badge' => $take->asrBadge(),
             ];
         })->all();
@@ -894,14 +898,21 @@ class StudioProjectController extends Controller
      */
     private function tuningLabel(array $settings): string
     {
-        $tuning = array_intersect_key($settings, array_flip(['stability', 'style', 'exaggeration', 'cfg_weight']));
+        $tuning = array_intersect_key($settings, array_flip(['stability', 'style', 'exaggeration', 'cfg_weight', 'temperature']));
         if ($tuning === []) {
             return 'inherited';
         }
 
         $native = ChatterboxTuning::resolveNative($settings);
+        $label = sprintf('exaggeration %.2f · cfg/pace %.2f', $native['exaggeration'], $native['cfg_weight']);
 
-        return sprintf('exaggeration %.2f · cfg/pace %.2f', $native['exaggeration'], $native['cfg_weight']);
+        // Only name temperature when the take actually overrode it, so inherited
+        // takes stay terse (temperature has no EL twin, so read it directly).
+        if (isset($settings['temperature'])) {
+            $label .= sprintf(' · temp %.2f', ChatterboxTuning::clampTemperature((float) $settings['temperature']));
+        }
+
+        return $label;
     }
 
     /**
@@ -915,20 +926,26 @@ class StudioProjectController extends Controller
         return [
             'exaggeration' => ['nullable', 'numeric', 'between:0.25,2'],
             'cfg_weight' => ['nullable', 'numeric', 'between:0.2,1'],
+            'temperature' => ['nullable', 'numeric', 'between:0.5,1.5'],
+            'seed' => ['nullable', 'integer', 'min:0'],
         ];
     }
 
     /**
-     * The per-chunk tuning knobs from the request as a name => value|null map
-     * (null = inherit/clear). Single place the panel's knob names are read.
+     * The per-chunk tuning override from the request as a name => value|null map
+     * (null = inherit/clear). Single place the panel's control names are read. The
+     * float knobs cast to float; `seed` casts to int (blank/absent => inherit,
+     * which ultimately rolls random). Shared by tune/preview/use.
      *
-     * @return array<string, float|null>
+     * @return array<string, float|int|null>
      */
     private function knobInput(Request $request): array
     {
         $knobs = [];
         foreach (array_keys($this->knobRules()) as $knob) {
-            $knobs[$knob] = $request->filled($knob) ? (float) $request->input($knob) : null;
+            $knobs[$knob] = $request->filled($knob)
+                ? ($knob === 'seed' ? (int) $request->input($knob) : (float) $request->input($knob))
+                : null;
         }
 
         return $knobs;
@@ -956,9 +973,12 @@ class StudioProjectController extends Controller
             if ($preset?->cfg_weight !== null) {
                 $overrides['cfg_weight'] = $preset->cfg_weight;
             }
+            if ($preset?->temperature !== null) {
+                $overrides['temperature'] = $preset->temperature;
+            }
         }
 
-        foreach (['exaggeration', 'cfg_weight'] as $knob) {
+        foreach (['exaggeration', 'cfg_weight', 'temperature'] as $knob) {
             if ($request->filled($knob)) {
                 $overrides[$knob] = (float) $request->input($knob);
             }

@@ -180,6 +180,7 @@ class VoiceController extends Controller
                 seed: $request->filled('seed') ? (int) $request->input('seed') : null,
                 exaggeration: $request->filled('exaggeration') ? (float) $request->input('exaggeration') : null,
                 cfgWeight: $request->filled('cfg_weight') ? (float) $request->input('cfg_weight') : null,
+                temperature: $request->filled('temperature') ? (float) $request->input('temperature') : null,
             );
         } catch (Throwable $e) {
             return redirect()->route('admin.voices.edit', $voice)

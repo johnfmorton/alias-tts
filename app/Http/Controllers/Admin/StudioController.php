@@ -75,6 +75,7 @@ class StudioController extends Controller
                 Rule::unique('tuning_presets', 'name')->where('user_id', $request->user()->id)],
             'exaggeration' => ['nullable', 'numeric', 'between:0.25,2'],
             'cfg_weight' => ['nullable', 'numeric', 'between:0.2,1'],
+            'temperature' => ['nullable', 'numeric', 'between:0.5,1.5'],
         ])) {
             return $error;
         }
@@ -84,6 +85,7 @@ class StudioController extends Controller
             'name' => trim((string) $request->input('name')),
             'exaggeration' => $request->filled('exaggeration') ? (float) $request->input('exaggeration') : null,
             'cfg_weight' => $request->filled('cfg_weight') ? (float) $request->input('cfg_weight') : null,
+            'temperature' => $request->filled('temperature') ? (float) $request->input('temperature') : null,
         ]);
 
         return response()->json([
@@ -93,6 +95,7 @@ class StudioController extends Controller
                 'name' => $preset->name,
                 'exaggeration' => $preset->exaggeration,
                 'cfg_weight' => $preset->cfg_weight,
+                'temperature' => $preset->temperature,
             ],
         ]);
     }
@@ -356,6 +359,7 @@ class StudioController extends Controller
             'voice' => ['required', 'string'],
             'exaggeration' => ['nullable', 'numeric', 'between:0.25,2'],
             'cfg_weight' => ['nullable', 'numeric', 'between:0.2,1'],
+            'temperature' => ['nullable', 'numeric', 'between:0.5,1.5'],
         ])) {
             return $error;
         }
@@ -409,7 +413,7 @@ class StudioController extends Controller
     private function overrides(Request $request): array
     {
         $overrides = [];
-        foreach (['exaggeration', 'cfg_weight'] as $knob) {
+        foreach (['exaggeration', 'cfg_weight', 'temperature'] as $knob) {
             if ($request->filled($knob)) {
                 $overrides[$knob] = (float) $request->input($knob);
             }

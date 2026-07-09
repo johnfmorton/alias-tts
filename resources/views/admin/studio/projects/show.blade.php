@@ -184,6 +184,14 @@
                 $inheritNative = \App\Services\Tts\ChatterboxTuning::resolveNative(is_array($project->settings) ? $project->settings : []);
                 $inheritExaggeration = number_format($inheritNative['exaggeration'], 2);
                 $inheritCfg = number_format($inheritNative['cfg_weight'], 2);
+                // Temperature is native-only (no EL twin), so read it straight from the
+                // project snapshot, falling back to the system default for pre-existing
+                // projects that predate the temperature knob.
+                $inheritTemperature = number_format((float) (($project->settings['temperature'] ?? null)
+                    ?? config('tts.default_voice_settings.temperature', 0.8)), 2);
+                // Seed the chunk field inherits: the project's pinned seed, or blank
+                // (a random draw) when the project isn't pinned.
+                $inheritSeedText = $project->seed ? (string) $project->seed : 'random';
             @endphp
             @foreach($chunks as $chunk)
                 <div class="studio-chunk rounded-xl border border-zinc-800 bg-zinc-900/50 p-4"
@@ -262,15 +270,18 @@
                              data-takes (and refreshed after each render). --}}
                         <ul class="chunk-takes mt-2 space-y-1.5"></ul>
 
+                        {{-- Row 1: the tuning controls — three native knobs + the seed pin.
+                             Row 2 (below) carries the actions, so four controls never fight
+                             the buttons for one line. --}}
                         <div class="mt-3 flex flex-wrap items-end gap-3">
                             @if($presets->isNotEmpty())
-                                {{-- Fills the two knobs below with a named preset's values;
+                                {{-- Fills the knobs below with a named preset's values;
                                      nothing is saved until "Save tuning" / a preview is kept. --}}
                                 <label class="flex flex-col gap-1 text-xs text-zinc-500">Preset
                                     <select class="chunk-preset rounded-lg border border-zinc-700 bg-zinc-950 px-2 py-1.5 text-sm text-zinc-300">
                                         <option value="" selected>Apply…</option>
                                         @foreach($presets as $preset)
-                                            <option value="{{ $preset->id }}" data-exaggeration="{{ $preset->exaggeration }}" data-cfg="{{ $preset->cfg_weight }}">{{ $preset->name }}</option>
+                                            <option value="{{ $preset->id }}" data-exaggeration="{{ $preset->exaggeration }}" data-cfg="{{ $preset->cfg_weight }}" data-temperature="{{ $preset->temperature }}">{{ $preset->name }}</option>
                                         @endforeach
                                     </select>
                                 </label>
@@ -283,6 +294,30 @@
                                            :min="0.2" :max="1" :step="0.05"
                                            :value="$chunk->settings['cfg_weight'] ?? ''" :placeholder="$inheritCfg"
                                            inputClass="chunk-cfg" class="w-44" />
+                            <x-tuning-knob knob="temperature" label="Temperature" hint="neutral 0.8"
+                                           :min="0.5" :max="1.5" :step="0.05"
+                                           :value="$chunk->settings['temperature'] ?? ''" :placeholder="$inheritTemperature"
+                                           inputClass="chunk-temperature" class="w-44" />
+                            {{-- Seed pin — not a knob (integer, no slider, no neutral value).
+                                 Blank inherits the project seed (or rolls random). A pin only
+                                 biases the draw; Chatterbox is not bit-reproducible even so. --}}
+                            <div class="flex min-w-[9rem] flex-col gap-1">
+                                <div class="flex items-center justify-between gap-2">
+                                    <span class="text-xs text-zinc-500">Seed <span class="text-zinc-600">blank = random</span></span>
+                                </div>
+                                <span class="flex items-center gap-1.5">
+                                    <input type="number" min="0" step="1"
+                                           value="{{ $chunk->settings['seed'] ?? '' }}" placeholder="{{ $inheritSeedText }}"
+                                           class="chunk-seed w-full rounded-lg border border-zinc-700 bg-zinc-950 px-2 py-1 text-right text-sm tabular-nums">
+                                    <button type="button" class="chunk-seed-random rounded-lg border border-zinc-700 px-1.5 py-1 text-xs text-zinc-400 hover:bg-zinc-800"
+                                            title="Clear to a random seed" aria-label="Clear to a random seed">🎲</button>
+                                </span>
+                                <div class="text-[10px] text-zinc-600">pins the draw, not the result</div>
+                            </div>
+                        </div>
+
+                        {{-- Row 2: actions on their own line. --}}
+                        <div class="mt-3 flex flex-wrap items-center gap-3">
                             <button type="button" class="chunk-tune-preview rounded-lg border border-zinc-700 px-3 py-1.5 text-sm hover:bg-zinc-800">▶ Preview</button>
                             <button type="button" class="chunk-tune-keep hidden rounded-lg border border-emerald-600/50 bg-emerald-500/10 px-3 py-1.5 text-sm text-emerald-300 hover:bg-emerald-500/20"
                                     title="Save the exact clip you just previewed as this chunk's audio, with these settings. No re-generation, so it sounds identical to the preview.">✓ Use this take</button>
@@ -296,7 +331,7 @@
                             <span class="aplayer__time">0:00 / 0:00</span>
                             <audio class="chunk-tune-audio aplayer__native"></audio>
                         </div>
-                        <p class="mt-1.5 text-xs text-zinc-500">Every render is kept in the list above — play any take, <span class="text-zinc-400">Select</span> the one that sounded best, or <span class="text-zinc-400">Delete</span> the duds (older takes are pruned automatically). Blank inherits the project's setting (the value shown in each field). <span class="text-zinc-400">Preview</span> auditions the typed settings (saved as a take, but not selected). Like what you hear? <span class="text-zinc-400">Use this take</span> keeps that exact clip as the chunk's audio. <span class="text-zinc-400">Save tuning</span> only stores the numbers and marks the chunk stale, so <span class="text-zinc-400">Generate</span> (top) renders a fresh take. <span class="text-zinc-400">Re-roll</span> gives you another take of the same text and tuning.</p>
+                        <p class="mt-1.5 text-xs text-zinc-500">Every render is kept in the list above — play any take, <span class="text-zinc-400">Select</span> the one that sounded best, or <span class="text-zinc-400">Delete</span> the duds (older takes are pruned automatically). Blank inherits the project's setting (the value shown in each field). <span class="text-zinc-400">Temperature</span> is sampling randomness — lower is flatter and steadier, higher is livelier but less predictable. <span class="text-zinc-400">Seed</span> pins the random draw so a take can be re-tried, but Chatterbox isn't bit-for-bit reproducible even with a seed, so a pin only gets you close — each take shows the seed it used. <span class="text-zinc-400">Preview</span> auditions the typed settings (saved as a take, but not selected). Like what you hear? <span class="text-zinc-400">Use this take</span> keeps that exact clip as the chunk's audio. <span class="text-zinc-400">Save tuning</span> only stores the numbers and marks the chunk stale, so <span class="text-zinc-400">Generate</span> (top) renders a fresh take. <span class="text-zinc-400">Re-roll</span> gives you another take of the same text and tuning.</p>
                     </details>
                 </div>
 

@@ -1,5 +1,5 @@
 @props([
-    'knob',               // native key: 'exaggeration' | 'cfg_weight'
+    'knob',               // native key: 'exaggeration' | 'cfg_weight' | 'temperature'
     'label',
     'min',
     'max',

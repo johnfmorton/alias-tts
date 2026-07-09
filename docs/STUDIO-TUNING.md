@@ -250,3 +250,35 @@ keys win over the EL-derived values:
   (clamped), and the EL twin is ignored.
 - `similarity_boost` / `use_speaker_boost` are accepted and cached but **not**
   consumed by the provider.
+
+## Addendum (2026-07-09): temperature knob + seed pin
+
+Two native controls that the original plan left off are now first-class in the
+Studio, since the Studio speaks native Chatterbox (the ElevenLabs `/v1` API — the
+reason temperature was omitted — has no equivalent, so it's unaffected).
+
+**Temperature** — Chatterbox's sampling randomness, a third native knob alongside
+exaggeration/cfg_weight. Native-only (no EL twin). Practical UI band **0.5–1.5**,
+default **0.8**; `ChatterboxTuning::clampTemperature()` and `TEMPERATURE_*`
+constants are the single source of truth for the range. It flows through the whole
+tuning chain: `default_voice_settings`, `VoiceSettingsResolver` (KEYS + cast), the
+provider (`synthesize()` sends it verbatim, defaulting to 0.8 = a no-op for
+EL-only callers), voice defaults (`VoiceService::update`/`saveTuning`), the A/B
+bench, named presets (`tuning_presets.temperature` — migration
+`2026_07_09_000001`), project creation, and the per-chunk override
+(`chunk.settings['temperature']`).
+
+**Seed** — re-added to the UI after being pulled (decision #2 above still holds in
+spirit: **a pinned seed is not bit-reproducible on Replicate's shared GPUs**, it
+only biases the draw). It's back as an honest tool, not a reproduce button:
+- The per-chunk tuning row has a **Seed pin** (blank = random). It persists to
+  `chunk.settings['seed']`; precedence in `ProjectService::providerSettings()` is
+  chunk-pinned › project seed › random, and a **Re-roll** still drops every pin
+  for a fresh random take.
+- Every take now records the seed it rendered at (`recordTake(..., seed:)` →
+  `tts_chunk_takes.seed`) — a positive integer when pinned, `null` when it rolled
+  random (Replicate doesn't report the seed it chose). The take list shows
+  `seed 4242` / `seed random` so a good pinned render can be spotted and re-pinned.
+
+UI copy deliberately avoids implying reproducibility — see the memory note
+`feedback-no-seed-in-ui`.

@@ -14,9 +14,18 @@ namespace App\Services\Tts;
  *
  *   cfg_weight   in [0.2, 1.0]  — higher stability => steadier pacing.
  *   exaggeration in [0.25, 2.0] — style 0 => 0.5 (neutral), style 1 => 2.0.
+ *   temperature  in [0.5, 1.5]  — sampling randomness (native-only, no EL twin);
+ *                                 low => flat/steady, high => varied/expressive.
  */
 class ChatterboxTuning
 {
+    /** Practical UI band for temperature; the model itself accepts 0.05–5. */
+    public const TEMPERATURE_MIN = 0.5;
+
+    public const TEMPERATURE_MAX = 1.5;
+
+    public const TEMPERATURE_DEFAULT = 0.8;
+
     public static function clampCfgWeight(float $cfgWeight): float
     {
         return max(0.2, min(1.0, $cfgWeight));
@@ -25,6 +34,11 @@ class ChatterboxTuning
     public static function clampExaggeration(float $exaggeration): float
     {
         return max(0.25, min(2.0, $exaggeration));
+    }
+
+    public static function clampTemperature(float $temperature): float
+    {
+        return max(self::TEMPERATURE_MIN, min(self::TEMPERATURE_MAX, $temperature));
     }
 
     public static function cfgWeightFromStability(float $stability): float
