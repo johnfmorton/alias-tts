@@ -4,6 +4,25 @@ All notable changes to this project are documented in this file. The format is
 based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this
 project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.45.0] - 2026-07-10
+
+### Added
+- **Studio now shows what your audio actually costs.** Each chunk carries a
+  small cost chip and the project header keeps a running "est. spend" total,
+  priced the way Replicate meters Chatterbox — per input character of the text
+  (reference clips and tuning knobs are free). Every real render counts:
+  Generate, Re-roll, Preview, auto-remediation, and takes carried over from an
+  API call. The numbers update live as you work, and hovering either readout
+  spells out the math.
+- The counters are **lifetime spend, not a sum of what's still on disk**:
+  deleting a take, pruning old takes, or deleting a whole chunk never lowers
+  the estimate, because that money is already spent. "Use this take" adds
+  nothing (the preview it keeps was already paid for), and a duplicated
+  project honestly starts at 0¢ — its audio was billed to the original.
+- The rate is configurable via `TTS_COST_PER_1K_CHARS` (default 0.025, the
+  Replicate Chatterbox rate). Set it to 0 to hide the readouts entirely, e.g.
+  when running a self-hosted provider that costs nothing per call.
+
 ## [0.44.0] - 2026-07-10
 
 ### Changed
