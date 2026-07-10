@@ -5,6 +5,18 @@
         // the panels client-side on click without a reload.
         $activeTab = request('tab') === 'inspector' ? 'inspector' : 'projects';
 
+        // Regular users only ever see their own projects, so the Owner column is
+        // SuperAdmin-only — the grid drops that track for everyone else. (All
+        // four literals must stay in this file for Tailwind's scanner to emit
+        // them — never build these class names with string manipulation.)
+        $isSuperAdmin = auth()->user()->isSuperAdmin();
+        $projectGridHead = $isSuperAdmin
+            ? 'grid-cols-[2.6fr_0.8fr_1.2fr_0.9fr_1fr]'
+            : 'grid-cols-[2.6fr_0.8fr_1.2fr_1fr]';
+        $projectGridRow = $isSuperAdmin
+            ? 'sm:grid-cols-[2.6fr_0.8fr_1.2fr_0.9fr_1fr]'
+            : 'sm:grid-cols-[2.6fr_0.8fr_1.2fr_1fr]';
+
         $projectStyles = [
             'ready' => 'border-ok/25 bg-ok/10 text-ok',
             'stale' => 'border-warn/30 bg-warn/10 text-warn',
@@ -35,16 +47,34 @@
         <div class="overflow-hidden rounded-[14px] border border-white/8 bg-panel">
             <div class="flex flex-wrap items-center justify-between gap-3 border-b border-white/[0.07] px-[22px] py-[18px]">
                 <p class="text-[12.5px] text-zinc-400">Saved, editable audio — regenerate a single sentence without rebuilding the whole file.</p>
-                <a href="{{ route('admin.studio.projects.create') }}"
-                   class="shrink-0 rounded-[9px] bg-accent px-4 py-[9px] text-[13.5px] font-semibold text-accent-on transition hover:bg-cyan-400">New project</a>
+                <div class="flex flex-wrap items-center gap-3">
+                    {{-- SuperAdmin-only: narrow everyone's projects to one owner. A plain
+                         GET form (?owner=) so pagination — withQueryString — keeps the
+                         filter; the hidden tab field lands the reload on this view. --}}
+                    @if(auth()->user()->isSuperAdmin() && $owners->isNotEmpty())
+                        <form method="GET" action="{{ route('admin.studio.index') }}" class="flex items-center gap-2">
+                            <input type="hidden" name="tab" value="projects">
+                            <label for="project-owner-filter" class="text-xs text-zinc-400">Owner</label>
+                            <select id="project-owner-filter" name="owner" onchange="this.form.requestSubmit()"
+                                    class="rounded-[8px] border border-white/12 bg-inset px-2.5 py-1.5 text-sm text-zinc-200 focus:border-accent/50 focus:outline-none">
+                                <option value="">All owners</option>
+                                @foreach($owners as $ownerOpt)
+                                    <option value="{{ $ownerOpt->id }}" @selected($ownerId === $ownerOpt->id)>{{ $ownerOpt->name }}</option>
+                                @endforeach
+                            </select>
+                        </form>
+                    @endif
+                    <a href="{{ route('admin.studio.projects.create') }}"
+                       class="shrink-0 rounded-[9px] bg-accent px-4 py-[9px] text-[13.5px] font-semibold text-accent-on transition hover:bg-cyan-400">New project</a>
+                </div>
             </div>
 
             @if($projects->total() === 0)
-                <p class="px-[22px] py-6 text-sm text-zinc-500">No projects yet.</p>
+                <p class="px-[22px] py-6 text-sm text-zinc-500">{{ $ownerId !== null ? 'No projects for this owner.' : 'No projects yet.' }}</p>
             @else
                 {{-- Column head (desktop only; on mobile each row carries its own meta line). --}}
-                <div class="hidden grid-cols-[2.6fr_0.8fr_1.2fr_0.9fr_1fr] gap-3 border-b border-white/[0.06] px-[22px] py-[11px] text-[11px] font-bold tracking-[0.6px] text-zinc-500 uppercase sm:grid">
-                    <div>Name</div><div>Chunks</div><div>Updated</div><div>Owner</div><div class="text-right">Status</div>
+                <div class="hidden {{ $projectGridHead }} gap-3 border-b border-white/[0.06] px-[22px] py-[11px] text-[11px] font-bold tracking-[0.6px] text-zinc-500 uppercase sm:grid">
+                    <div>Name</div><div>Chunks</div><div>Updated</div>@if($isSuperAdmin)<div>Owner</div>@endif<div class="text-right">Status</div>
                 </div>
 
                 @php
@@ -54,20 +84,17 @@
                 @endphp
 
                 @foreach($projects as $project)
-                    @php
-                        $owner = auth()->user()->isSuperAdmin()
-                            ? ($project->relationLoaded('user') && $project->user ? $project->user->name : '—')
-                            : auth()->user()->name;
-                    @endphp
                     <a href="{{ route('admin.studio.projects.show', $project) }}"
-                       class="grid grid-cols-[1fr_auto] items-center gap-3 border-b border-white/[0.05] px-[22px] py-[15px] transition last:border-b-0 hover:bg-white/[0.03] sm:grid-cols-[2.6fr_0.8fr_1.2fr_0.9fr_1fr]">
+                       class="grid grid-cols-[1fr_auto] items-center gap-3 border-b border-white/[0.05] px-[22px] py-[15px] transition last:border-b-0 hover:bg-white/[0.03] {{ $projectGridRow }}">
                         <div class="min-w-0">
                             <div class="truncate text-[15px] font-semibold text-zinc-100">{{ $project->title }}</div>
-                            <div class="mt-0.5 text-xs text-zinc-500 sm:hidden">{{ $project->chunks_count }} chunk(s) · {{ $project->updated_at->diffForHumans() }}@if(auth()->user()->isSuperAdmin() && $project->relationLoaded('user') && $project->user) · {{ $project->user->name }}@endif</div>
+                            <div class="mt-0.5 text-xs text-zinc-500 sm:hidden">{{ $project->chunks_count }} chunk(s) · {{ $project->updated_at->diffForHumans() }}@if($isSuperAdmin && $project->relationLoaded('user') && $project->user) · {{ $project->user->name }}@endif</div>
                         </div>
                         <div class="hidden text-[13px] text-zinc-400 sm:block">{{ $project->chunks_count }}</div>
                         <div class="hidden text-[13px] text-zinc-400 sm:block">{{ $project->updated_at->diffForHumans() }}</div>
-                        <div class="hidden truncate text-[13px] text-zinc-400 sm:block">{{ $owner }}</div>
+                        @if($isSuperAdmin)
+                            <div class="hidden truncate text-[13px] text-zinc-400 sm:block">{{ $project->relationLoaded('user') && $project->user ? $project->user->name : '—' }}</div>
+                        @endif
                         <div class="flex items-center justify-end gap-2">
                             @if($project->origin === 'api_failure')
                                 <span class="inline-flex shrink-0 items-center gap-1 rounded-md border border-red-500/30 bg-red-500/10 px-2 py-0.5 text-xs text-red-300" title="{{ $project->failure_reason }}">{!! $apiGlyph !!}<span class="hidden sm:inline">API failure</span></span>

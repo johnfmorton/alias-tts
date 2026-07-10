@@ -4,6 +4,19 @@ All notable changes to this project are documented in this file. The format is
 based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this
 project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+- **SuperAdmins can filter the Studio projects list by owner.** A new Owner
+  dropdown in the header narrows the list to a single user's projects (it only
+  offers users who actually own projects). Regular users are unaffected — the
+  filter never widens their view beyond their own work.
+
+### Changed
+- **The Owner column only renders for SuperAdmins.** For a regular user every
+  project on the list is their own, so the column (and the filter) stay hidden
+  and the table tightens up to Name / Chunks / Updated / Status.
+
 ## [0.45.0] - 2026-07-10
 
 ### Added

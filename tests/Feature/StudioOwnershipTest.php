@@ -59,7 +59,9 @@ class StudioOwnershipTest extends TestCase
         $this->actingAs($alice)->get(route('admin.studio.index'))
             ->assertOk()
             ->assertSee('Alice project')
-            ->assertDontSee('Bob project');
+            ->assertDontSee('Bob project')
+            // Everything here is Alice's, so the Owner column doesn't render.
+            ->assertDontSee('Owner');
     }
 
     public function test_superadmin_index_lists_everyones_projects_with_owner(): void
@@ -71,7 +73,39 @@ class StudioOwnershipTest extends TestCase
         $this->actingAs($this->user(superAdmin: true))->get(route('admin.studio.index'))
             ->assertOk()
             ->assertSee('Alice project')
-            ->assertSee('Alice');
+            ->assertSee('Alice')
+            ->assertSee('Owner');
+    }
+
+    public function test_superadmin_can_filter_the_index_by_owner(): void
+    {
+        $alice = $this->user();
+        $alice->update(['name' => 'Alice']);
+        $bob = $this->user();
+        $bob->update(['name' => 'Bob']);
+        $this->projectOwnedBy($alice, 'Alice project');
+        $this->projectOwnedBy($bob, 'Bob project');
+
+        $this->actingAs($this->user(superAdmin: true))
+            ->get(route('admin.studio.index', ['owner' => $alice->id]))
+            ->assertOk()
+            ->assertSee('Alice project')
+            ->assertDontSee('Bob project');
+    }
+
+    public function test_owner_filter_never_widens_a_regular_users_view(): void
+    {
+        $alice = $this->user();
+        $bob = $this->user();
+        $this->projectOwnedBy($alice, 'Alice project');
+        $this->projectOwnedBy($bob, 'Bob project');
+
+        // Passing someone else's id must not leak their projects.
+        $this->actingAs($alice)
+            ->get(route('admin.studio.index', ['owner' => $bob->id]))
+            ->assertOk()
+            ->assertSee('Alice project')
+            ->assertDontSee('Bob project');
     }
 
     public function test_a_user_cannot_open_anothers_project(): void

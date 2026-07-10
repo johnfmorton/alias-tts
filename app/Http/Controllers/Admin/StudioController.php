@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Admin;
 use App\Http\Controllers\Controller;
 use App\Models\TtsProject;
 use App\Models\TuningPreset;
+use App\Models\User;
 use App\Models\Voice;
 use App\Services\Audio\AudioConverter;
 use App\Services\SpeechService;
@@ -52,6 +53,13 @@ class StudioController extends Controller
     {
         $user = $request->user();
 
+        // SuperAdmins can narrow the everyone's-projects list to a single owner
+        // (?owner=<id>). Regular users are always scoped to themselves, so the
+        // param is ignored for them — it must never widen what they can see.
+        $ownerId = $user->isSuperAdmin() && ctype_digit((string) $request->query('owner'))
+            ? (int) $request->query('owner')
+            : null;
+
         return view('admin.studio.index', [
             'voices' => Voice::orderedFor($user->id)->get(),
             // Projects are personal; a SuperAdmin sees everyone's, labeled by owner.
@@ -61,9 +69,16 @@ class StudioController extends Controller
             'projects' => TtsProject::withCount('chunks')
                 ->when(! $user->isSuperAdmin(), fn ($q) => $q->where('user_id', $user->id))
                 ->when($user->isSuperAdmin(), fn ($q) => $q->with('user:id,name'))
+                ->when($ownerId !== null, fn ($q) => $q->where('user_id', $ownerId))
                 ->latest()
                 ->paginate(max(1, (int) config('tts.studio_projects_per_page', 10)))
                 ->withQueryString(),
+            // The owner-filter dropdown: only users who actually own a project.
+            'owners' => $user->isSuperAdmin()
+                ? User::whereIn('id', TtsProject::whereNotNull('user_id')->select('user_id'))
+                    ->orderBy('name')->get(['id', 'name'])
+                : collect(),
+            'ownerId' => $ownerId,
         ]);
     }
 
