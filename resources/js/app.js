@@ -66,11 +66,13 @@ async function errorMessage(res) {
 
 function startBusy(btn, label) {
     btn.dataset.originalText = btn.dataset.originalText || btn.textContent;
+    btn.dataset.busy = '1'; // survives className rewrites (see look() in the Studio cluster)
     btn.classList.add('pointer-events-none', 'opacity-50');
     setRunning(btn, label);
 }
 
 function endBusy(btn) {
+    delete btn.dataset.busy;
     btn.classList.remove('pointer-events-none', 'opacity-50');
     btn.textContent = btn.dataset.originalText;
 }
@@ -897,8 +899,9 @@ function initStudioProject() {
 
     // 4B: the action cluster is state-aware — the lit primary names the single next
     // step, and actions needing a current final stay visible-but-disabled until one
-    // exists. States: not_generated → Generate; stale → Build final; ready → Download
-    // draft / Approve; approved → Download approved version.
+    // exists. States: chunks outstanding → Generate remaining; all generated but
+    // final missing/stale → Build final; ready → Download draft / Approve;
+    // approved → Download approved version.
     const ACT_BASE = 'inline-flex items-center gap-1.5 rounded-[9px] px-4 py-[9px] text-sm transition';
     const ACT_LOOK = {
         primary: 'bg-accent font-semibold text-accent-on hover:bg-accent/90',
@@ -906,25 +909,46 @@ function initStudioProject() {
         seal: 'border border-ok/35 bg-ok/[0.06] text-ok hover:bg-ok/[0.12]',
         off: 'border border-white/8 text-zinc-600 cursor-not-allowed pointer-events-none',
     };
-    const look = (el, variant) => { if (el) el.className = ACT_BASE + ' ' + ACT_LOOK[variant]; };
+    // Rewriting className would strip startBusy()'s dimming mid-request (each
+    // chunk in a generate-all run reflects state), so re-apply it for a busy
+    // button — otherwise "Generating…" un-dims and accepts a second click.
+    const look = (el, variant) => {
+        if (! el) return;
+        el.className = ACT_BASE + ' ' + ACT_LOOK[variant];
+        if (el.dataset.busy) el.classList.add('pointer-events-none', 'opacity-50');
+    };
+    // look() rewrites className, so the pulse is re-applied after it each pass.
+    // A busy button never pulses — it's already doing the thing the pulse asks for.
+    const setPulse = (el, on) => el?.classList.toggle('act-pulse', Boolean(on) && ! el.dataset.busy);
 
     function reflectActionState() {
         const status = projectStatus.textContent.trim();
         const cards = [...root.querySelectorAll('.studio-chunk')];
         const anyCompleted = cards.some(isChunkCompleted);
         const anyPending = cards.some((c) => !isChunkCompleted(c));
+        const allCompleted = cards.length > 0 && ! anyPending;
         const ready = hasFinal && status === 'ready';
 
-        // Generate-all only matters while chunks remain ungenerated; it leads when
-        // nothing has been generated yet, else it steps down to a secondary. look()
-        // rewrites className with ACT_BASE (which carries `inline-flex`), so hiding
-        // must clear inline-flex too — a lone `hidden` loses to it. showEl toggles
-        // both, so re-adding a chunk (→ anyPending) brings the button back.
+        // Generate-all shows while chunks remain outstanding — and since Build
+        // final is off in exactly those states (below), it's the single next step,
+        // so it always leads. It pulses when existing work (generated audio or a
+        // built final) has fallen out of sync with the text; a brand-new project
+        // gets the lit primary without the nudge. look() rewrites className with
+        // ACT_BASE (which carries `inline-flex`), so hiding must clear inline-flex
+        // too — a lone `hidden` loses to it. showEl toggles both, so re-adding a
+        // chunk (→ anyPending) brings the button back.
         if (generateAllBtn) {
-            look(generateAllBtn, (! anyCompleted && anyPending) ? 'primary' : 'outline');
+            look(generateAllBtn, 'primary');
+            setPulse(generateAllBtn, anyPending && (anyCompleted || hasFinal));
             showEl(generateAllBtn, anyPending, 'inline-flex');
         }
-        look(rebuildBtn, ready ? 'outline' : (anyCompleted ? 'primary' : 'off'));
+        // Build final stays off while any chunk needs generating: a stale chunk
+        // still holds its OLD audio, so stitching now would put outdated audio
+        // under the edited text (the server only rejects chunks with NO audio).
+        // Once every chunk is current it lights and pulses until the final is
+        // (re)built; a ready final steps it down to a quiet secondary.
+        look(rebuildBtn, ready ? 'outline' : (allCompleted ? 'primary' : 'off'));
+        setPulse(rebuildBtn, allCompleted && ! ready);
 
         // The draft download (bare final audio) is offered until the project is
         // approved; then the approved-version package supersedes it, so it hides.
@@ -1098,6 +1122,7 @@ function initStudioProject() {
             refreshSeams(); // may reveal an inline seam preview next to a generated neighbor
         } catch (err) {
             setChunkStatus(card, 'failed');
+            reflectActionState(); // a failed chunk is outstanding again — Build final goes off
             endBusy(btn);
             throw err;
         }
@@ -1133,6 +1158,7 @@ function initStudioProject() {
             }
         }
         endBusy(generateAllBtn);
+        reflectActionState(); // the pulse is suppressed while busy — re-apply it (e.g. failures left chunks outstanding)
         setStatus(finalStatus, failed
             ? `✗ ${failed} chunk(s) failed — retry them, then build the final.`
             : `✓ All ${done} chunk(s) generated — build the final to stitch.`, failed ? 'error' : 'ok');

@@ -4,6 +4,28 @@ All notable changes to this project are documented in this file. The format is
 based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this
 project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Changed
+- **"Build final" now waits until every chunk is current.** Editing and saving a
+  chunk's text leaves the chunk's old audio in place until you regenerate it,
+  and the stitcher would happily build a final with that outdated audio under
+  the new words. The button now greys out while any chunk still needs
+  generating, and a gentle pulse points at the one step that brings the project
+  back in sync — **Generate remaining** while saved text is ahead of its audio,
+  then **Build final** once every chunk is current but the stitched final is
+  behind. The pulse is deliberately subtle, never nags a brand-new project, and
+  stays off for reduced-motion users.
+
+### Fixed
+- **A running action button can no longer be clicked again mid-run.** While
+  "Generate remaining" worked through a project, each finished chunk refreshed
+  the button cluster and quietly stripped the running button's dimmed,
+  non-clickable state, so a second click could start a parallel run. The busy
+  state now survives those refreshes, and a failed generation updates the
+  cluster immediately (a failed re-roll of a completed chunk switches "Build
+  final" back off).
+
 ## [0.43.0] - 2026-07-09
 
 ### Added

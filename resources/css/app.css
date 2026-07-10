@@ -65,6 +65,29 @@
 }
 
 /*
+ * Studio action cluster: a soft accent ring breathing outward nudges the user
+ * toward the one step that brings the audio back in sync with the text —
+ * Generate remaining while saved edits await new audio, Build final once every
+ * chunk is current but the stitched final is behind. Toggled by
+ * reflectActionState() in app.js; kept gentle (slow, low-alpha, small spread)
+ * so it reads as a cue, not an alarm.
+ */
+@media (prefers-reduced-motion: no-preference) {
+    .act-pulse {
+        animation: act-pulse 2.4s ease-out infinite;
+    }
+}
+@keyframes act-pulse {
+    0% {
+        box-shadow: 0 0 0 0 color-mix(in srgb, var(--color-accent) 40%, transparent);
+    }
+    70%,
+    100% {
+        box-shadow: 0 0 0 8px transparent;
+    }
+}
+
+/*
  * Studio audio players: only one plays at a time (see app.js), so dim every
  * idle/paused player to gray and keep the actively-playing one full white, so
  * it's obvious which clip is sounding. The `is-playing` class is toggled in JS.
