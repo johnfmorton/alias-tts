@@ -61,6 +61,12 @@ class TtsProject extends Model
         'final_bytes' => 'integer',
         'sealed_at' => 'datetime',
         'sealed_by_id' => 'integer',
+        // Lifetime characters synthesized across ALL of this project's chunks,
+        // including chunks since deleted (never decremented — see
+        // ProjectService::recordTake()). Deliberately NOT fillable: only
+        // recordTake's increments and the backfill migration write it, and
+        // duplicate()'s forceFill list omits it so a copy starts at 0.
+        'spent_characters' => 'integer',
     ];
 
     public function voice(): BelongsTo

@@ -507,6 +507,19 @@ class ProjectService
             'characters' => mb_strlen($chunk->text),
         ]);
 
+        // Lifetime spend counters (chunk + project). A 'use' take re-records
+        // already-paid preview bytes without a provider call, so it doesn't
+        // count; every other source was a real render billed by input
+        // character. Query-builder increments, deliberately NOT model saves:
+        // deleting takes or chunks later must never lower these — money spent
+        // is never un-spent (a deleted chunk's spend lives on in the project
+        // counter).
+        if ($source !== 'use') {
+            $spent = mb_strlen($chunk->text);
+            TtsChunk::whereKey($chunk->id)->increment('spent_characters', $spent);
+            TtsProject::whereKey($chunk->tts_project_id)->increment('spent_characters', $spent);
+        }
+
         if ($select) {
             $attributes = [
                 'audio_path' => $path,

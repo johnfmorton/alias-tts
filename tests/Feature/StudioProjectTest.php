@@ -1336,14 +1336,15 @@ class StudioProjectTest extends TestCase
         // Re-run the takes migration against the already-generated chunk, as a real
         // deploy would: drop + recreate the table so up()'s backfill runs over the
         // existing audio (the chunk's audio_path is untouched by the rollback).
-        // Seventeen steps because the takes table is the seventeenth-newest
+        // Eighteen steps because the takes table is the eighteenth-newest
         // migration (native presets, project-seal, bundled default voices, account
         // fields, two-factor/connected-accounts, the unowned-api-key reassignment,
         // project ownership, the magic-login-table drop, per-user settings,
         // per-user voices, per-user presets, the take-text snapshot, the
         // default-clip replacement, the voice-clips staging table, the per-user
-        // slug scoping, and the preset-temperature column all sit on top of it).
-        Artisan::call('migrate:rollback', ['--step' => 17]);
+        // slug scoping, the preset-temperature column, and the spent-characters
+        // counters all sit on top of it).
+        Artisan::call('migrate:rollback', ['--step' => 18]);
         Artisan::call('migrate', ['--force' => true]);
 
         $takes = $chunk->refresh()->takes()->get();

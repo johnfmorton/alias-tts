@@ -345,6 +345,13 @@ return [
         'keep_preview' => (int) env('TTS_TAKES_KEEP_PREVIEW', 3), // preview takes kept per chunk
     ],
 
+    // Estimated provider cost per 1,000 input characters (USD), driving the
+    // Studio spend readouts. The default mirrors Replicate's Chatterbox
+    // metering: billed by input character only — reference clips and tuning
+    // knobs are free. Set to 0 to hide every cost readout (e.g. when running
+    // a self-hosted provider that costs nothing per call).
+    'cost_per_1k_chars' => (float) env('TTS_COST_PER_1K_CHARS', 0.025),
+
     'ttl_hours' => (int) env('TTS_TTL_HOURS', 720), // cache generated audio for 30 days
 
     // Whether a /v1 API generation also creates an editable Studio project:

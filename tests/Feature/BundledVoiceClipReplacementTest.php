@@ -20,14 +20,15 @@ class BundledVoiceClipReplacementTest extends TestCase
     use RefreshDatabase;
 
     /**
-     * Roll back to (and re-run) the replacement migration. Four steps because the
-     * voice-clips staging table, the per-user slug scoping, and the preset
-     * temperature column now sit on top of it; rewinding all four and re-migrating
-     * re-runs the replacement's up() (its own down() is a no-op).
+     * Roll back to (and re-run) the replacement migration. Five steps because the
+     * voice-clips staging table, the per-user slug scoping, the preset temperature
+     * column, and the spent-characters counters now sit on top of it; rewinding
+     * all five and re-migrating re-runs the replacement's up() (its own down() is
+     * a no-op).
      */
     private function rerunReplacementMigration(): void
     {
-        Artisan::call('migrate:rollback', ['--step' => 4]);
+        Artisan::call('migrate:rollback', ['--step' => 5]);
         Artisan::call('migrate', ['--force' => true]);
     }
 

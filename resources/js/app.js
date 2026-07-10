@@ -1306,7 +1306,26 @@ function initStudioProject() {
         return li;
     }
 
+    // Refresh the lifetime-spend readouts from a server response. The labels
+    // arrive pre-formatted (the server owns the money math — never re-derive it
+    // here); absent `spend` means nothing changed or no rate is configured.
+    function renderSpend(card, spend) {
+        if (!spend) return;
+        const chip = card.querySelector('.chunk-spend');
+        if (chip && spend.chunk) {
+            chip.textContent = spend.chunk.label;
+            chip.title = spend.chunk.title;
+            chip.classList.toggle('hidden', !(spend.chunk.spent > 0));
+        }
+        const header = document.getElementById('project-spend');
+        if (header && spend.project) {
+            header.textContent = spend.project.label;
+            header.title = spend.project.title;
+        }
+    }
+
     function renderTakes(card, data) {
+        renderSpend(card, data && data.spend);
         const list = card.querySelector('.chunk-takes');
         if (!list) return;
         const takes = (data && data.takes) || [];

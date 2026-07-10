@@ -84,6 +84,12 @@
                         </select>
                     </label>
                     <span class="text-sm text-zinc-400">{{ $chunks->count() }} chunks</span>
+                    @if(\App\Support\GenerationCost::enabled())
+                        {{-- Lifetime estimate — counts every render ever, so deleting
+                             takes/chunks never lowers it (see GenerationCost). --}}
+                        <span id="project-spend" class="cursor-help text-sm text-zinc-500"
+                              title="{{ \App\Support\GenerationCost::title($project->spent_characters, 'project') }}">est. spend {{ \App\Support\GenerationCost::label($project->spent_characters) }}</span>
+                    @endif
                     <span id="project-status" class="inline-flex rounded-md border px-2 py-0.5 text-xs {{ $statusBadgeClass }}">{{ $statusVal }}</span>
                 </div>
             </div>
@@ -210,6 +216,12 @@
                         <div class="flex items-center gap-2 text-sm text-zinc-400">
                             <span class="font-mono text-zinc-300">#{{ $chunk->position + 1 }}</span>
                             <span class="chunk-chars">{{ $chunk->characters }} chars</span>
+                            @if(\App\Support\GenerationCost::enabled())
+                                {{-- This chunk's lifetime render spend; hidden until the first
+                                     take. JS toggles ONLY `hidden` (no competing display class). --}}
+                                <span class="chunk-spend cursor-help text-zinc-500 {{ $chunk->spent_characters > 0 ? '' : 'hidden' }}"
+                                      title="{{ \App\Support\GenerationCost::title($chunk->spent_characters, 'chunk') }}">{{ \App\Support\GenerationCost::label($chunk->spent_characters) }}</span>
+                            @endif
                             <span class="chunk-status inline-flex rounded-md border px-2 py-0.5 text-xs {{ $chunkStyles[$chunk->status->value] ?? $chunkStyles['pending'] }}">{{ $chunk->status->value }}</span>
                             @php $asrBadge = $chunk->asrBadge(); @endphp
                             {{-- ASR transcript-QA verdict; only when the chunk's current audio was scored. --}}

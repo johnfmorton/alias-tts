@@ -37,6 +37,10 @@ class TtsChunk extends Model
         'status' => ChunkStatus::class,
         'position' => 'integer',
         'characters' => 'integer',
+        // Lifetime characters synthesized for this chunk (never decremented —
+        // see ProjectService::recordTake()). Deliberately NOT fillable: only
+        // recordTake's increments and the backfill migration write it.
+        'spent_characters' => 'integer',
         'settings' => 'array',
         'asr_score' => 'float',
         'asr_report' => 'array',

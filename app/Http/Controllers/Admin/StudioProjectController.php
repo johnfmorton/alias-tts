@@ -17,6 +17,7 @@ use App\Services\Pronunciation\PronunciationDictionary;
 use App\Services\TextNormalizer;
 use App\Services\Tts\ChatterboxTuning;
 use App\Services\Tts\VoiceSettingsResolver;
+use App\Support\GenerationCost;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -521,6 +522,7 @@ class StudioProjectController extends Controller
             'status' => $chunk->status->value,
             'asr_badge' => $chunk->asrBadge(),
             'project_status' => $project->refresh()->status->value,
+            'spend' => $this->spendPayload($project, $chunk),
         ], $this->takesPayload($project, $chunk)));
     }
 
@@ -571,6 +573,7 @@ class StudioProjectController extends Controller
             'status' => $chunk->status->value,
             'asr_badge' => $chunk->asrBadge(),
             'project_status' => $project->refresh()->status->value,
+            'spend' => $this->spendPayload($project, $chunk),
         ], $this->takesPayload($project, $chunk)));
     }
 
@@ -640,6 +643,7 @@ class StudioProjectController extends Controller
             'status' => $chunk->status->value,
             'asr_badge' => $chunk->asrBadge(),
             'project_status' => $project->refresh()->status->value,
+            'spend' => $this->spendPayload($project, $chunk),
         ], $this->takesPayload($project, $chunk)));
     }
 
@@ -661,7 +665,10 @@ class StudioProjectController extends Controller
     {
         $this->assertChunkBelongs($project, $chunk);
 
-        return response()->json($this->takesPayload($project, $chunk));
+        return response()->json(array_merge(
+            ['spend' => $this->spendPayload($project, $chunk)],
+            $this->takesPayload($project, $chunk),
+        ));
     }
 
     public function takeAudio(Request $request, TtsProject $project, TtsChunk $chunk, TtsChunkTake $take): Response
@@ -690,6 +697,7 @@ class StudioProjectController extends Controller
             'asr_badge' => $chunk->asrBadge(),
             'project_status' => $project->refresh()->status->value,
             'audio_url' => route('admin.studio.projects.chunks.audio', [$project, $chunk]),
+            'spend' => $this->spendPayload($project, $chunk),
         ], $this->takesPayload($project, $chunk)));
     }
 
@@ -710,7 +718,10 @@ class StudioProjectController extends Controller
             return response()->json(['message' => 'Could not delete this take: '.$e->getMessage()], 502);
         }
 
-        return response()->json(array_merge(['ok' => true], $this->takesPayload($project, $chunk->refresh())));
+        return response()->json(array_merge(
+            ['ok' => true, 'spend' => $this->spendPayload($project, $chunk)],
+            $this->takesPayload($project, $chunk->refresh()),
+        ));
     }
 
     public function previewConcat(Request $request, TtsProject $project): Response
@@ -863,6 +874,39 @@ class StudioProjectController extends Controller
      *
      * @return array{selected_take_id: string|null, takes: list<array<string, mixed>>}
      */
+    /**
+     * Current lifetime-spend readouts (chunk + project), pre-formatted server-side
+     * so the JS never re-implements money math (the ChatterboxTuning JS-mirror
+     * lesson). Fresh PK reads: recordTake() bumps the counters via query-builder
+     * increments, so the route-bound models are stale by the time a response is
+     * built. Null when no rate is configured — the readouts don't exist then.
+     *
+     * @return array{chunk: array{spent: int, label: string, title: string},
+     *               project: array{spent: int, label: string, title: string}}|null
+     */
+    private function spendPayload(TtsProject $project, TtsChunk $chunk): ?array
+    {
+        if (! GenerationCost::enabled()) {
+            return null;
+        }
+
+        $chunkSpent = (int) TtsChunk::whereKey($chunk->id)->value('spent_characters');
+        $projectSpent = (int) TtsProject::whereKey($project->id)->value('spent_characters');
+
+        return [
+            'chunk' => [
+                'spent' => $chunkSpent,
+                'label' => GenerationCost::label($chunkSpent),
+                'title' => GenerationCost::title($chunkSpent, 'chunk'),
+            ],
+            'project' => [
+                'spent' => $projectSpent,
+                'label' => 'est. spend '.GenerationCost::label($projectSpent),
+                'title' => GenerationCost::title($projectSpent, 'project'),
+            ],
+        ];
+    }
+
     private function takesPayload(TtsProject $project, TtsChunk $chunk): array
     {
         $selectedId = null;
