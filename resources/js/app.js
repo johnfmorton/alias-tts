@@ -1521,6 +1521,9 @@ function initStudioProject() {
         const time = document.createElement('span');
         time.className = 'aplayer__time';
         time.textContent = '0:00 / 0:00';
+        // Recorded length: enhanceStudioPlayers prints it immediately, so the
+        // duration is visible without playing (preload stays 'none' — no request).
+        if (take.duration_ms) player.dataset.durationMs = take.duration_ms;
         const audio = document.createElement('audio');
         audio.preload = 'none';
         audio.className = 'aplayer__native';
@@ -1587,6 +1590,12 @@ function initStudioProject() {
 
     function renderTakes(card, data) {
         renderSpend(card, data && data.spend);
+        // Keep the main player's duration fallback in step with whichever take the
+        // chunk audio now points at (its src is cache-busted on select/generate, so
+        // audio.duration is briefly unavailable — durationchange re-syncs from this).
+        const selected = ((data && data.takes) || []).find((t) => t.selected);
+        const mainPlayer = card.querySelector('.chunk-audio')?.closest('.aplayer');
+        if (mainPlayer && selected?.duration_ms) mainPlayer.dataset.durationMs = selected.duration_ms;
         const list = card.querySelector('.chunk-takes');
         if (!list) return;
         const takes = (data && data.takes) || [];
@@ -2180,7 +2189,10 @@ function enhanceStudioPlayers(scope) {
             ? Math.floor(s / 60) + ':' + String(Math.floor(s % 60)).padStart(2, '0')
             : '0:00';
         const sync = () => {
-            const d = audio.duration || 0;
+            // Until the audio's own metadata loads, fall back to the server-recorded
+            // length (data-duration-ms) so the duration shows without any interaction
+            // — take players are preload="none", so metadata only loads on play.
+            const d = audio.duration || (parseInt(el.dataset.durationMs, 10) || 0) / 1000;
             const pct = d ? (audio.currentTime / d) * 100 : 0;
             if (fill) fill.style.width = pct + '%';
             if (knob) knob.style.left = pct + '%';
@@ -2194,6 +2206,9 @@ function enhanceStudioPlayers(scope) {
         });
         audio.addEventListener('timeupdate', sync);
         audio.addEventListener('loadedmetadata', sync);
+        // Fires on src swap (duration resets) and when the new metadata arrives, so
+        // the readout tracks a re-selected take via the data-duration-ms fallback.
+        audio.addEventListener('durationchange', sync);
         audio.addEventListener('play', () => el.classList.add('is-playing'));
         audio.addEventListener('pause', () => el.classList.remove('is-playing'));
         audio.addEventListener('ended', () => el.classList.remove('is-playing'));

@@ -489,6 +489,12 @@ class ProjectService
             ? null
             : ($reportExtra === [] ? $verdict->toArray() : array_merge($verdict->toArray(), $reportExtra));
 
+        // Audio length from the WAV header, so the panel can print a take's
+        // duration without the browser fetching its metadata (take players are
+        // preload="none"). Null when the bytes aren't a parsable WAV — the
+        // player then just shows the duration once playback loads it.
+        $seconds = $this->converter->wavDurationSeconds($bytes);
+
         $take = $chunk->takes()->create([
             'id' => $takeId,
             'audio_path' => $path,
@@ -496,6 +502,7 @@ class ProjectService
             // earlier take can print the words it spoke on the receipt even after
             // the chunk's text was edited (see ProjectExportService::chunkRows).
             'text' => $chunk->text,
+            'duration_ms' => $seconds !== null ? (int) round($seconds * 1000) : null,
             'settings' => $override ?: null,
             'source' => $source,
             // The seed this take was pinned to, or null when it rolled random
@@ -1066,6 +1073,7 @@ class ProjectService
                             'settings' => $selected?->settings,
                             'seed' => $selected?->seed,
                             'characters' => $selected->characters ?? $chunk->characters,
+                            'duration_ms' => $selected?->duration_ms,
                             'asr_score' => $selected ? $selected->asr_score : $chunk->asr_score,
                             'asr_report' => $selected ? $selected->asr_report : $chunk->asr_report,
                         ];
@@ -1148,6 +1156,7 @@ class ProjectService
                             'asr_score' => $plan['take']['asr_score'],
                             'asr_report' => $plan['take']['asr_report'],
                             'characters' => $plan['take']['characters'],
+                            'duration_ms' => $plan['take']['duration_ms'],
                             'seed' => $plan['take']['seed'],
                         ])->save();
                     }

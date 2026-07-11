@@ -4,6 +4,18 @@ All notable changes to this project are documented in this file. The format is
 based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this
 project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+- **Take and chunk players show the clip's length without playing it.** Every
+  take now records its duration at synthesis time (measured from the audio
+  itself), so the Studio players print "0:00 / 0:08" the moment the page
+  loads instead of "0:00 / 0:00" until you press play — and selecting a
+  different take updates the chunk readout instantly. Take players still
+  load no audio up front, so a project full of takes stays as light as
+  before. A migration backfills the durations of existing takes; any take
+  whose file can't be read simply keeps the old show-on-play behavior.
+
 ## [0.47.2] - 2026-07-11
 
 ### Changed

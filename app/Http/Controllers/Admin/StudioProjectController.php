@@ -945,6 +945,9 @@ class StudioProjectController extends Controller
                 'audio_url' => route('admin.studio.projects.chunks.takes.audio', [$project, $chunk, $take]),
                 'selected' => $selected,
                 'tuning_label' => $this->tuningLabel(is_array($take->settings) ? $take->settings : []),
+                // Audio length recorded at synthesis, so the player can print the
+                // duration without loading metadata (null on unparsable legacy takes).
+                'duration_ms' => $take->duration_ms,
                 // The seed this take was pinned to, or null when it rolled random.
                 'seed' => $take->seed,
                 'asr_badge' => $take->asrBadge(),

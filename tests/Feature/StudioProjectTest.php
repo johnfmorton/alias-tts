@@ -1131,11 +1131,15 @@ class StudioProjectTest extends TestCase
             ->assertOk()
             ->assertJsonCount(1, 'takes')
             ->assertJsonPath('takes.0.source', 'generate')
-            ->assertJsonPath('takes.0.selected', true);
+            ->assertJsonPath('takes.0.selected', true)
+            // The recorded length reaches the panel, so the player can print the
+            // duration without loading metadata (fake provider = 0.2s of silence).
+            ->assertJsonPath('takes.0.duration_ms', 200);
 
         $take = $chunk->refresh()->takes()->first();
         $this->assertSame('generate', $take->source);
         $this->assertSame($chunk->audio_path, $take->audio_path); // the take IS the chunk audio
+        $this->assertSame(200, $take->duration_ms); // measured from the WAV header at record time
         $this->assertTrue(Storage::disk('local')->exists($take->audio_path));
     }
 
@@ -1336,21 +1340,24 @@ class StudioProjectTest extends TestCase
         // Re-run the takes migration against the already-generated chunk, as a real
         // deploy would: drop + recreate the table so up()'s backfill runs over the
         // existing audio (the chunk's audio_path is untouched by the rollback).
-        // Eighteen steps because the takes table is the eighteenth-newest
+        // Nineteen steps because the takes table is the nineteenth-newest
         // migration (native presets, project-seal, bundled default voices, account
         // fields, two-factor/connected-accounts, the unowned-api-key reassignment,
         // project ownership, the magic-login-table drop, per-user settings,
         // per-user voices, per-user presets, the take-text snapshot, the
         // default-clip replacement, the voice-clips staging table, the per-user
-        // slug scoping, the preset-temperature column, and the spent-characters
-        // counters all sit on top of it).
-        Artisan::call('migrate:rollback', ['--step' => 18]);
+        // slug scoping, the preset-temperature column, the spent-characters
+        // counters, and the take-duration column all sit on top of it).
+        Artisan::call('migrate:rollback', ['--step' => 19]);
         Artisan::call('migrate', ['--force' => true]);
 
         $takes = $chunk->refresh()->takes()->get();
         $this->assertCount(1, $takes);
         $this->assertSame('legacy', $takes->first()->source);
         $this->assertSame($audioPath, $takes->first()->audio_path); // references the file in place
+        // The duration migration's backfill also re-ran, reading this take's WAV
+        // header from storage (fake provider = 0.2s of silence).
+        $this->assertSame(200, $takes->first()->duration_ms);
     }
 
     // --- Duplicate project ------------------------------------------------------
@@ -1426,6 +1433,7 @@ class StudioProjectTest extends TestCase
         $this->assertSame('duplicate', $takes->first()->source);
         $this->assertSame($copyChunk->audio_path, $takes->first()->audio_path);
         $this->assertSame($chunk->text, $takes->first()->text);
+        $this->assertSame(200, $takes->first()->duration_ms); // carried from the copied take
         $this->assertSame(
             Storage::disk('local')->get($chunk->audio_path),
             Storage::disk('local')->get($copyChunk->audio_path),

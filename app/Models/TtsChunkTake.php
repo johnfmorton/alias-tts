@@ -28,6 +28,7 @@ class TtsChunkTake extends Model
         'asr_report',
         'characters',
         'seed',
+        'duration_ms',
     ];
 
     protected $casts = [
@@ -36,6 +37,7 @@ class TtsChunkTake extends Model
         'asr_report' => 'array',
         'characters' => 'integer',
         'seed' => 'integer',
+        'duration_ms' => 'integer',
     ];
 
     public function chunk(): BelongsTo

@@ -273,7 +273,12 @@
                     <textarea class="chunk-text mt-2 w-full rounded-lg border border-zinc-800 bg-zinc-950 px-3 py-2 text-sm text-zinc-200 focus:border-cyan-500 focus:outline-none focus:ring-2 focus:ring-cyan-500/30"
                               rows="2" data-original="{{ $chunk->text }}">{{ $chunk->text }}</textarea>
 
-                    <div class="aplayer aplayer--chunk mt-3 rounded-[12px] border border-white/8 bg-inset px-3.5 py-2.5 {{ $chunk->isCompleted() ? '' : 'hidden' }}">
+                    {{-- data-duration-ms: the selected take's recorded length, so the
+                         readout shows the duration before any metadata request resolves
+                         (and regardless of the browser's preload heuristics). --}}
+                    @php $selectedTakeDuration = collect($takesByChunk[$chunk->id]['takes'])->firstWhere('selected', true)['duration_ms'] ?? null; @endphp
+                    <div class="aplayer aplayer--chunk mt-3 rounded-[12px] border border-white/8 bg-inset px-3.5 py-2.5 {{ $chunk->isCompleted() ? '' : 'hidden' }}"
+                         @if($selectedTakeDuration) data-duration-ms="{{ $selectedTakeDuration }}" @endif>
                         <button type="button" class="aplayer__btn" aria-label="Play chunk audio"><span class="aplayer__icon"></span></button>
                         <div class="aplayer__track"><div class="aplayer__fill"></div><div class="aplayer__knob"></div></div>
                         <span class="aplayer__time">0:00 / 0:00</span>
