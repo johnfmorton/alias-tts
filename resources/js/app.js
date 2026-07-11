@@ -1036,6 +1036,92 @@ function initStudioProject() {
         }
     });
 
+    // ---- Downloads with feedback --------------------------------------------
+    // Both download links build their file INSIDE the request — the receipt zip
+    // fetches the sealed audio, re-reads and fingerprints every chunk's audio,
+    // renders receipt.html, and zips it before the first byte leaves the server.
+    // A bare <a download> shows nothing during that, so it reads as broken.
+    // Fetching instead lets the button narrate the stages (with an elapsed
+    // heartbeat), show transfer progress, and surface a JSON error (422/502) in
+    // the status line rather than downloading it as a .json file. The href stays
+    // on the link as a no-JS fallback.
+    async function fetchDownload(link, stages) {
+        if (link.dataset.busy) return;
+        const t0 = performance.now();
+        startBusy(link, 'Preparing…');
+        // Walk the stage messages on a rough schedule and hold on the last one;
+        // the ticking seconds are the "still working" signal either way.
+        setStatus(finalStatus, stages[0]);
+        const ticker = setInterval(() => {
+            const secs = Math.round((performance.now() - t0) / 1000);
+            const stage = Math.min(Math.floor(secs / 3), stages.length - 1);
+            setStatus(finalStatus, `${stages[stage]} (${secs}s)`);
+        }, 1000);
+
+        try {
+            const res = await fetch(link.href);
+            clearInterval(ticker);
+            if (!res.ok) throw new Error(await errorMessage(res));
+
+            // Headers arrive only once the file is fully built, so from here on
+            // it's pure transfer — report it as such.
+            const total = Number(res.headers.get('Content-Length')) || 0;
+            const reader = res.body.getReader();
+            const parts = [];
+            let received = 0;
+            while (true) {
+                const { done, value } = await reader.read();
+                if (done) break;
+                parts.push(value);
+                received += value.length;
+                const mb = (received / 1048576).toFixed(1);
+                setStatus(finalStatus, total
+                    ? `Downloading… ${Math.min(100, Math.round((received / total) * 100))}% (${mb} MB)`
+                    : `Downloading… ${mb} MB`);
+            }
+
+            const cd = res.headers.get('Content-Disposition') || '';
+            const name = (cd.match(/filename="?([^";]+)"?/) || [])[1] || 'download';
+            const blob = new Blob(parts, { type: res.headers.get('Content-Type') || 'application/octet-stream' });
+            const a = document.createElement('a');
+            a.href = URL.createObjectURL(blob);
+            a.download = name;
+            document.body.appendChild(a);
+            a.click();
+            a.remove();
+            setTimeout(() => URL.revokeObjectURL(a.href), 30000);
+
+            const doneMsg = `✓ ${name} is in your downloads.`;
+            setStatus(finalStatus, doneMsg, 'ok');
+            // Quietly retire the confirmation unless something newer replaced it.
+            setTimeout(() => {
+                if (finalStatus.textContent === doneMsg) setStatus(finalStatus, '');
+            }, 8000);
+        } catch (err) {
+            clearInterval(ticker);
+            setStatus(finalStatus, `✗ ${err.message}`, 'error');
+        } finally {
+            endBusy(link);
+        }
+    }
+
+    const managedDownload = (link, stages) => link?.addEventListener('click', (e) => {
+        e.preventDefault();
+        fetchDownload(link, stages);
+    });
+    managedDownload(downloadLink, [
+        'Preparing your download…',
+        'Fetching the final audio from storage…',
+    ]);
+    // Stages mirror buildReceiptZip: sealed audio → per-chunk fingerprints →
+    // receipt render + zip. Fingerprinting dominates (one storage read per chunk).
+    managedDownload(receiptLink, [
+        'Preparing your download…',
+        'Gathering the approved audio…',
+        'Fingerprinting each chunk for the receipt…',
+        'Building the provenance receipt and zipping it up…',
+    ]);
+
     // A chunk is "dirty" while its textarea differs from the last-saved text
     // (data-original). Show an amber badge + border and reveal Revert; warn before
     // leaving the page with any dirty chunk. Set when an intended reload (insert /

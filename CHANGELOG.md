@@ -4,6 +4,22 @@ All notable changes to this project are documented in this file. The format is
 based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this
 project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Changed
+- **The Studio download buttons now tell you what's happening.** Both
+  "Download draft version" and "Download approved version" used to sit silent
+  while the server built the file (the receipt zip gathers the approved audio,
+  fingerprints every chunk, renders the provenance receipt, and zips it up) —
+  long enough to look broken. The buttons now show a spinner and the status
+  line narrates each stage of the build with an elapsed-time heartbeat, then
+  reports transfer progress and confirms the saved filename.
+
+### Fixed
+- A failed download (e.g. asking for the final audio before it's built) now
+  shows the actual error message on the page instead of silently downloading a
+  `.json` error file.
+
 ## [0.46.0] - 2026-07-10
 
 ### Added
