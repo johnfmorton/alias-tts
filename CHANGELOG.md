@@ -17,6 +17,14 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   "Start over" page carries the same owner warning on its reset confirmation.
 
 ### Changed
+- **The Studio QA badges now speak plain language.** Scorer codes are shown as
+  human labels ("possible cut-off", "boundary hum", "loud tail"…), and a
+  recovered re-roll ("QA ✓ — fixed by re-roll") reads clearly apart from an
+  unrecovered one ("re-rolled ×3, still flagged" — the auto-recovery gave up,
+  listen to it). The hover tooltip became one plain sentence per finding
+  ("Speech recognition heard 63% of the script — words may be missing or
+  garbled.") with the exact measurements kept inline for threshold tuning. The
+  raw codes are unchanged in the stored QA reports and the docs.
 - **Confirmations are now real in-app dialogs, not browser popups.** Every
   destructive action (delete project/voice/API key/preset/take/pronunciation,
   key reset/regenerate, Start over, insert-with-unsaved-edits) previously used

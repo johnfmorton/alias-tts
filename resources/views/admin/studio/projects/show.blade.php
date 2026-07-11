@@ -177,9 +177,9 @@
             <p class="mb-3 text-xs leading-relaxed text-zinc-500">
                 <span class="font-medium text-zinc-400">QA</span> (quality assurance) checks each generated chunk by
                 transcribing it with speech recognition and comparing it back to the script. A badge flags a possible
-                truncation, a junk or loud tail (<span class="font-mono">TAIL</span>/<span class="font-mono">TAILNOISE</span>),
-                or a mid-stream pause or boundary hum (<span class="font-mono">PAUSE</span>/<span class="font-mono">BNDNOISE</span>) —
-                hover a badge for its measurements. <span class="text-emerald-400">QA&nbsp;✓</span> means it passed.
+                cut-off, a junk or loud tail, or a mid-speech pause or boundary hum, and notes what was auto-fixed
+                (re-rolled or trimmed) — hover a badge for the details behind the verdict.
+                <span class="text-emerald-400">QA&nbsp;✓</span> means it passed.
             </p>
         @endif
 

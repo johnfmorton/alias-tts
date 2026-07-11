@@ -344,7 +344,10 @@ class AsrChunkQaTest extends TestCase
         ]);
         $badge = $chunk->refresh()->asrBadge();
         $this->assertSame('bad', $badge['tone']);
-        $this->assertStringContainsString('TRUNC', $badge['text']);
+        $this->assertStringContainsString('possible cut-off', $badge['text']);
+        $this->assertStringContainsString('junk tail', $badge['text']);
+        // The title explains the coverage number as a sentence.
+        $this->assertStringContainsString('heard 40% of the script', $badge['title']);
 
         // Once the chunk is edited (stale), its old verdict no longer applies.
         $chunk->update(['status' => ChunkStatus::Stale]);
@@ -357,7 +360,7 @@ class AsrChunkQaTest extends TestCase
         ]);
         $badge = $chunk->refresh()->asrBadge();
         $this->assertSame('ok', $badge['tone']);
-        $this->assertStringContainsString('rerolled', $badge['text']);
+        $this->assertStringContainsString('fixed by re-roll', $badge['text']);
     }
 
     public function test_project_page_renders_the_asr_badge(): void
@@ -374,7 +377,7 @@ class AsrChunkQaTest extends TestCase
             ->get(route('admin.studio.projects.show', $chunk->project))
             ->assertOk()
             ->assertSee('chunk-asr-badge', escape: false)
-            ->assertSee('QA: TRUNC');
+            ->assertSee('QA: possible cut-off');
     }
 
     public function test_generate_endpoint_returns_the_asr_badge(): void
@@ -391,7 +394,7 @@ class AsrChunkQaTest extends TestCase
             ->postJson(route('admin.studio.projects.chunks.generate', [$chunk->project, $chunk]))
             ->assertOk()
             ->assertJsonPath('asr_badge.tone', 'bad')
-            ->assertJsonPath('asr_badge.text', fn ($t) => str_contains((string) $t, 'TRUNC'));
+            ->assertJsonPath('asr_badge.text', fn ($t) => str_contains((string) $t, 'possible cut-off'));
     }
 
     public function test_health_report_asr_failure_is_clean_and_links_the_setup_guide(): void

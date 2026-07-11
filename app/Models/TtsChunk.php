@@ -94,10 +94,29 @@ class TtsChunk extends Model
     }
 
     /**
+     * Human labels for the scorer's problem codes. The raw codes stay in the
+     * persisted asr_report (and docs/ASR-SETUP.md); only presentation changes.
+     * An unknown code falls back to itself so a new signal is never hidden.
+     */
+    private const ASR_PROBLEM_LABELS = [
+        'TRUNC' => 'possible cut-off',
+        'NOSPEECH' => 'no speech heard',
+        'TAIL' => 'junk tail',
+        'TAILNOISE' => 'loud tail',
+        'PAUSE' => 'long pause',
+        'BNDNOISE' => 'boundary hum',
+    ];
+
+    /**
      * Format an ASR report into badge presentation data, independent of any
      * status gate. Shared by {@see TtsChunk::asrBadge()} (which adds the
      * completed-status gate) and {@see TtsChunkTake::asrBadge()} (a take's audio
      * is always a completed render) so the two never drift.
+     *
+     * The badge is short plain language ("QA: possible cut-off · boundary hum —
+     * re-rolled ×3, still flagged"); the title is one sentence per finding
+     * (newline-separated — a title attribute renders the line breaks), keeping
+     * the exact measurements inline for threshold tuning.
      *
      * @param  array<string, mixed>|null  $report
      * @return array{tone: string, text: string, title: string}|null
@@ -111,39 +130,74 @@ class TtsChunk extends Model
         $ok = (bool) ($report['ok'] ?? false);
         $problems = is_array($report['problems'] ?? null) ? $report['problems'] : [];
         $action = $report['action'] ?? null;
+        $attempts = isset($report['reroll_attempts']) ? (int) $report['reroll_attempts'] : null;
+        $has = fn (string $code) => in_array($code, $problems, true);
 
-        $text = $ok ? 'QA ✓' : 'QA: '.implode(', ', $problems);
+        $text = $ok
+            ? 'QA ✓'
+            : 'QA: '.implode(' · ', array_map(fn ($p) => self::ASR_PROBLEM_LABELS[$p] ?? $p, $problems));
         // Note a take-changing action inline (e.g. a flagged chunk auto-recovered).
-        if (is_string($action) && in_array($action, ['rerolled', 'rerolled_unrecovered', 'trimmed', 'trim_failed'], true)) {
-            $text .= ' · '.$action;
+        // "fixed by re-roll" is a success story; "still flagged" is a listen-to-it
+        // story — the raw enums read almost identically, so spell them apart.
+        $actionLabel = match ($action) {
+            'rerolled' => 'fixed by re-roll',
+            'rerolled_unrecovered' => 're-rolled'.($attempts ? " ×{$attempts}" : '').', still flagged',
+            'trimmed' => 'tail trimmed off',
+            'trim_failed' => 'tail trim failed',
+            default => null,
+        };
+        if ($actionLabel !== null) {
+            $text .= ' — '.$actionLabel;
         }
 
-        $detail = [];
-        foreach (['score' => 'coverage', 'tail_cov' => 'tail_cov', 'trail_s' => 'trail', 'max_gap_s' => 'gap'] as $key => $label) {
-            if (isset($report[$key])) {
-                $unit = in_array($key, ['trail_s', 'max_gap_s'], true) ? 's' : '';
-                $detail[] = "{$label} {$report[$key]}{$unit}";
+        $lines = [];
+        if (isset($report['score'])) {
+            $line = 'Speech recognition heard '.round((float) $report['score'] * 100).'% of the script';
+            if (isset($report['tail_cov'])) {
+                $line .= ' ('.round((float) $report['tail_cov'] * 100).'% of its ending)';
             }
-        }
-        if (isset($report['tail_peak_dbfs'])) {
-            $speech = isset($report['speech_dbfs']) ? " vs speech {$report['speech_dbfs']}" : '';
-            $detail[] = "tail_peak {$report['tail_peak_dbfs']}dBFS{$speech}";
+            $lines[] = $line.($has('TRUNC') || $has('NOSPEECH') ? ' — words may be missing or garbled.' : '.');
         }
         if (is_array($report['boundary_noise'] ?? null)) {
             $bn = $report['boundary_noise'];
-            $detail[] = "hum {$bn['dbfs']}dBFS/{$bn['zcr_hz']}Hz @ {$bn['gap_s']}s";
+            $lines[] = 'A '.number_format((float) $bn['zcr_hz'])." Hz hum ({$bn['dbfs']} dBFS) fills a {$bn['gap_s']} s pause at a sentence boundary.";
         }
-        if (isset($report['reroll_attempts'])) {
-            $detail[] = $report['reroll_attempts'].' re-roll(s)';
+        $timings = [];
+        if (isset($report['max_gap_s'])) {
+            $timings[] = "longest mid-speech pause {$report['max_gap_s']} s";
+        }
+        if (isset($report['trail_s'])) {
+            $timings[] = "audio after the last word {$report['trail_s']} s";
+        }
+        if ($timings !== []) {
+            $lines[] = ucfirst(implode(' · ', $timings)).'.';
+        }
+        if (isset($report['tail_peak_dbfs'])) {
+            $peak = $report['tail_peak_dbfs'];
+            if (isset($report['speech_dbfs'])) {
+                $lines[] = $has('TAILNOISE')
+                    ? "The tail is louder than the speech ({$peak} dBFS vs {$report['speech_dbfs']} dBFS) — junk noise after the last word."
+                    : "Tail peaks at {$peak} dBFS vs {$report['speech_dbfs']} dBFS speech — the tail itself is clean.";
+            } else {
+                $lines[] = "Tail peak: {$peak} dBFS.";
+            }
+        }
+        if ($attempts) {
+            $times = $attempts === 1 ? 'once' : "{$attempts} times";
+            $lines[] = match ($action) {
+                'rerolled' => "Re-rolled {$times} until a take passed QA.",
+                'rerolled_unrecovered' => "Re-rolled {$times} and kept the best-scoring take; none passed QA — worth a listen.",
+                default => "Re-rolled {$times}.",
+            };
         }
         if (isset($report['trimmed_to_ms'])) {
-            $detail[] = 'trimmed to '.$report['trimmed_to_ms'].'ms';
+            $lines[] = 'Trimmed to '.number_format((int) $report['trimmed_to_ms'] / 1000, 2).' s to cut the junk tail.';
         }
 
         return [
             'tone' => $ok ? 'ok' : 'bad',
             'text' => $text,
-            'title' => implode(' · ', $detail),
+            'title' => implode("\n", $lines),
         ];
     }
 }
