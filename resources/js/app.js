@@ -902,6 +902,20 @@ const ASR_TONE = {
     bad: 'border-red-500/30 bg-red-500/10 text-red-300',
 };
 
+// Human labels for a take's provenance (its stored `source` token — see
+// ProjectService::recordTake and the duplicate copier). Presentation only:
+// the payload keeps the raw token, and an unknown token shows itself.
+// "QA auto-fix" is deliberately outcome-neutral — the adjacent QA badge says
+// whether the fix actually recovered ("fixed by re-roll" vs "still flagged").
+const TAKE_SOURCE_LABELS = {
+    generate: 'rendered with Generate',
+    reroll: 'rendered with Re-roll',
+    preview: 'tuning preview',
+    use: 'kept from a preview',
+    remediate: 'QA auto-fix',
+    duplicate: 'copied from the original project',
+};
+
 function initStudioProject() {
     const root = document.getElementById('studio-project');
     if (!root) return;
@@ -1517,7 +1531,7 @@ function initStudioProject() {
         meta.className = 'flex min-w-0 flex-col text-xs text-zinc-500';
         const line1 = document.createElement('span');
         line1.className = take.selected ? 'text-emerald-300' : 'text-zinc-400';
-        line1.textContent = take.source + (take.selected ? ' · selected' : '');
+        line1.textContent = (TAKE_SOURCE_LABELS[take.source] || take.source) + (take.selected ? ' · selected' : '');
         const line2 = document.createElement('span');
         // Show the seed this take rendered at: the pinned number, or "random" when
         // it rolled unpinned (Replicate doesn't report the seed it chose). Lets a

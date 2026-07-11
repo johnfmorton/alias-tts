@@ -4,6 +4,16 @@ All notable changes to this project are documented in this file. The format is
 based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this
 project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Changed
+- **Take rows now say where each take came from in plain language.** The raw
+  source tokens ("generate", "use", "remediate", "duplicate") became
+  "rendered with Generate", "kept from a preview", "QA auto-fix", and
+  "copied from the original project" — so a take carried over by Duplicate
+  project reads as provenance, not as a button. "QA auto-fix" is deliberately
+  outcome-neutral; the take's QA badge says whether the fix recovered.
+
 ## [0.47.1] - 2026-07-11
 
 ### Changed
