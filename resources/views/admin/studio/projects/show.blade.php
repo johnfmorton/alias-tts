@@ -233,7 +233,7 @@
                             <span class="chunk-status inline-flex rounded-md border px-2 py-0.5 text-xs {{ $chunkStyles[$chunk->status->value] ?? $chunkStyles['pending'] }}">{{ $chunk->status->value }}</span>
                             @php $asrBadge = $chunk->asrBadge(); @endphp
                             {{-- ASR transcript-QA verdict; only when the chunk's current audio was scored. --}}
-                            <span class="chunk-asr-badge {{ $asrBadge ? 'inline-flex rounded-md border px-2 py-0.5 text-xs '.($asrBadge['tone'] === 'ok' ? $chunkStyles['completed'] : $chunkStyles['failed']) : 'hidden' }}"
+                            <span class="chunk-asr-badge {{ $asrBadge ? 'inline-flex cursor-help rounded-md border px-2 py-0.5 text-xs '.($asrBadge['tone'] === 'ok' ? $chunkStyles['completed'] : $chunkStyles['failed']) : 'hidden' }}"
                                   @if($asrBadge) title="{{ $asrBadge['title'] }}" @endif>{{ $asrBadge['text'] ?? '' }}</span>
                             <span class="chunk-dirty hidden rounded-md border border-amber-500/30 bg-amber-500/10 px-2 py-0.5 text-xs text-amber-300">● unsaved</span>
                         </div>

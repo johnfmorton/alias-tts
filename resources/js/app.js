@@ -1011,7 +1011,7 @@ function initStudioProject() {
             el.removeAttribute('title');
             return;
         }
-        el.className = 'chunk-asr-badge inline-flex rounded-md border px-2 py-0.5 text-xs ' + (ASR_TONE[info.tone] || ASR_TONE.bad);
+        el.className = 'chunk-asr-badge inline-flex cursor-help rounded-md border px-2 py-0.5 text-xs ' + (ASR_TONE[info.tone] || ASR_TONE.bad);
         el.textContent = info.text;
         if (info.title) el.title = info.title; else el.removeAttribute('title');
     };
@@ -1527,7 +1527,7 @@ function initStudioProject() {
         meta.append(line1, line2);
         if (take.asr_badge) {
             const b = document.createElement('span');
-            b.className = 'mt-0.5 inline-flex w-fit rounded-md border px-1.5 py-0.5 text-[11px] '
+            b.className = 'mt-0.5 inline-flex w-fit cursor-help rounded-md border px-1.5 py-0.5 text-[11px] '
                 + (ASR_TONE[take.asr_badge.tone] || ASR_TONE.bad);
             b.textContent = take.asr_badge.text;
             if (take.asr_badge.title) b.title = take.asr_badge.title;
