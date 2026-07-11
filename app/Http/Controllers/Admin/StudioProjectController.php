@@ -219,6 +219,10 @@ class StudioProjectController extends Controller
 
         return view('admin.studio.projects.show', [
             'project' => $project,
+            // The access policy lets a SuperAdmin open anyone's project for
+            // support. When this viewer is not the owner, the page names the
+            // owner and gates the first edit behind a warning dialog.
+            'foreignOwner' => $this->foreignOwner($request, $project),
             'chunks' => $chunks,
             'voices' => Voice::orderedFor($request->user()->id)->get(),
             // Offered final-audio formats for the header picker (token => "MP3"/"WAV").
@@ -409,9 +413,27 @@ class StudioProjectController extends Controller
     }
 
     /** Source-text editor for "Start over" (re-chunk from scratch). */
-    public function edit(TtsProject $project): View
+    public function edit(Request $request, TtsProject $project): View
     {
-        return view('admin.studio.projects.edit', ['project' => $project]);
+        return view('admin.studio.projects.edit', [
+            'project' => $project,
+            'foreignOwner' => $this->foreignOwner($request, $project),
+        ]);
+    }
+
+    /**
+     * The owner's name when the viewer is editing someone ELSE's project (a
+     * SuperAdmin doing support — nobody else passes the access policy), or
+     * null for the everyday case of a user in their own project. The editor
+     * uses this to warn before the first edit of another user's work.
+     */
+    private function foreignOwner(Request $request, TtsProject $project): ?string
+    {
+        if ($project->user_id === $request->user()->id) {
+            return null;
+        }
+
+        return $project->user?->name ?? 'a deleted user';
     }
 
     /**

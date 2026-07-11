@@ -1,8 +1,16 @@
 <x-layout title="Start over" description="Edit the original text and re-split it into fresh chunks. This discards all audio generated so far.">
     <form method="POST" action="{{ route('admin.studio.projects.reset', $project) }}"
-          onsubmit="return confirm('This deletes all generated audio and re-splits the text into fresh chunks. Continue?')"
+          data-confirm="{{ ($foreignOwner ? "This is {$foreignOwner}'s project, not yours. " : '') }}This deletes all generated audio and re-splits the text into fresh chunks."
+          data-confirm-title="Start over?"
+          data-confirm-label="Reset &amp; re-chunk"
           class="space-y-5 rounded-xl border border-zinc-800 bg-zinc-900/50 p-6">
         @csrf
+
+        @if($foreignOwner)
+            <div class="rounded-lg border border-red-500/30 bg-red-500/10 px-4 py-3 text-sm text-red-300">
+                ⚠ <strong>This is {{ $foreignOwner }}'s project.</strong> You can open it because you're a SuperAdmin — resetting it destroys <em>their</em> generated audio, not a copy.
+            </div>
+        @endif
 
         <div class="rounded-lg border border-amber-500/30 bg-amber-500/10 px-4 py-3 text-sm text-amber-300">
             Resetting re-chunks the text below and <strong>permanently deletes every generated chunk and the final audio</strong>. The voice and settings stay the same.

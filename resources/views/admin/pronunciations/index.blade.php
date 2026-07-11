@@ -44,7 +44,10 @@
                         <td class="px-4 py-3">
                             <div class="flex justify-end gap-1.5">
                                 <a href="{{ route('admin.pronunciations.edit', $entry) }}" class="rounded-md border border-zinc-700 px-2.5 py-1 text-xs hover:bg-zinc-800">Edit</a>
-                                <form method="POST" action="{{ route('admin.pronunciations.destroy', $entry) }}" onsubmit="return confirm('Remove this pronunciation?')">@csrf @method('DELETE')
+                                <form method="POST" action="{{ route('admin.pronunciations.destroy', $entry) }}"
+                                      data-confirm="New generations will say the term as written, without the respelling."
+                                      data-confirm-title="Remove this pronunciation?"
+                                      data-confirm-label="Remove">@csrf @method('DELETE')
                                     <button class="rounded-md border border-red-500/30 px-2.5 py-1 text-xs text-red-400 hover:bg-red-500/10">Delete</button>
                                 </form>
                             </div>

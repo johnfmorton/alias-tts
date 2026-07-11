@@ -184,11 +184,14 @@ document.addEventListener('click', async (e) => {
                 audio.classList.remove('hidden');
                 audio.play().catch(() => {});
             }
+            testBtn.textContent = label;
         } catch (_) {
-            alert('Preview failed — check your provider credit and try again.');
+            // Transient inline error (like the data-copy "Copied!" flip) —
+            // an alert() here blocked the page for a routine provider hiccup.
+            testBtn.textContent = '✗ Failed — check provider credit';
+            setTimeout(() => { testBtn.textContent = label; }, 4000);
         } finally {
             testBtn.disabled = false;
-            testBtn.textContent = label;
         }
         return;
     }
@@ -209,6 +212,86 @@ document.addEventListener('click', async (e) => {
     }
     // The health-page "Run checks" buttons are handled by initHealthReport (they
     // re-fetch the async report fragment rather than reloading the whole page).
+});
+
+// ---------------------------------------------------------------------------
+// In-app confirmation dialog — the styled replacement for window.confirm().
+// Native confirm() is subject to Chrome's "prevent this page from creating
+// additional dialogs" checkbox, which silently disables every destructive-
+// action guard for the tab; this one can't be suppressed. It also allows a
+// toned confirm button and real copy. Resolves true (confirm) / false
+// (cancel, Escape, backdrop). The layout renders one <x-confirm-dialog />
+// singleton for authed pages; without it (or mid-dialog re-entry) this falls
+// back to native confirm so a guard is never lost.
+// ---------------------------------------------------------------------------
+const CONFIRM_TONES = {
+    danger: 'rounded-lg border border-red-500/40 bg-red-500/10 px-3.5 py-2 text-sm font-medium text-red-300 hover:bg-red-500/20',
+    warn: 'rounded-lg border border-amber-500/50 bg-amber-500/10 px-3.5 py-2 text-sm font-medium text-amber-300 hover:bg-amber-500/20',
+};
+
+function confirmDialog({ title = 'Are you sure?', message = '', label = 'Confirm', tone = 'danger' } = {}) {
+    const dialog = document.getElementById('confirm-dialog');
+    if (!dialog || dialog.classList.contains('flex')) {
+        return Promise.resolve(window.confirm([title, message].filter(Boolean).join('\n\n')));
+    }
+    document.getElementById('confirm-dialog-title').textContent = title;
+    const messageEl = document.getElementById('confirm-dialog-message');
+    messageEl.textContent = message;
+    messageEl.classList.toggle('hidden', !message);
+    const okBtn = document.getElementById('confirm-dialog-confirm');
+    okBtn.textContent = label;
+    okBtn.className = CONFIRM_TONES[tone] || CONFIRM_TONES.danger;
+    const cancelBtn = document.getElementById('confirm-dialog-cancel');
+    const opener = document.activeElement;
+
+    dialog.classList.remove('hidden');
+    dialog.classList.add('flex');
+    cancelBtn.focus(); // safe default; Tab reaches the confirm button
+
+    return new Promise((resolve) => {
+        const close = (result) => {
+            dialog.classList.add('hidden');
+            dialog.classList.remove('flex');
+            okBtn.removeEventListener('click', onOk);
+            cancelBtn.removeEventListener('click', onCancel);
+            dialog.removeEventListener('mousedown', onBackdrop);
+            dialog.removeEventListener('keydown', onKey);
+            if (opener instanceof HTMLElement) opener.focus();
+            resolve(result);
+        };
+        const onOk = () => close(true);
+        const onCancel = () => close(false);
+        const onBackdrop = (e) => { if (e.target === dialog) close(false); };
+        const onKey = (e) => { if (e.key === 'Escape') close(false); };
+        okBtn.addEventListener('click', onOk);
+        cancelBtn.addEventListener('click', onCancel);
+        dialog.addEventListener('mousedown', onBackdrop);
+        dialog.addEventListener('keydown', onKey);
+    });
+}
+
+// Declarative form guard: <form data-confirm="message" data-confirm-title="…"
+// data-confirm-label="…" data-confirm-tone="warn"> pauses its submit behind the
+// dialog. On confirm, requestSubmit() re-fires the event (keeping the browser's
+// constraint validation) and the one-shot `confirmed` flag lets it through.
+document.addEventListener('submit', (e) => {
+    const form = e.target;
+    if (!(form instanceof HTMLFormElement) || form.dataset.confirm === undefined) return;
+    if (form.dataset.confirmed) {
+        delete form.dataset.confirmed;
+        return;
+    }
+    e.preventDefault();
+    confirmDialog({
+        title: form.dataset.confirmTitle,
+        message: form.dataset.confirm,
+        label: form.dataset.confirmLabel,
+        tone: form.dataset.confirmTone,
+    }).then((ok) => {
+        if (!ok) return;
+        form.dataset.confirmed = '1';
+        if (form.requestSubmit) form.requestSubmit(); else form.submit();
+    });
 });
 
 // ---------------------------------------------------------------------------
@@ -722,7 +805,12 @@ function initTuningBench(bench) {
             chip.querySelector('.preset-apply').addEventListener('click', () =>
                 addRow(chip.dataset.exaggeration || null, chip.dataset.cfg || null, chip.dataset.temperature || null));
             chip.querySelector('.preset-delete').addEventListener('click', async () => {
-                if (!confirm(`Delete preset "${chip.querySelector('.preset-apply').textContent}"?`)) return;
+                const name = chip.querySelector('.preset-apply').textContent;
+                if (!(await confirmDialog({
+                    title: 'Delete this preset?',
+                    message: `“${name}” is deleted permanently, everywhere it's offered.`,
+                    label: 'Delete preset',
+                }))) return;
                 try {
                     const res = await fetch(`${storeUrl}/${chip.dataset.id}`, {
                         method: 'DELETE',
@@ -833,6 +921,79 @@ function initStudioProject() {
 
     // Cache-bust so a regenerated chunk / rebuilt final reloads in the player.
     const bust = (url) => url + (url.includes('?') ? '&' : '?') + 't=' + Date.now();
+
+    // ---- Foreign-project guard ----------------------------------------------
+    // The access policy lets a SuperAdmin open any user's project for support,
+    // which puts an accidental edit of someone else's work one mis-click away.
+    // Until the viewer opts in (once per tab per project), text fields are
+    // read-only and the first mutating interaction is intercepted by a warning
+    // dialog. Listening, downloads, copying text, and Duplicate (which copies
+    // rather than touches the original) stay free. The dialog only renders for
+    // a non-owner, so its presence is the whole "is this foreign?" signal.
+    const foreignGuard = document.getElementById('foreign-guard');
+    if (foreignGuard) {
+        const ackKey = 'studio-foreign-ack:' + location.pathname;
+        let acked = false;
+        try { acked = sessionStorage.getItem(ackKey) === '1'; } catch { /* storage unavailable */ }
+
+        const lockText = (locked) => root
+            .querySelectorAll('textarea, input[type="text"], input[type="number"]')
+            .forEach((el) => { el.readOnly = locked; });
+        const showGuard = (show) => {
+            foreignGuard.classList.toggle('hidden', !show);
+            foreignGuard.classList.toggle('flex', show);
+            if (show) document.getElementById('foreign-guard-cancel')?.focus();
+        };
+
+        // Interactions that never change the owner's project.
+        const isSafe = (t) =>
+            t.closest('#foreign-guard') ||          // the dialog's own buttons
+            t.closest('.aplayer') ||                // playback transports (final, chunk, takes)
+            t.closest('a[href]') ||                 // navigation + downloads (GETs)
+            t.closest('summary') ||                 // "Takes & tuning" disclosure
+            t.closest('#project-overflow') ||       // menu toggle (its items are gated)
+            t.closest('#project-seal-copy') ||      // clipboard only
+            t.closest('#project-duplicate-form') || // copies; the original is untouched
+            t.closest('.seam-preview');             // renders a temporary preview only
+
+        // Would this key press type, submit, or (on a select) change the value —
+        // rather than navigate, copy, or select text?
+        const editsKey = (e, t) =>
+            (e.key.length === 1 && !e.metaKey && !e.ctrlKey) ||
+            ['Backspace', 'Delete', 'Enter'].includes(e.key) ||
+            ((e.metaKey || e.ctrlKey) && ['v', 'x'].includes(e.key.toLowerCase())) ||
+            (t.closest('select') && e.key.startsWith('Arrow'));
+
+        const intercept = (e) => {
+            if (acked) return;
+            const t = e.target instanceof Element ? e.target : null;
+            if (!t || isSafe(t) || !t.closest('button, select, textarea, input')) return;
+            if (e.type === 'keydown' && !editsKey(e, t)) return;
+            // mousedown is gated only for selects (stops the dropdown opening);
+            // leaving it free elsewhere keeps select-to-copy working in textareas.
+            if (e.type === 'mousedown' && !t.closest('select')) return;
+            e.preventDefault();
+            e.stopPropagation();
+            showGuard(true);
+        };
+        ['mousedown', 'click', 'keydown', 'change'].forEach((ev) => root.addEventListener(ev, intercept, true));
+
+        document.getElementById('foreign-guard-continue')?.addEventListener('click', () => {
+            acked = true;
+            try { sessionStorage.setItem(ackKey, '1'); } catch { /* storage unavailable */ }
+            lockText(false);
+            showGuard(false);
+        });
+        document.getElementById('foreign-guard-cancel')?.addEventListener('click', () => showGuard(false));
+        // The duplicate redirect lands on the copy, which the SuperAdmin owns.
+        // form.submit() fires no click event, so the guard doesn't re-intercept.
+        document.getElementById('foreign-guard-duplicate')?.addEventListener('click', () =>
+            document.getElementById('project-duplicate-form')?.submit());
+        foreignGuard.addEventListener('mousedown', (e) => { if (e.target === foreignGuard) showGuard(false); });
+        foreignGuard.addEventListener('keydown', (e) => { if (e.key === 'Escape') showGuard(false); });
+
+        if (!acked) lockText(true);
+    }
 
     const badge = (el, status, prefix = '') => {
         el.textContent = status;
@@ -1460,7 +1621,11 @@ function initStudioProject() {
     }
 
     async function deleteTake(card, takeId, btn) {
-        if (!window.confirm('Delete this take permanently? This cannot be undone.')) return;
+        if (!(await confirmDialog({
+            title: 'Delete this take?',
+            message: 'The take and its audio are deleted permanently — this cannot be undone.',
+            label: 'Delete take',
+        }))) return;
         startBusy(btn, 'Deleting…');
         try {
             const res = await fetch(card.dataset.takesUrl + '/' + takeId, {
@@ -1761,7 +1926,12 @@ function initStudioProject() {
         btn.addEventListener('click', async () => {
             // Inserting reloads the list, which would drop unsaved edits elsewhere.
             if ([...root.querySelectorAll('.studio-chunk')].some(isDirty)
-                && !confirm('You have unsaved chunk edits that will be lost when the list reloads. Insert anyway?')) {
+                && !(await confirmDialog({
+                    title: 'Unsaved chunk edits',
+                    message: 'Inserting a chunk reloads the list, and your unsaved edits will be lost.',
+                    label: 'Insert anyway',
+                    tone: 'warn',
+                }))) {
                 return;
             }
             startBusy(btn, 'Inserting…');

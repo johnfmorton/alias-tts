@@ -108,7 +108,10 @@
                                 </form>
                                 <a href="{{ route('admin.voices.export', $voice) }}" class="rounded-md border border-zinc-700 px-2.5 py-1 text-xs hover:bg-zinc-800">Export</a>
                                 @if($voice->isManagedBy(auth()->user()) && ! $voice->isBuiltin())
-                                    <form method="POST" action="{{ route('admin.voices.destroy', $voice) }}" onsubmit="return confirm('Delete this voice and its reference clip?')">@csrf @method('DELETE')
+                                    <form method="POST" action="{{ route('admin.voices.destroy', $voice) }}"
+                                          data-confirm="The voice and its reference clip are deleted permanently."
+                                          data-confirm-title="Delete this voice?"
+                                          data-confirm-label="Delete voice">@csrf @method('DELETE')
                                         <button class="rounded-md border border-red-500/30 px-2.5 py-1 text-xs text-red-400 hover:bg-red-500/10">Delete</button>
                                     </form>
                                 @endif

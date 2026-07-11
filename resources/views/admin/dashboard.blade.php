@@ -140,7 +140,9 @@
                 <code class="flex-1 truncate rounded-[9px] border border-white/12 bg-inset px-3.5 py-3 font-mono text-sm text-zinc-200">{{ $connect['apiKey'] }}</code>
                 <button data-copy="{{ $connect['apiKey'] }}" class="rounded-[9px] border border-white/[0.14] px-4.5 py-3 text-sm text-zinc-300 transition hover:bg-white/[0.04]">Copy</button>
                 <form method="POST" action="{{ route('admin.dashboard.reset-key') }}"
-                      onsubmit="return confirm('Reset this API key? The current value stops working immediately — you will need to update your app with the new key.')">
+                      data-confirm="The current key stops working immediately — you will need to update your app with the new key."
+                      data-confirm-title="Reset this API key?"
+                      data-confirm-label="Reset key">
                     @csrf
                     <button class="rounded-[9px] border border-bad/40 px-4.5 py-3 text-sm text-bad transition hover:bg-bad/10" title="Issue a new key if this one leaked">Reset</button>
                 </form>

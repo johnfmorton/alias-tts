@@ -46,10 +46,16 @@
                                 <form method="POST" action="{{ route('admin.api-keys.toggle', $key) }}">@csrf
                                     <button class="rounded-md border border-zinc-700 px-2.5 py-1 text-xs hover:bg-zinc-800">{{ $key->is_active ? 'Disable' : 'Enable' }}</button>
                                 </form>
-                                <form method="POST" action="{{ route('admin.api-keys.regenerate', $key) }}" onsubmit="return confirm('Regenerate this key? The current value stops working immediately.')">@csrf
+                                <form method="POST" action="{{ route('admin.api-keys.regenerate', $key) }}"
+                                      data-confirm="The current value stops working immediately."
+                                      data-confirm-title="Regenerate this key?"
+                                      data-confirm-label="Regenerate">@csrf
                                     <button class="rounded-md border border-zinc-700 px-2.5 py-1 text-xs hover:bg-zinc-800">Regenerate</button>
                                 </form>
-                                <form method="POST" action="{{ route('admin.api-keys.destroy', $key) }}" onsubmit="return confirm('Delete this API key?')">@csrf @method('DELETE')
+                                <form method="POST" action="{{ route('admin.api-keys.destroy', $key) }}"
+                                      data-confirm="Anything still using this key loses access immediately."
+                                      data-confirm-title="Delete this API key?"
+                                      data-confirm-label="Delete key">@csrf @method('DELETE')
                                     <button class="rounded-md border border-red-500/30 px-2.5 py-1 text-xs text-red-400 hover:bg-red-500/10">Delete</button>
                                 </form>
                             </div>

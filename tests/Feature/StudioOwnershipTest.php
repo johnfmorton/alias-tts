@@ -160,6 +160,59 @@ class StudioOwnershipTest extends TestCase
             ->assertOk();
     }
 
+    public function test_superadmin_gets_the_foreign_edit_guard_on_anothers_project(): void
+    {
+        $alice = $this->user();
+        $alice->update(['name' => 'Alice']);
+        $project = $this->projectOwnedBy($alice);
+
+        $this->actingAs($this->user(superAdmin: true))
+            ->get(route('admin.studio.projects.show', $project))
+            ->assertOk()
+            ->assertSee('id="foreign-guard"', false)
+            ->assertSee("Alice's project", false)
+            ->assertSee('Edit their project');
+    }
+
+    public function test_the_owner_never_sees_the_foreign_edit_guard(): void
+    {
+        $owner = $this->user();
+        $project = $this->projectOwnedBy($owner);
+
+        $this->actingAs($owner)
+            ->get(route('admin.studio.projects.show', $project))
+            ->assertOk()
+            ->assertDontSee('id="foreign-guard"', false)
+            ->assertDontSee('Edit their project');
+    }
+
+    public function test_an_unowned_project_names_its_deleted_owner_in_the_guard(): void
+    {
+        $project = $this->projectOwnedBy(null);
+
+        $this->actingAs($this->user(superAdmin: true))
+            ->get(route('admin.studio.projects.show', $project))
+            ->assertOk()
+            ->assertSee("a deleted user's project", false);
+    }
+
+    public function test_start_over_warns_a_superadmin_on_anothers_project(): void
+    {
+        $alice = $this->user();
+        $alice->update(['name' => 'Alice']);
+        $project = $this->projectOwnedBy($alice);
+
+        $this->actingAs($this->user(superAdmin: true))
+            ->get(route('admin.studio.projects.edit', $project))
+            ->assertOk()
+            ->assertSee("This is Alice's project.", false);
+
+        $this->actingAs($alice)
+            ->get(route('admin.studio.projects.edit', $project))
+            ->assertOk()
+            ->assertDontSee('This is Alice');
+    }
+
     public function test_panel_creation_stamps_the_signed_in_owner(): void
     {
         Voice::firstOrCreate(['slug' => 'v'], ['name' => 'V']);

@@ -299,6 +299,7 @@
                     @endif
                 </div>
             </footer>
+            <x-confirm-dialog />
         @endauth
     </div>
 </body>

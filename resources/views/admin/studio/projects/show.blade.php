@@ -54,6 +54,12 @@
             <div class="mb-3.5 flex flex-wrap items-center gap-3">
                 <a href="{{ route('admin.studio.index') }}" class="text-sm text-zinc-400 hover:text-zinc-200">← Projects</a>
                 <span id="project-title-label" class="text-lg font-bold tracking-[-0.2px] text-zinc-100">{{ $project->title }}</span>
+                @if($foreignOwner)
+                    {{-- Always-visible ownership flag for SuperAdmin support visits;
+                         the #foreign-guard dialog below gates the first actual edit. --}}
+                    <span class="inline-flex cursor-help items-center gap-1 rounded-md border border-amber-500/30 bg-amber-500/10 px-2 py-0.5 text-xs text-amber-300"
+                          title="This project belongs to {{ $foreignOwner }}. You can open it because you're a SuperAdmin — edits here change their work.">⚠ {{ $foreignOwner }}'s project</span>
+                @endif
                 <button type="button" id="project-rename"
                         class="rounded-[7px] border border-white/12 px-2.5 py-[5px] text-xs text-zinc-400 hover:bg-white/[0.04] hover:text-zinc-200">Rename</button>
                 <div id="project-rename-form" class="hidden w-full max-w-xl items-center gap-2">
@@ -143,7 +149,9 @@
                                         class="block w-full rounded-lg px-3 py-2 text-left text-sm text-zinc-300 hover:bg-white/[0.04]">⧉ Duplicate project</button>
                             </form>
                             <form method="POST" action="{{ route('admin.studio.projects.destroy', $project) }}"
-                                  onsubmit="return confirm('Delete this project and all its audio?')">
+                                  data-confirm="The project and all its audio are deleted permanently."
+                                  data-confirm-title="Delete this project?"
+                                  data-confirm-label="Delete project">
                                 @csrf
                                 @method('DELETE')
                                 <button type="submit" class="block w-full rounded-lg px-3 py-2 text-left text-sm text-bad hover:bg-white/[0.04]">Delete project</button>
@@ -371,5 +379,31 @@
                 </div>
             @endforeach
         </div>
+
+        @if($foreignOwner)
+            {{-- Warning shown before a SuperAdmin's FIRST edit of someone else's
+                 project (see the foreign-project guard in initStudioProject).
+                 `hidden` is toggled together with `flex` in JS — never both static. --}}
+            <div id="foreign-guard" role="alertdialog" aria-modal="true" aria-labelledby="foreign-guard-title"
+                 class="fixed inset-0 z-50 hidden items-center justify-center bg-black/60 p-4">
+                <div class="w-full max-w-md rounded-xl border border-amber-500/40 bg-zinc-900 p-6 shadow-[0_24px_48px_-12px_rgba(0,0,0,0.8)]">
+                    <h2 id="foreign-guard-title" class="text-base font-semibold text-amber-300">⚠ This is {{ $foreignOwner }}'s project</h2>
+                    <p class="mt-2 text-sm leading-relaxed text-zinc-300">
+                        You can open it because you're a SuperAdmin, but edits here change
+                        <span class="font-medium text-zinc-100">{{ $foreignOwner }}'s</span> text, audio, and takes — not a copy.
+                        To experiment safely, duplicate the project and work on your own copy instead.
+                    </p>
+                    <div class="mt-5 flex flex-wrap items-center justify-end gap-2.5">
+                        <button type="button" id="foreign-guard-cancel"
+                                class="rounded-lg border border-zinc-700 px-3.5 py-2 text-sm text-zinc-300 hover:bg-zinc-800">Keep read-only</button>
+                        <button type="button" id="foreign-guard-duplicate"
+                                class="rounded-lg border border-zinc-700 px-3.5 py-2 text-sm text-zinc-300 hover:bg-zinc-800"
+                                title="Make your own independent copy — {{ $foreignOwner }}'s project is left untouched.">⧉ Duplicate instead</button>
+                        <button type="button" id="foreign-guard-continue"
+                                class="rounded-lg border border-amber-500/50 bg-amber-500/10 px-3.5 py-2 text-sm font-medium text-amber-300 hover:bg-amber-500/20">Edit their project</button>
+                    </div>
+                </div>
+            </div>
+        @endif
     </div>
 </x-layout>

@@ -6,7 +6,26 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Added
+- **Studio warns a SuperAdmin before they edit someone else's project.** A
+  SuperAdmin can open any user's project for support, which made an accidental
+  edit of someone else's work one mis-click away. The editor now shows an
+  always-visible "⚠ {owner}'s project" badge, keeps the text fields read-only,
+  and intercepts the first mutating action with a warning dialog offering
+  Keep read-only / Duplicate instead / Edit their project. Listening,
+  downloads, and copying text stay free; the opt-in lasts for the tab. The
+  "Start over" page carries the same owner warning on its reset confirmation.
+
 ### Changed
+- **Confirmations are now real in-app dialogs, not browser popups.** Every
+  destructive action (delete project/voice/API key/preset/take/pronunciation,
+  key reset/regenerate, Start over, insert-with-unsaved-edits) previously used
+  the browser's native `confirm()` box — unstylable, and subject to Chrome's
+  "prevent this page from creating additional dialogs" checkbox, which could
+  silently switch those safety checks off. They all now share one app-styled
+  dialog with a clear title, consequence copy, and a red (destructive) or
+  amber (warning) action button. The voice-test failure popup became an inline
+  message on the button itself.
 - **The Studio download buttons now tell you what's happening.** Both
   "Download draft version" and "Download approved version" used to sit silent
   while the server built the file (the receipt zip gathers the approved audio,
