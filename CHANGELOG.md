@@ -7,6 +7,16 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 ## [Unreleased]
 
 ### Added
+- **The Dashboard's Connect card now shows how the pieces fit together.** A
+  new "How it fits together" section renders complete, ready-to-run cURL
+  commands for both dialects — ElevenLabs (`/v1/text-to-speech/{voice}` with
+  `xi-api-key`) and OpenAI (`/v1/audio/speech` with a Bearer token) — built
+  from your own Base URL, API key, and first voice, with the dynamic values
+  highlighted. Clicking any voice ID chip swaps that voice into both examples
+  (and still copies the ID), and each example's Copy button copies exactly
+  what's on screen. Users without an API key yet see a readable
+  `YOUR_API_KEY` placeholder instead of a broken command, and a caption notes
+  that the OpenAI `model` field is accepted for compatibility but ignored.
 - **Duplicating another user's project now brings its voices along.** Voices
   are personal, so when a SuperAdmin duplicated a user's project for support,
   the copy referenced voices the SuperAdmin couldn't reach — and switching to

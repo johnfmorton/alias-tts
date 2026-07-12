@@ -145,11 +145,32 @@ async function runLongTest(btn) {
 }
 
 document.addEventListener('click', async (e) => {
-    // Copy-to-clipboard: <button data-copy="value">
-    const copyBtn = e.target.closest('[data-copy]');
+    // Dashboard connect card: clicking a Voice ID chip swaps its ID into the
+    // cURL examples. No return — the chip's data-copy still copies the ID below.
+    const chip = e.target.closest('[data-voice-chip]');
+    if (chip) {
+        const slug = chip.getAttribute('data-voice-chip');
+        document.querySelectorAll('[data-example-voice]').forEach((el) => { el.textContent = slug; });
+        const ACTIVE = ['border-accent/50', 'bg-accent/10', 'text-accent'];
+        const IDLE = ['border-white/[0.14]', 'text-zinc-200', 'hover:bg-white/[0.04]'];
+        document.querySelectorAll('[data-voice-chip]').forEach((c) => {
+            c.classList.remove(...(c === chip ? IDLE : ACTIVE));
+            c.classList.add(...(c === chip ? ACTIVE : IDLE));
+        });
+    }
+
+    // Copy-to-clipboard: <button data-copy="value"> copies the attribute;
+    // <button data-copy-from="#selector"> copies the target's rendered text
+    // (used by the dashboard cURL examples, where the command is built from
+    // highlighted spans and changes with the selected voice).
+    const copyBtn = e.target.closest('[data-copy], [data-copy-from]');
     if (copyBtn) {
         try {
-            await navigator.clipboard.writeText(copyBtn.getAttribute('data-copy'));
+            const from = copyBtn.getAttribute('data-copy-from');
+            const text = from
+                ? (document.querySelector(from)?.textContent.trim() ?? '')
+                : copyBtn.getAttribute('data-copy');
+            await navigator.clipboard.writeText(text);
             const original = copyBtn.dataset.label || copyBtn.textContent;
             copyBtn.dataset.label = original;
             copyBtn.textContent = 'Copied!';

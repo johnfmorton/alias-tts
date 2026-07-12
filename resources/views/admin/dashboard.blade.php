@@ -40,6 +40,13 @@
             'add' => ['label' => '+ New project', 'route' => 'admin.studio.projects.create'],
         ],
     ];
+
+    // cURL examples in the Connect card. The voice defaults to the first chip
+    // (clicking any chip swaps it in client-side); missing values fall back to
+    // readable placeholders so the examples always render complete commands.
+    $exampleKey = $connect['apiKey'] ?? 'YOUR_API_KEY';
+    $exampleVoice = $connect['voiceIds'][0] ?? 'YOUR_VOICE_ID';
+    $exampleText = 'Hello from Alias. If you can hear this, your connection works.';
 @endphp
 
 <x-layout title="Dashboard" :heading="false" contentWidth="max-w-[1080px]">
@@ -122,7 +129,7 @@
     {{-- Connect your app --}}
     <div class="mb-7 rounded-[14px] border border-white/8 bg-panel px-7 py-6">
         <h2 class="text-[17px] font-bold text-zinc-100">Connect your app</h2>
-        <p class="mt-2 max-w-[820px] text-[13.5px] leading-relaxed text-zinc-400">Alias speaks the ElevenLabs v1 API, so any ElevenLabs-compatible app works — including the Bespoken Craft CMS plugin. Paste these into its API settings.</p>
+        <p class="mt-2 max-w-[820px] text-[13.5px] leading-relaxed text-zinc-400">Alias speaks both the ElevenLabs v1 and OpenAI speech APIs, so any app compatible with either works — including the Bespoken Craft CMS plugin. Paste these into its API settings.</p>
 
         <div class="my-5 h-px bg-white/8"></div>
 
@@ -157,12 +164,44 @@
         @if(count($connect['voiceIds']))
             <div class="flex flex-wrap gap-2.5">
                 @foreach($connect['voiceIds'] as $vid)
-                    <button data-copy="{{ $vid }}" class="rounded-lg border border-white/[0.14] px-3.5 py-2 font-mono text-[13px] text-zinc-200 transition hover:bg-white/[0.04]" title="Click to copy">{{ $vid }}</button>
+                    <button data-copy="{{ $vid }}" data-voice-chip="{{ $vid }}"
+                            class="rounded-lg border px-3.5 py-2 font-mono text-[13px] transition {{ $loop->first ? 'border-accent/50 bg-accent/10 text-accent' : 'border-white/[0.14] text-zinc-200 hover:bg-white/[0.04]' }}"
+                            title="Copy — and use in the examples below">{{ $vid }}</button>
                 @endforeach
             </div>
         @else
             <p class="text-sm text-zinc-500">No voices yet — <a class="text-accent hover:underline" href="{{ route('admin.voices.create') }}">add one</a>.</p>
         @endif
+
+        <div class="my-5 h-px bg-white/8"></div>
+
+        {{-- cURL examples: how the three values above combine into a real request.
+             Clicking a voice chip swaps its ID into both examples (app.js). The
+             Copy buttons copy the rendered command text via data-copy-from, so
+             they always match what's on screen. --}}
+        <div class="text-[13px] font-semibold text-zinc-300">How it fits together</div>
+        <p class="mt-1 mb-4 text-[12.5px] text-zinc-500">The Base URL, API key, and a voice ID form a complete request in either dialect. Click a voice ID above to swap it into both examples.</p>
+
+        <div class="mb-1.5 text-[13px] font-semibold text-zinc-300">ElevenLabs-compatible example</div>
+        <div class="mb-5 flex items-start gap-2.5">
+            <pre class="flex-1 overflow-x-auto rounded-[9px] border border-white/12 bg-inset px-4 py-3.5 font-mono text-[13px] leading-[1.7] text-zinc-200"><code id="connect-example-el">curl -X POST <span class="text-accent">{{ $connect['baseUrl'] }}</span>/v1/text-to-speech/<span class="text-accent" data-example-voice>{{ $exampleVoice }}</span> \
+  -H "xi-api-key: <span class="text-accent">{{ $exampleKey }}</span>" \
+  -H "Content-Type: application/json" \
+  -d '{"text": "{{ $exampleText }}"}' \
+  --output alias-speech.mp3</code></pre>
+            <button data-copy-from="#connect-example-el" class="rounded-[9px] border border-white/[0.14] px-4.5 py-3 text-sm text-zinc-300 transition hover:bg-white/[0.04]">Copy</button>
+        </div>
+
+        <div class="mb-1.5 text-[13px] font-semibold text-zinc-300">OpenAI-compatible example</div>
+        <div class="flex items-start gap-2.5">
+            <pre class="flex-1 overflow-x-auto rounded-[9px] border border-white/12 bg-inset px-4 py-3.5 font-mono text-[13px] leading-[1.7] text-zinc-200"><code id="connect-example-openai">curl -X POST <span class="text-accent">{{ $connect['baseUrl'] }}</span>/v1/audio/speech \
+  -H "Authorization: Bearer <span class="text-accent">{{ $exampleKey }}</span>" \
+  -H "Content-Type: application/json" \
+  -d '{"model": "gpt-4o-mini-tts", "voice": "<span class="text-accent" data-example-voice>{{ $exampleVoice }}</span>", "input": "{{ $exampleText }}"}' \
+  --output alias-speech.mp3</code></pre>
+            <button data-copy-from="#connect-example-openai" class="rounded-[9px] border border-white/[0.14] px-4.5 py-3 text-sm text-zinc-300 transition hover:bg-white/[0.04]">Copy</button>
+        </div>
+        <p class="mt-2 text-[12.5px] text-zinc-500"><code class="font-mono text-zinc-400">model</code> is accepted for compatibility and ignored — the configured provider decides the model.</p>
     </div>
 
     {{-- System --}}

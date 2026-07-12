@@ -268,6 +268,30 @@ class DashboardTest extends TestCase
             ->assertSee('admin/reset-api-key', escape: false);
     }
 
+    public function test_dashboard_shows_curl_examples_for_both_dialects(): void
+    {
+        $admin = $this->admin();
+        $key = ApiKey::generate('connection', null, $admin->id);
+        Voice::create(['slug' => 'curl-voice', 'name' => 'Curl']);
+
+        $this->actingAs($admin)->get(route('admin.dashboard'))
+            ->assertOk()
+            ->assertSee('/v1/text-to-speech/', escape: false)
+            ->assertSee('/v1/audio/speech', escape: false)
+            ->assertSee('Authorization: Bearer')
+            // The examples render with the user's real key and swap voices client-side.
+            ->assertSee($key->key)
+            ->assertSee('data-example-voice', escape: false)
+            ->assertSee('data-voice-chip="curl-voice"', escape: false);
+    }
+
+    public function test_curl_examples_use_a_placeholder_when_no_api_key_exists(): void
+    {
+        $this->actingAs($this->admin())->get(route('admin.dashboard'))
+            ->assertOk()
+            ->assertSee('YOUR_API_KEY');
+    }
+
     public function test_footer_shows_the_app_version_for_authenticated_users(): void
     {
         $this->actingAs($this->admin())
