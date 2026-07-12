@@ -13,7 +13,10 @@ returns audio in your own cloned voice. The app handles auth, caching,
 chunking, audio cleanup, storage, and a multi-user dashboard; the actual voice
 generation is delegated to a pay-per-use GPU on [Replicate](https://replicate.com)
 running **[Chatterbox](https://replicate.com/resemble-ai/chatterbox)** (MIT
-licensed, zero-shot voice cloning from a short reference clip).
+licensed, zero-shot voice cloning from a short reference clip) or
+**[Chatterbox Turbo](https://replicate.com/resemble-ai/chatterbox-turbo)**
+(faster, with built-in voices and `[laugh]`-style sound tags) — each voice
+picks its engine on its edit page.
 
 Full documentation lives in **[docs/](docs/README.md)** — setup, integration,
 and internals, grouped by audience.
@@ -83,12 +86,16 @@ short/long test generations to confirm end-to-end audio works.
 
 ### A note on providers
 
-Today the only real inference backend is **Replicate / Chatterbox** (plus a
-`fake` driver that returns silent audio for local development and tests). The
-backend is a pluggable driver (`config('tts.provider')`), so other providers
-(Modal, Fal, a local GPU, or an ElevenLabs pass-through) *could* be added without
-touching the rest of the app — but **none are implemented yet**, and whether to
-support them is still an open question. For now, plan on Replicate.
+Today the only real inference backend is **Replicate** (plus a `fake` driver
+that returns silent audio for local development and tests), running the
+Chatterbox model catalog (`config('tts.models')`): classic
+**resemble-ai/chatterbox** and **resemble-ai/chatterbox-turbo**, chosen
+per-voice, each with its own pinned version, tuning knobs, and per-character
+rate. The backend is a pluggable driver (`config('tts.provider')`), so other
+providers (Modal, Fal, a local GPU, or an ElevenLabs pass-through) *could* be
+added without touching the rest of the app — but **none are implemented yet**,
+and whether to support them is still an open question. For now, plan on
+Replicate.
 
 ## Quick start (local, DDEV)
 

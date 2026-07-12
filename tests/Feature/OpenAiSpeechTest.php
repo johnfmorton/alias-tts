@@ -183,4 +183,69 @@ class OpenAiSpeechTest extends TestCase
         $this->assertSame(1, Speech::count(), 'Second identical request should be served from cache.');
         $this->assertSame('HIT', $second->headers->get('x-cache'));
     }
+
+    public function test_a_catalog_model_overrides_the_voices_engine(): void
+    {
+        $key = $this->makeKey();
+        $this->makeVoice(); // classic chatterbox voice
+
+        $this->withHeaders($this->bearer($key))
+            ->postJson('/v1/audio/speech', [
+                'model' => 'chatterbox-turbo',
+                'voice' => 'my-voice',
+                'input' => 'Ride the turbo.',
+            ])
+            ->assertStatus(200);
+
+        $this->assertSame('chatterbox-turbo', Speech::firstOrFail()->settings['model'] ?? null);
+    }
+
+    public function test_an_unrecognized_model_keeps_the_voices_engine(): void
+    {
+        $key = $this->makeKey();
+        $this->makeVoice();
+
+        // OpenAI's own model names must never silently switch engines.
+        $this->withHeaders($this->bearer($key))
+            ->postJson('/v1/audio/speech', [
+                'model' => 'tts-1',
+                'voice' => 'my-voice',
+                'input' => 'Plain old default.',
+            ])
+            ->assertStatus(200);
+
+        $this->assertArrayNotHasKey('model', Speech::firstOrFail()->settings ?? []);
+    }
+
+    public function test_an_operator_alias_maps_to_an_engine(): void
+    {
+        config(['tts.openai_model_aliases' => ['tts-1' => 'chatterbox-turbo']]);
+        $key = $this->makeKey();
+        $this->makeVoice();
+
+        $this->withHeaders($this->bearer($key))
+            ->postJson('/v1/audio/speech', [
+                'model' => 'tts-1',
+                'voice' => 'my-voice',
+                'input' => 'Aliased to turbo.',
+            ])
+            ->assertStatus(200);
+
+        $this->assertSame('chatterbox-turbo', Speech::firstOrFail()->settings['model'] ?? null);
+    }
+
+    public function test_the_engine_override_separates_the_cache(): void
+    {
+        $key = $this->makeKey();
+        $this->makeVoice();
+        $payload = ['voice' => 'my-voice', 'input' => 'Same words, two engines.'];
+
+        $this->withHeaders($this->bearer($key))->postJson('/v1/audio/speech', $payload)->assertStatus(200);
+        $this->withHeaders($this->bearer($key))
+            ->postJson('/v1/audio/speech', $payload + ['model' => 'chatterbox-turbo'])
+            ->assertStatus(200);
+
+        // Different engines must never share cached audio.
+        $this->assertSame(2, Speech::count());
+    }
 }

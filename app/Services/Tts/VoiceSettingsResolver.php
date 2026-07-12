@@ -25,13 +25,15 @@ use App\Services\SpeechService;
 class VoiceSettingsResolver
 {
     /**
-     * The tunable keys this resolver owns. `seed` is handled outside it. Both the
-     * ElevenLabs-style knobs (stability/style) the public /v1 API speaks AND
-     * Chatterbox's native knobs (exaggeration/cfg_weight/temperature) the Studio
-     * speaks pass through; the provider prefers native and falls back to deriving
-     * exaggeration/cfg_weight from EL. `temperature` is native-only (no EL twin).
+     * The tunable keys this resolver owns. `seed` is handled outside it, and so
+     * are the RESERVED engine keys (`model`, `voice_preset`) ModelCatalog::stamp
+     * adds AFTER resolution. Both the ElevenLabs-style knobs (stability/style)
+     * the public /v1 API speaks AND the native knobs the Studio speaks pass
+     * through: exaggeration/cfg_weight/temperature for classic Chatterbox,
+     * top_p/top_k/repetition_penalty for Chatterbox Turbo. Each engine's tuning
+     * class simply ignores the other dialect's keys.
      */
-    private const KEYS = ['stability', 'similarity_boost', 'style', 'use_speaker_boost', 'exaggeration', 'cfg_weight', 'temperature'];
+    private const KEYS = ['stability', 'similarity_boost', 'style', 'use_speaker_boost', 'exaggeration', 'cfg_weight', 'temperature', 'top_p', 'top_k', 'repetition_penalty'];
 
     /**
      * @param  array<string, mixed>  $overrides  values the caller explicitly set; only known keys apply
@@ -68,10 +70,14 @@ class VoiceSettingsResolver
      */
     private function cast(array $settings): array
     {
-        foreach (['stability', 'similarity_boost', 'style', 'exaggeration', 'cfg_weight', 'temperature'] as $key) {
+        foreach (['stability', 'similarity_boost', 'style', 'exaggeration', 'cfg_weight', 'temperature', 'top_p', 'repetition_penalty'] as $key) {
             if (isset($settings[$key])) {
                 $settings[$key] = (float) $settings[$key];
             }
+        }
+
+        if (isset($settings['top_k'])) {
+            $settings['top_k'] = (int) $settings['top_k'];
         }
 
         if (isset($settings['use_speaker_boost'])) {

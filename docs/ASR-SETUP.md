@@ -303,6 +303,18 @@ Sidecar-side env vars (set on the daemon command, not in `.env`):
 `ASR_MODEL` (`tiny`), `ASR_DEVICE` (`cpu`), `ASR_COMPUTE_TYPE` (`int8`),
 `ASR_LANGUAGE` (`en`), `ASR_DOWNLOAD_ROOT` (model cache dir).
 
+### Paralinguistic sound tags (Chatterbox Turbo)
+
+Turbo renders `[laugh]`-style tags as actual sounds, which never appear as
+words in a transcript — so QA scores every chunk against its **tag-stripped**
+expected text (`ChunkRemediator::score` → `ParalinguisticTags::strip`), and a
+tagged chunk no longer false-flags as truncated. Residual limitation: the
+rendered laugh/sigh itself is nonspeech audio that can still inflate the
+duration/energy signals (`trail_s`, gap length, TAILNOISE) — especially a tag
+at the very END of a chunk, which lands exactly where the tail detectors hunt.
+If tag-heavy chunks over-flag in practice, prefer mid-sentence tags, or watch
+with `TTS_ASR_ACTION=log` before trusting `auto` on tagged material.
+
 ## Troubleshooting
 
 - **Daemon log shows `FATAL can't find command '.venv/bin/uvicorn'`** — the daemon

@@ -11,6 +11,7 @@ use App\Services\Audio\AudioConverter;
 use App\Services\SpeechService;
 use App\Services\TextChunker;
 use App\Services\TextNormalizer;
+use App\Services\Tts\ModelCatalog;
 use App\Services\Tts\TtsProvider;
 use App\Services\Tts\VoiceReference;
 use App\Services\Tts\VoiceSettingsResolver;
@@ -95,9 +96,17 @@ class StudioController extends Controller
             'exaggeration' => ['nullable', 'numeric', 'between:0.25,2'],
             'cfg_weight' => ['nullable', 'numeric', 'between:0.2,1'],
             'temperature' => ['nullable', 'numeric', 'between:0.5,1.5'],
+            'top_p' => ['nullable', 'numeric', 'between:0.5,1'],
+            'top_k' => ['nullable', 'integer', 'between:1,2000'],
+            'repetition_penalty' => ['nullable', 'numeric', 'between:1,2'],
+            'model' => ['nullable', 'string', Rule::in(ModelCatalog::keys())],
         ])) {
             return $error;
         }
+
+        // The engine the preset was authored for; classic stores as NULL (the
+        // pre-catalog shape) and pickers filter by it.
+        $model = (string) $request->input('model', ModelCatalog::DEFAULT);
 
         $preset = TuningPreset::create([
             'user_id' => $request->user()->id,
@@ -105,6 +114,10 @@ class StudioController extends Controller
             'exaggeration' => $request->filled('exaggeration') ? (float) $request->input('exaggeration') : null,
             'cfg_weight' => $request->filled('cfg_weight') ? (float) $request->input('cfg_weight') : null,
             'temperature' => $request->filled('temperature') ? (float) $request->input('temperature') : null,
+            'top_p' => $request->filled('top_p') ? (float) $request->input('top_p') : null,
+            'top_k' => $request->filled('top_k') ? (int) $request->input('top_k') : null,
+            'repetition_penalty' => $request->filled('repetition_penalty') ? (float) $request->input('repetition_penalty') : null,
+            'model' => $model === ModelCatalog::DEFAULT ? null : $model,
         ]);
 
         return response()->json([
@@ -115,6 +128,10 @@ class StudioController extends Controller
                 'exaggeration' => $preset->exaggeration,
                 'cfg_weight' => $preset->cfg_weight,
                 'temperature' => $preset->temperature,
+                'top_p' => $preset->top_p,
+                'top_k' => $preset->top_k,
+                'repetition_penalty' => $preset->repetition_penalty,
+                'model' => $preset->engineModel(),
             ],
         ]);
     }
@@ -379,6 +396,9 @@ class StudioController extends Controller
             'exaggeration' => ['nullable', 'numeric', 'between:0.25,2'],
             'cfg_weight' => ['nullable', 'numeric', 'between:0.2,1'],
             'temperature' => ['nullable', 'numeric', 'between:0.5,1.5'],
+            'top_p' => ['nullable', 'numeric', 'between:0.5,1'],
+            'top_k' => ['nullable', 'integer', 'between:1,2000'],
+            'repetition_penalty' => ['nullable', 'numeric', 'between:1,2'],
         ])) {
             return $error;
         }
@@ -419,23 +439,31 @@ class StudioController extends Controller
             $settings['seed'] = (int) $seed;
         }
 
-        return $settings;
+        // The chosen voice picks the engine (reserved keys ride OUTSIDE the
+        // resolver, which whitelists them away).
+        return ModelCatalog::stamp($settings, $voice);
     }
 
     /**
-     * The tunable knobs the request explicitly set. The Studio speaks Chatterbox's
-     * native knobs (exaggeration/cfg_weight); the provider/resolver also accept the
-     * ElevenLabs stability/style the public /v1 API speaks.
+     * The tunable knobs the request explicitly set. The Studio speaks the
+     * engines' native knobs (exaggeration/cfg_weight for classic Chatterbox,
+     * top_p/top_k/repetition_penalty for Turbo, temperature for both); the
+     * provider/resolver also accept the ElevenLabs stability/style the public
+     * /v1 API speaks. Foreign-engine keys are ignored downstream, never errors.
      *
-     * @return array<string, float>
+     * @return array<string, float|int>
      */
     private function overrides(Request $request): array
     {
         $overrides = [];
-        foreach (['exaggeration', 'cfg_weight', 'temperature'] as $knob) {
+        foreach (['exaggeration', 'cfg_weight', 'temperature', 'top_p', 'repetition_penalty'] as $knob) {
             if ($request->filled($knob)) {
                 $overrides[$knob] = (float) $request->input($knob);
             }
+        }
+
+        if ($request->filled('top_k')) {
+            $overrides['top_k'] = (int) $request->input('top_k');
         }
 
         return $overrides;

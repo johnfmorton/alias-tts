@@ -4,6 +4,7 @@ namespace App\Services;
 
 use App\Models\Voice;
 use App\Services\Audio\AudioConverter;
+use App\Services\Tts\ModelCatalog;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
 use RuntimeException;
@@ -34,8 +35,11 @@ class VoiceService
         ?float $stability = null,
         ?float $style = null,
         ?int $ownerId = null,
+        ?string $model = null,
+        ?string $presetVoice = null,
     ): Voice {
         $slug = $slug ?: Str::slug($name);
+        $modelChosen = ModelCatalog::isKnown($model);
 
         // A voice_id only has to be unique among the voices its owner can
         // reach — their own plus the shared built-ins — because resolveFor()
@@ -52,7 +56,21 @@ class VoiceService
             throw new RuntimeException("The voice_id '{$slug}' is already in use.");
         }
 
+        // The engine this voice will generate with: the caller's choice, or —
+        // on a re-register that never mentioned a model — whatever it already
+        // ran on. The default engine stores as NULL, the shape every
+        // pre-catalog row already has.
+        $engine = $modelChosen ? $model : ModelCatalog::forVoice($existing);
+        $presetVoice = in_array($presetVoice, ModelCatalog::presetVoices($engine), true)
+            ? $presetVoice
+            : ($existing->settings['preset_voice'] ?? null);
+
         $attributes = ['name' => $name];
+
+        if ($modelChosen) {
+            $attributes['model'] = $engine === ModelCatalog::DEFAULT ? null : $engine;
+            $attributes['provider'] = $attributes['model'] === null ? null : 'replicate';
+        }
 
         if ($audioBytes !== null) {
             $bytes = $audioBytes;
@@ -63,14 +81,25 @@ class VoiceService
                 $extension = 'wav';
             }
 
+            $this->assertReferenceLongEnough($engine, $bytes);
+
             $referencePath = $this->referencePath($ownerId, $slug, $extension);
             Storage::disk(config('tts.storage_disk'))->put($referencePath, $bytes);
 
             $attributes['reference_audio_path'] = $referencePath;
+        } elseif ($modelChosen) {
+            // Switching an existing voice's engine must re-check its stored clip.
+            $this->assertStoredReferenceLongEnough($engine, $existing);
         }
 
+        $this->assertVoiceHasASource(
+            $engine,
+            hasClip: $audioBytes !== null || (bool) $existing?->reference_audio_path,
+            presetVoice: $presetVoice,
+        );
+
         $settings = array_filter(
-            ['seed' => $seed, 'stability' => $stability, 'style' => $style],
+            ['seed' => $seed, 'stability' => $stability, 'style' => $style, 'preset_voice' => $presetVoice],
             fn ($value) => $value !== null,
         );
         if ($settings !== []) {
@@ -78,6 +107,52 @@ class VoiceService
         }
 
         return Voice::updateOrCreate(['slug' => $slug, 'user_id' => $ownerId], $attributes);
+    }
+
+    /**
+     * Some engines refuse short reference clips (Chatterbox Turbo needs > 5s).
+     * Measured from the WAV header when possible; unmeasurable containers are
+     * let through — the provider will surface the model's own error.
+     */
+    private function assertReferenceLongEnough(string $engine, string $bytes): void
+    {
+        $min = ModelCatalog::minReferenceSeconds($engine);
+        if ($min <= 0) {
+            return;
+        }
+
+        $duration = $this->converter->wavDurationSeconds($bytes);
+        if ($duration !== null && $duration <= $min) {
+            throw new RuntimeException(sprintf(
+                '%s needs a reference clip longer than %d seconds (this one is %.1fs) — record or upload a longer one, or pick a built-in %1$s voice instead.',
+                ModelCatalog::label($engine),
+                (int) $min,
+                $duration,
+            ));
+        }
+    }
+
+    private function assertStoredReferenceLongEnough(string $engine, ?Voice $voice): void
+    {
+        if ($voice?->reference_audio_path && ModelCatalog::minReferenceSeconds($engine) > 0) {
+            $disk = Storage::disk(config('tts.storage_disk'));
+            if ($disk->exists($voice->reference_audio_path)) {
+                $this->assertReferenceLongEnough($engine, (string) $disk->get($voice->reference_audio_path));
+            }
+        }
+    }
+
+    /** A voice must be able to speak: a reference clip, or a built-in preset. */
+    private function assertVoiceHasASource(string $engine, bool $hasClip, ?string $presetVoice): void
+    {
+        if ($hasClip || $presetVoice !== null || ModelCatalog::presetVoices($engine) === []) {
+            return;
+        }
+
+        throw new RuntimeException(sprintf(
+            'A %s voice needs a reference clip or one of its built-in voices — upload/record a clip, or pick a built-in.',
+            ModelCatalog::label($engine),
+        ));
     }
 
     /**
@@ -114,9 +189,21 @@ class VoiceService
         ?float $exaggeration = null,
         ?float $cfgWeight = null,
         ?float $temperature = null,
+        ?string $model = null,
+        ?string $presetVoice = null,
+        ?float $topP = null,
+        ?int $topK = null,
+        ?float $repetitionPenalty = null,
     ): Voice {
         $disk = Storage::disk(config('tts.storage_disk'));
         $referencePath = $voice->reference_audio_path;
+
+        // The engine this voice will generate with after the save (the form
+        // always submits one; a null keeps the current engine for callers that
+        // predate the catalog).
+        $modelChosen = ModelCatalog::isKnown($model);
+        $engine = $modelChosen ? $model : ModelCatalog::forVoice($voice);
+        $presetVoice = in_array($presetVoice, ModelCatalog::presetVoices($engine), true) ? $presetVoice : null;
 
         if ($audioBytes !== null) {
             $bytes = $audioBytes;
@@ -125,13 +212,19 @@ class VoiceService
                 $bytes = $this->converter->normalizeReference($audioBytes);
                 $extension = 'wav';
             }
+            $this->assertReferenceLongEnough($engine, $bytes);
             $newPath = $this->referencePath($voice->user_id, $slug, $extension);
             $disk->put($newPath, $bytes);
             if ($referencePath && $referencePath !== $newPath) {
                 $disk->delete($referencePath);
             }
             $referencePath = $newPath;
-        } elseif ($referencePath && $slug !== $voice->slug) {
+        } elseif ($modelChosen && $engine !== ModelCatalog::forVoice($voice)) {
+            // Switching engines without a new clip re-checks the stored one.
+            $this->assertStoredReferenceLongEnough($engine, $voice);
+        }
+
+        if ($audioBytes === null && $referencePath && $slug !== $voice->slug) {
             $extension = strtolower(pathinfo($referencePath, PATHINFO_EXTENSION)) ?: 'wav';
             $newPath = $this->referencePath($voice->user_id, $slug, $extension);
             if ($newPath !== $referencePath && $disk->exists($referencePath)) {
@@ -164,12 +257,38 @@ class VoiceService
             unset($settings['temperature']);
         }
 
-        $voice->update([
+        // Turbo's sampling knobs — same null-clears semantics, no EL twins.
+        foreach (['top_p' => $topP, 'top_k' => $topK, 'repetition_penalty' => $repetitionPenalty] as $key => $value) {
+            if ($value !== null) {
+                $settings[$key] = $value;
+            } else {
+                unset($settings[$key]);
+            }
+        }
+
+        // The built-in voice a clip-less turbo voice speaks through. An engine
+        // without presets (classic chatterbox) always clears it.
+        if ($presetVoice !== null) {
+            $settings['preset_voice'] = $presetVoice;
+        } else {
+            unset($settings['preset_voice']);
+        }
+
+        $this->assertVoiceHasASource($engine, hasClip: (bool) $referencePath, presetVoice: $presetVoice);
+
+        $columns = [
             'name' => $name,
             'slug' => $slug,
             'reference_audio_path' => $referencePath,
             'settings' => $settings ?: null,
-        ]);
+        ];
+
+        if ($modelChosen) {
+            $columns['model'] = $engine === ModelCatalog::DEFAULT ? null : $engine;
+            $columns['provider'] = $columns['model'] === null ? null : 'replicate';
+        }
+
+        $voice->update($columns);
 
         return $voice;
     }
@@ -188,6 +307,8 @@ class VoiceService
             'name' => $source->name.' copy',
             'user_id' => $ownerId,
             'settings' => $source->settings,
+            'provider' => $source->provider,
+            'model' => $source->model,
         ];
 
         $disk = Storage::disk(config('tts.storage_disk'));
@@ -308,6 +429,7 @@ class VoiceService
             'version' => 1,
             'slug' => $voice->slug,
             'name' => $voice->name,
+            'model' => $voice->model,
             'settings' => $voice->settings,
             'reference' => $referenceName,
         ];
@@ -383,6 +505,8 @@ class VoiceService
                 normalize: false,
                 seed: $seed,
                 ownerId: $ownerId,
+                model: isset($manifest['model']) ? (string) $manifest['model'] : null,
+                presetVoice: isset($manifest['settings']['preset_voice']) ? (string) $manifest['settings']['preset_voice'] : null,
             );
         } finally {
             @unlink($tmp);

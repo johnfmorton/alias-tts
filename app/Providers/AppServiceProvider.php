@@ -44,6 +44,7 @@ class AppServiceProvider extends ServiceProvider
                 'replicate' => new ReplicateChatterboxProvider(
                     config('tts.providers.replicate', []),
                     (int) config('tts.request_timeout', 300),
+                    config('tts.models', []),
                 ),
                 default => throw new InvalidArgumentException(
                     'Unknown TTS provider: '.config('tts.provider'),

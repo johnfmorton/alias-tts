@@ -25,8 +25,11 @@ class OpenAiSpeechRequest extends FormRequest
         return [
             'input' => ['required', 'string', 'max:'.(int) config('tts.max_text_length')],
             'voice' => ['required', 'string', 'max:128'],
-            // OpenAI requires `model`, but Alias's configured provider decides
-            // the model — accept any value and ignore it.
+            // OpenAI requires `model`. A catalog key (or an alias mapped in
+            // config tts.openai_model_aliases) overrides the voice's engine for
+            // this request; any other value is accepted and ignored — the
+            // voice decides — so stock OpenAI clients sending "tts-1" never
+            // error or silently switch engines.
             'model' => ['sometimes', 'nullable', 'string', 'max:128'],
             // Only the formats AudioConverter can produce today. opus/aac/flac are
             // valid OpenAI values but unsupported here (see OpenAiSpeechController).
@@ -48,6 +51,13 @@ class OpenAiSpeechRequest extends FormRequest
     public function voiceName(): string
     {
         return (string) $this->input('voice');
+    }
+
+    public function modelName(): ?string
+    {
+        $model = trim((string) $this->input('model', ''));
+
+        return $model === '' ? null : $model;
     }
 
     public function responseFormat(): string

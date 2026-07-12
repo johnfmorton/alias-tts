@@ -19,7 +19,7 @@ speech **only** — none of OpenAI's other APIs are implemented (see
 | `Authorization: Bearer <key>` | ✅ Supported (key is a **Alias** key) |
 | `input` | ✅ Supported |
 | `voice` | ⚠️ Supported, but it is a **Alias voice slug**, not an OpenAI preset |
-| `model` | 🟡 Accepted, **ignored** (the configured provider picks the model) |
+| `model` | 🟡 Catalog keys (`chatterbox`/`chatterbox-turbo`) switch the engine; OpenAI's own names ignored unless alias-mapped |
 | `response_format`: `mp3`, `wav` | ✅ Supported |
 | `response_format`: `pcm` | ⚠️ Returns a **WAV container**, not raw PCM |
 | `response_format`: `opus`, `aac`, `flac` | ❌ Rejected (`400`) |
@@ -58,7 +58,7 @@ socket, or any other OpenAI route — requests to those get a `404`.
 |---|---|---|
 | `input` | yes | The text to synthesize. Capped at `tts.max_text_length` (default **5000**; note OpenAI's own cap is 4096). Over the cap → `400`. |
 | `voice` | yes | Resolved as a **Alias voice slug** — see [Voices](#voices). Unknown → `404`. |
-| `model` | no | **Accepted and ignored.** OpenAI requires it (`tts-1`, `tts-1-hd`, `gpt-4o-mini-tts`); Alias's configured provider (Chatterbox via Replicate by default) decides the actual model. |
+| `model` | no | **An engine override when it names a catalog model** — `chatterbox` or `chatterbox-turbo` switches this request's engine (overriding the voice's own). OpenAI's names (`tts-1`, `tts-1-hd`, `gpt-4o-mini-tts`) are **accepted and ignored** by default — the voice's engine decides — so a stock client never silently switches engines; an operator can opt them in via `config('tts.openai_model_aliases')` (e.g. `'tts-1' => 'chatterbox-turbo'`). Unknown values never error. Note: overriding a clip-backed voice to turbo needs a clip **longer than 5 s**. |
 | `response_format` | no | `mp3` (default), `wav`, `pcm` — see [Audio formats](#audio-formats). `opus`/`aac`/`flac` → `400`. |
 | `speed` | no | **Accepted (0.25–4.0), not applied.** Out-of-range → `400`. |
 | `instructions` | no | **Accepted, not applied** — the Chatterbox provider has no prose-steering input. |
@@ -159,8 +159,10 @@ A single, explicit list:
   effect on the output.
 - **OpenAI's preset voices as real voices**, and **voice cloning/creation** via
   the API. `voice` is a Alias slug (optionally aliased).
-- **OpenAI's `model` selection** — the value is ignored; Alias's configured
-  provider decides the model.
+- **OpenAI's `model` names** (`tts-1`, `tts-1-hd`, `gpt-4o-mini-tts`) — ignored
+  by default (the voice's engine decides) unless mapped via
+  `tts.openai_model_aliases`. Alias's own catalog keys (`chatterbox`,
+  `chatterbox-turbo`) DO work as per-request engine overrides.
 - **OpenAI API keys** — authenticate with a Alias `sk_…` key.
 
 ## Quickstart
@@ -173,7 +175,7 @@ from openai import OpenAI
 client = OpenAI(base_url="https://your-host/v1", api_key="<alias sk_ key>")
 
 client.audio.speech.create(
-    model="tts-1",       # accepted, ignored
+    model="tts-1",       # accepted, ignored (send "chatterbox-turbo" to switch engines)
     voice="my-voice",    # a Alias slug (or an aliased preset name)
     input="Hello from Alias.",
 ).stream_to_file("out.mp3")

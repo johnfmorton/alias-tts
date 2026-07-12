@@ -927,7 +927,7 @@ class StudioProjectTest extends TestCase
                 return 'RIFFfake';
             }
 
-            public function outputContainer(): string
+            public function outputContainer(?string $model = null): string
             {
                 return 'wav';
             }
@@ -1340,15 +1340,16 @@ class StudioProjectTest extends TestCase
         // Re-run the takes migration against the already-generated chunk, as a real
         // deploy would: drop + recreate the table so up()'s backfill runs over the
         // existing audio (the chunk's audio_path is untouched by the rollback).
-        // Nineteen steps because the takes table is the nineteenth-newest
+        // Twenty-one steps because the takes table is the twenty-first-newest
         // migration (native presets, project-seal, bundled default voices, account
         // fields, two-factor/connected-accounts, the unowned-api-key reassignment,
         // project ownership, the magic-login-table drop, per-user settings,
         // per-user voices, per-user presets, the take-text snapshot, the
         // default-clip replacement, the voice-clips staging table, the per-user
         // slug scoping, the preset-temperature column, the spent-characters
-        // counters, and the take-duration column all sit on top of it).
-        Artisan::call('migrate:rollback', ['--step' => 19]);
+        // counters, the take-duration column, the turbo preset knobs, and the
+        // per-model spend counters all sit on top of it).
+        Artisan::call('migrate:rollback', ['--step' => 21]);
         Artisan::call('migrate', ['--force' => true]);
 
         $takes = $chunk->refresh()->takes()->get();

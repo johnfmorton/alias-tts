@@ -76,7 +76,7 @@
                         <select id="project-voice"
                                 class="rounded-[8px] border border-white/12 bg-inset px-2.5 py-1.5 text-sm text-zinc-200 focus:border-accent/50 focus:outline-none">
                             @foreach($voices as $v)
-                                <option value="{{ $v->slug }}" @selected($project->voice && $project->voice->id === $v->id)>{{ $v->name }}</option>
+                                <option value="{{ $v->slug }}" data-model="{{ \App\Services\Tts\ModelCatalog::forVoice($v) }}" @selected($project->voice && $project->voice->id === $v->id)>{{ $v->name }}</option>
                             @endforeach
                         </select>
                     </label>
@@ -92,9 +92,11 @@
                     <span class="text-sm text-zinc-400">{{ $chunks->count() }} chunks</span>
                     @if(\App\Support\GenerationCost::enabled())
                         {{-- Lifetime estimate — counts every render ever, so deleting
-                             takes/chunks never lowers it (see GenerationCost). --}}
+                             takes/chunks never lowers it (see GenerationCost). Priced
+                             per engine (each model has its own rate); the tooltip
+                             spells out the per-model breakdown. --}}
                         <span id="project-spend" class="cursor-help text-sm text-zinc-500"
-                              title="{{ \App\Support\GenerationCost::title($project->spent_characters, 'project') }}">est. spend {{ \App\Support\GenerationCost::label($project->spent_characters) }}</span>
+                              title="{{ \App\Support\GenerationCost::title($projectSpendByModel, 'project') }}">est. spend {{ \App\Support\GenerationCost::label($projectSpendByModel) }}</span>
                     @endif
                     <span id="project-status" class="inline-flex rounded-md border px-2 py-0.5 text-xs {{ $statusBadgeClass }}">{{ $statusVal }}</span>
                 </div>
@@ -203,6 +205,11 @@
                 // projects that predate the temperature knob.
                 $inheritTemperature = number_format((float) (($project->settings['temperature'] ?? null)
                     ?? config('tts.default_voice_settings.temperature', 0.8)), 2);
+                // Turbo's knob dialect, resolved the same way the provider would.
+                $inheritTurbo = \App\Services\Tts\ChatterboxTurboTuning::resolveNative(is_array($project->settings) ? $project->settings : []);
+                $inheritTopP = number_format($inheritTurbo['top_p'], 2);
+                $inheritTopK = (string) $inheritTurbo['top_k'];
+                $inheritRepPenalty = number_format($inheritTurbo['repetition_penalty'], 2);
                 // Seed the chunk field inherits: the project's pinned seed, or blank
                 // (a random draw) when the project isn't pinned.
                 $inheritSeedText = $project->seed ? (string) $project->seed : 'random';
@@ -226,9 +233,11 @@
                             <span class="chunk-chars">{{ $chunk->characters }} chars</span>
                             @if(\App\Support\GenerationCost::enabled())
                                 {{-- This chunk's lifetime render spend; hidden until the first
-                                     take. JS toggles ONLY `hidden` (no competing display class). --}}
+                                     take. JS toggles ONLY `hidden` (no competing display class).
+                                     Priced per engine via the chunk's counter split. --}}
+                                @php $chunkSpendMap = $chunkSpendByModel[$chunk->id] ?? ($chunk->spent_characters > 0 ? ['chatterbox' => (int) $chunk->spent_characters] : []); @endphp
                                 <span class="chunk-spend cursor-help text-zinc-500 {{ $chunk->spent_characters > 0 ? '' : 'hidden' }}"
-                                      title="{{ \App\Support\GenerationCost::title($chunk->spent_characters, 'chunk') }}">{{ \App\Support\GenerationCost::label($chunk->spent_characters) }}</span>
+                                      title="{{ \App\Support\GenerationCost::title($chunkSpendMap, 'chunk') }}">{{ \App\Support\GenerationCost::label($chunkSpendMap) }}</span>
                             @endif
                             <span class="chunk-status inline-flex rounded-md border px-2 py-0.5 text-xs {{ $chunkStyles[$chunk->status->value] ?? $chunkStyles['pending'] }}">{{ $chunk->status->value }}</span>
                             @php $asrBadge = $chunk->asrBadge(); @endphp
@@ -245,7 +254,7 @@
                                         data-inherits="{{ $chunk->voice_id ? '0' : '1' }}"
                                         title="Voice for this chunk. Follows the project voice until you pick one here.">
                                     @foreach($voices as $v)
-                                        <option value="{{ $v->slug }}" @selected(($chunk->voice_id ?? $project->voice_id) === $v->id)>{{ $v->name }}</option>
+                                        <option value="{{ $v->slug }}" data-model="{{ \App\Services\Tts\ModelCatalog::forVoice($v) }}" @selected(($chunk->voice_id ?? $project->voice_id) === $v->id)>{{ $v->name }}</option>
                                     @endforeach
                                 </select>
                             </label>
@@ -295,18 +304,26 @@
                              data-takes (and refreshed after each render). --}}
                         <ul class="chunk-takes mt-2 space-y-1.5"></ul>
 
-                        {{-- Row 1: the tuning controls — three native knobs + the seed pin.
-                             Row 2 (below) carries the actions, so four controls never fight
+                        {{-- Row 1: the tuning controls — the effective voice's engine decides
+                             which knobs show (classic: exaggeration/cfg · turbo: top-p/top-k/
+                             repetition penalty · temperature + seed for both; JS re-syncs on a
+                             voice change via syncKnobEngines — toggling flex AND hidden together).
+                             Row 2 (below) carries the actions, so the controls never fight
                              the buttons for one line. --}}
-                        <div class="mt-3 flex flex-wrap items-end gap-3">
+                        @php $chunkModel = \App\Services\Tts\ModelCatalog::forVoice($chunk->voice ?? $project->voice); @endphp
+                        <div class="chunk-knobs mt-3 flex flex-wrap items-end gap-3">
                             @if($presets->isNotEmpty())
                                 {{-- Fills the knobs below with a named preset's values;
-                                     nothing is saved until "Save tuning" / a preview is kept. --}}
+                                     nothing is saved until "Save tuning" / a preview is kept.
+                                     Presets belong to an engine — JS hides foreign ones. --}}
                                 <label class="flex flex-col gap-1 text-xs text-zinc-500">Preset
                                     <select class="chunk-preset rounded-lg border border-zinc-700 bg-zinc-950 px-2 py-1.5 text-sm text-zinc-300">
                                         <option value="" selected>Apply…</option>
                                         @foreach($presets as $preset)
-                                            <option value="{{ $preset->id }}" data-exaggeration="{{ $preset->exaggeration }}" data-cfg="{{ $preset->cfg_weight }}" data-temperature="{{ $preset->temperature }}">{{ $preset->name }}</option>
+                                            <option value="{{ $preset->id }}" data-model="{{ $preset->engineModel() }}"
+                                                    data-exaggeration="{{ $preset->exaggeration }}" data-cfg="{{ $preset->cfg_weight }}" data-temperature="{{ $preset->temperature }}"
+                                                    data-top-p="{{ $preset->top_p }}" data-top-k="{{ $preset->top_k }}" data-repetition-penalty="{{ $preset->repetition_penalty }}"
+                                                    @class(['hidden' => $preset->engineModel() !== $chunkModel])>{{ $preset->name }}</option>
                                         @endforeach
                                     </select>
                                 </label>
@@ -314,11 +331,23 @@
                             <x-tuning-knob knob="exaggeration" label="Exaggeration" hint="neutral 0.5"
                                            :min="0.25" :max="2" :step="0.05"
                                            :value="$chunk->settings['exaggeration'] ?? ''" :placeholder="$inheritExaggeration"
-                                           inputClass="chunk-exaggeration" class="w-44" />
+                                           inputClass="chunk-exaggeration" class="w-44" :hidden="$chunkModel !== 'chatterbox'" />
                             <x-tuning-knob knob="cfg_weight" label="CFG / Pace"
                                            :min="0.2" :max="1" :step="0.05"
                                            :value="$chunk->settings['cfg_weight'] ?? ''" :placeholder="$inheritCfg"
-                                           inputClass="chunk-cfg" class="w-44" />
+                                           inputClass="chunk-cfg" class="w-44" :hidden="$chunkModel !== 'chatterbox'" />
+                            <x-tuning-knob knob="top_p" label="Top-p" hint="neutral 0.95"
+                                           :min="0.5" :max="1" :step="0.01"
+                                           :value="$chunk->settings['top_p'] ?? ''" :placeholder="$inheritTopP"
+                                           inputClass="chunk-top-p" class="w-44" :hidden="$chunkModel !== 'chatterbox-turbo'" />
+                            <x-tuning-knob knob="top_k" label="Top-k" hint="neutral 1000"
+                                           :min="1" :max="2000" :step="1"
+                                           :value="$chunk->settings['top_k'] ?? ''" :placeholder="$inheritTopK"
+                                           inputClass="chunk-top-k" class="w-44" :hidden="$chunkModel !== 'chatterbox-turbo'" />
+                            <x-tuning-knob knob="repetition_penalty" label="Rep. penalty" hint="neutral 1.2"
+                                           :min="1" :max="2" :step="0.05"
+                                           :value="$chunk->settings['repetition_penalty'] ?? ''" :placeholder="$inheritRepPenalty"
+                                           inputClass="chunk-repetition-penalty" class="w-44" :hidden="$chunkModel !== 'chatterbox-turbo'" />
                             <x-tuning-knob knob="temperature" label="Temperature" hint="neutral 0.8"
                                            :min="0.5" :max="1.5" :step="0.05"
                                            :value="$chunk->settings['temperature'] ?? ''" :placeholder="$inheritTemperature"
@@ -356,7 +385,11 @@
                             <span class="aplayer__time">0:00 / 0:00</span>
                             <audio class="chunk-tune-audio aplayer__native"></audio>
                         </div>
-                        <p class="mt-1.5 text-xs text-zinc-500">Every render is kept in the list above — play any take, <span class="text-zinc-400">Select</span> the one that sounded best, or <span class="text-zinc-400">Delete</span> the duds (older takes are pruned automatically). Blank inherits the project's setting (the value shown in each field). <span class="text-zinc-400">Temperature</span> is sampling randomness — lower is flatter and steadier, higher is livelier but less predictable. <span class="text-zinc-400">Seed</span> pins the random draw so a take can be re-tried, but Chatterbox isn't bit-for-bit reproducible even with a seed, so a pin only gets you close — each take shows the seed it used. <span class="text-zinc-400">Preview</span> auditions the typed settings (saved as a take, but not selected). Like what you hear? <span class="text-zinc-400">Use this take</span> keeps that exact clip as the chunk's audio. <span class="text-zinc-400">Save tuning</span> only stores the numbers and marks the chunk stale, so <span class="text-zinc-400">Generate</span> (top) renders a fresh take. <span class="text-zinc-400">Re-roll</span> gives you another take of the same text and tuning.</p>
+                        {{-- Knob explainers are engine-specific: the spans tagged
+                             data-engine-help swap with the chunk's effective voice,
+                             alongside the knobs themselves (syncKnobEngines). Plain
+                             inline spans, so `hidden` alone is safe to toggle. --}}
+                        <p class="mt-1.5 text-xs text-zinc-500">Every render is kept in the list above — play any take, <span class="text-zinc-400">Select</span> the one that sounded best, or <span class="text-zinc-400">Delete</span> the duds (older takes are pruned automatically). Blank inherits the project's setting (the value shown in each field). <span data-engine-help="chatterbox" @class(['hidden' => $chunkModel !== 'chatterbox'])><span class="text-zinc-400">Exaggeration</span> is how animated the delivery is — higher is more expressive and intense, lower is flatter; 0.5 is neutral. <span class="text-zinc-400">CFG / Pace</span> is pacing steadiness — higher sticks closer to a measured read, lower is quicker and looser.</span><span data-engine-help="chatterbox-turbo" @class(['hidden' => $chunkModel !== 'chatterbox-turbo'])><span class="text-zinc-400">Top-p</span> and <span class="text-zinc-400">Top-k</span> limit how adventurous each step of the delivery can be — lower values are more focused and consistent, higher allow more varied phrasing. <span class="text-zinc-400">Rep. penalty</span> discourages repeated sounds — nudge it up if syllables or words stutter.</span> <span class="text-zinc-400">Temperature</span> is sampling randomness — lower is flatter and steadier, higher is livelier but less predictable. <span class="text-zinc-400">Seed</span> pins the random draw so a take can be re-tried, but Chatterbox isn't bit-for-bit reproducible even with a seed, so a pin only gets you close — each take shows the seed it used. <span class="text-zinc-400">Preview</span> auditions the typed settings (saved as a take, but not selected). Like what you hear? <span class="text-zinc-400">Use this take</span> keeps that exact clip as the chunk's audio. <span class="text-zinc-400">Save tuning</span> only stores the numbers and marks the chunk stale, so <span class="text-zinc-400">Generate</span> (top) renders a fresh take. <span class="text-zinc-400">Re-roll</span> gives you another take of the same text and tuning.</p>
                     </details>
                 </div>
 

@@ -8,7 +8,13 @@ use Illuminate\Support\Sleep;
 use RuntimeException;
 
 /**
- * Runs Chatterbox (or any compatible model) on Replicate.
+ * Runs the catalog of Chatterbox models (classic and Turbo) on Replicate.
+ *
+ * Which model a call uses comes from the RESERVED settings key `model`
+ * (absent = classic chatterbox; see ModelCatalog::stamp()). Each catalog
+ * entry (config `tts.models`) carries its own slug, pinned version, input
+ * field names, knob dialect, and input cap; the transport below — retries,
+ * throttling, polling — is shared by all of them.
  *
  * Uses the predictions API with `Prefer: wait` for a near-synchronous call,
  * and polls as a fallback if the prediction is still processing when the wait
@@ -39,11 +45,37 @@ class ReplicateChatterboxProvider implements TtsProvider
     public function __construct(
         private array $config,
         private int $timeout = 300,
+        private array $models = [],
     ) {}
 
-    public function outputContainer(): string
+    public function outputContainer(?string $model = null): string
     {
-        return $this->config['output_container'] ?? 'wav';
+        return $this->modelConfig($model)['output_container'] ?? 'wav';
+    }
+
+    /**
+     * The catalog entry for a model key. Unknown/absent keys — and a provider
+     * constructed without a catalog (direct construction in tests) — fall back
+     * to the classic chatterbox shape built from the transport config's legacy
+     * keys, so old call sites behave exactly as before.
+     *
+     * @return array<string, mixed>
+     */
+    private function modelConfig(?string $model): array
+    {
+        if ($model !== null && isset($this->models[$model])) {
+            return $this->models[$model];
+        }
+
+        return $this->models[ModelCatalog::DEFAULT] ?? [
+            'model' => $this->config['model'] ?? 'resemble-ai/chatterbox',
+            'version' => $this->config['version'] ?? '',
+            'text_field' => $this->config['text_field'] ?? 'prompt',
+            'reference_field' => $this->config['reference_field'] ?? 'audio_prompt',
+            'output_container' => $this->config['output_container'] ?? 'wav',
+            'max_input_chars' => 0,
+            'knobs' => 'chatterbox',
+        ];
     }
 
     public function synthesize(string $text, ?string $referenceAudio, array $settings): string
@@ -53,38 +85,76 @@ class ReplicateChatterboxProvider implements TtsProvider
             throw new RuntimeException('REPLICATE_API_TOKEN is not configured.');
         }
 
+        $modelKey = isset($settings['model']) ? (string) $settings['model'] : null;
+        $model = $this->modelConfig($modelKey);
+
+        // Fail fast on a per-model input cap (turbo: 500 chars) BEFORE any HTTP
+        // call, so an oversized chunk never spends credit.
+        $maxChars = max(0, (int) ($model['max_input_chars'] ?? 0));
+        if ($maxChars > 0 && mb_strlen($text) > $maxChars) {
+            throw new RuntimeException(sprintf(
+                '%s accepts at most %d characters per call; this chunk is %d. Split the chunk or switch its voice to a model without the cap.',
+                $model['label'] ?? ($modelKey ?? 'The model'),
+                $maxChars,
+                mb_strlen($text),
+            ));
+        }
+
+        // Engines that don't render [laugh]-style sound tags would read them
+        // aloud as words — strip the known ones from THEIR payloads only (the
+        // chunk text itself is never touched).
+        if (! ($model['supports_tags'] ?? false)) {
+            $text = ParalinguisticTags::strip($text);
+        }
+
         $input = [
-            ($this->config['text_field'] ?? 'prompt') => $text,
+            ($model['text_field'] ?? 'prompt') => $text,
         ];
 
         if ($referenceAudio !== null) {
-            $input[$this->config['reference_field'] ?? 'audio_prompt'] = $this->toDataUri($referenceAudio);
+            $input[$model['reference_field'] ?? 'audio_prompt'] = $this->toDataUri($referenceAudio);
         }
 
-        // Resolve Chatterbox's native knobs. Native keys (cfg_weight/exaggeration)
-        // win when present (the Studio speaks native); otherwise they're derived
-        // from the ElevenLabs-style 0..1 knobs the public /v1 API speaks
-        // (stability/style), keeping the EL defaults aligned to Chatterbox defaults.
-        // ChatterboxTuning is the single source of truth for this mapping.
-        $native = ChatterboxTuning::resolveNative($settings);
-        $input['cfg_weight'] = $native['cfg_weight'];      // [0.2, 1.0]: higher = steadier pacing
-        $input['exaggeration'] = $native['exaggeration'];  // [0.25, 2.0]: higher = more animated
+        if (($model['knobs'] ?? 'chatterbox') === 'turbo') {
+            // Turbo's dialect: temperature + sampling knobs, no cfg/exaggeration.
+            // ChatterboxTurboTuning owns the mapping (incl. EL stability →
+            // temperature); EL style/similarity_boost are accepted and ignored.
+            $input += ChatterboxTurboTuning::resolveNative($settings);
 
-        // Native-only sampling temperature (no ElevenLabs twin). Defaults to the
-        // model's own 0.8, so an EL-only caller that never sets it is unaffected.
-        $input['temperature'] = ChatterboxTuning::clampTemperature(
-            (float) ($settings['temperature'] ?? ChatterboxTuning::TEMPERATURE_DEFAULT),
-        );
+            // A clip-less turbo voice speaks through a built-in voice. Replicate
+            // ignores `voice` whenever reference_audio is present, so only send
+            // it when there is no clip.
+            if ($referenceAudio === null) {
+                $input['voice'] = (string) ($settings['voice_preset'] ?? 'Andy');
+            }
+        } else {
+            // Resolve Chatterbox's native knobs. Native keys (cfg_weight/exaggeration)
+            // win when present (the Studio speaks native); otherwise they're derived
+            // from the ElevenLabs-style 0..1 knobs the public /v1 API speaks
+            // (stability/style), keeping the EL defaults aligned to Chatterbox defaults.
+            // ChatterboxTuning is the single source of truth for this mapping.
+            $native = ChatterboxTuning::resolveNative($settings);
+            $input['cfg_weight'] = $native['cfg_weight'];      // [0.2, 1.0]: higher = steadier pacing
+            $input['exaggeration'] = $native['exaggeration'];  // [0.25, 2.0]: higher = more animated
+
+            // Native-only sampling temperature (no ElevenLabs twin). Defaults to the
+            // model's own 0.8, so an EL-only caller that never sets it is unaffected.
+            $input['temperature'] = ChatterboxTuning::clampTemperature(
+                (float) ($settings['temperature'] ?? ChatterboxTuning::TEMPERATURE_DEFAULT),
+            );
+        }
 
         // Pin the seed when provided so a saved take can name the exact seed it
-        // rendered at; otherwise Chatterbox draws a fresh random seed each call.
-        // NOTE: even a pinned seed is NOT bit-reproducible on Replicate's shared
-        // GPUs — it biases the draw, it doesn't freeze it (see docs/STUDIO-TUNING.md).
+        // rendered at; otherwise the model draws a fresh random seed each call
+        // (classic treats 0 as random, turbo treats absent as random — omitting
+        // when unpinned satisfies both). NOTE: even a pinned seed is NOT
+        // bit-reproducible on Replicate's shared GPUs — it biases the draw, it
+        // doesn't freeze it (see docs/STUDIO-TUNING.md).
         if (isset($settings['seed'])) {
             $input['seed'] = (int) $settings['seed'];
         }
 
-        $prediction = $this->predictWithFailureRetry($token, $input);
+        $prediction = $this->predictWithFailureRetry($token, $input, $model);
 
         $output = $prediction['output'] ?? null;
         $url = is_array($output) ? ($output[0] ?? null) : $output;
@@ -101,26 +171,26 @@ class ReplicateChatterboxProvider implements TtsProvider
         return $audio->body();
     }
 
-    private function createPrediction(string $token, array $input): array
+    private function createPrediction(string $token, array $input, array $model): array
     {
         $this->respectRequestGap();
 
-        $response = $this->sendWithRetry(function () use ($token, $input) {
+        $response = $this->sendWithRetry(function () use ($token, $input, $model) {
             $http = Http::withToken($token)
                 ->timeout($this->timeout)
                 ->withHeaders(['Prefer' => 'wait']);
 
             // Pinned version -> /predictions with `version`; otherwise the model endpoint.
-            if (! empty($this->config['version'])) {
+            if (! empty($model['version'])) {
                 return $http->post(self::BASE.'/predictions', [
-                    'version' => $this->config['version'],
+                    'version' => $model['version'],
                     'input' => $input,
                 ]);
             }
 
-            $model = $this->config['model'] ?? 'resemble-ai/chatterbox';
+            $slug = $model['model'] ?? 'resemble-ai/chatterbox';
 
-            return $http->post(self::BASE."/models/{$model}/predictions", [
+            return $http->post(self::BASE."/models/{$slug}/predictions", [
                 'input' => $input,
             ]);
         }, 'prediction request');
@@ -135,7 +205,7 @@ class ReplicateChatterboxProvider implements TtsProvider
      * by the per-request timeout. Non-transient failures throw at once (fail fast,
      * no wasted credit). Returns the succeeded prediction.
      */
-    private function predictWithFailureRetry(string $token, array $input): array
+    private function predictWithFailureRetry(string $token, array $input, array $model): array
     {
         $maxRetries = max(0, (int) ($this->config['predict_max_retries'] ?? 2));
         $baseMs = max(0, (int) ($this->config['retry_base_ms'] ?? 1000));
@@ -144,7 +214,7 @@ class ReplicateChatterboxProvider implements TtsProvider
 
         $attempt = 0;
         while (true) {
-            $prediction = $this->awaitCompletion($token, $this->createPrediction($token, $input));
+            $prediction = $this->awaitCompletion($token, $this->createPrediction($token, $input, $model));
 
             if (($prediction['status'] ?? '') === 'succeeded') {
                 return $prediction;

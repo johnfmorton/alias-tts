@@ -10,6 +10,7 @@ use App\Services\Audio\AudioConverter;
 use App\Services\Genblaze\GenblazeRunStore;
 use App\Services\TextChunker;
 use App\Services\TextNormalizer;
+use App\Services\Tts\ModelCatalog;
 use App\Services\Tts\TtsProvider;
 use App\Services\Tts\VoiceReference;
 use App\Services\Tts\VoiceSettingsResolver;
@@ -58,13 +59,25 @@ class PipelineController extends Controller
         $data = $request->validate([
             'text' => ['required', 'string'],
             'chunk_mode' => ['sometimes', 'string', 'in:'.TextChunker::MODE_PACKED.','.TextChunker::MODE_SENTENCE],
+            // Optional: the voice the chunks will render with. When its engine
+            // caps per-call input (turbo: 500), the chunk budget shrinks to fit
+            // so no chunk can exceed what generation will accept.
+            'voice_id' => ['sometimes', 'nullable', 'string'],
         ]);
 
         $normalized = $this->normalizer->normalize($data['text']);
 
+        $chunkChars = (int) config('tts.chunk_chars', 280);
+        if (! empty($data['voice_id'])) {
+            $cap = ModelCatalog::maxInputChars(ModelCatalog::forVoice(Voice::resolve($data['voice_id'])));
+            if ($cap > 0) {
+                $chunkChars = min($chunkChars, $cap);
+            }
+        }
+
         $segments = $this->chunker->segment(
             $normalized,
-            (int) config('tts.chunk_chars', 280),
+            $chunkChars,
             (int) config('tts.block_space_run', 4),
             (int) config('tts.min_chunk_chars', 30),
             (int) config('tts.short_trailer_words', 3),
@@ -132,6 +145,10 @@ class PipelineController extends Controller
             $settings['seed'] = (int) $data['seed'];
         }
 
+        // These endpoints run userless; the voice row (resolved from the UUID
+        // the runner forwards) is what picks the engine.
+        $settings = ModelCatalog::stamp($settings, $voice);
+
         try {
             $bytes = $this->provider->synthesize($data['text'], $this->referencePath($voice), $settings);
         } catch (Throwable $e) {
@@ -140,7 +157,7 @@ class PipelineController extends Controller
             return $this->error('Chunk synthesis failed: '.$e->getMessage(), 502);
         }
 
-        $container = $this->provider->outputContainer();
+        $container = $this->provider->outputContainer($settings['model'] ?? null);
 
         return response($bytes, 200)
             ->header('Content-Type', $this->containerMime($container))

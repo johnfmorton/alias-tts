@@ -13,7 +13,7 @@ class FakeTtsProvider implements TtsProvider
         return $this->silentWav(0.2);
     }
 
-    public function outputContainer(): string
+    public function outputContainer(?string $model = null): string
     {
         return 'wav';
     }

@@ -102,6 +102,8 @@ class VoiceController extends Controller
                 normalize: (bool) config('tts.normalize_reference') && ! $request->boolean('raw'),
                 seed: $request->filled('seed') ? (int) $request->input('seed') : null,
                 ownerId: $request->user()->id,
+                model: $request->input('model') ?: null,
+                presetVoice: $request->input('preset_voice') ?: null,
             );
         } catch (Throwable $e) {
             return redirect()->route('admin.voices.create')
@@ -181,6 +183,11 @@ class VoiceController extends Controller
                 exaggeration: $request->filled('exaggeration') ? (float) $request->input('exaggeration') : null,
                 cfgWeight: $request->filled('cfg_weight') ? (float) $request->input('cfg_weight') : null,
                 temperature: $request->filled('temperature') ? (float) $request->input('temperature') : null,
+                model: $request->input('model') ?: null,
+                presetVoice: $request->input('preset_voice') ?: null,
+                topP: $request->filled('top_p') ? (float) $request->input('top_p') : null,
+                topK: $request->filled('top_k') ? (int) $request->input('top_k') : null,
+                repetitionPenalty: $request->filled('repetition_penalty') ? (float) $request->input('repetition_penalty') : null,
             );
         } catch (Throwable $e) {
             return redirect()->route('admin.voices.edit', $voice)

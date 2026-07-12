@@ -44,7 +44,7 @@ class ChunkingTest extends TestCase
                     .'data'.pack('V', strlen($data)).$data;
             }
 
-            public function outputContainer(): string
+            public function outputContainer(?string $model = null): string
             {
                 return 'wav';
             }

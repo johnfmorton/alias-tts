@@ -30,7 +30,7 @@ class ProjectSpendTest extends TestCase
         config([
             'tts.provider' => 'fake',
             'tts.storage_disk' => 'local',
-            'tts.cost_per_1k_chars' => 0.025,
+            'tts.models.chatterbox.cost_per_1k_chars' => 0.025,
         ]);
         Storage::fake('local');
     }
@@ -188,7 +188,12 @@ class ProjectSpendTest extends TestCase
 
     public function test_readouts_hidden_when_no_rate_is_configured(): void
     {
-        config(['tts.cost_per_1k_chars' => 0]);
+        // Readouts hide only when EVERY model's rate is zero — each catalog
+        // model carries its own per-1k rate.
+        config([
+            'tts.models.chatterbox.cost_per_1k_chars' => 0,
+            'tts.models.chatterbox-turbo.cost_per_1k_chars' => 0,
+        ]);
         $project = $this->project();
 
         $page = $this->actingAs($this->admin())

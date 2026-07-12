@@ -22,6 +22,9 @@ interface TtsProvider
     /**
      * The container/format of the bytes returned by synthesize(), e.g. "wav"
      * or "mp3". Used by the AudioConverter to transcode to the requested format.
+     *
+     * @param  string|null  $model  Catalog model key (see ModelCatalog); null =
+     *                              the default model's container.
      */
-    public function outputContainer(): string;
+    public function outputContainer(?string $model = null): string;
 }

@@ -7,6 +7,40 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 ## [Unreleased]
 
 ### Added
+- **Chatterbox Turbo as a second speech engine, chosen per voice.** A new
+  model catalog (`config tts.models`) runs classic `resemble-ai/chatterbox`
+  and `resemble-ai/chatterbox-turbo` side by side, each with its own pinned
+  version and input contract. Every voice picks its engine on the voice page
+  (`voices.model`; existing voices keep classic); projects inherit the voice's
+  engine and a per-chunk voice override switches engines mid-project — the
+  Genblaze pipeline resolves it from the voice it's already handed.
+  - **Turbo's own tuning dials** — top-p, top-k, and repetition penalty join
+    the shared temperature dial and seed pin, and every knob surface (voice
+    edit, A/B bench, Studio inspector, per-chunk rows) shows exactly the
+    effective voice's knob set. Named presets now belong to the engine they
+    were authored on and only appear where they apply. For ElevenLabs-dialect
+    callers on a turbo voice, `stability` still means steadier-vs-varied (it
+    maps inversely onto temperature); `style` is accepted and ignored.
+  - **Built-in Turbo voices** — a turbo voice can speak through one of the
+    model's 20 presets (Andy, Laura, …) instead of a reference clip; clips,
+    when used, must be longer than 5 seconds (validated at save).
+  - **Paralinguistic sound tags** — `[laugh]`, `[sigh]`, `[cough]` and friends
+    pass through to turbo, are stripped from classic payloads (which would
+    read them aloud), and are excluded from ASR-QA expectations so tagged
+    chunks don't false-flag.
+  - **Per-engine spend metering** — lifetime characters are now counted per
+    model (`tts_spend_counters`, existing spend backfilled as classic) and
+    priced at per-model rates (`TTS_COST_PER_1K_CHARS`,
+    `TTS_COST_PER_1K_CHARS_TURBO`); the est.-spend readouts show one total
+    with a per-engine breakdown in the tooltip.
+  - **The OpenAI dialect's `model` field now means something** — `chatterbox`
+    / `chatterbox-turbo` switch the engine per request; OpenAI's own names
+    (`tts-1`, …) stay ignored unless opted in via `tts.openai_model_aliases`,
+    so stock clients never switch engines by surprise.
+  - **Guard rails** — turbo's 500-character per-call cap is enforced when
+    saving Studio chunk text, when chunking for a turbo voice, and again in
+    the provider before any credit is spent; `tts:doctor`/health warn on an
+    unpinned model version or a chunk budget over a model's cap.
 - **The Dashboard's Connect card now shows how the pieces fit together.** A
   new "How it fits together" section renders complete, ready-to-run cURL
   commands for both dialects — ElevenLabs (`/v1/text-to-speech/{voice}` with

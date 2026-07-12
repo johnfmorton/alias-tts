@@ -99,6 +99,17 @@ return [
         // 'nova'  => 'default-female',
     ],
 
+    // OpenAI `model` -> engine (a tts.models catalog key). Exact catalog keys
+    // ('chatterbox', 'chatterbox-turbo') always work as per-request engine
+    // overrides; this map lets an operator opt OpenAI's own model names in
+    // too. DELIBERATELY EMPTY by default: every stock OpenAI client sends
+    // 'tts-1', and a default alias would silently switch every voice's engine.
+    // Unmapped names are ignored — the voice's engine decides, never an error.
+    'openai_model_aliases' => [
+        // 'tts-1'    => 'chatterbox-turbo', // fast
+        // 'tts-1-hd' => 'chatterbox',       // expressive
+    ],
+
     /*
     |--------------------------------------------------------------------------
     | Internal pipeline API
@@ -345,12 +356,12 @@ return [
         'keep_preview' => (int) env('TTS_TAKES_KEEP_PREVIEW', 3), // preview takes kept per chunk
     ],
 
-    // Estimated provider cost per 1,000 input characters (USD), driving the
-    // Studio spend readouts. The default mirrors Replicate's Chatterbox
-    // metering: billed by input character only — reference clips and tuning
-    // knobs are free. Set to 0 to hide every cost readout (e.g. when running
-    // a self-hosted provider that costs nothing per call).
-    'cost_per_1k_chars' => (float) env('TTS_COST_PER_1K_CHARS', 0.025),
+    // Estimated provider cost lives PER MODEL in the `models` catalog below
+    // (tts.models.*.cost_per_1k_chars — env TTS_COST_PER_1K_CHARS for classic
+    // chatterbox, TTS_COST_PER_1K_CHARS_TURBO for turbo), driving the Studio
+    // spend readouts. Billed by input character only — reference clips and
+    // tuning knobs are free. Set EVERY rate to 0 to hide the cost readouts
+    // (e.g. when running a self-hosted provider that costs nothing per call).
 
     'ttl_hours' => (int) env('TTS_TTL_HOURS', 720), // cache generated audio for 30 days
 
@@ -611,12 +622,71 @@ return [
 
     /*
     |--------------------------------------------------------------------------
+    | TTS model catalog
+    |--------------------------------------------------------------------------
+    |
+    | Every speech engine the app can drive, keyed by the model key stored on
+    | voices (`voices.model`, null = 'chatterbox') and threaded to the provider
+    | as the reserved settings key `model`. Each entry carries the engine's
+    | Replicate identity (slug + pinned version), its input field names, its
+    | knob dialect ('chatterbox' = cfg_weight/exaggeration, 'turbo' =
+    | top_p/top_k/repetition_penalty), its per-call input cap, and its OWN
+    | per-1k-character rate so spend is metered per model (see GenerationCost).
+    | The chatterbox entry reads the same env names the app has always used, so
+    | existing deployments keep working untouched.
+    |
+    */
+    'models' => [
+        'chatterbox' => [
+            'label' => 'Chatterbox',
+            'model' => env('REPLICATE_CHATTERBOX_MODEL', 'resemble-ai/chatterbox'),
+            // Pinned to a known-good version; override via env to bump it.
+            'version' => env('REPLICATE_CHATTERBOX_VERSION', '1b8422bc49635c20d0a84e387ed20879c0dd09254ecdb4e75dc4bec10ff94e97'),
+            'text_field' => env('REPLICATE_TEXT_FIELD', 'prompt'),
+            'reference_field' => env('REPLICATE_REFERENCE_FIELD', 'audio_prompt'),
+            'output_container' => env('REPLICATE_OUTPUT_CONTAINER', 'wav'),
+            'max_input_chars' => 0, // 0 = no per-call cap
+            'cost_per_1k_chars' => (float) env('TTS_COST_PER_1K_CHARS', 0.025),
+            'knobs' => 'chatterbox',
+            'preset_voices' => [],
+            'supports_tags' => false,
+        ],
+        'chatterbox-turbo' => [
+            'label' => 'Chatterbox Turbo',
+            'model' => env('REPLICATE_CHATTERBOX_TURBO_MODEL', 'resemble-ai/chatterbox-turbo'),
+            'version' => env('REPLICATE_CHATTERBOX_TURBO_VERSION', '95c87b883ff3e842a1643044dff67f9d204f70a80228f24ff64bffe4a4b917d4'),
+            'text_field' => env('REPLICATE_TURBO_TEXT_FIELD', 'text'),
+            'reference_field' => env('REPLICATE_TURBO_REFERENCE_FIELD', 'reference_audio'),
+            'output_container' => env('REPLICATE_TURBO_OUTPUT_CONTAINER', 'wav'),
+            // Turbo rejects inputs over 500 characters; the provider fails fast
+            // (before any HTTP call) so no credit is ever spent on one.
+            'max_input_chars' => 500,
+            'cost_per_1k_chars' => (float) env('TTS_COST_PER_1K_CHARS_TURBO', 0.025),
+            'knobs' => 'turbo',
+            // Built-in voices the model ships; sent as `voice` when a turbo
+            // voice has no reference clip (a clip always wins on Replicate).
+            'preset_voices' => [
+                'Aaron', 'Abigail', 'Anaya', 'Andy', 'Archer', 'Brian', 'Chloe',
+                'Dylan', 'Emmanuel', 'Ethan', 'Evelyn', 'Gavin', 'Gordon', 'Ivan',
+                'Laura', 'Lucy', 'Madison', 'Marisol', 'Meera', 'Walter',
+            ],
+            // Paralinguistic tags ([laugh], [sigh], …) render as sounds.
+            'supports_tags' => true,
+            // Replicate rejects reference clips of 5 seconds or less.
+            'min_reference_seconds' => 5.0,
+        ],
+    ],
+
+    /*
+    |--------------------------------------------------------------------------
     | Provider configuration
     |--------------------------------------------------------------------------
     |
-    | NOTE: confirm the exact Replicate model slug and its input field names
-    | from the model's schema page before going live. Chatterbox commonly takes
-    | the text in "prompt" and the reference clip in "audio_prompt".
+    | Transport-level Replicate settings shared by every model in the catalog
+    | above: the API token and the 429/transient-failure retry knobs. The
+    | model/version/field keys kept here are the legacy chatterbox values —
+    | they read the same env vars as models.chatterbox and remain only for
+    | direct provider construction without a catalog (tests).
     |
     */
     'providers' => [

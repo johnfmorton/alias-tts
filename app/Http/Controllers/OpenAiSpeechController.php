@@ -7,6 +7,7 @@ use App\Models\Speech;
 use App\Models\Voice;
 use App\Services\Audio\AudioConverter;
 use App\Services\SpeechService;
+use App\Services\Tts\ModelCatalog;
 use App\Services\Tts\VoiceSettingsResolver;
 use App\Support\OpenAiError;
 use Symfony\Component\HttpFoundation\Response;
@@ -28,7 +29,11 @@ use Throwable;
  *                      names like "alloy" can be mapped to a chosen voice via
  *                      config('tts.openai_voice_aliases'))
  *   response_format -> an ElevenLabs output_format token (mp3/wav/pcm)
- *   model           -> ignored; the configured provider decides the model
+ *   model           -> an engine override when it names a catalog model
+ *                      ('chatterbox' / 'chatterbox-turbo') or an operator alias
+ *                      (config('tts.openai_model_aliases')); any other value —
+ *                      including OpenAI's own 'tts-1' — is ignored and the
+ *                      voice's engine decides
  *   speed / instructions -> accepted for compatibility, not yet applied
  *
  * Success -> raw audio bytes. Error -> OpenAI shape { "error": { ... } }.
@@ -77,6 +82,7 @@ class OpenAiSpeechController extends Controller
                 settings: $this->settingsResolver->resolve($voice),
                 modelId: (string) config('tts.default_model_id'),
                 outputFormat: self::FORMAT_MAP[$request->responseFormat()],
+                engine: $this->engineOverride($request->modelName()),
             );
         } catch (Throwable $e) {
             report($e);
@@ -97,6 +103,29 @@ class OpenAiSpeechController extends Controller
         $aliases = (array) config('tts.openai_voice_aliases', []);
 
         return (string) ($aliases[strtolower($voice)] ?? $voice);
+    }
+
+    /**
+     * Map the request's `model` to an engine override: an exact catalog key
+     * wins, then the operator's alias map (empty by default — a stock client's
+     * 'tts-1' must never silently switch every voice's engine). Anything else
+     * -> null, meaning the voice's own engine decides (the long-standing
+     * ignore-fallback; never an error).
+     */
+    private function engineOverride(?string $model): ?string
+    {
+        if ($model === null) {
+            return null;
+        }
+
+        if (ModelCatalog::isKnown($model)) {
+            return $model;
+        }
+
+        $aliases = (array) config('tts.openai_model_aliases', []);
+        $alias = $aliases[strtolower($model)] ?? null;
+
+        return ModelCatalog::isKnown($alias) ? $alias : null;
     }
 
     private function audioResponse(Speech $speech): Response

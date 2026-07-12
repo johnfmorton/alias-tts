@@ -119,17 +119,24 @@ class AliasClient:
 
     # --- Posture B: pipeline primitives ------------------------------------
 
-    def chunk(self, text: str, *, chunk_mode: str | None = None) -> list[dict]:
+    def chunk(self, text: str, *, chunk_mode: str | None = None, voice_id: str | None = None) -> list[dict]:
         """Normalize + segment text into chunk descriptors.
 
         ``chunk_mode`` ('packed'/'sentence') overrides the app instance's
         default — the internal endpoints run userless, so the dispatching
         user's chunking setting must be forwarded explicitly. ``None`` keeps
         the app's default.
+
+        ``voice_id`` names the voice the chunks will render with, so the app
+        can shrink the chunk budget under that voice's engine's per-call input
+        cap (Chatterbox Turbo: 500 chars). ``None`` keeps the app's default
+        budget.
         """
         payload: dict = {"text": text}
         if chunk_mode is not None:
             payload["chunk_mode"] = chunk_mode
+        if voice_id is not None:
+            payload["voice_id"] = voice_id
         with self._http(internal=True) as client:
             resp = client.post("/v1/internal/chunk", json=payload)
             resp.raise_for_status()

@@ -71,7 +71,7 @@ class _OfflineClient:
         self.simulate_reroll = simulate_reroll
         self._scored = 0
 
-    def chunk(self, text: str, *, chunk_mode: str | None = None) -> list[dict]:
+    def chunk(self, text: str, *, chunk_mode: str | None=None, voice_id=None) -> list[dict]:
         parts = [p.strip() for p in text.replace("!", ".").replace("?", ".").split(".") if p.strip()]
         if not parts:
             return [{"position": 0, "text": text, "break_after": "sentence"}]

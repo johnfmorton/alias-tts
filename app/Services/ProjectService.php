@@ -16,8 +16,10 @@ use App\Services\Asr\ChunkQualityVerdict;
 use App\Services\Asr\ChunkRemediator;
 use App\Services\Audio\AudioConverter;
 use App\Services\Pronunciation\PronunciationSubstituter;
+use App\Services\Tts\ModelCatalog;
 use App\Services\Tts\TtsProvider;
 use App\Services\Tts\VoiceReference;
+use App\Support\SpendCounters;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
@@ -521,11 +523,16 @@ class ProjectService
         // character. Query-builder increments, deliberately NOT model saves:
         // deleting takes or chunks later must never lower these — money spent
         // is never un-spent (a deleted chunk's spend lives on in the project
-        // counter).
+        // counter). The per-model counters split the same totals by engine so
+        // each model's own rate prices its own characters.
         if ($source !== 'use') {
             $spent = mb_strlen($chunk->text);
             TtsChunk::whereKey($chunk->id)->increment('spent_characters', $spent);
             TtsProject::whereKey($chunk->tts_project_id)->increment('spent_characters', $spent);
+
+            $model = ModelCatalog::forVoice($chunk->voice ?? $chunk->project->voice);
+            SpendCounters::add('chunk', $chunk->id, $model, $spent);
+            SpendCounters::add('project', $chunk->tts_project_id, $model, $spent);
         }
 
         if ($select) {
@@ -690,6 +697,8 @@ class ProjectService
         if (! array_key_exists('seed', $typed) && $project->seed !== null) {
             $settings['seed'] = $project->seed;
         }
+
+        $settings = ModelCatalog::stamp($settings, $chunk->voice ?? $project->voice);
 
         $bytes = $this->provider->synthesize($chunk->text, $this->referencePath($chunk->voice ?? $project->voice), $settings);
 
@@ -1290,7 +1299,9 @@ class ProjectService
             $settings['seed'] = $project->seed;
         }
 
-        return $settings;
+        // The chunk's effective voice picks the engine (a per-chunk voice
+        // override can switch models mid-project).
+        return ModelCatalog::stamp($settings, $chunk?->voice ?? $project->voice);
     }
 
     private function referencePath(?Voice $voice): ?string
@@ -1315,7 +1326,10 @@ class ProjectService
      */
     private function tuningOnly(array $settings): array
     {
-        return array_intersect_key($settings, array_flip(['stability', 'style', 'exaggeration', 'cfg_weight', 'temperature']));
+        return array_intersect_key($settings, array_flip([
+            'stability', 'style', 'exaggeration', 'cfg_weight', 'temperature',
+            'top_p', 'top_k', 'repetition_penalty',
+        ]));
     }
 
     /**

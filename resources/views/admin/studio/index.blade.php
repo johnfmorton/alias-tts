@@ -186,7 +186,7 @@
                         @else
                             <select id="studio-voice" class="rounded-lg border border-white/12 bg-inset px-3 py-2 text-sm">
                                 @foreach($voices as $v)
-                                    <option value="{{ $v->slug }}">{{ $v->name }}</option>
+                                    <option value="{{ $v->slug }}" data-model="{{ \App\Services\Tts\ModelCatalog::forVoice($v) }}">{{ $v->name }}</option>
                                 @endforeach
                             </select>
                         @endif
@@ -208,12 +208,21 @@
                 </label>
 
                 <div id="studio-advanced" @unless(auth()->user()->studio_advanced) class="hidden" @endunless>
-                    {{-- Single-shot native Chatterbox knobs (Whole / Stitched / per-chunk Generate) --}}
-                    <div class="mt-3 flex flex-wrap gap-4 rounded-lg border border-white/8 bg-inset/60 p-3 text-sm text-zinc-400">
+                    {{-- Single-shot native knobs (Whole / Stitched / per-chunk Generate).
+                         The chosen voice's engine decides which set shows (JS syncs on
+                         voice change); the first voice in the list is the initial pick. --}}
+                    @php $inspectorModel = \App\Services\Tts\ModelCatalog::forVoice($voices->first()); @endphp
+                    <div id="studio-knobs" class="mt-3 flex flex-wrap gap-4 rounded-lg border border-white/8 bg-inset/60 p-3 text-sm text-zinc-400">
                         <x-tuning-knob knob="exaggeration" label="Exaggeration" hint="neutral 0.5"
-                                       :min="0.25" :max="2" :step="0.05" placeholder="0.50" inputClass="studio-exaggeration" class="w-48" />
+                                       :min="0.25" :max="2" :step="0.05" placeholder="0.50" inputClass="studio-exaggeration" class="w-48" :hidden="$inspectorModel !== 'chatterbox'" />
                         <x-tuning-knob knob="cfg_weight" label="CFG / Pace"
-                                       :min="0.2" :max="1" :step="0.05" placeholder="0.50" inputClass="studio-cfg" class="w-48" />
+                                       :min="0.2" :max="1" :step="0.05" placeholder="0.50" inputClass="studio-cfg" class="w-48" :hidden="$inspectorModel !== 'chatterbox'" />
+                        <x-tuning-knob knob="top_p" label="Top-p" hint="neutral 0.95"
+                                       :min="0.5" :max="1" :step="0.01" placeholder="0.95" inputClass="studio-top-p" class="w-48" :hidden="$inspectorModel !== 'chatterbox-turbo'" />
+                        <x-tuning-knob knob="top_k" label="Top-k" hint="neutral 1000"
+                                       :min="1" :max="2000" :step="1" placeholder="1000" inputClass="studio-top-k" class="w-48" :hidden="$inspectorModel !== 'chatterbox-turbo'" />
+                        <x-tuning-knob knob="repetition_penalty" label="Rep. penalty" hint="neutral 1.2"
+                                       :min="1" :max="2" :step="0.05" placeholder="1.20" inputClass="studio-repetition-penalty" class="w-48" :hidden="$inspectorModel !== 'chatterbox-turbo'" />
                         <x-tuning-knob knob="temperature" label="Temperature" hint="neutral 0.8"
                                        :min="0.5" :max="1.5" :step="0.05" placeholder="0.80" inputClass="studio-temperature" class="w-48" />
                     </div>

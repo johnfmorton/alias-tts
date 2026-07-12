@@ -16,8 +16,10 @@ use App\Services\Pronunciation\PronunciationDetector;
 use App\Services\Pronunciation\PronunciationDictionary;
 use App\Services\TextNormalizer;
 use App\Services\Tts\ChatterboxTuning;
+use App\Services\Tts\ModelCatalog;
 use App\Services\Tts\VoiceSettingsResolver;
 use App\Support\GenerationCost;
+use App\Support\SpendCounters;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -210,6 +212,9 @@ class StudioProjectController extends Controller
             'exaggeration' => ['nullable', 'numeric', 'between:0.25,2'],
             'cfg_weight' => ['nullable', 'numeric', 'between:0.2,1'],
             'temperature' => ['nullable', 'numeric', 'between:0.5,1.5'],
+            'top_p' => ['nullable', 'numeric', 'between:0.5,1'],
+            'top_k' => ['nullable', 'integer', 'between:1,2000'],
+            'repetition_penalty' => ['nullable', 'numeric', 'between:1,2'],
         ];
     }
 
@@ -225,6 +230,11 @@ class StudioProjectController extends Controller
             // owner and gates the first edit behind a warning dialog.
             'foreignOwner' => $this->foreignOwner($request, $project),
             'chunks' => $chunks,
+            // Per-model spend splits for the readouts (each engine has its own
+            // rate). Loaded in one query per owner type; a chunk/project with
+            // no counter rows falls back to its legacy all-chatterbox total.
+            'projectSpendByModel' => SpendCounters::forOwner('project', $project->id, (int) $project->spent_characters),
+            'chunkSpendByModel' => SpendCounters::forOwners('chunk', $chunks->pluck('id')->all()),
             'voices' => Voice::orderedFor($request->user()->id)->get(),
             // Offered final-audio formats for the header picker (token => "MP3"/"WAV").
             'outputFormats' => $this->outputFormatLabels(),
@@ -488,6 +498,12 @@ class StudioProjectController extends Controller
             return response()->json(['message' => $validator->errors()->first()], 422);
         }
 
+        // A new chunk inherits the project voice — enforce that engine's
+        // per-call cap now rather than letting generation fail later.
+        if ($error = $this->chunkTextCapError($project->voice, (string) $request->input('text', ''))) {
+            return $error;
+        }
+
         $this->projects->insertChunk(
             $project,
             (int) $request->input('position'),
@@ -506,6 +522,10 @@ class StudioProjectController extends Controller
         ]);
         if ($validator->fails()) {
             return response()->json(['message' => $validator->errors()->first()], 422);
+        }
+
+        if ($error = $this->chunkTextCapError($chunk->voice ?? $project->voice, (string) $request->input('text'))) {
+            return $error;
         }
 
         $result = $this->projects->updateChunkText($chunk, (string) $request->input('text'));
@@ -931,6 +951,29 @@ class StudioProjectController extends Controller
      * @return array{chunk: array{spent: int, label: string, title: string},
      *               project: array{spent: int, label: string, title: string}}|null
      */
+    /**
+     * A friendly 422 when a chunk's text exceeds its effective voice's
+     * per-call input cap (Chatterbox Turbo: 500 chars), or null when fine.
+     * Saving oversized text would only fail later at generation — with money
+     * on the line — so it's refused at the edit instead.
+     */
+    private function chunkTextCapError(?Voice $voice, string $text): ?JsonResponse
+    {
+        $model = ModelCatalog::forVoice($voice);
+        $cap = ModelCatalog::maxInputChars($model);
+
+        if ($cap > 0 && mb_strlen($text) > $cap) {
+            return response()->json(['message' => sprintf(
+                '%s accepts at most %d characters per chunk — this one is %d. Split it into two chunks, or switch the voice.',
+                ModelCatalog::label($model),
+                $cap,
+                mb_strlen($text),
+            )], 422);
+        }
+
+        return null;
+    }
+
     private function spendPayload(TtsProject $project, TtsChunk $chunk): ?array
     {
         if (! GenerationCost::enabled()) {
@@ -940,16 +983,21 @@ class StudioProjectController extends Controller
         $chunkSpent = (int) TtsChunk::whereKey($chunk->id)->value('spent_characters');
         $projectSpent = (int) TtsProject::whereKey($project->id)->value('spent_characters');
 
+        // Per-model splits so each engine's own rate prices its characters;
+        // the totals above only decide readout visibility (spent > 0).
+        $chunkByModel = SpendCounters::forOwner('chunk', $chunk->id, $chunkSpent);
+        $projectByModel = SpendCounters::forOwner('project', $project->id, $projectSpent);
+
         return [
             'chunk' => [
                 'spent' => $chunkSpent,
-                'label' => GenerationCost::label($chunkSpent),
-                'title' => GenerationCost::title($chunkSpent, 'chunk'),
+                'label' => GenerationCost::label($chunkByModel),
+                'title' => GenerationCost::title($chunkByModel, 'chunk'),
             ],
             'project' => [
                 'spent' => $projectSpent,
-                'label' => 'est. spend '.GenerationCost::label($projectSpent),
-                'title' => GenerationCost::title($projectSpent, 'project'),
+                'label' => 'est. spend '.GenerationCost::label($projectByModel),
+                'title' => GenerationCost::title($projectByModel, 'project'),
             ],
         ];
     }
@@ -1021,6 +1069,9 @@ class StudioProjectController extends Controller
             'exaggeration' => ['nullable', 'numeric', 'between:0.25,2'],
             'cfg_weight' => ['nullable', 'numeric', 'between:0.2,1'],
             'temperature' => ['nullable', 'numeric', 'between:0.5,1.5'],
+            'top_p' => ['nullable', 'numeric', 'between:0.5,1'],
+            'top_k' => ['nullable', 'integer', 'between:1,2000'],
+            'repetition_penalty' => ['nullable', 'numeric', 'between:1,2'],
             'seed' => ['nullable', 'integer', 'min:0'],
         ];
     }
@@ -1038,7 +1089,7 @@ class StudioProjectController extends Controller
         $knobs = [];
         foreach (array_keys($this->knobRules()) as $knob) {
             $knobs[$knob] = $request->filled($knob)
-                ? ($knob === 'seed' ? (int) $request->input($knob) : (float) $request->input($knob))
+                ? (in_array($knob, ['seed', 'top_k'], true) ? (int) $request->input($knob) : (float) $request->input($knob))
                 : null;
         }
 
@@ -1061,21 +1112,21 @@ class StudioProjectController extends Controller
         // win over it. A preset id the user doesn't own resolves to nothing.
         if ($request->filled('preset')) {
             $preset = TuningPreset::forUser($request->user()->id)->find($request->input('preset'));
-            if ($preset?->exaggeration !== null) {
-                $overrides['exaggeration'] = $preset->exaggeration;
-            }
-            if ($preset?->cfg_weight !== null) {
-                $overrides['cfg_weight'] = $preset->cfg_weight;
-            }
-            if ($preset?->temperature !== null) {
-                $overrides['temperature'] = $preset->temperature;
+            foreach (['exaggeration', 'cfg_weight', 'temperature', 'top_p', 'top_k', 'repetition_penalty'] as $knob) {
+                if ($preset?->{$knob} !== null) {
+                    $overrides[$knob] = $preset->{$knob};
+                }
             }
         }
 
-        foreach (['exaggeration', 'cfg_weight', 'temperature'] as $knob) {
+        foreach (['exaggeration', 'cfg_weight', 'temperature', 'top_p', 'repetition_penalty'] as $knob) {
             if ($request->filled($knob)) {
                 $overrides[$knob] = (float) $request->input($knob);
             }
+        }
+
+        if ($request->filled('top_k')) {
+            $overrides['top_k'] = (int) $request->input('top_k');
         }
 
         return $this->settingsResolver->resolve($voice, $overrides);

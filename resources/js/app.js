@@ -347,6 +347,44 @@ function initTuningKnobs(scope) {
     });
 }
 
+// Which engine each engine-specific tuning knob belongs to. Temperature and
+// the seed pin are shared by both engines, so they're absent here. Mirrors
+// the knob sets in ChatterboxTuning / ChatterboxTurboTuning (PHP owns the
+// formulas; this map only decides which controls SHOW).
+const KNOB_ENGINES = {
+    exaggeration: 'chatterbox',
+    cfg_weight: 'chatterbox',
+    top_p: 'chatterbox-turbo',
+    top_k: 'chatterbox-turbo',
+    repetition_penalty: 'chatterbox-turbo',
+};
+
+// The engine behind a voice <select>: its selected option's data-model
+// (stamped server-side from voices.model; absent = classic chatterbox).
+const modelOfSelect = (select) => select?.selectedOptions[0]?.dataset.model || 'chatterbox';
+
+// Show exactly the given engine's knobs inside `scope` (a chunk card or a
+// knobs row) and hide the other engine's, plus filter preset options and the
+// engine-specific help sentences to match. Tuning-knob roots are flex
+// containers, so `hidden` and `flex` are ALWAYS toggled as a pair — a
+// co-present flex class would win over hidden. (Help spans and preset options
+// are plain inline elements; `hidden` alone is safe there.)
+function syncKnobEngines(scope, model) {
+    scope.querySelectorAll('.tuning-knob[data-knob]').forEach((knob) => {
+        const engine = KNOB_ENGINES[knob.dataset.knob];
+        if (!engine) return;
+        const hide = engine !== model;
+        knob.classList.toggle('hidden', hide);
+        knob.classList.toggle('flex', !hide);
+    });
+    scope.querySelectorAll('.chunk-preset option[data-model]').forEach((opt) => {
+        opt.classList.toggle('hidden', opt.dataset.model !== model);
+    });
+    scope.querySelectorAll('[data-engine-help]').forEach((el) => {
+        el.classList.toggle('hidden', el.dataset.engineHelp !== model);
+    });
+}
+
 function initStudio() {
     const root = document.getElementById('studio');
     if (!root) return;
@@ -364,6 +402,10 @@ function initStudio() {
         exaggeration: root.querySelector('.studio-exaggeration'),
         cfg: root.querySelector('.studio-cfg'),
         temperature: root.querySelector('.studio-temperature'),
+        topP: root.querySelector('.studio-top-p'),
+        topK: root.querySelector('.studio-top-k'),
+        repetitionPenalty: root.querySelector('.studio-repetition-penalty'),
+        knobs: document.getElementById('studio-knobs'),
         status: document.getElementById('studio-status'),
         results: document.getElementById('studio-results'),
         normalized: document.getElementById('studio-normalized'),
@@ -386,16 +428,32 @@ function initStudio() {
     // audio the user heard, plus the checkbox that selects it for concatenation.
     let chunkStates = [];
 
+    // A knob's value, or '' while it's hidden (the other engine's knob).
+    const knobValue = (input) => {
+        if (!input || input.closest('.tuning-knob')?.classList.contains('hidden')) return '';
+        return input.value;
+    };
+
     // Common generation params from the form controls. `text` is whatever we want
-    // synthesized (a chunk, or the whole normalized text).
+    // synthesized (a chunk, or the whole normalized text). Only the ACTIVE
+    // engine's knobs ride along — the chosen voice decides which those are.
     const params = (text) => {
         const body = { text };
         if (els.voice?.value) body.voice = els.voice.value;
-        if (els.exaggeration?.value !== '') body.exaggeration = els.exaggeration.value;
-        if (els.cfg?.value !== '') body.cfg_weight = els.cfg.value;
-        if (els.temperature?.value !== '') body.temperature = els.temperature.value;
+        if (knobValue(els.exaggeration) !== '') body.exaggeration = els.exaggeration.value;
+        if (knobValue(els.cfg) !== '') body.cfg_weight = els.cfg.value;
+        if (knobValue(els.temperature) !== '') body.temperature = els.temperature.value;
+        if (knobValue(els.topP) !== '') body.top_p = els.topP.value;
+        if (knobValue(els.topK) !== '') body.top_k = els.topK.value;
+        if (knobValue(els.repetitionPenalty) !== '') body.repetition_penalty = els.repetitionPenalty.value;
         return new URLSearchParams(body);
     };
+
+    // The inspector's knob row follows the chosen voice's engine.
+    if (els.voice && els.knobs) {
+        els.voice.addEventListener('change', () => syncKnobEngines(els.knobs, modelOfSelect(els.voice)));
+        syncKnobEngines(els.knobs, modelOfSelect(els.voice));
+    }
 
     async function fetchBlob(url, text) {
         const res = await fetch(url, {
@@ -657,10 +715,41 @@ initStudioAdvancedToggle();
 // voice slug and endpoints as data attributes; presets are named knob pairs
 // reusable on any voice's bench.
 // ---------------------------------------------------------------------------
+// The bench's knob columns per engine. `param` is the request/knob key,
+// `data` the camelCase dataset key the blade stamps values under (on the
+// bench root, preset chips, and new-preset payloads). Ranges mirror
+// ChatterboxTuning / ChatterboxTurboTuning.
+const BENCH_KNOBS = {
+    'chatterbox': [
+        { param: 'exaggeration', data: 'exaggeration', ph: '0.5', min: '0.25', max: '2', step: '0.05' },
+        { param: 'cfg_weight', data: 'cfg', ph: '0.5', min: '0.2', max: '1', step: '0.05' },
+        { param: 'temperature', data: 'temperature', ph: '0.8', min: '0.5', max: '1.5', step: '0.05' },
+    ],
+    'chatterbox-turbo': [
+        { param: 'top_p', data: 'topP', ph: '0.95', min: '0.5', max: '1', step: '0.01' },
+        { param: 'top_k', data: 'topK', ph: '1000', min: '1', max: '2000', step: '1' },
+        { param: 'repetition_penalty', data: 'repetitionPenalty', ph: '1.2', min: '1', max: '2', step: '0.05' },
+        { param: 'temperature', data: 'temperature', ph: '0.8', min: '0.5', max: '1.5', step: '0.05' },
+    ],
+};
+
+// Row two of the bench: a more-expressive contrast to row one's defaults.
+const BENCH_CONTRAST = {
+    'chatterbox': { exaggeration: '0.95', cfg_weight: '0.8', temperature: '0.9' },
+    'chatterbox-turbo': { top_p: '0.85', top_k: '300', repetition_penalty: '1.35', temperature: '1' },
+};
+
 function initTuningBench(bench) {
     const synthUrl = bench.dataset.synthesizeUrl;
     const saveUrl = bench.dataset.voiceDefaultsUrl;
     const voice = bench.dataset.voice;
+    // The voice's SAVED engine decides the knob columns (the blade renders the
+    // matching header). An unsaved engine change retunes the bench after save.
+    const model = bench.dataset.model || 'chatterbox';
+    const knobDefs = BENCH_KNOBS[model] || BENCH_KNOBS.chatterbox;
+    const rowGrid = model === 'chatterbox-turbo'
+        ? 'grid-cols-[44px_1fr_1fr_1fr_1fr_0.8fr_1.5fr_40px]'
+        : 'grid-cols-[44px_1.1fr_1.1fr_1.1fr_0.8fr_1.5fr_40px]';
     const els = {
         text: bench.querySelector('.bench-text'),
         rows: bench.querySelector('.bench-rows'),
@@ -672,12 +761,22 @@ function initTuningBench(bench) {
 
     const rows = [];
 
-    const knob = (value, placeholder, min, max) => {
+    const knob = (value, def) => {
         const input = document.createElement('input');
-        Object.assign(input, { type: 'number', step: '0.05', min, max, placeholder });
-        if (value !== null && value !== '') input.value = value;
+        Object.assign(input, { type: 'number', step: def.step, min: def.min, max: def.max, placeholder: def.ph });
+        if (value !== null && value !== '' && value !== undefined) input.value = value;
         input.className = 'w-[74px] rounded-[8px] border border-white/12 bg-inset px-2.5 py-2 text-[15px] text-zinc-100 focus:border-accent focus:outline-none focus:ring-2 focus:ring-accent/30';
         return input;
+    };
+
+    // A row's typed knob values as `param -> value` (set ones only).
+    const rowValues = (state) => {
+        const values = {};
+        knobDefs.forEach((def) => {
+            const v = state.inputs[def.param].value;
+            if (v !== '') values[def.param] = v;
+        });
+        return values;
     };
 
     // The bench body for one candidate row: the sample line, the bench's voice,
@@ -686,9 +785,7 @@ function initTuningBench(bench) {
         const text = els.text.value.trim();
         if (!text) return null;
         const body = new URLSearchParams({ text, voice });
-        if (state.exagIn.value !== '') body.set('exaggeration', state.exagIn.value);
-        if (state.cfgIn.value !== '') body.set('cfg_weight', state.cfgIn.value);
-        if (state.tempIn.value !== '') body.set('temperature', state.tempIn.value);
+        Object.entries(rowValues(state)).forEach(([param, value]) => body.set(param, value));
         return body;
     };
 
@@ -720,17 +817,16 @@ function initTuningBench(bench) {
         }
     }
 
-    function addRow(exaggeration, cfg, temperature) {
+    function addRow(values = {}) {
         const li = document.createElement('li');
-        li.className = 'grid grid-cols-[44px_1.1fr_1.1fr_1.1fr_0.8fr_1.5fr_40px] items-center gap-2 border-b border-white/6 px-4 py-3.5 last:border-b-0';
+        li.className = `grid ${rowGrid} items-center gap-2 border-b border-white/6 px-4 py-3.5 last:border-b-0`;
 
         const pick = document.createElement('input');
         Object.assign(pick, { type: 'radio', name: 'bench-pick', title: 'Pick this setting to save' });
         pick.className = 'accent-emerald-500';
 
-        const exagIn = knob(exaggeration, '0.5', '0.25', '2');
-        const cfgIn = knob(cfg, '0.5', '0.2', '1');
-        const tempIn = knob(temperature, '0.8', '0.5', '1.5');
+        const inputs = {};
+        knobDefs.forEach((def) => { inputs[def.param] = knob(values[def.param] ?? null, def); });
 
         const playBtn = document.createElement('button');
         playBtn.type = 'button';
@@ -753,9 +849,9 @@ function initTuningBench(bench) {
         remove.title = 'Remove';
         remove.textContent = '✕';
 
-        li.append(pick, exagIn, cfgIn, tempIn, playBtn, take, remove);
+        li.append(pick, ...knobDefs.map((def) => inputs[def.param]), playBtn, take, remove);
 
-        const state = { exagIn, cfgIn, tempIn, audio, pick, placeholder };
+        const state = { inputs, audio, pick, placeholder };
         rows.push(state);
         if (rows.length === 1) pick.checked = true;
 
@@ -787,9 +883,7 @@ function initTuningBench(bench) {
         const picked = rows.find((s) => s.pick.checked);
         if (!picked) { setStatus(els.status, 'Pick a setting first.', 'error'); return; }
         const body = new URLSearchParams({ voice });
-        if (picked.exagIn.value !== '') body.set('exaggeration', picked.exagIn.value);
-        if (picked.cfgIn.value !== '') body.set('cfg_weight', picked.cfgIn.value);
-        if (picked.tempIn.value !== '') body.set('temperature', picked.tempIn.value);
+        Object.entries(rowValues(picked)).forEach(([param, value]) => body.set(param, value));
         startBusy(els.saveBtn, 'Saving…');
         try {
             const res = await fetch(saveUrl, {
@@ -807,7 +901,7 @@ function initTuningBench(bench) {
         }
     }
 
-    els.addBtn.addEventListener('click', () => addRow(null, null, null));
+    els.addBtn.addEventListener('click', () => addRow());
     els.genBtn.addEventListener('click', generateAll);
     els.saveBtn.addEventListener('click', savePick);
 
@@ -822,9 +916,18 @@ function initTuningBench(bench) {
         const refreshEmpty = () =>
             emptyHint?.classList.toggle('hidden', presetsBar.querySelectorAll('.bench-preset').length > 0);
 
+        // A chip's knob values keyed by request param (this bench's engine only
+        // — the blade already filters chips to the bench's engine).
+        const chipValues = (chip) => {
+            const values = {};
+            knobDefs.forEach((def) => {
+                if (chip.dataset[def.data]) values[def.param] = chip.dataset[def.data];
+            });
+            return values;
+        };
+
         const wireChip = (chip) => {
-            chip.querySelector('.preset-apply').addEventListener('click', () =>
-                addRow(chip.dataset.exaggeration || null, chip.dataset.cfg || null, chip.dataset.temperature || null));
+            chip.querySelector('.preset-apply').addEventListener('click', () => addRow(chipValues(chip)));
             chip.querySelector('.preset-delete').addEventListener('click', async () => {
                 const name = chip.querySelector('.preset-apply').textContent;
                 if (!(await confirmDialog({
@@ -853,6 +956,9 @@ function initTuningBench(bench) {
             chip.dataset.exaggeration = preset.exaggeration ?? '';
             chip.dataset.cfg = preset.cfg_weight ?? '';
             chip.dataset.temperature = preset.temperature ?? '';
+            chip.dataset.topP = preset.top_p ?? '';
+            chip.dataset.topK = preset.top_k ?? '';
+            chip.dataset.repetitionPenalty = preset.repetition_penalty ?? '';
             const apply = document.createElement('button');
             apply.type = 'button';
             apply.className = 'preset-apply text-zinc-200 hover:text-cyan-300';
@@ -875,10 +981,10 @@ function initTuningBench(bench) {
             if (!picked) { setStatus(els.status, 'Pick a row to save as a preset.', 'error'); return; }
             const name = (window.prompt('Preset name?') || '').trim();
             if (!name) return;
-            const body = new URLSearchParams({ name });
-            if (picked.exagIn.value !== '') body.set('exaggeration', picked.exagIn.value);
-            if (picked.cfgIn.value !== '') body.set('cfg_weight', picked.cfgIn.value);
-            if (picked.tempIn.value !== '') body.set('temperature', picked.tempIn.value);
+            // The preset records the bench's engine so pickers offer it only
+            // where its knobs apply.
+            const body = new URLSearchParams({ name, model });
+            Object.entries(rowValues(picked)).forEach(([param, value]) => body.set(param, value));
             startBusy(presetSaveBtn, 'Saving…');
             try {
                 const res = await fetch(storeUrl, {
@@ -900,8 +1006,12 @@ function initTuningBench(bench) {
 
     // Seed row one with the voice's CURRENT defaults (blank = inherit the
     // system default) and row two with a more-expressive contrast to compare.
-    addRow(bench.dataset.exaggeration || null, bench.dataset.cfg || null, bench.dataset.temperature || null);
-    addRow(0.95, 0.8, 0.9);
+    const currentDefaults = {};
+    knobDefs.forEach((def) => {
+        if (bench.dataset[def.data]) currentDefaults[def.param] = bench.dataset[def.data];
+    });
+    addRow(currentDefaults);
+    addRow(BENCH_CONTRAST[model] || BENCH_CONTRAST.chatterbox);
 }
 document.querySelectorAll('.tuning-bench').forEach(initTuningBench);
 
@@ -1690,9 +1800,7 @@ function initStudioProject() {
         // "Use this take" can persist the exact clip the user just heard. Any
         // edit that would change how a fresh preview sounds clears it (below).
         let previewBlob = null;
-        let previewExaggeration = '';
-        let previewCfg = '';
-        let previewTemperature = '';
+        let previewKnobs = {}; // knob key -> string value, only the ones that were set
         let previewSeed = '';
         const keepBtn = card.querySelector('.chunk-tune-keep');
         const invalidatePreview = () => {
@@ -1747,6 +1855,8 @@ function initStudioProject() {
                     const data = await res.json();
                     chunkVoice.dataset.current = voice;
                     chunkVoice.dataset.inherits = data.inherits ? '1' : '0';
+                    // The new voice may run a different engine — swap the knob set.
+                    syncKnobEngines(card, modelOfSelect(chunkVoice));
                     setChunkStatus(card, data.status);
                     setProjectStatus(data.project_status);
                     refreshSeams();
@@ -1764,17 +1874,34 @@ function initStudioProject() {
         card.querySelector('.chunk-reroll')?.addEventListener('click', () =>
             runGeneration(card, card.dataset.rerollUrl, card.querySelector('.chunk-reroll'), 'Re-rolling…').catch(() => {}));
 
+        // The value of one knob input, or '' while its knob is hidden (the
+        // OTHER engine's knob — a leftover value there must not ride along).
+        const knobVal = (sel) => {
+            const input = card.querySelector(sel);
+            if (!input || input.closest('.tuning-knob')?.classList.contains('hidden')) return '';
+            return input.value;
+        };
+
+        // Every engine-specific knob, read via knobVal so only the active
+        // engine's set is ever sent; temperature is shared.
+        const KNOB_INPUTS = [
+            ['exaggeration', '.chunk-exaggeration'],
+            ['cfg_weight', '.chunk-cfg'],
+            ['temperature', '.chunk-temperature'],
+            ['top_p', '.chunk-top-p'],
+            ['top_k', '.chunk-top-k'],
+            ['repetition_penalty', '.chunk-repetition-penalty'],
+        ];
+
         // A/B preview: audition the typed native knobs (saved as a non-selected take).
         card.querySelector('.chunk-tune-preview')?.addEventListener('click', async () => {
             const btn = card.querySelector('.chunk-tune-preview');
-            const exaggeration = card.querySelector('.chunk-exaggeration').value;
-            const cfg = card.querySelector('.chunk-cfg').value;
-            const temperature = card.querySelector('.chunk-temperature').value;
             const seed = card.querySelector('.chunk-seed').value;
             const body = new URLSearchParams();
-            if (exaggeration !== '') body.set('exaggeration', exaggeration);
-            if (cfg !== '') body.set('cfg_weight', cfg);
-            if (temperature !== '') body.set('temperature', temperature);
+            KNOB_INPUTS.forEach(([key, sel]) => {
+                const value = knobVal(sel);
+                if (value !== '') body.set(key, value);
+            });
             if (seed !== '') body.set('seed', seed);
             startBusy(btn, 'Previewing…');
             try {
@@ -1788,9 +1915,11 @@ function initStudioProject() {
                 playAudio(card.querySelector('.chunk-tune-audio'), blob);
                 // Remember this exact clip so "Use this take" can keep it verbatim.
                 previewBlob = blob;
-                previewExaggeration = exaggeration;
-                previewCfg = cfg;
-                previewTemperature = temperature;
+                previewKnobs = {};
+                KNOB_INPUTS.forEach(([key, sel]) => {
+                    const value = knobVal(sel);
+                    if (value !== '') previewKnobs[key] = value;
+                });
                 previewSeed = seed;
                 keepBtn?.classList.remove('hidden');
                 refreshTakes(card); // the preview was saved as a (non-selected) take
@@ -1813,9 +1942,7 @@ function initStudioProject() {
                 const ext = previewBlob.type === 'audio/mpeg' ? 'mp3' : 'wav';
                 const fd = new FormData();
                 fd.append('audio', previewBlob, `take.${ext}`);
-                if (previewExaggeration !== '') fd.append('exaggeration', previewExaggeration);
-                if (previewCfg !== '') fd.append('cfg_weight', previewCfg);
-                if (previewTemperature !== '') fd.append('temperature', previewTemperature);
+                Object.entries(previewKnobs).forEach(([key, value]) => fd.append(key, value));
                 if (previewSeed !== '') fd.append('seed', previewSeed);
                 const res = await fetch(card.dataset.usePreviewUrl, {
                     method: 'POST',
@@ -1844,23 +1971,22 @@ function initStudioProject() {
         });
 
         // Save this chunk's native tuning override; the server marks it stale.
+        // Hidden knobs (the other engine's) post null, so switching a chunk's
+        // engine then saving clears any leftover foreign-engine override.
         card.querySelector('.chunk-tune-save')?.addEventListener('click', async () => {
             const btn = card.querySelector('.chunk-tune-save');
-            const exaggeration = card.querySelector('.chunk-exaggeration').value;
-            const cfg = card.querySelector('.chunk-cfg').value;
-            const temperature = card.querySelector('.chunk-temperature').value;
             const seed = card.querySelector('.chunk-seed').value;
+            const payload = { seed: seed === '' ? null : Number(seed) };
+            KNOB_INPUTS.forEach(([key, sel]) => {
+                const value = knobVal(sel);
+                payload[key] = value === '' ? null : Number(value);
+            });
             startBusy(btn, 'Saving…');
             try {
                 const res = await fetch(card.dataset.tuningUrl, {
                     method: 'PATCH',
                     headers: { 'X-CSRF-TOKEN': csrfToken(), 'Accept': 'application/json', 'Content-Type': 'application/json' },
-                    body: JSON.stringify({
-                        exaggeration: exaggeration === '' ? null : Number(exaggeration),
-                        cfg_weight: cfg === '' ? null : Number(cfg),
-                        temperature: temperature === '' ? null : Number(temperature),
-                        seed: seed === '' ? null : Number(seed),
-                    }),
+                    body: JSON.stringify(payload),
                 });
                 if (!res.ok) throw new Error(await errorMessage(res));
                 const data = await res.json();
@@ -1877,9 +2003,7 @@ function initStudioProject() {
 
         // A preview reflects the inputs at preview time; once any of them change,
         // the kept clip would no longer match, so retire the "Use this take" offer.
-        card.querySelector('.chunk-exaggeration').addEventListener('input', invalidatePreview);
-        card.querySelector('.chunk-cfg').addEventListener('input', invalidatePreview);
-        card.querySelector('.chunk-temperature').addEventListener('input', invalidatePreview);
+        KNOB_INPUTS.forEach(([, sel]) => card.querySelector(sel)?.addEventListener('input', invalidatePreview));
         card.querySelector('.chunk-seed').addEventListener('input', invalidatePreview);
         card.querySelector('.chunk-text').addEventListener('input', invalidatePreview);
         card.querySelector('.chunk-voice').addEventListener('change', invalidatePreview);
@@ -1898,9 +2022,13 @@ function initStudioProject() {
         card.querySelector('.chunk-preset')?.addEventListener('change', (e) => {
             const opt = e.target.selectedOptions[0];
             if (!opt || !opt.value) return;
-            [['exaggeration', '.chunk-exaggeration'], ['cfg', '.chunk-cfg'], ['temperature', '.chunk-temperature']].forEach(([key, sel]) => {
+            [
+                ['exaggeration', '.chunk-exaggeration'], ['cfg', '.chunk-cfg'], ['temperature', '.chunk-temperature'],
+                ['topP', '.chunk-top-p'], ['topK', '.chunk-top-k'], ['repetitionPenalty', '.chunk-repetition-penalty'],
+            ].forEach(([key, sel]) => {
                 if (opt.dataset[key] === '' || opt.dataset[key] == null) return;
                 const input = card.querySelector(sel);
+                if (!input) return;
                 input.value = opt.dataset[key];
                 input.dispatchEvent(new Event('input', { bubbles: true }));
             });
@@ -2110,6 +2238,8 @@ function initStudioProject() {
                     if (!cv || cv.dataset.inherits !== '1') return;
                     cv.value = voice;
                     cv.dataset.current = voice;
+                    // Following the project voice may change the engine too.
+                    syncKnobEngines(card, modelOfSelect(cv));
                     if (card.querySelector('.chunk-status').textContent.trim() === 'completed') {
                         setChunkStatus(card, 'stale');
                     }
@@ -3283,6 +3413,50 @@ function initVoiceTuningDials() {
     });
 }
 initVoiceTuningDials();
+
+// Voice pages: the Engine select swaps which controls apply. Every element
+// tagged data-engine-only="<model key>" shows only while that engine is
+// selected (dials, the built-in preset picker, per-engine help text). These
+// wrappers are plain block elements, so `hidden` alone is enough — no
+// competing flex class to out-specificity.
+function initVoiceEngineToggle() {
+    const select = document.getElementById('voice-model');
+    if (!select) return;
+
+    const sync = () => {
+        document.querySelectorAll('[data-engine-only]').forEach((el) => {
+            el.classList.toggle('hidden', el.dataset.engineOnly !== select.value);
+        });
+        document.dispatchEvent(new CustomEvent('voice-engine-changed', { detail: { model: select.value } }));
+    };
+
+    select.addEventListener('change', sync);
+    sync();
+}
+initVoiceEngineToggle();
+
+// New Project page: the Delivery preset picker only offers presets authored
+// for the chosen voice's engine; switching to a voice on another engine
+// hides the foreign presets and clears a now-foreign pick.
+function initCreateProjectPresets() {
+    const form = document.getElementById('create-project-form');
+    const voice = form?.querySelector('#voice');
+    const preset = form?.querySelector('#preset');
+    if (!voice || !preset) return;
+
+    const sync = () => {
+        const model = modelOfSelect(voice);
+        preset.querySelectorAll('option[data-model]').forEach((opt) => {
+            opt.classList.toggle('hidden', opt.dataset.model !== model);
+        });
+        const picked = preset.selectedOptions[0];
+        if (picked?.dataset.model && picked.dataset.model !== model) preset.value = '';
+    };
+
+    voice.addEventListener('change', sync);
+    sync();
+}
+initCreateProjectPresets();
 
 // Pronunciation "▶ Test" buttons (review screen, dictionary form + table):
 // speak a respelling so the writer can judge it before approving. Buttons wired

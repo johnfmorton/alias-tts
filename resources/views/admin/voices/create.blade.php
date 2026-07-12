@@ -36,6 +36,8 @@
             <p class="mt-3 text-[12.5px] leading-relaxed text-zinc-500">Tip: set the voice_id to your existing ElevenLabs voice_id for a drop-in swap.</p>
         </x-voice.section>
 
+        @include('admin.voices._engine', ['voice' => null])
+
         @include('admin.voices._clip_source', [
             'replace' => false,
             'hint' => 'optional, but recommended',

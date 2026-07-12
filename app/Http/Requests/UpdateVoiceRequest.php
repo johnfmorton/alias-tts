@@ -3,6 +3,7 @@
 namespace App\Http\Requests;
 
 use App\Rules\AudioOnlyUpload;
+use App\Services\Tts\ModelCatalog;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Rule;
 
@@ -31,12 +32,18 @@ class UpdateVoiceRequest extends FormRequest
         return [
             'name' => ['required', 'string', 'max:255'],
             'slug' => ['required', 'string', 'max:255', 'regex:/^[A-Za-z0-9._-]+$/', $unique],
+            // The engine this voice generates with (absent = keep the current one).
+            'model' => ['nullable', 'string', Rule::in(ModelCatalog::keys())],
+            'preset_voice' => ['nullable', 'string', Rule::in(ModelCatalog::presetVoices('chatterbox-turbo')), 'prohibited_unless:model,chatterbox-turbo'],
             'audio' => ['nullable', 'file', 'mimes:wav,mp3,m4a,aac,ogg,flac', 'max:20480', new AudioOnlyUpload], // 20 MB
             'seed' => ['nullable', 'integer'],
             // Chatterbox's native knobs — same ranges as the Studio bench.
             'exaggeration' => ['nullable', 'numeric', 'between:0.25,2'],
             'cfg_weight' => ['nullable', 'numeric', 'between:0.2,1'],
             'temperature' => ['nullable', 'numeric', 'between:0.5,1.5'],
+            'top_p' => ['nullable', 'numeric', 'between:0.5,1'],
+            'top_k' => ['nullable', 'integer', 'between:1,2000'],
+            'repetition_penalty' => ['nullable', 'numeric', 'between:1,2'],
             'raw' => ['sometimes', 'boolean'],
             // Clean up the replacement clip (denoise + enhance) before storing.
             'enhance' => ['sometimes', 'boolean'],

@@ -157,7 +157,9 @@ class Orchestrator:
             if run_id and self.client is not None:
                 self.client.report_progress(run_id, step, detail)
 
-        segments = self.client.chunk(text, chunk_mode=chunk_mode)
+        # Forward the voice so the app can cap the chunk budget under the
+        # voice's engine's per-call input limit (Chatterbox Turbo: 500 chars).
+        segments = self.client.chunk(text, chunk_mode=chunk_mode, voice_id=voice)
         if not segments:
             raise ValueError("No chunks were produced from the input text.")
         report(

@@ -2,37 +2,77 @@
 
 namespace App\Support;
 
+use App\Services\Tts\ModelCatalog;
+
 /**
  * Formats the estimated provider cost of generated speech for the Studio
- * spend readouts. The rate (config `tts.cost_per_1k_chars`) mirrors how
- * Replicate meters Chatterbox: billed per INPUT CHARACTER of the prompt —
- * reference clips and tuning knobs are free, and every render is its own
- * charge. The character counts passed in are LIFETIME counters (see
- * ProjectService::recordTake()): deleting a take or chunk never lowers
- * them, because the money is already spent.
+ * spend readouts. Each catalog model carries its OWN per-1k-character rate
+ * (config `tts.models.*.cost_per_1k_chars`), mirroring how Replicate meters
+ * the Chatterbox family: billed per INPUT CHARACTER of the prompt — reference
+ * clips and tuning knobs are free, and every render is its own charge.
+ *
+ * Character counts passed in are LIFETIME counters (see
+ * ProjectService::recordTake()): deleting a take or chunk never lowers them,
+ * because the money is already spent. Counts arrive either as a plain int
+ * (legacy: all classic chatterbox) or as a per-model map from SpendCounters,
+ * so mixed-engine projects price each model's characters at its own rate.
  */
 final class GenerationCost
 {
-    /** Readouts are hidden entirely when no rate is configured (rate = 0). */
+    /** Readouts are hidden entirely when no model has a rate (all 0). */
     public static function enabled(): bool
     {
-        return self::ratePer1k() > 0.0;
+        foreach (ModelCatalog::keys() as $model) {
+            if (ModelCatalog::costPer1k($model) > 0.0) {
+                return true;
+            }
+        }
+
+        return false;
     }
 
-    /** USD per 1,000 input characters. */
-    public static function ratePer1k(): float
+    /** USD per 1,000 input characters for one catalog model. */
+    public static function ratePer1k(string $model = ModelCatalog::DEFAULT): float
     {
-        return max(0.0, (float) config('tts.cost_per_1k_chars', 0));
+        return ModelCatalog::costPer1k($model);
     }
 
-    /** Compact label: "0¢", "0.1¢", "7.0¢", "$1.02". */
-    public static function label(int $characters): string
+    /**
+     * Total estimated dollars for a count. An int prices as classic
+     * chatterbox; a map prices each model's characters at its own rate.
+     *
+     * @param  int|array<string, int>  $characters
+     */
+    private static function dollars(int|array $characters): float
     {
-        if ($characters <= 0) {
+        $map = is_array($characters) ? $characters : ['chatterbox' => $characters];
+
+        $dollars = 0.0;
+        foreach ($map as $model => $chars) {
+            $dollars += max(0, (int) $chars) * self::ratePer1k((string) $model) / 1000;
+        }
+
+        return $dollars;
+    }
+
+    /** @param  int|array<string, int>  $characters */
+    private static function totalCharacters(int|array $characters): int
+    {
+        return is_array($characters) ? array_sum(array_map('intval', $characters)) : max(0, $characters);
+    }
+
+    /**
+     * Compact label: "0¢", "0.1¢", "7.0¢", "$1.02".
+     *
+     * @param  int|array<string, int>  $characters
+     */
+    public static function label(int|array $characters): string
+    {
+        if (self::totalCharacters($characters) <= 0) {
             return '0¢';
         }
 
-        $dollars = $characters * self::ratePer1k() / 1000;
+        $dollars = self::dollars($characters);
 
         // 99.5¢ rounds to "$1.00", so switch to dollars there — never "100.0¢".
         if ($dollars >= 0.995) {
@@ -42,14 +82,47 @@ final class GenerationCost
         return number_format($dollars * 100, 1).'¢';
     }
 
-    /** Tooltip spelling out the estimate — and why it only ever grows. */
-    public static function title(int $characters, string $scope): string
+    /**
+     * Tooltip spelling out the estimate — and why it only ever grows. A
+     * per-model map appends the per-engine breakdown so a mixed project shows
+     * where the money went.
+     *
+     * @param  int|array<string, int>  $characters
+     */
+    public static function title(int|array $characters, string $scope): string
     {
-        return sprintf(
-            'Estimated provider spend across every take ever rendered for this %s: %s characters × $%s per 1,000. Deleting takes never lowers it — that money is already spent.',
+        $title = sprintf(
+            'Estimated provider spend across every take ever rendered for this %s: %s characters%s. Deleting takes never lowers it — that money is already spent.',
             $scope,
-            number_format($characters),
-            rtrim(rtrim(number_format(self::ratePer1k(), 3), '0'), '.'),
+            number_format(self::totalCharacters($characters)),
+            is_array($characters) ? '' : ' × $'.self::rateLabel(self::ratePer1k()).' per 1,000',
         );
+
+        if (! is_array($characters)) {
+            return $title;
+        }
+
+        $parts = [];
+        foreach ($characters as $model => $chars) {
+            if ((int) $chars <= 0) {
+                continue;
+            }
+            $parts[] = sprintf(
+                '%s: %s × $%s/1k',
+                ModelCatalog::label((string) $model),
+                number_format((int) $chars),
+                self::rateLabel(self::ratePer1k((string) $model)),
+            );
+        }
+
+        return $parts === [] ? $title : $title.' '.implode(' · ', $parts).'.';
+    }
+
+    /** "0.025" with trailing zeros trimmed (never a bare ""). */
+    private static function rateLabel(float $rate): string
+    {
+        $label = rtrim(rtrim(number_format($rate, 3), '0'), '.');
+
+        return $label === '' ? '0' : $label;
     }
 }

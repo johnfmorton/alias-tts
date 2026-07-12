@@ -126,7 +126,7 @@ class FakeClient:
         self._verdict_queue = list(verdict_queue) if verdict_queue else None
         self.calls: list[tuple] = []
 
-    def chunk(self, text, *, chunk_mode=None):
+    def chunk(self, text, *, chunk_mode=None, voice_id=None):
         self.calls.append(("chunk", text))
         return self._chunks
 

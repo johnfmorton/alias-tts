@@ -12,6 +12,7 @@ use App\Models\Voice;
 use App\Services\Asr\AsrClient;
 use App\Services\Asr\ChunkRemediator;
 use App\Services\Audio\AudioConverter;
+use App\Services\Tts\ModelCatalog;
 use App\Services\Tts\TtsProvider;
 use App\Services\Tts\VoiceReference;
 use Carbon\Carbon;
@@ -45,7 +46,14 @@ class SpeechService
         string $outputFormat,
         ?int $seed = null,
         bool $forceRefresh = false,
+        ?string $engine = null,
     ): Speech {
+        // Stamp the effective engine (voice's model, or a per-request override
+        // from the OpenAI dialect) BEFORE hashing/persisting so the cache key
+        // separates engines and the stored settings carry the choice to the
+        // provider — including through the queued job and ASR reroll paths.
+        $settings = ModelCatalog::stamp($settings, $voice, $engine);
+
         $seed = $this->resolveSeed($voice, $seed);
         $cacheHash = $this->cacheHash($voice, $text, $settings, $modelId, $outputFormat, $seed);
 
@@ -84,7 +92,11 @@ class SpeechService
         string $outputFormat,
         ?int $seed = null,
         bool $forceRefresh = false,
+        ?string $engine = null,
     ): Speech {
+        // Same engine stamp as synthesize() — see there.
+        $settings = ModelCatalog::stamp($settings, $voice, $engine);
+
         $seed = $this->resolveSeed($voice, $seed);
         $cacheHash = $this->cacheHash($voice, $text, $settings, $modelId, $outputFormat, $seed);
 
@@ -159,7 +171,7 @@ class SpeechService
             [$bytes, $mime, $ext] = $this->converter->concatenate(
                 $rawParts,
                 $speech->output_format,
-                $this->provider->outputContainer(),
+                $this->provider->outputContainer($providerSettings['model'] ?? null),
                 $seamGapsMs,
             );
 

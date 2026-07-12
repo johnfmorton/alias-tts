@@ -11,6 +11,7 @@ use App\Providers\AppServiceProvider;
 use App\Services\Asr\AsrClient;
 use App\Services\Enhance\EnhanceProvider;
 use App\Services\Genblaze\GenblazeRunnerClient;
+use App\Services\Tts\ModelCatalog;
 use Illuminate\Console\Scheduling\Event;
 use Illuminate\Console\Scheduling\Schedule;
 use Illuminate\Contracts\Console\Kernel as ConsoleKernel;
@@ -214,6 +215,8 @@ class HealthReport
             return;
         }
 
+        $this->checkModelCatalog();
+
         if (! $this->deep) {
             $this->add('provider', HealthStatus::Pass, 'Provider [replicate]', 'token set (run with --deep to validate it live)');
 
@@ -228,6 +231,35 @@ class HealthReport
                 : $this->add('provider', HealthStatus::Fail, 'Provider [replicate]', 'token rejected by Replicate (HTTP '.$response->status().')');
         } catch (Throwable $e) {
             $this->add('provider', HealthStatus::Warn, 'Provider [replicate]', 'could not reach Replicate: '.$e->getMessage());
+        }
+    }
+
+    /**
+     * The TTS model catalog: every model should pin a known-good version (an
+     * unpinned model silently tracks upstream releases), and the chunker's
+     * budget must fit under every model's per-call input cap or that model's
+     * chunks will be refused at generation time.
+     */
+    private function checkModelCatalog(): void
+    {
+        foreach (ModelCatalog::keys() as $key) {
+            $model = ModelCatalog::get($key);
+            $label = ModelCatalog::label($key);
+
+            if (empty($model['version'])) {
+                $this->add("model_{$key}", HealthStatus::Warn, "Model [{$label}]",
+                    "no version pinned — the model tracks upstream releases; pin a known-good version of {$model['model']}");
+            } else {
+                $this->add("model_{$key}", HealthStatus::Pass, "Model [{$label}]",
+                    ($model['model'] ?? $key).' @ '.substr((string) $model['version'], 0, 12).'…, $'.rtrim(rtrim(number_format(ModelCatalog::costPer1k($key), 3), '0'), '.').'/1k chars');
+            }
+
+            $cap = ModelCatalog::maxInputChars($key);
+            $chunkChars = (int) config('tts.chunk_chars', 280);
+            if ($cap > 0 && $chunkChars > $cap) {
+                $this->add("model_{$key}_chunk", HealthStatus::Warn, "Model [{$label}]",
+                    "TTS_CHUNK_CHARS={$chunkChars} exceeds its {$cap}-character per-call cap — its chunks will be refused; lower TTS_CHUNK_CHARS");
+            }
         }
     }
 

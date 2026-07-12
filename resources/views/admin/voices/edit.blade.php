@@ -11,6 +11,11 @@
     $temperatureValue = isset($tuning['temperature'])
         ? \App\Services\Tts\ChatterboxTuning::clampTemperature((float) $tuning['temperature'])
         : '';
+    // Turbo's sampling knobs (blank = the model's own defaults).
+    $topPValue = $tuning['top_p'] ?? '';
+    $topKValue = $tuning['top_k'] ?? '';
+    $repPenaltyValue = $tuning['repetition_penalty'] ?? '';
+    $engineModel = old('model', \App\Services\Tts\ModelCatalog::forVoice($voice));
     $inputClass = 'w-full rounded-[9px] border border-white/12 bg-inset px-3.5 py-3 text-[15px] text-zinc-100 placeholder:text-zinc-600 focus:border-accent focus:outline-none focus:ring-2 focus:ring-accent/30';
 @endphp
 <x-layout title="Edit voice" :heading="false" contentWidth="max-w-[1060px]">
@@ -53,16 +58,37 @@
             <p class="mt-3 text-[12.5px] leading-relaxed text-zinc-500">Used in the API path and by clients (e.g. the Bespoken plugin). Renaming it also moves the stored reference clip.</p>
         </x-voice.section>
 
+        @include('admin.voices._engine', ['voice' => $voice])
+
         <x-voice.section label="Default tuning" hint="optional">
             <div class="grid grid-cols-1 gap-7 sm:grid-cols-3">
-                <x-voice.tuning-dial name="exaggeration" label="Exaggeration" hint="0.25–2 · neutral 0.5"
-                                     min="0.25" max="2" :value="old('exaggeration', $exagValue)" />
-                <x-voice.tuning-dial name="cfg_weight" label="CFG / Pace" hint="0.2–1 · neutral 0.5"
-                                     min="0.2" max="1" :value="old('cfg_weight', $cfgValue)" />
-                <x-voice.tuning-dial name="temperature" label="Temperature" hint="0.5–1.5 · neutral 0.8"
-                                     min="0.5" max="1.5" neutral="0.8" :value="old('temperature', $temperatureValue)" />
+                <div data-engine-only="chatterbox" @class(['hidden' => $engineModel !== 'chatterbox'])>
+                    <x-voice.tuning-dial name="exaggeration" label="Exaggeration" hint="0.25–2 · neutral 0.5"
+                                         min="0.25" max="2" :value="old('exaggeration', $exagValue)" />
+                </div>
+                <div data-engine-only="chatterbox" @class(['hidden' => $engineModel !== 'chatterbox'])>
+                    <x-voice.tuning-dial name="cfg_weight" label="CFG / Pace" hint="0.2–1 · neutral 0.5"
+                                         min="0.2" max="1" :value="old('cfg_weight', $cfgValue)" />
+                </div>
+                <div data-engine-only="chatterbox-turbo" @class(['hidden' => $engineModel !== 'chatterbox-turbo'])>
+                    <x-voice.tuning-dial name="top_p" label="Top-p" hint="0.5–1 · neutral 0.95"
+                                         min="0.5" max="1" neutral="0.95" step="0.01" :value="old('top_p', $topPValue)" />
+                </div>
+                <div data-engine-only="chatterbox-turbo" @class(['hidden' => $engineModel !== 'chatterbox-turbo'])>
+                    <x-voice.tuning-dial name="top_k" label="Top-k" hint="1–2000 · neutral 1000"
+                                         min="1" max="2000" neutral="1000" step="1" :value="old('top_k', $topKValue)" />
+                </div>
+                <div data-engine-only="chatterbox-turbo" @class(['hidden' => $engineModel !== 'chatterbox-turbo'])>
+                    <x-voice.tuning-dial name="repetition_penalty" label="Repetition penalty" hint="1–2 · neutral 1.2"
+                                         min="1" max="2" neutral="1.2" step="0.05" :value="old('repetition_penalty', $repPenaltyValue)" />
+                </div>
+                <div>
+                    <x-voice.tuning-dial name="temperature" label="Temperature" hint="0.5–1.5 · neutral 0.8"
+                                         min="0.5" max="1.5" neutral="0.8" :value="old('temperature', $temperatureValue)" />
+                </div>
             </div>
-            <p class="mt-4 text-[12.5px] leading-relaxed text-zinc-500">Used when a request doesn't set its own. Higher exaggeration = more animated delivery; lower CFG/Pace = quicker, looser pacing; higher temperature = livelier but less predictable. Blank uses the system defaults.</p>
+            <p data-engine-only="chatterbox" @class(['mt-4 text-[12.5px] leading-relaxed text-zinc-500', 'hidden' => $engineModel !== 'chatterbox'])>Used when a request doesn't set its own. Higher exaggeration = more animated delivery; lower CFG/Pace = quicker, looser pacing; higher temperature = livelier but less predictable. Blank uses the system defaults.</p>
+            <p data-engine-only="chatterbox-turbo" @class(['mt-4 text-[12.5px] leading-relaxed text-zinc-500', 'hidden' => $engineModel !== 'chatterbox-turbo'])>Used when a request doesn't set its own. Lower top-p/top-k = more focused, predictable delivery; higher repetition penalty = fewer repeated sounds; higher temperature = livelier but less predictable. Blank uses the model's defaults.</p>
         </x-voice.section>
 
         @include('admin.voices._clip_source', [

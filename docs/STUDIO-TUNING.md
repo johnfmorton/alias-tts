@@ -282,3 +282,27 @@ only biases the draw). It's back as an honest tool, not a reproduce button:
 
 UI copy deliberately avoids implying reproducibility — see the memory note
 `feedback-no-seed-in-ui`.
+
+## Addendum (2026-07-12): Chatterbox Turbo — a second engine, per-voice
+
+The model catalog (`config/tts.php` → `tts.models`) now carries TWO engines,
+chosen **per voice** (`voices.model`, `null` = classic chatterbox):
+
+| | classic `chatterbox` | `chatterbox-turbo` |
+|---|---|---|
+| knobs | `exaggeration` 0.25–2 · `cfg_weight` 0.2–1 | `top_p` 0.5–1 · `top_k` 1–2000 · `repetition_penalty` 1–2 |
+| shared | `temperature` 0.5–1.5 (band deliberately narrower than turbo's native 0.05–2, for one consistent dial) + the seed pin |
+| EL mapping | `stability`→`cfg_weight`, `style`→`exaggeration` (`ChatterboxTuning`) | `stability`→`temperature` **inversely**: `clamp(1.3 − stability)` — 0.5→0.8 (defaults align), 1→0.5, 0→1.3; `style`/`similarity_boost` accepted-and-ignored (`ChatterboxTurboTuning`) |
+| extras | — | 500-char per-call cap · `[laugh]`-style sound tags · 20 built-in preset voices (clip-less voices) · reference clips must be **>5 s** |
+
+How it flows: the voice's engine is stamped into the resolved settings as the
+reserved `model` key (`ModelCatalog::stamp()`, applied AFTER
+`VoiceSettingsResolver` at every chokepoint — SpeechService, ProjectService,
+StudioController, the internal pipeline). The stamp is OMITTED for classic
+voices so pre-existing cache hashes and settings JSON stay byte-identical.
+Every knob surface (voice edit dials, the bench, the Studio inspector, per-chunk
+rows) shows exactly the effective voice's knob set — a per-chunk voice override
+swaps the row live. Presets belong to the engine they were authored on
+(`tuning_presets.model`) and only appear where they apply. Spend is metered
+per engine (`tts_spend_counters`) at per-model rates
+(`TTS_COST_PER_1K_CHARS` / `TTS_COST_PER_1K_CHARS_TURBO`).
