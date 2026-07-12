@@ -1590,4 +1590,106 @@ class StudioProjectTest extends TestCase
 
         $this->assertSame(1, TtsProject::count());
     }
+
+    public function test_duplicate_of_a_foreign_project_copies_its_voices(): void
+    {
+        // Voices are per user, so a SuperAdmin duplicating another user's
+        // project must receive clones of its voices — project-level AND
+        // per-chunk overrides — or the copy references voices they can't reach.
+        $owner = User::factory()->create(['is_super_admin' => false]);
+        $projectVoice = Voice::create([
+            'user_id' => $owner->id,
+            'slug' => 'narrator',
+            'name' => 'Narrator',
+            'settings' => ['exaggeration' => 0.7],
+            'reference_audio_path' => "voices/u{$owner->id}/narrator.wav",
+        ]);
+        Storage::disk('local')->put($projectVoice->reference_audio_path, 'RIFFnarratorclip');
+        $overrideVoice = Voice::create(['user_id' => $owner->id, 'slug' => 'whisper', 'name' => 'Whisper']);
+
+        $project = $this->projectWithVoice($projectVoice);
+        $project->update(['user_id' => $owner->id]);
+        $project->chunks()->orderBy('position')->first()->update(['voice_id' => $overrideVoice->id]);
+
+        $admin = $this->admin();
+        $project = $this->generateAndBuild($project, $admin);
+        $this->actingAs($admin)->post(route('admin.studio.projects.duplicate', $project))
+            ->assertSessionHas('success', fn (string $message) => str_contains($message, 'Narrator')
+                && str_contains($message, 'Whisper')
+                && str_contains($message, 'also copied to your voices'));
+
+        // Both voices were cloned to the duplicator with identity intact, the
+        // clip an independent byte-copy under the duplicator's namespace.
+        $narrator = Voice::where('user_id', $admin->id)->where('slug', 'narrator')->firstOrFail();
+        $whisper = Voice::where('user_id', $admin->id)->where('slug', 'whisper')->firstOrFail();
+        $this->assertSame('Narrator', $narrator->name);
+        $this->assertSame(['exaggeration' => 0.7], $narrator->settings);
+        $this->assertSame("voices/u{$admin->id}/narrator.wav", $narrator->reference_audio_path);
+        $this->assertSame('RIFFnarratorclip', Storage::disk('local')->get($narrator->reference_audio_path));
+
+        // The copy points at the clones — and its generated chunks stay
+        // Completed: same voice provenance, so nothing is stale.
+        $copy = $this->duplicateOf($project);
+        $this->assertSame($narrator->id, $copy->voice_id);
+        [$first, $second] = $copy->chunks()->orderBy('position')->get();
+        $this->assertSame($whisper->id, $first->voice_id);
+        $this->assertNull($second->voice_id);
+        $this->assertSame(ChunkStatus::Completed, $first->status);
+        $this->assertSame(ChunkStatus::Completed, $second->status);
+
+        // The owner's originals are untouched.
+        $this->assertSame($owner->id, $projectVoice->refresh()->user_id);
+        $this->assertSame($projectVoice->id, $project->refresh()->voice_id);
+        $this->assertSame('RIFFnarratorclip', Storage::disk('local')->get($projectVoice->reference_audio_path));
+    }
+
+    public function test_duplicate_deconflicts_an_adopted_voice_id(): void
+    {
+        // The duplicator already uses the voice_id "narrator", so the adopted
+        // clone must be minted under a fresh slug rather than colliding.
+        $admin = $this->admin();
+        Voice::create(['user_id' => $admin->id, 'slug' => 'narrator', 'name' => 'House Narrator']);
+
+        $owner = User::factory()->create(['is_super_admin' => false]);
+        $theirs = Voice::create([
+            'user_id' => $owner->id,
+            'slug' => 'narrator',
+            'name' => 'Narrator',
+            'reference_audio_path' => "voices/u{$owner->id}/narrator.wav",
+        ]);
+        Storage::disk('local')->put($theirs->reference_audio_path, 'RIFFtheirclip');
+
+        $project = $this->projectWithVoice($theirs);
+        $project->update(['user_id' => $owner->id]);
+
+        $this->actingAs($admin)->post(route('admin.studio.projects.duplicate', $project));
+
+        $copy = $this->duplicateOf($project);
+        $clone = Voice::findOrFail($copy->voice_id);
+        $this->assertSame($admin->id, $clone->user_id);
+        $this->assertSame('narrator-2', $clone->slug);
+        // The name mirrors the suffix so pickers don't show two "Narrator"s.
+        $this->assertSame('Narrator 2', $clone->name);
+        $this->assertSame("voices/u{$admin->id}/narrator-2.wav", $clone->reference_audio_path);
+        $this->assertSame('RIFFtheirclip', Storage::disk('local')->get($clone->reference_audio_path));
+
+        // The duplicator's own "narrator" is untouched.
+        $this->assertSame('House Narrator', Voice::where('user_id', $admin->id)->where('slug', 'narrator')->firstOrFail()->name);
+    }
+
+    public function test_duplicate_adopts_no_voices_that_are_already_reachable(): void
+    {
+        // A foreign project bound to a SHARED voice (null owner): the
+        // duplicator can already reach it, so nothing is cloned.
+        $owner = User::factory()->create(['is_super_admin' => false]);
+        $project = $this->project();
+        $project->update(['user_id' => $owner->id]);
+
+        $before = Voice::count();
+        $this->actingAs($this->admin())->post(route('admin.studio.projects.duplicate', $project))
+            ->assertSessionHas('success', 'Project duplicated — you are now viewing the copy.');
+
+        $this->assertSame($before, Voice::count());
+        $this->assertSame($project->voice_id, $this->duplicateOf($project)->voice_id);
+    }
 }

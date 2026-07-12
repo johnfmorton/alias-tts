@@ -21,6 +21,7 @@ use App\Support\GenerationCost;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Validator;
 use Illuminate\Support\Str;
 use Illuminate\Validation\Rule;
@@ -408,8 +409,32 @@ class StudioProjectController extends Controller
     {
         $copy = $this->projects->duplicate($project, $request->user());
 
+        $message = 'Project duplicated — you are now viewing the copy.';
+        // Duplicating another user's project clones its voices to the
+        // duplicator (voices are per user); say so, or the new rows on their
+        // Voices page appear out of nowhere.
+        $adopted = $this->adoptedVoiceNames($project, $copy);
+        if ($adopted->isNotEmpty()) {
+            $names = $adopted->map(fn (string $name) => "“{$name}”")->join(', ', ' and ');
+            $message .= $adopted->count() === 1
+                ? " Its voice {$names} was also copied to your voices."
+                : " Its voices {$names} were also copied to your voices.";
+        }
+
         return redirect()->route('admin.studio.projects.show', $copy)
-            ->with('success', 'Project duplicated — you are now viewing the copy.');
+            ->with('success', $message);
+    }
+
+    /**
+     * Names of the voice clones {@see ProjectService::duplicate()} just minted
+     * for the duplicator: the voices the copy references that the source does
+     * not. Empty for the everyday case of duplicating your own project.
+     */
+    private function adoptedVoiceNames(TtsProject $source, TtsProject $copy): Collection
+    {
+        $refs = fn (TtsProject $p) => $p->chunks()->pluck('voice_id')->push($p->voice_id)->filter()->unique();
+
+        return Voice::whereIn('id', $refs($copy)->diff($refs($source)))->pluck('name');
     }
 
     /** Source-text editor for "Start over" (re-chunk from scratch). */

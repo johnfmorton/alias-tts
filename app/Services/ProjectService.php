@@ -49,6 +49,7 @@ class ProjectService
         private AsrClient $asr,
         private ChunkRemediator $remediator,
         private PronunciationSubstituter $substituter,
+        private VoiceService $voices,
     ) {}
 
     /**
@@ -1020,6 +1021,15 @@ class ProjectService
      * A chunk whose audio file is missing from the disk (e.g. a stranded-object
      * incident) is downgraded to Pending in the copy rather than aborting the
      * whole duplicate; the copy's final is then Stale, prompting a rebuild.
+     *
+     * Voices come along too: voices are per user, so a copy of someone ELSE's
+     * project (a SuperAdmin duplicating for support) would otherwise reference
+     * voices its new owner can't reach — the picker couldn't show them, and
+     * switching to an own voice would mark every generated chunk Stale. Any
+     * referenced voice outside the duplicator's reach (project-level or a
+     * per-chunk override) is cloned into their account verbatim (see
+     * {@see VoiceService::cloneTo()}; an already-used voice_id gets a "-2"
+     * suffix) and the copy is pointed at the clones, keeping it fully editable.
      */
     public function duplicate(TtsProject $source, User $user): TtsProject
     {
@@ -1027,7 +1037,20 @@ class ProjectService
         $base = config('tts.storage_path').'/projects/';
         $newProjectId = (string) Str::uuid7();
 
+        /** @var array<string, Voice> $adopted source voice id => the clone now owned by $user */
+        $adopted = [];
+
         try {
+            // Phase A0 — bring unreachable voices along (shared built-ins and
+            // the duplicator's own pass through untouched).
+            $voiceIds = $source->chunks->pluck('voice_id')->push($source->voice_id)->filter()->unique();
+            foreach (Voice::whereIn('id', $voiceIds)->get() as $voice) {
+                if ($voice->user_id !== null && $voice->user_id !== $user->id) {
+                    $adopted[$voice->id] = $this->voices->cloneTo($voice, $user->id);
+                }
+            }
+            $mapVoice = fn (?string $id) => isset($adopted[$id]) ? $adopted[$id]->id : $id;
+
             // Phase A — copy the files first, planning the rows in memory. This
             // keeps network I/O out of the DB transaction below, and committed
             // rows can never point at files that weren't written.
@@ -1103,7 +1126,7 @@ class ProjectService
             // Phase B — create the rows. forceFill: the models don't list `id`
             // in $fillable, and the copied paths must embed the REAL row ids so
             // deleteChunk's directory wipe finds the files.
-            return DB::transaction(function () use ($source, $user, $newProjectId, $finalPath, $status, $plans) {
+            return DB::transaction(function () use ($source, $user, $newProjectId, $finalPath, $status, $plans, $mapVoice) {
                 $copy = new TtsProject;
                 $copy->forceFill([
                     'id' => $newProjectId,
@@ -1112,7 +1135,7 @@ class ProjectService
                     // seal all stay at their null defaults.
                     'user_id' => $user->id,
                     'title' => mb_substr((string) $source->title, 0, 195).' copy',
-                    'voice_id' => $source->voice_id,
+                    'voice_id' => $mapVoice($source->voice_id),
                     'settings' => $source->settings,
                     'model_id' => $source->model_id,
                     'output_format' => $source->output_format,
@@ -1134,7 +1157,7 @@ class ProjectService
                         'position' => $chunk->position,
                         'text' => $chunk->text,
                         'break_after' => $chunk->break_after,
-                        'voice_id' => $chunk->voice_id,
+                        'voice_id' => $mapVoice($chunk->voice_id),
                         'settings' => $chunk->settings,
                         'characters' => $chunk->characters,
                         'status' => $plan['downgraded'] ? ChunkStatus::Pending : $chunk->status,
@@ -1168,6 +1191,12 @@ class ProjectService
             // A failed duplicate must not strand half a file tree: no committed
             // row references anything under the new id, so wipe it wholesale.
             $disk->deleteDirectory($base.$newProjectId);
+
+            // The adopted voice clones live outside the transaction (their
+            // clips are file I/O), so unwind them too — row and clip.
+            foreach ($adopted as $clone) {
+                $this->voices->delete($clone);
+            }
 
             throw $e;
         }

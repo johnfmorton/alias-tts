@@ -182,16 +182,7 @@ class VoiceService
      */
     public function duplicate(Voice $source, int $ownerId): Voice
     {
-        $base = $source->slug.'-copy';
-        $slug = $base;
-        // Collisions only matter inside the owner's reachable set (their own
-        // voices + the shared ones) — another user's "-copy" doesn't block ours.
-        $taken = fn (string $candidate) => Voice::where('slug', $candidate)
-            ->where(fn ($q) => $q->whereNull('user_id')->orWhere('user_id', $ownerId))
-            ->exists();
-        for ($i = 2; $taken($slug); $i++) {
-            $slug = $base.'-'.$i;
-        }
+        $slug = $this->availableSlug($source->slug.'-copy', $ownerId);
 
         $attributes = [
             'name' => $source->name.' copy',
@@ -208,6 +199,64 @@ class VoiceService
         }
 
         return Voice::create(['slug' => $slug] + $attributes);
+    }
+
+    /**
+     * Copy another user's voice into $ownerId's account VERBATIM — same
+     * voice_id (slug), name, tuning and a byte-copy of the reference clip — so
+     * a duplicated project keeps generating with the exact voice it was made
+     * with. Unlike {@see duplicate()} (a user's explicit "give me a tunable
+     * copy", which gets "-copy" naming), this preserves the voice's identity;
+     * only a collision with a voice_id the new owner can already reach forces
+     * a "-2" suffix, mirrored into the name so pickers never show two
+     * indistinguishable entries.
+     */
+    public function cloneTo(Voice $source, int $ownerId): Voice
+    {
+        $slug = $this->availableSlug($source->slug, $ownerId);
+
+        $name = $source->name;
+        if ($slug !== $source->slug) {
+            $name .= ' '.substr($slug, strlen($source->slug) + 1);
+        }
+
+        $attributes = [
+            'name' => $name,
+            'user_id' => $ownerId,
+            'settings' => $source->settings,
+            'provider' => $source->provider,
+            'model' => $source->model,
+        ];
+
+        $disk = Storage::disk(config('tts.storage_disk'));
+        if ($source->reference_audio_path && $disk->exists($source->reference_audio_path)) {
+            $extension = strtolower(pathinfo($source->reference_audio_path, PATHINFO_EXTENSION)) ?: 'wav';
+            $path = $this->referencePath($ownerId, $slug, $extension);
+            $disk->copy($source->reference_audio_path, $path);
+            $attributes['reference_audio_path'] = $path;
+        }
+
+        return Voice::create(['slug' => $slug] + $attributes);
+    }
+
+    /**
+     * The first free slug starting from $base ("$base", then "$base-2", …).
+     * Collisions only matter inside the owner's reachable set (their own
+     * voices + the shared ones) — another user's identical slug doesn't block
+     * ours, because slugs are only unique per owner.
+     */
+    private function availableSlug(string $base, int $ownerId): string
+    {
+        $taken = fn (string $candidate) => Voice::where('slug', $candidate)
+            ->where(fn ($q) => $q->whereNull('user_id')->orWhere('user_id', $ownerId))
+            ->exists();
+
+        $slug = $base;
+        for ($i = 2; $taken($slug); $i++) {
+            $slug = $base.'-'.$i;
+        }
+
+        return $slug;
     }
 
     /**

@@ -4,6 +4,21 @@ All notable changes to this project are documented in this file. The format is
 based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this
 project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+- **Duplicating another user's project now brings its voices along.** Voices
+  are personal, so when a SuperAdmin duplicated a user's project for support,
+  the copy referenced voices the SuperAdmin couldn't reach — and switching to
+  one of their own marked every generated chunk stale. Duplicate now copies
+  any out-of-reach voice (project-level and per-chunk overrides) into the
+  duplicator's account verbatim — same voice_id, name, tuning, and an
+  independent copy of the reference clip — and points the copy at the new
+  voices, so generated chunks stay ready to regenerate. If the duplicator
+  already uses that voice_id, the copy is minted as "voice-2" (name suffixed
+  to match) and their existing voice is left untouched. The success message
+  names the voices that came along.
+
 ## [0.48.0] - 2026-07-11
 
 ### Added
