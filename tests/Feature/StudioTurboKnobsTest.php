@@ -147,6 +147,15 @@ class StudioTurboKnobsTest extends TestCase
         $this->assertStringContainsString('data-engine-help="chatterbox-turbo" class=""', $html);
         $this->assertStringContainsString('data-engine-help="chatterbox" class="hidden"', $html);
         $this->assertStringContainsString('Rep. penalty</span> discourages repeated sounds', $html);
+
+        // The sound-tag chips render visible on a turbo chunk, one per
+        // supported tag, sourced from ParalinguisticTags::TAGS. A single
+        // @class emits the one class attribute — a duplicate class attr would
+        // be silently dropped by the browser and break the hidden state.
+        $this->assertStringContainsString('data-engine-help="chatterbox-turbo" class="chunk-sound-tags"', $html);
+        foreach (\App\Services\Tts\ParalinguisticTags::TAGS as $tag) {
+            $this->assertStringContainsString('data-tag="['.$tag.']"', $html);
+        }
     }
 
     public function test_a_classic_project_renders_the_classic_knob_help(): void
@@ -170,6 +179,10 @@ class StudioTurboKnobsTest extends TestCase
         $this->assertStringContainsString('data-engine-help="chatterbox" class=""', $html);
         $this->assertStringContainsString('data-engine-help="chatterbox-turbo" class="hidden"', $html);
         $this->assertStringContainsString('CFG / Pace</span> is pacing steadiness', $html);
+
+        // The sound-tag chips row renders hidden for a classic chunk (classic
+        // payloads strip the tags — they'd be read aloud).
+        $this->assertStringContainsString('data-engine-help="chatterbox-turbo" class="chunk-sound-tags hidden"', $html);
     }
 
     public function test_a_new_project_delivery_preset_applies_turbo_knobs(): void

@@ -27,7 +27,9 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   - **Paralinguistic sound tags** — `[laugh]`, `[sigh]`, `[cough]` and friends
     pass through to turbo, are stripped from classic payloads (which would
     read them aloud), and are excluded from ASR-QA expectations so tagged
-    chunks don't false-flag.
+    chunks don't false-flag. Studio chunk cards on a turbo voice show a row
+    of clickable tag chips that insert at the cursor, and the Takes & tuning
+    help text now explains whichever engine's knobs are on screen.
   - **Per-engine spend metering** — lifetime characters are now counted per
     model (`tts_spend_counters`, existing spend backfilled as classic) and
     priced at per-model rates (`TTS_COST_PER_1K_CHARS`,

@@ -279,8 +279,23 @@
                         </div>
                     </div>
 
+                    @php $chunkModel = \App\Services\Tts\ModelCatalog::forVoice($chunk->voice ?? $project->voice); @endphp
                     <textarea class="chunk-text mt-2 w-full rounded-lg border border-zinc-800 bg-zinc-950 px-3 py-2 text-sm text-zinc-200 focus:border-cyan-500 focus:outline-none focus:ring-2 focus:ring-cyan-500/30"
                               rows="2" data-original="{{ $chunk->text }}">{{ $chunk->text }}</textarea>
+
+                    {{-- Turbo renders these tags as actual sounds; a click inserts one
+                         at the cursor. Engine-scoped like the knobs (swapped live by
+                         syncKnobEngines via data-engine-help); the wrapper is a plain
+                         block so `hidden` alone is safe — the flex lives one level in. --}}
+                    <div data-engine-help="chatterbox-turbo" @class(['chunk-sound-tags', 'hidden' => $chunkModel !== 'chatterbox-turbo'])>
+                        <div class="mt-1.5 flex flex-wrap items-center gap-1.5">
+                            <span class="text-[11px] uppercase tracking-wide text-zinc-600" title="Chatterbox Turbo renders these as actual sounds, not words. They work best mid-sentence — a tag at the very end of a chunk can trip take QA.">Sound tags</span>
+                            @foreach(\App\Services\Tts\ParalinguisticTags::TAGS as $tag)
+                                <button type="button" class="chunk-tag-insert rounded-full border border-zinc-800 px-2 py-0.5 text-xs text-zinc-500 transition hover:border-zinc-600 hover:text-zinc-200"
+                                        data-tag="[{{ $tag }}]" title="Insert [{{ $tag }}] at the cursor">[{{ $tag }}]</button>
+                            @endforeach
+                        </div>
+                    </div>
 
                     {{-- data-duration-ms: the selected take's recorded length, so the
                          readout shows the duration before any metadata request resolves
@@ -309,8 +324,8 @@
                              repetition penalty · temperature + seed for both; JS re-syncs on a
                              voice change via syncKnobEngines — toggling flex AND hidden together).
                              Row 2 (below) carries the actions, so the controls never fight
-                             the buttons for one line. --}}
-                        @php $chunkModel = \App\Services\Tts\ModelCatalog::forVoice($chunk->voice ?? $project->voice); @endphp
+                             the buttons for one line. ($chunkModel is set above, by the
+                             sound-tags row.) --}}
                         <div class="chunk-knobs mt-3 flex flex-wrap items-end gap-3">
                             @if($presets->isNotEmpty())
                                 {{-- Fills the knobs below with a named preset's values;

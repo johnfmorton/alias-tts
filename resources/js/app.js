@@ -380,6 +380,9 @@ function syncKnobEngines(scope, model) {
     scope.querySelectorAll('.chunk-preset option[data-model]').forEach((opt) => {
         opt.classList.toggle('hidden', opt.dataset.model !== model);
     });
+    // Any engine-scoped extra (help sentences, the sound-tag chips row) shows
+    // only for its own engine. These are plain block/inline elements, so
+    // `hidden` alone is safe.
     scope.querySelectorAll('[data-engine-help]').forEach((el) => {
         el.classList.toggle('hidden', el.dataset.engineHelp !== model);
     });
@@ -2033,6 +2036,26 @@ function initStudioProject() {
                 input.dispatchEvent(new Event('input', { bubbles: true }));
             });
             e.target.value = ''; // rest back on "Apply…" so it reads as an action
+        });
+
+        // Sound-tag chips (turbo only — the row swaps with the engine): insert
+        // the tag at the textarea's cursor with sensible spacing, replacing any
+        // selection. Dispatching `input` runs the same paths typing would
+        // (dirty tracking, preview invalidation), so Save/Generate react.
+        card.querySelector('.chunk-sound-tags')?.addEventListener('click', (e) => {
+            const btn = e.target.closest('.chunk-tag-insert');
+            if (!btn) return;
+            const textarea = card.querySelector('.chunk-text');
+            const start = textarea.selectionStart ?? textarea.value.length;
+            const end = textarea.selectionEnd ?? start;
+            const before = textarea.value.slice(0, start);
+            const after = textarea.value.slice(end);
+            const tag = (before === '' || /\s$/.test(before) ? '' : ' ')
+                + btn.dataset.tag
+                + (after === '' || /^\s/.test(after) ? '' : ' ');
+            textarea.setRangeText(tag, start, end, 'end');
+            textarea.dispatchEvent(new Event('input', { bubbles: true }));
+            textarea.focus();
         });
 
         // Track dirty state as the user types; Revert restores the saved text.
