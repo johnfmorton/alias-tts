@@ -13,7 +13,7 @@ Chatterbox failure modes the DSP tail-trim **cannot**:
 | **Loud short tail** (`TAILNOISE`) | a brief but loud "swoosh" right after the last word | too **short** to trip `trail_s`, too loud/aperiodic for the DSP tail detector | tail **energy** — peak dBFS past the word's natural release, **and louder than the chunk's own speech** |
 | **Boundary hum** (`BNDNOISE`) | a tonal low-frequency hum filling a sentence/comma gap | too **short** to trip `max_gap_s`; genuinely quiet, so energy alone can't see it | boundary-gap **energy + ZCR** — a punctuation-boundary gap that is not-silent **and** low-frequency |
 
-The last two are **energy-aware** signals (added 2026-06-22): the duration-based
+The last two are **energy-aware** signals: the duration-based
 signals above measure *how long* the dead zones are, but Chatterbox anomalies
 cluster at the **tail** and at **sentence/comma boundaries** as *short-but-loud*
 junk that sails through a time threshold. These measure the actual dBFS in those

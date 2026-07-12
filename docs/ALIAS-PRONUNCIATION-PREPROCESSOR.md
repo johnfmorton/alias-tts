@@ -280,10 +280,7 @@ hold a per-engine form if an SSML/IPA-capable backend is added.
 
 ---
 
-## Implementation status (built 2026-06-25, behind `TTS_PRONUNCIATION_ENABLED`, default off)
-
-Built on `feat/genblaze-b2` (since merged to `main`); full PHP suite green
-(318 tests at the time) + runner pytest (8).
+## Architecture notes (behind `TTS_PRONUNCIATION_ENABLED`, default off)
 
 - **Detection = a Genblaze CHAT step in the runner.** Default provider is
   **Replicate's LLMs wrapped as a custom Genblaze chat provider**
@@ -291,25 +288,24 @@ Built on `feat/genblaze-b2` (since merged to `main`); full PHP suite green
   behind the same `chat()` interface as the off-the-shelf adapters, so swapping to
   **Gemini / OpenAI** (off-the-shelf `genblaze-google`/`genblaze-openai`) or
   **Anthropic** (another custom provider, tool-use) is a Settings change with no
-  code change. That provider-agnostic swap is the genblaze demonstration. (Chat is
-  NOT manifest-tracked in genblaze — provenance is recorded as a lightweight
-  provider/model/tokens/prompt-hash dict; the B2 manifest story stays with the TTS
-  pipeline.) Runner endpoint `POST /pronounce`; degrade-safe everywhere.
+  code change. (Chat is NOT manifest-tracked in genblaze — provenance is recorded
+  as a lightweight provider/model/tokens/prompt-hash dict; the B2 manifest story
+  stays with the TTS pipeline.) Runner endpoint `POST /pronounce`; degrade-safe
+  everywhere.
 - **Dictionary = service-owned, per-user** (`pronunciation_entries`); approved via
-  the new review screen; read API `GET /v1/pronunciations` for the Craft plugin to
-  sync later. The plugin keeps its own find-and-replace (backend-agnostic).
+  the review screen; read API `GET /v1/pronunciations` lets the Craft plugin
+  sync. The plugin keeps its own find-and-replace (backend-agnostic).
 - **Flow:** the new-project create form posts to a pre-chunking **review screen**
   (`StudioProjectController::review`/`applyAndStore`); approve → persist to the
   dictionary + apply to the project text → chunk. Disabled / no-suggestions / LLM
   down all fall straight through to chunking.
-- **Live-verified 2026-06-25:** runner restarted with the new code (`/pronounce`
-  responds; `/health` shows `replicate: importable+keyed`), and a real end-to-end
-  call returns parsed substitutions. The runner needs `REPLICATE_API_TOKEN` in
-  ITS env now (the old `/run` path delegated Replicate to PHP, so it didn't).
-  Default Replicate model is `meta/llama-4-scout-instruct` (verified strong at
-  respelling + clean JSON; override with `TTS_PRONUNCIATION_MODEL`). For top
-  quality add an `ANTHROPIC_API_KEY` and select the `anthropic` provider —
-  Claude Haiku 4.5 (`claude-haiku-4-5`) uses tool-use for guaranteed-valid JSON.
-  The detection schema is lenient (accepts `respelling` alias for `phonetic`,
-  optional category/confidence) since Replicate LLMs have no enforced JSON mode.
-- **Deferred:** off-the-shelf Gemini/OpenAI adapters (`pip install -e '.[pronounce]'`).
+- **Runner env:** the runner needs `REPLICATE_API_TOKEN` in ITS environment —
+  the `/pronounce` call runs the LLM runner-side. Default Replicate model is
+  `meta/llama-4-scout-instruct` (strong at respelling + clean JSON; override
+  with `TTS_PRONUNCIATION_MODEL`). For top quality add an `ANTHROPIC_API_KEY`
+  and select the `anthropic` provider — Claude Haiku 4.5 (`claude-haiku-4-5`)
+  uses tool-use for guaranteed-valid JSON. The detection schema is lenient
+  (accepts `respelling` alias for `phonetic`, optional category/confidence)
+  since Replicate LLMs have no enforced JSON mode.
+- **Not wired up:** the off-the-shelf Gemini/OpenAI adapters ship with the
+  runner (`pip install -e '.[pronounce]'`) but aren't offered in Settings.

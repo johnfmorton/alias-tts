@@ -17,14 +17,24 @@ Start with the group that matches what you're doing.
 - **[SSO-SETUP.md](SSO-SETUP.md)** — optional Google / GitHub sign-in for the
   dashboard (invite-only account linking).
 
+## Using the app
+
+- **[VOICES.md](VOICES.md)** — voices: creating one (record / upload /
+  built-in), the two engines (Chatterbox and Chatterbox Turbo, chosen per
+  voice), sound tags, reference clips, ownership, duplicate/export/import.
+- **[STUDIO-TUNING.md](STUDIO-TUNING.md)** — voice tuning: the one
+  settings-resolution chain, each engine's knobs, the ElevenLabs mapping, and
+  the tuning surfaces (voice dials, the Tune-by-ear bench, presets, per-chunk
+  Takes & tuning, the seed pin).
+
 ## Integrating
 
 - **[BESPOKEN.md](BESPOKEN.md)** — connecting the Bespoken Craft plugin: the
   ElevenLabs-compatible API plus the Alias extensions (async jobs, projects,
   pronunciations).
 - **[OPENAI-COMPAT.md](OPENAI-COMPAT.md)** — the OpenAI-compatible endpoint
-  (`POST /v1/audio/speech`): the same engine spoken in OpenAI's dialect, so any
-  OpenAI-TTS client works by swapping the base URL.
+  (`POST /v1/audio/speech`): the same engines spoken in OpenAI's dialect, so
+  any OpenAI-TTS client works by swapping the base URL.
 - **[ALIAS-PRONUNCIATION-PREPROCESSOR.md](ALIAS-PRONUNCIATION-PREPROCESSOR.md)** —
   the LLM pronunciation pre-processor: detection, review screen, per-user
   dictionary, and the `/v1/pronunciations` read API.
@@ -32,15 +42,11 @@ Start with the group that matches what you're doing.
 ## Internals & design notes
 
 - **[AUDIO-CLEANUP.md](AUDIO-CLEANUP.md)** — how chunk seams and Chatterbox tail
-  artifacts are detected and trimmed (the DSP pipeline in `AudioConverter`).
-- **[STUDIO-TUNING.md](STUDIO-TUNING.md)** — the voice-tuning design and its
-  implementation history; the current settings-resolution chain lives in
-  `VoiceSettingsResolver` / `ChatterboxTuning` / `ChatterboxTurboTuning`, and
-  the per-voice engine catalog (classic Chatterbox vs Chatterbox Turbo) in
-  `ModelCatalog` — see the 2026-07-12 addendum.
+  artifacts are detected and trimmed (the DSP pipeline in `AudioConverter`),
+  and why a chunk ending in a rendered sound tag is spared the tail cut.
 - **[GENBLAZE-BACKEND-SWAP.md](GENBLAZE-BACKEND-SWAP.md)** — *future feature,
   not built yet:* swap the whole TTS engine per render at the Genblaze provider
   layer — cheap to add because published adapters share one API; parked on
-  priority, not merit. (The per-voice Chatterbox/Turbo model catalog shipped
-  separately covers Replicate-level model choice; this note is about entirely
-  different engines, e.g. LMNT.)
+  priority, not merit. (The per-voice Chatterbox/Turbo model catalog already
+  covers Replicate-level model choice; this note is about entirely different
+  engines, e.g. LMNT.)

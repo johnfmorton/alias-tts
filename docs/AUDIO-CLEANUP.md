@@ -186,7 +186,7 @@ work but are not needed — post-processing removes the artifact reliably.
 - `test_clean_clip_is_not_over_trimmed_by_detector` — clean clip survives.
 - `test_quiet_trailing_word_survives_trim` — the soft-word regression guard.
 - `test_detector_removes_decay_then_reswell_blip_tail` — speech | quiet decay |
-  loud re-swell blip; the v0.9.0 slip-through, now cut.
+  loud re-swell blip; the shape the peel logic exists for.
 - `test_detector_keeps_short_final_word_after_brief_pause` — peel must not clip a
   genuine short final word after a brief (sub-`min_artifact`) pause.
 - `test_loud_low_zcr_speech_is_not_mistaken_for_a_gap_before_the_final_word` — a
