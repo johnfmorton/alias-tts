@@ -2,12 +2,16 @@
 
 namespace Tests\Feature;
 
+use App\Enums\ChunkStatus;
 use App\Enums\HealthStatus;
+use App\Models\TtsProject;
 use App\Models\User;
 use App\Models\Voice;
+use App\Services\Audio\AudioConverter;
 use App\Services\Health\HealthReport;
 use App\Services\ProjectService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Storage;
 use Tests\TestCase;
@@ -35,7 +39,7 @@ class TurboGuardsTest extends TestCase
         return User::factory()->create(['is_super_admin' => true]);
     }
 
-    private function projectFor(Voice $voice): \App\Models\TtsProject
+    private function projectFor(Voice $voice): TtsProject
     {
         return app(ProjectService::class)->createFromText(
             title: 'Guards',
@@ -153,11 +157,11 @@ class TurboGuardsTest extends TestCase
             $chunk = $project->chunks()->first();
             $path = 'takes/'.$chunk->id.'.wav';
             Storage::disk('local')->put($path, $renderWithLoudTail);
-            $chunk->update(['audio_path' => $path, 'status' => \App\Enums\ChunkStatus::Completed]);
+            $chunk->update(['audio_path' => $path, 'status' => ChunkStatus::Completed]);
 
             [$bytes] = app(ProjectService::class)->previewConcat($project->fresh(), [$chunk->id]);
 
-            return (float) app(\App\Services\Audio\AudioConverter::class)->wavDurationSeconds($bytes);
+            return (float) app(AudioConverter::class)->wavDurationSeconds($bytes);
         };
 
         $turbo = Voice::create(['slug' => 'tail-turbo', 'name' => 'Tail Turbo', 'model' => 'chatterbox-turbo']);
@@ -187,11 +191,11 @@ class TurboGuardsTest extends TestCase
         // The stitch endpoint honors the echoed flag: same loud-tail audio,
         // kept with the flag, cut without it.
         $renderWithLoudTail = $this->wrapWav($this->noiseWav(1.0).$this->rawTone(1.0, 8000, 90.0));
-        $converter = app(\App\Services\Audio\AudioConverter::class);
+        $converter = app(AudioConverter::class);
 
         $stitch = fn (array $extra) => $this->withHeaders(['X-Internal-Secret' => 's3cret'])
             ->post('/v1/internal/stitch', [
-                'chunks' => [\Illuminate\Http\UploadedFile::fake()->createWithContent('c.wav', $renderWithLoudTail)],
+                'chunks' => [UploadedFile::fake()->createWithContent('c.wav', $renderWithLoudTail)],
                 'output_format' => 'wav_44100',
             ] + $extra)
             ->assertOk()

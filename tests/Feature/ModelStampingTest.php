@@ -3,6 +3,7 @@
 namespace Tests\Feature;
 
 use App\Models\ApiKey;
+use App\Models\TtsProject;
 use App\Models\Voice;
 use App\Services\ProjectService;
 use App\Services\SpeechService;
@@ -30,7 +31,7 @@ class ModelStampingTest extends TestCase
         Storage::fake('local');
     }
 
-    /** @return \App\Services\Tts\TtsProvider&object{lastSettings: array} */
+    /** @return TtsProvider&object{lastSettings: array} */
     private function capturingProvider(): TtsProvider
     {
         $provider = new class implements TtsProvider
@@ -56,7 +57,7 @@ class ModelStampingTest extends TestCase
         return $provider;
     }
 
-    private function projectFor(Voice $voice): \App\Models\TtsProject
+    private function projectFor(Voice $voice): TtsProject
     {
         return app(ProjectService::class)->createFromText(
             title: 'Stamping',

@@ -2,10 +2,12 @@
 
 namespace Tests\Feature;
 
+use App\Models\TtsProject;
 use App\Models\TuningPreset;
 use App\Models\User;
 use App\Models\Voice;
 use App\Services\ProjectService;
+use App\Services\Tts\ParalinguisticTags;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Storage;
 use Tests\TestCase;
@@ -32,7 +34,7 @@ class StudioTurboKnobsTest extends TestCase
         return User::factory()->create(['is_super_admin' => true]);
     }
 
-    private function turboProject(): \App\Models\TtsProject
+    private function turboProject(): TtsProject
     {
         $voice = Voice::create(['slug' => 'turbo-v', 'name' => 'Turbo V', 'model' => 'chatterbox-turbo']);
 
@@ -153,7 +155,7 @@ class StudioTurboKnobsTest extends TestCase
         // @class emits the one class attribute — a duplicate class attr would
         // be silently dropped by the browser and break the hidden state.
         $this->assertStringContainsString('data-engine-help="chatterbox-turbo" class="chunk-sound-tags"', $html);
-        foreach (\App\Services\Tts\ParalinguisticTags::TAGS as $tag) {
+        foreach (ParalinguisticTags::TAGS as $tag) {
             $this->assertStringContainsString('data-tag="['.$tag.']"', $html);
         }
     }
@@ -201,7 +203,7 @@ class StudioTurboKnobsTest extends TestCase
             'preset' => $preset->id,
         ])->assertRedirect();
 
-        $project = \App\Models\TtsProject::where('title', 'With delivery')->firstOrFail();
+        $project = TtsProject::where('title', 'With delivery')->firstOrFail();
         $this->assertSame(0.8, $project->settings['top_p']);
         $this->assertSame(200, $project->settings['top_k']);
         $this->assertSame(1.6, $project->settings['repetition_penalty']);
