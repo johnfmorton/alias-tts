@@ -1,4 +1,4 @@
-<x-layout title="API Keys" description="Keys authenticate requests via the xi-api-key header.">
+<x-layout title="API Keys" description="One key works in both dialects — send it as the xi-api-key header (ElevenLabs) or a Bearer token (OpenAI).">
     @if(session('new_key'))
         <div class="mb-4 rounded-lg border border-cyan-500/30 bg-cyan-500/10 p-4">
             <div class="text-sm font-medium text-cyan-300">New key created — copy it now:</div>

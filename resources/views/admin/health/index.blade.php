@@ -1,4 +1,4 @@
-<x-layout title="Health" description="Confirms the service is wired up correctly — PHP, database, ffmpeg, storage, provider, queue, and scheduler.">
+<x-layout title="Health" description="Confirms the service is wired up correctly — some twenty checks across the runtime, storage, provider, queue, and the optional sidecars.">
     {{-- Diagnostics render asynchronously so the page paints instantly. The ~21
          checks (ffmpeg shell-out, storage probe, Whisper/Genblaze sidecar pings,
          and the deep provider/queue/upload probes) run in a follow-up request to

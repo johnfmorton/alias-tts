@@ -1,4 +1,4 @@
-<x-layout title="Studio" description="Inspect how text is normalized and chunked, then hear it whole, chunk-by-chunk (raw), or stitched the way production does.">
+<x-layout title="Studio" description="Edit generated speech like a document — fix one sentence, swap in a better take, or retune the voice without rebuilding the whole file.">
     @php
         // Persisted in the URL (?tab=projects|inspector) so refresh/back and the
         // paginator (which reloads the page) land on the right view. app.js swaps
@@ -46,7 +46,7 @@
     <div data-studio-panel="projects" @unless($activeTab === 'projects') class="hidden" @endunless>
         <div class="overflow-hidden rounded-[14px] border border-white/8 bg-panel">
             <div class="flex flex-wrap items-center justify-between gap-3 border-b border-white/[0.07] px-[22px] py-[18px]">
-                <p class="text-[12.5px] text-zinc-400">Saved, editable audio — regenerate a single sentence without rebuilding the whole file.</p>
+                <p class="text-[12.5px] text-zinc-400">Every project keeps its takes — pick the best read for each chunk.</p>
                 <div class="flex flex-wrap items-center gap-3">
                     {{-- SuperAdmin-only: narrow everyone's projects to one owner. A plain
                          GET form (?owner=) so pagination — withQueryString — keeps the

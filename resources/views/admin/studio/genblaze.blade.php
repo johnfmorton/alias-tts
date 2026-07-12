@@ -1,4 +1,4 @@
-<x-layout title="Live Demo: Generate via Genblaze Pipeline" description="One unattended run: Genblaze orchestrates generate → QA-gated re-roll → stitch, and writes every take + a verifiable provenance manifest to Backblaze B2.">
+<x-layout title="Generate via Genblaze Pipeline" description="One unattended run: Genblaze orchestrates generate → QA-gated re-roll → stitch, and writes every take + a verifiable provenance manifest to Backblaze B2.">
     @php($up = (bool) ($health['reachable'] ?? false))
 
     <div id="genblaze" data-run-url="{{ route('admin.studio.genblaze.run') }}">

@@ -53,7 +53,7 @@
     {{-- Page header --}}
     <div class="mb-7">
         <h1 class="text-[27px] font-bold tracking-[-0.015em] text-zinc-100">Dashboard</h1>
-        <p class="mt-1.5 text-sm text-zinc-400">Everything in Alias, one hop away — plus connection details for any ElevenLabs-compatible app.</p>
+        <p class="mt-1.5 text-sm text-zinc-400">Everything in Alias, one hop away — plus connection details for any ElevenLabs- or OpenAI-compatible app.</p>
     </div>
 
     {{-- Destination cards --}}
