@@ -1,0 +1,106 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>No access to this page — Alias TTS</title>
+    <!--
+        Static, self-contained page served by nginx for 403s it raises itself
+        (deny rules on dotfiles/backup files, directory access). Kept visually
+        identical to resources/views/errors/403.blade.php. Laravel-level 403s
+        (auth middleware, abort(403)) still render the Blade version.
+    -->
+    <link rel="icon" href="/favicon.ico" sizes="32x32">
+    <link rel="icon" href="/alias-icon.svg" type="image/svg+xml">
+    <link rel="apple-touch-icon" href="/apple-touch-icon.png">
+    <style>
+        *, *::before, *::after { box-sizing: border-box; }
+        html, body { height: 100%; }
+        body {
+            margin: 0;
+            font-family: system-ui, -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+            background: #09090b;
+            color: #f4f4f5;
+            -webkit-font-smoothing: antialiased;
+            text-rendering: optimizeLegibility;
+        }
+        .wrap {
+            min-height: 100%;
+            max-width: 36rem;
+            margin: 0 auto;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            padding: 3rem 1.5rem;
+            text-align: center;
+        }
+        .brand {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            gap: .5rem;
+            margin-bottom: 2.5rem;
+            font-weight: 600;
+            color: #f4f4f5;
+            text-decoration: none;
+        }
+        .brand img { height: 2rem; width: 2rem; display: block; }
+        .chip {
+            display: inline-flex;
+            flex-wrap: wrap;
+            align-items: center;
+            justify-content: center;
+            gap: .75rem;
+            border: 1px solid #27272a;
+            background: rgba(24, 24, 27, .5);
+            border-radius: .75rem;
+            padding: 1rem 1.25rem;
+        }
+        .chip .code { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 1.5rem; font-weight: 700; color: #f4f4f5; }
+        .chip .arrow { color: #71717a; }
+        .chip .say { font-size: 1.5rem; color: #22d3ee; }
+        h1 { margin: 2rem 0 0; font-size: 1.125rem; font-weight: 600; }
+        p { margin: .5rem 0 0; max-width: 28rem; font-size: .875rem; line-height: 1.6; color: #a1a1aa; }
+        .actions { margin-top: 2rem; display: flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: 1rem; }
+        .btn {
+            border-radius: .5rem;
+            background: #06b6d4;
+            color: #09090b;
+            padding: .625rem 1rem;
+            font-size: .875rem;
+            font-weight: 500;
+            text-decoration: none;
+            border: 0;
+            cursor: pointer;
+            transition: background .15s ease;
+            font-family: inherit;
+        }
+        .btn:hover { background: #22d3ee; }
+        .link { font-size: .875rem; color: #a1a1aa; text-decoration: none; }
+        .link:hover { color: #e4e4e7; }
+    </style>
+</head>
+<body>
+    <div class="wrap">
+        <a class="brand" href="/">
+            <img src="/alias-icon-on-dark.svg" width="32" height="32" alt="">
+            Alias TTS
+        </a>
+
+        <div class="chip">
+            <span class="code">403</span>
+            <span class="arrow" aria-hidden="true">&rarr;</span>
+            <span class="say">&ldquo;four oh three&rdquo;</span>
+        </div>
+
+        <h1>No access to this page</h1>
+        <p>Your account doesn't have access to this page. If you think it should, ask an administrator.</p>
+
+        <div class="actions">
+            <a class="btn" href="/">Go to the home page</a>
+            <a class="link" href="#" onclick="history.back(); return false;">&larr; Go back</a>
+        </div>
+    </div>
+</body>
+</html>
