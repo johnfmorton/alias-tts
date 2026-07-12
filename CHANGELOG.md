@@ -60,8 +60,8 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   highlighted. Clicking any voice ID chip swaps that voice into both examples
   (and still copies the ID), and each example's Copy button copies exactly
   what's on screen. Users without an API key yet see a readable
-  `YOUR_API_KEY` placeholder instead of a broken command, and a caption notes
-  that the OpenAI `model` field is accepted for compatibility but ignored.
+  `YOUR_API_KEY` placeholder instead of a broken command, and a caption
+  explains how the OpenAI `model` field picks the engine.
 - **Duplicating another user's project now brings its voices along.** Voices
   are personal, so when a SuperAdmin duplicated a user's project for support,
   the copy referenced voices the SuperAdmin couldn't reach — and switching to
