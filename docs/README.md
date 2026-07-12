@@ -35,8 +35,12 @@ Start with the group that matches what you're doing.
   artifacts are detected and trimmed (the DSP pipeline in `AudioConverter`).
 - **[STUDIO-TUNING.md](STUDIO-TUNING.md)** — the voice-tuning design and its
   implementation history; the current settings-resolution chain lives in
-  `VoiceSettingsResolver` / `ChatterboxTuning`.
+  `VoiceSettingsResolver` / `ChatterboxTuning` / `ChatterboxTurboTuning`, and
+  the per-voice engine catalog (classic Chatterbox vs Chatterbox Turbo) in
+  `ModelCatalog` — see the 2026-07-12 addendum.
 - **[GENBLAZE-BACKEND-SWAP.md](GENBLAZE-BACKEND-SWAP.md)** — *future feature,
   not built yet:* swap the whole TTS engine per render at the Genblaze provider
   layer — cheap to add because published adapters share one API; parked on
-  priority, not merit.
+  priority, not merit. (The per-voice Chatterbox/Turbo model catalog shipped
+  separately covers Replicate-level model choice; this note is about entirely
+  different engines, e.g. LMNT.)

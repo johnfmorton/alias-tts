@@ -54,7 +54,7 @@ service as follows:
 |---|---|
 | **Voice name** | A label for your CMS users — anything you like. |
 | **Voice ID** | The voice **slug** from your dashboard (e.g. `john`) — *not* an ElevenLabs ID. It's used directly in `…/v1/text-to-speech/{voice_id}`. |
-| **Voice model** | Hidden in TTS-service mode — the backend is always Chatterbox. |
+| **Voice model** | Hidden in TTS-service mode — the engine (Chatterbox or Chatterbox Turbo) is chosen per voice on the service's own voice page, not by the plugin. |
 | **Pronunciation rule set** | Plugin-side text processing — unaffected by the backend. |
 
 > **The endpoint is plugin-wide.** The "API endpoint URL" is a single setting for
@@ -66,10 +66,13 @@ service as follows:
 
 ### How the voice settings map
 
-The service maps the ElevenLabs voice settings onto its backend:
+The service maps the ElevenLabs voice settings onto the voice's engine:
 
-- **Stability** → pacing/steadiness (Chatterbox `cfg_weight`)
-- **Style** → expressiveness (Chatterbox `exaggeration`)
+- **Stability** → pacing/steadiness (classic Chatterbox `cfg_weight`; on a
+  Chatterbox Turbo voice it maps inversely onto `temperature` — higher
+  stability = steadier there too)
+- **Style** → expressiveness (classic Chatterbox `exaggeration`; accepted and
+  ignored on a Turbo voice, which has no equivalent knob)
 - **Similarity boost** and **Speaker boost** are accepted but unused — cloning
   fidelity comes from the reference clip itself.
 

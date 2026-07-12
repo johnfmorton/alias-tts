@@ -253,8 +253,10 @@
             </div>
             <h2 class="mt-4 text-3xl font-semibold tracking-tight">Clone a voice from thirty seconds of audio.</h2>
             <p class="mt-4 max-w-2xl leading-relaxed text-zinc-400">
-                The engine (<a href="https://replicate.com/resemble-ai/chatterbox" class="text-zinc-300 underline decoration-zinc-700 underline-offset-2 transition hover:decoration-zinc-400">Chatterbox</a>, MIT-licensed)
-                is zero-shot: a clean 15–30&nbsp;second reference clip is the entire setup. No training job, no waiting.
+                The engines (<a href="https://replicate.com/resemble-ai/chatterbox" class="text-zinc-300 underline decoration-zinc-700 underline-offset-2 transition hover:decoration-zinc-400">Chatterbox</a>
+                and <a href="https://replicate.com/resemble-ai/chatterbox-turbo" class="text-zinc-300 underline decoration-zinc-700 underline-offset-2 transition hover:decoration-zinc-400">Chatterbox&nbsp;Turbo</a>, MIT-licensed)
+                are zero-shot: a clean 15–30&nbsp;second reference clip is the entire setup. No training job, no waiting.
+                Each voice picks its engine — Turbo is faster, ships built-in voices, and renders sound tags like <span class="text-zinc-300">[laugh]</span>.
             </p>
 
             <div class="mt-10 grid items-start gap-10 lg:grid-cols-2">

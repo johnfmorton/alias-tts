@@ -7,6 +7,13 @@ lives in `App\Services\Audio\AudioConverter::trimChunk()` and runs on every
 delivery path (the `/v1` speech API, Studio previews/stitch, and project final
 builds — everything flows through `concatenate()`).
 
+> **Chatterbox Turbo** output runs through the same pipeline. The thresholds
+> below were tuned against CLASSIC Chatterbox's artifacts; turbo has not shown
+> the multi-second drone so far, and the detectors are conservative (gated) —
+> but a chunk ENDING in a rendered sound tag (`…[laugh]`) puts loud nonspeech
+> exactly where the tail logic hunts. If turbo tails over-trim in practice,
+> that's the place to look (see the tag note in ASR-SETUP.md).
+
 ## The two artifact shapes we handle
 
 1. **Short leading/trailing swoosh (the common case).** A brief low-level
