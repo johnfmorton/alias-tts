@@ -7,12 +7,18 @@ lives in `App\Services\Audio\AudioConverter::trimChunk()` and runs on every
 delivery path (the `/v1` speech API, Studio previews/stitch, and project final
 builds — everything flows through `concatenate()`).
 
-> **Chatterbox Turbo** output runs through the same pipeline. The thresholds
-> below were tuned against CLASSIC Chatterbox's artifacts; turbo has not shown
-> the multi-second drone so far, and the detectors are conservative (gated) —
-> but a chunk ENDING in a rendered sound tag (`…[laugh]`) puts loud nonspeech
-> exactly where the tail logic hunts. If turbo tails over-trim in practice,
-> that's the place to look (see the tag note in ASR-SETUP.md).
+> **Chatterbox Turbo** output runs through the same pipeline, with one
+> per-chunk exception: a chunk whose text ENDS in a rendered sound tag
+> (`…[laugh]`) puts loud, wanted nonspeech exactly where the tail-artifact
+> detectors hunt — indistinguishable from the drone they were built to cut.
+> Every stitching surface therefore passes `concatenate()` a per-chunk
+> `preserveTails` flag (engine renders tags AND the text ends in one, via
+> `ParalinguisticTags::endsWith`); a flagged chunk skips `detectLongTailArtifact`
+> while keeping the safe edge work below (head trim, bounded tail SILENCE trim,
+> fades). Turbo chunks ending in normal prose keep the full cleanup, and
+> classic chunks are never flagged — their payloads strip the tags, so their
+> trailing nonspeech really is junk. The ASR-QA tail/gap signals make the same
+> exception (see ASR-SETUP.md).
 
 ## The two artifact shapes we handle
 

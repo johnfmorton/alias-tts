@@ -306,14 +306,20 @@ Sidecar-side env vars (set on the daemon command, not in `.env`):
 ### Paralinguistic sound tags (Chatterbox Turbo)
 
 Turbo renders `[laugh]`-style tags as actual sounds, which never appear as
-words in a transcript — so QA scores every chunk against its **tag-stripped**
-expected text (`ChunkRemediator::score` → `ParalinguisticTags::strip`), and a
-tagged chunk no longer false-flags as truncated. Residual limitation: the
-rendered laugh/sigh itself is nonspeech audio that can still inflate the
-duration/energy signals (`trail_s`, gap length, TAILNOISE) — especially a tag
-at the very END of a chunk, which lands exactly where the tail detectors hunt.
-If tag-heavy chunks over-flag in practice, prefer mid-sentence tags, or watch
-with `TTS_ASR_ACTION=log` before trusting `auto` on tagged material.
+words in a transcript. The scorer (`ChunkQualityScorer`) is tag-aware:
+
+- the expected text is scored **tag-stripped**, so a tagged chunk never reads
+  as truncated just because "[sniff]" was not spoken;
+- a tag at the END of the text excuses the tail signals (**TAIL**,
+  **TAILNOISE**) — the trailing nonspeech IS the rendered tag, and trimming it
+  would destroy wanted audio;
+- a tag ANYWHERE excuses the gap signals (**PAUSE**, **BNDNOISE**) — the gap
+  is the tag rendering, and a re-roll can never "fix" it.
+
+Word-coverage signals (**TRUNC**, **NOSPEECH**) stay on for tagged chunks, so
+genuinely dropped words are still caught. Trade-off: a real long-pause defect
+elsewhere in a tagged chunk is excused too — if a tagged chunk sounds wrong,
+re-roll it by ear.
 
 ## Troubleshooting
 

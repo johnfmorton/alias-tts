@@ -2,6 +2,8 @@
 
 namespace App\Services\Asr;
 
+use App\Services\Tts\ParalinguisticTags;
+
 /**
  * Scores one generated chunk against its source text using a Whisper transcript
  * with word-level timestamps (from {@see AsrClient::transcribe()}). Pure: no
@@ -36,6 +38,20 @@ class ChunkQualityScorer
      */
     public function score(string $sourceText, array $transcript, ?array $audio = null): ChunkQualityVerdict
     {
+        // Turbo's [laugh]-style tags render as SOUNDS, not words: they never
+        // appear in a transcript, and the rendered sound is indistinguishable
+        // from the junk the duration/energy signals hunt. So the expected text
+        // is scored tag-stripped, and tagged chunks suppress those signals —
+        // a tag at the END excuses trailing non-speech (TAIL/TAILNOISE), a tag
+        // ANYWHERE excuses one long gap / boundary noise (PAUSE/BNDNOISE).
+        // Word-coverage signals (TRUNC/NOSPEECH) stay on either way, so
+        // genuinely dropped words are still caught. (Classic chatterbox never
+        // receives tags — the provider strips them — so for the rare classic
+        // chunk whose TEXT carries a tag this trades a little tail scrutiny.)
+        $tagAtEnd = ParalinguisticTags::endsWith($sourceText);
+        $tagPresent = $tagAtEnd || ParalinguisticTags::has($sourceText);
+        $sourceText = ParalinguisticTags::strip($sourceText);
+
         $words = array_values((array) ($transcript['words'] ?? []));
         $duration = (float) ($transcript['duration'] ?? 0.0);
 
@@ -93,23 +109,24 @@ class ChunkQualityScorer
         if ($tailCov < $tailCovMin) {
             $problems[] = 'TRUNC';
         }
-        if ($trailS > $trailSMax) {
+        if ($trailS > $trailSMax && ! $tagAtEnd) {
             $problems[] = 'TAIL';
         }
-        if ($maxGap > $gapSMax) {
+        if ($maxGap > $gapSMax && ! $tagPresent) {
             $problems[] = 'PAUSE';
         }
 
         // Energy-aware signals (only when audio features were supplied). They add
         // scrutiny at the tail and at punctuation boundaries — catching short,
-        // loud junk the duration thresholds above sail past.
+        // loud junk the duration thresholds above sail past. Both are excused on
+        // tagged chunks: the rendered tag IS loud non-speech at exactly those spots.
         $speechDbfs = $audio !== null && ($audio['speech_dbfs'] ?? null) !== null ? (float) $audio['speech_dbfs'] : null;
         $tailPeakDbfs = $audio !== null ? ($audio['tail_peak_dbfs'] ?? null) : null;
-        if ($tailPeakDbfs !== null && $this->isTailNoise((float) $tailPeakDbfs, $speechDbfs)) {
+        if ($tailPeakDbfs !== null && ! $tagAtEnd && $this->isTailNoise((float) $tailPeakDbfs, $speechDbfs)) {
             $problems[] = 'TAILNOISE';
         }
 
-        $boundaryNoise = $this->detectBoundaryNoise($words, $audio);
+        $boundaryNoise = $tagPresent ? null : $this->detectBoundaryNoise($words, $audio);
         if ($boundaryNoise !== null) {
             $problems[] = 'BNDNOISE';
         }

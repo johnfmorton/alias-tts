@@ -40,4 +40,23 @@ class ParalinguisticTagsTest extends TestCase
         $this->assertTrue(ParalinguisticTags::has('So funny [laugh]'));
         $this->assertFalse(ParalinguisticTags::has('No tags here [figure 3].'));
     }
+
+    public function test_ends_with_detects_a_trailing_tag(): void
+    {
+        $this->assertTrue(ParalinguisticTags::endsWith("Don't lose faith. [sniff]"));
+        $this->assertTrue(ParalinguisticTags::endsWith('as it is for your lovers. [clear throat]'));
+
+        // Tolerates trailing punctuation, closing quotes, and whitespace.
+        $this->assertTrue(ParalinguisticTags::endsWith('So funny! [laugh].'));
+        $this->assertTrue(ParalinguisticTags::endsWith('So funny! [LAUGH]  '));
+        $this->assertTrue(ParalinguisticTags::endsWith('"So funny! [chuckle]"'));
+    }
+
+    public function test_ends_with_rejects_mid_text_and_unknown_tags(): void
+    {
+        // A mid-text tag renders INSIDE speech — the tail is normal audio.
+        $this->assertFalse(ParalinguisticTags::endsWith('So funny [laugh] right?'));
+        $this->assertFalse(ParalinguisticTags::endsWith('See [figure 3]'));
+        $this->assertFalse(ParalinguisticTags::endsWith('No tags at all.'));
+    }
 }

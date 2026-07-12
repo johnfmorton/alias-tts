@@ -275,4 +275,65 @@ class ChunkQualityScorerTest extends TestCase
         $this->assertNull($v->boundaryNoise);
         $this->assertArrayNotHasKey('tail_peak_dbfs', $v->toArray());
     }
+
+    public function test_a_trailing_sound_tag_excuses_the_tail_signals(): void
+    {
+        // A Turbo chunk ending "[laugh]": the rendered laugh is ~3.3s of loud
+        // non-speech after the last word — exactly what TAIL/TAILNOISE hunt.
+        // The tag excuses both, and no destructive trim point is offered.
+        $words = $this->fluentWords(['hello', 'there', 'friend']); // last word ends 1.2
+        $transcript = $this->transcript($words, duration: 4.5);
+
+        $v = $this->scorer()->score('hello there friend [laugh]', $transcript, [
+            'speech_dbfs' => -20.0,
+            'tail_peak_dbfs' => -10.0, // louder than speech: TAILNOISE territory
+            'gaps' => [],
+        ]);
+
+        $this->assertTrue($v->ok);
+        $this->assertSame([], $v->problems);
+        $this->assertNull($v->trimAtMs);
+    }
+
+    public function test_a_mid_text_sound_tag_excuses_the_gap_signals(): void
+    {
+        // "[gasp]" mid-sentence renders as a long inter-word gap the PAUSE
+        // signal would flag (and re-roll, pointlessly — the gap IS the gasp).
+        $words = [
+            ['hello', 0.0, 0.4], ['there', 0.4, 0.8],
+            ['friend', 2.8, 3.2], // 2.0s gap where the gasp rendered
+        ];
+        $transcript = $this->transcript($words, duration: 3.4);
+
+        $v = $this->scorer()->score('hello there [gasp] friend', $transcript);
+
+        $this->assertTrue($v->ok);
+        $this->assertNotContains('PAUSE', $v->problems);
+    }
+
+    public function test_a_tagged_chunk_still_flags_genuinely_missing_words(): void
+    {
+        // Word coverage stays on for tagged chunks: the source promises nine
+        // words, the take spoke four — TRUNC regardless of the tag.
+        $words = $this->fluentWords(['the', 'quick', 'brown', 'fox']);
+        $transcript = $this->transcript($words, duration: 1.8);
+
+        $v = $this->scorer()->score('the quick brown fox jumps over the lazy dog [chuckle]', $transcript);
+
+        $this->assertFalse($v->ok);
+        $this->assertContains('TRUNC', $v->problems);
+    }
+
+    public function test_the_tag_itself_is_not_expected_as_a_word(): void
+    {
+        // "[sniff]" never appears in a transcript; the expected text must be
+        // scored tag-stripped or every tagged chunk would read as truncated.
+        $words = $this->fluentWords(['hello', 'there', 'friend']);
+        $transcript = $this->transcript($words, duration: 1.4);
+
+        $v = $this->scorer()->score('hello there friend [sniff]', $transcript);
+
+        $this->assertTrue($v->ok);
+        $this->assertSame(1.0, $v->tailCov);
+    }
 }

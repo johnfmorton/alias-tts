@@ -13,6 +13,7 @@ use App\Services\Asr\AsrClient;
 use App\Services\Asr\ChunkRemediator;
 use App\Services\Audio\AudioConverter;
 use App\Services\Tts\ModelCatalog;
+use App\Services\Tts\ParalinguisticTags;
 use App\Services\Tts\TtsProvider;
 use App\Services\Tts\VoiceReference;
 use Carbon\Carbon;
@@ -152,9 +153,11 @@ class SpeechService
 
             $sentenceGap = (int) config('tts.chunk_gap_ms', 120);
             $paragraphGap = (int) config('tts.paragraph_gap_ms', 400);
+            $supportsTags = ModelCatalog::supportsTags($providerSettings['model'] ?? null);
 
             $rawParts = [];
             $seamGapsMs = [];
+            $preserveTails = [];
             foreach ($segments as $i => $segment) {
                 $failingIndex = $i; // attribute a provider/QA throw to this segment
                 $part = $this->provider->synthesize($segment['text'], $referencePath, $providerSettings);
@@ -165,6 +168,9 @@ class SpeechService
 
                 $rawParts[] = $part;
                 $seamGapsMs[] = $segment['breakAfter'] === 'paragraph' ? $paragraphGap : $sentenceGap;
+                // A segment ending in a rendered sound tag keeps its tail — the
+                // artifact detectors would mistake the laugh/sigh for junk.
+                $preserveTails[] = $supportsTags && ParalinguisticTags::endsWith($segment['text']);
                 $failingIndex = null; // segment done; a later (concat/store) failure isn't its fault
             }
 
@@ -173,6 +179,7 @@ class SpeechService
                 $speech->output_format,
                 $this->provider->outputContainer($providerSettings['model'] ?? null),
                 $seamGapsMs,
+                $preserveTails,
             );
 
             $disk = config('tts.storage_disk');

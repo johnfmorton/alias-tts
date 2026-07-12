@@ -562,9 +562,14 @@ function initStudio() {
             return;
         }
         const fd = new FormData();
+        // Voice + each blob's source text ride along so the server-side trim
+        // can spare a rendered trailing sound tag (turbo voices) exactly like
+        // production stitching does.
+        if (els.voice?.value) fd.append('voice', els.voice.value);
         chosen.forEach((s) => {
             fd.append('files[]', s.blob, `chunk-${s.index + 1}.wav`);
             fd.append('breaks[]', s.breakAfter);
+            fd.append('texts[]', s.text ?? '');
         });
 
         const t0 = performance.now();
@@ -592,7 +597,7 @@ function initStudio() {
         els.normChars.textContent = data.chars;
         els.chunkCount.textContent = data.chunks.length;
 
-        chunkStates = data.chunks.map((c) => ({ index: c.index, breakAfter: c.breakAfter, blob: null, checkbox: null }));
+        chunkStates = data.chunks.map((c) => ({ index: c.index, text: c.text, breakAfter: c.breakAfter, blob: null, checkbox: null }));
         els.chunks.replaceChildren(...data.chunks.map((c, i) => chunkCard(c, chunkStates[i])));
 
         els.wholeAudio.classList.add('hidden');

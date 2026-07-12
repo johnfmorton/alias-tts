@@ -64,7 +64,7 @@ class FakeAliasClient:
         self.calls.append({"op": "score", "text": text, "audio_len": len(audio)})
         return dict(self.verdict)
 
-    def stitch(self, chunks, *, output_format, break_after=None) -> TtsResult:
+    def stitch(self, chunks, *, output_format, break_after=None, preserve_tail=None) -> TtsResult:
         self.calls.append({"op": "stitch", "n": len(chunks), "output_format": output_format,
                            "break_after": break_after})
         return TtsResult(audio=self.audio, content_type=self.content_type)

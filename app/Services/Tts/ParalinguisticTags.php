@@ -25,17 +25,38 @@ final class ParalinguisticTags
 
     private static ?string $pattern = null;
 
-    private static function pattern(): string
+    private static ?string $endPattern = null;
+
+    private static function alternation(): string
     {
-        return self::$pattern ??= '/\[(?:'.implode('|', array_map(
+        return implode('|', array_map(
             fn (string $tag) => preg_quote($tag, '/'),
             self::TAGS,
-        )).')\]/i';
+        ));
+    }
+
+    private static function pattern(): string
+    {
+        return self::$pattern ??= '/\[(?:'.self::alternation().')\]/i';
     }
 
     public static function has(string $text): bool
     {
         return (bool) preg_match(self::pattern(), $text);
+    }
+
+    /**
+     * Whether the text ENDS with a known tag (tolerating trailing punctuation,
+     * closing quotes, and whitespace). This is the signal that the rendered
+     * audio legitimately carries sound AFTER the last spoken word — exactly
+     * where the tail-artifact cleanup and ASR tail signals would otherwise
+     * mistake it for junk and crop it.
+     */
+    public static function endsWith(string $text): bool
+    {
+        self::$endPattern ??= '/\[(?:'.self::alternation().')\]["\'\x{201D}\x{2019})\]]*[\s.,;:!?…]*$/iu';
+
+        return (bool) preg_match(self::$endPattern, $text);
     }
 
     /** Remove known tags, collapsing the space they leave behind. */

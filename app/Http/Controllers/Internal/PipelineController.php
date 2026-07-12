@@ -11,6 +11,7 @@ use App\Services\Genblaze\GenblazeRunStore;
 use App\Services\TextChunker;
 use App\Services\TextNormalizer;
 use App\Services\Tts\ModelCatalog;
+use App\Services\Tts\ParalinguisticTags;
 use App\Services\Tts\TtsProvider;
 use App\Services\Tts\VoiceReference;
 use App\Services\Tts\VoiceSettingsResolver;
@@ -67,12 +68,13 @@ class PipelineController extends Controller
 
         $normalized = $this->normalizer->normalize($data['text']);
 
+        $voice = ! empty($data['voice_id']) ? Voice::resolve($data['voice_id']) : null;
+        $engine = ModelCatalog::forVoice($voice);
+
         $chunkChars = (int) config('tts.chunk_chars', 280);
-        if (! empty($data['voice_id'])) {
-            $cap = ModelCatalog::maxInputChars(ModelCatalog::forVoice(Voice::resolve($data['voice_id'])));
-            if ($cap > 0) {
-                $chunkChars = min($chunkChars, $cap);
-            }
+        $cap = $voice !== null ? ModelCatalog::maxInputChars($engine) : 0;
+        if ($cap > 0) {
+            $chunkChars = min($chunkChars, $cap);
         }
 
         $segments = $this->chunker->segment(
@@ -84,6 +86,11 @@ class PipelineController extends Controller
             (string) ($data['chunk_mode'] ?? config('tts.chunk_mode', TextChunker::MODE_PACKED)),
         );
 
+        // preserve_tail: this chunk ends in a rendered sound tag, so the stitch
+        // must NOT run its tail-artifact cut on it. Computed here — the app owns
+        // the tag list — and echoed back verbatim by the runner at stitch time.
+        $supportsTags = $voice !== null && ModelCatalog::supportsTags($engine);
+
         $chunks = [];
         foreach ($segments as $i => $segment) {
             $chunks[] = [
@@ -91,6 +98,7 @@ class PipelineController extends Controller
                 'text' => $segment['text'],
                 'break_after' => $segment['breakAfter'],
                 'characters' => mb_strlen($segment['text']),
+                'preserve_tail' => $supportsTags && ParalinguisticTags::endsWith($segment['text']),
             ];
         }
 
@@ -219,12 +227,18 @@ class PipelineController extends Controller
             'chunks.*' => ['required', 'file'],
             'break_after' => ['sometimes', 'array'],
             'break_after.*' => ['string', 'in:sentence,paragraph'],
+            // Per-chunk: skip the tail-artifact cut (the chunk ends in a
+            // rendered sound tag). The runner echoes back the flags the chunk
+            // endpoint computed; multipart booleans arrive as "0"/"1" strings.
+            'preserve_tail' => ['sometimes', 'array'],
+            'preserve_tail.*' => ['in:0,1,true,false'],
             'output_format' => ['sometimes', 'string'],
         ]);
 
         /** @var array<int, UploadedFile> $files */
         $files = $request->file('chunks');
         $breaks = $data['break_after'] ?? [];
+        $preserves = array_values((array) ($data['preserve_tail'] ?? []));
         $outputFormat = $data['output_format'] ?? (string) config('tts.default_output_format', 'mp3_44100_128');
 
         $sentenceGap = (int) config('tts.chunk_gap_ms', 120);
@@ -232,14 +246,16 @@ class PipelineController extends Controller
 
         $rawParts = [];
         $seamGapsMs = [];
+        $preserveTails = [];
         foreach ($files as $i => $file) {
             $rawParts[] = $this->fileBytes($file);
             $break = $breaks[$i] ?? 'sentence';
             $seamGapsMs[] = $break === 'paragraph' ? $paragraphGap : $sentenceGap;
+            $preserveTails[] = filter_var($preserves[$i] ?? false, FILTER_VALIDATE_BOOLEAN);
         }
 
         try {
-            [$bytes, $mime, $ext] = $this->converter->concatenate($rawParts, $outputFormat, 'wav', $seamGapsMs);
+            [$bytes, $mime, $ext] = $this->converter->concatenate($rawParts, $outputFormat, 'wav', $seamGapsMs, $preserveTails);
         } catch (Throwable $e) {
             report($e);
 

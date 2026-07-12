@@ -86,7 +86,7 @@ class _OfflineClient:
             return {"available": True, "ok": False, "problems": ["TRUNC"], "score": 0.5, "trim_at_ms": None}
         return {"available": True, "ok": True, "problems": [], "score": 0.97, "trim_at_ms": None}
 
-    def stitch(self, chunks, *, output_format, break_after=None) -> TtsResult:
+    def stitch(self, chunks, *, output_format, break_after=None, preserve_tail=None) -> TtsResult:
         return TtsResult(audio=self._MP3, content_type="audio/mpeg")
 
     def trim(self, audio, trim_at_ms, *, filename="chunk.wav") -> TtsResult:

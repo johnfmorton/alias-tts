@@ -17,6 +17,7 @@ use App\Services\Asr\ChunkRemediator;
 use App\Services\Audio\AudioConverter;
 use App\Services\Pronunciation\PronunciationSubstituter;
 use App\Services\Tts\ModelCatalog;
+use App\Services\Tts\ParalinguisticTags;
 use App\Services\Tts\TtsProvider;
 use App\Services\Tts\VoiceReference;
 use App\Support\SpendCounters;
@@ -886,9 +887,15 @@ class ProjectService
 
         $rawParts = [];
         $seamGapsMs = [];
+        $preserveTails = [];
         foreach ($chunks as $chunk) {
             $rawParts[] = $disk->get($chunk->audio_path);
             $seamGapsMs[] = $chunk->break_after === 'paragraph' ? $paragraphGap : $sentenceGap;
+            // A chunk whose effective voice renders sound tags AND whose text
+            // ends in one keeps its tail — the artifact detectors would crop
+            // the rendered laugh/sigh as junk.
+            $preserveTails[] = ModelCatalog::supportsTags(ModelCatalog::forVoice($chunk->voice ?? $chunk->project->voice))
+                && ParalinguisticTags::endsWith($chunk->text);
         }
 
         return $this->converter->concatenate(
@@ -896,6 +903,7 @@ class ProjectService
             $outputFormat,
             $this->provider->outputContainer(),
             $seamGapsMs,
+            $preserveTails,
         );
     }
 

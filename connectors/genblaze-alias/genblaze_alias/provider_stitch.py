@@ -72,9 +72,12 @@ class AliasStitchProvider(SyncProvider):
         output_format = step.params.get("output_format", "mp3_44100_128")
         chunks = [read_asset_bytes(inp.url) for inp in step.inputs]
         break_after = [(inp.metadata or {}).get("break_after", "sentence") for inp in step.inputs]
+        preserve_tail = [bool((inp.metadata or {}).get("preserve_tail", False)) for inp in step.inputs]
 
         try:
-            result = self._client.stitch(chunks, output_format=output_format, break_after=break_after)
+            result = self._client.stitch(
+                chunks, output_format=output_format, break_after=break_after, preserve_tail=preserve_tail
+            )
         except ProviderError:
             raise
         except Exception as exc:  # noqa: BLE001

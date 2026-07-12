@@ -80,6 +80,10 @@ class ChunkResult:
     seed: int | None
     manifest_hash: str | None
     trim_applied: bool
+    # The chunk ends in a rendered sound tag ([laugh] on a Turbo voice), so the
+    # stitch must skip its tail-artifact cut. Computed by the app's chunk
+    # endpoint (it owns the tag list); the runner only echoes it back.
+    preserve_tail: bool = False
 
 
 @dataclass
@@ -301,13 +305,17 @@ class Orchestrator:
             break_after=seg.get("break_after", "sentence"),
             audio=take.audio, verdict=take.verdict, attempts=attempts,
             seed=take.seed, manifest_hash=take.manifest_hash, trim_applied=take.trim_applied,
+            preserve_tail=bool(seg.get("preserve_tail", False)),
         )
 
     # -- stitch (cross-run fan-in) ------------------------------------------
 
     def stitch(self, chunk_results: list[ChunkResult], output_format: str) -> _StitchResult:
         inputs = [
-            cr.audio.model_copy(update={"metadata": {"break_after": cr.break_after}})
+            cr.audio.model_copy(update={"metadata": {
+                "break_after": cr.break_after,
+                "preserve_tail": cr.preserve_tail,
+            }})
             for cr in chunk_results
         ]
         result = (

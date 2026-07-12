@@ -12,6 +12,7 @@ use App\Services\SpeechService;
 use App\Services\TextChunker;
 use App\Services\TextNormalizer;
 use App\Services\Tts\ModelCatalog;
+use App\Services\Tts\ParalinguisticTags;
 use App\Services\Tts\TtsProvider;
 use App\Services\Tts\VoiceReference;
 use App\Services\Tts\VoiceSettingsResolver;
@@ -208,13 +209,15 @@ class StudioController extends Controller
             );
 
             // Run the same per-chunk cleanup production uses (edge trim, fades,
-            // and the long tail-artifact cut) so the preview matches what users
-            // actually receive.
+            // and the long tail-artifact cut — skipped when the text ends in a
+            // rendered sound tag) so the preview matches what users actually
+            // receive.
             [$bytes, $mime] = $this->converter->concatenate(
                 [$bytes],
                 'wav',
                 $this->provider->outputContainer(),
                 [],
+                [$this->preservesTail($voice, (string) $request->input('text'))],
             );
         } catch (Throwable $e) {
             report($e);
@@ -259,9 +262,11 @@ class StudioController extends Controller
 
             $rawParts = [];
             $seamGapsMs = [];
+            $preserveTails = [];
             foreach ($segments as $segment) {
                 $rawParts[] = $this->provider->synthesize($segment['text'], $reference, $settings);
                 $seamGapsMs[] = $segment['breakAfter'] === 'paragraph' ? $paragraphGap : $sentenceGap;
+                $preserveTails[] = $this->preservesTail($voice, $segment['text']);
             }
 
             [$bytes, $mime] = $this->converter->concatenate(
@@ -269,6 +274,7 @@ class StudioController extends Controller
                 config('tts.default_output_format'),
                 $this->provider->outputContainer(),
                 $seamGapsMs,
+                $preserveTails,
             );
         } catch (Throwable $e) {
             report($e);
@@ -297,19 +303,29 @@ class StudioController extends Controller
             'files.*' => ['file', 'max:51200'], // 50 MB/chunk; raw WAV is ~85 KB/s mono
             'breaks' => ['array'],
             'breaks.*' => ['in:sentence,paragraph'],
+            // Each uploaded blob's source text + the voice it rendered with, so
+            // the trim can spare a rendered trailing sound tag exactly like
+            // production would (absent = the full cleanup, as before).
+            'voice' => ['nullable', 'string'],
+            'texts' => ['array'],
+            'texts.*' => ['nullable', 'string'],
         ])) {
             return $error;
         }
 
         $breaks = array_values((array) $request->input('breaks', []));
+        $texts = array_values((array) $request->input('texts', []));
+        $voice = $request->filled('voice') ? Voice::resolveFor((string) $request->input('voice'), $request->user()->id) : null;
         $sentenceGap = (int) config('tts.chunk_gap_ms', 120);
         $paragraphGap = (int) config('tts.paragraph_gap_ms', 400);
 
         $rawParts = [];
         $seamGapsMs = [];
+        $preserveTails = [];
         foreach (array_values($request->file('files')) as $i => $file) {
             $rawParts[] = (string) file_get_contents($file->getRealPath());
             $seamGapsMs[] = (($breaks[$i] ?? 'sentence') === 'paragraph') ? $paragraphGap : $sentenceGap;
+            $preserveTails[] = $voice !== null && $this->preservesTail($voice, (string) ($texts[$i] ?? ''));
         }
 
         try {
@@ -318,6 +334,7 @@ class StudioController extends Controller
                 config('tts.default_output_format'),
                 $this->provider->outputContainer(),
                 $seamGapsMs,
+                $preserveTails,
             );
         } catch (Throwable $e) {
             report($e);
@@ -473,5 +490,15 @@ class StudioController extends Controller
     private function referencePath(Voice $voice): ?string
     {
         return VoiceReference::localPath($voice);
+    }
+
+    /**
+     * Whether audio rendered from $text by $voice ends in a WANTED sound (a
+     * turbo tag like [laugh]) — the tail-artifact trim must spare it.
+     */
+    private function preservesTail(Voice $voice, string $text): bool
+    {
+        return ModelCatalog::supportsTags(ModelCatalog::forVoice($voice))
+            && ParalinguisticTags::endsWith($text);
     }
 }

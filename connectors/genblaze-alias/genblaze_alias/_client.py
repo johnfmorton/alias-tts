@@ -189,12 +189,20 @@ class AliasClient:
         *,
         output_format: str,
         break_after: list[str] | None = None,
+        preserve_tail: list[bool] | None = None,
     ) -> TtsResult:
-        """Concatenate ordered chunk audio into the final output."""
+        """Concatenate ordered chunk audio into the final output.
+
+        ``preserve_tail`` marks chunks whose text ends in a rendered sound tag
+        (a Turbo ``[laugh]`` etc.) so the app skips its tail-artifact cut on
+        them — the flags come from the app's own chunk endpoint, echoed back.
+        """
         files = [("chunks[]", (f"chunk{i}.wav", data, "audio/wav")) for i, data in enumerate(chunks)]
         form: dict = {"output_format": output_format}
         if break_after:
             form["break_after[]"] = list(break_after)
+        if preserve_tail:
+            form["preserve_tail[]"] = ["1" if flag else "0" for flag in preserve_tail]
         with self._http(internal=True) as client:
             resp = client.post("/v1/internal/stitch", data=form, files=files)
             resp.raise_for_status()

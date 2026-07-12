@@ -5,7 +5,6 @@ namespace App\Services\Asr;
 use App\Services\Audio\AudioConverter;
 use App\Services\ProjectService;
 use App\Services\SpeechService;
-use App\Services\Tts\ParalinguisticTags;
 use Illuminate\Support\Facades\Log;
 use Throwable;
 
@@ -43,15 +42,10 @@ class ChunkRemediator
                 return null;
             }
 
-            // A [laugh]-style tag never appears as its word in a transcript
-            // (turbo renders a sound; classic never received it — the provider
-            // strips it), so drop known tags from the EXPECTED text or every
-            // tagged chunk would flag as truncated. Every scoring path funnels
-            // through here. Residual limitation: the rendered laughter itself
-            // can still trip duration/energy signals (see docs/ASR-SETUP.md).
-            $expected = ParalinguisticTags::strip($sourceText);
-
-            return $this->scorer->score($expected, $transcript, $this->energyFeatures($bytes, $transcript));
+            // Sound-tag awareness (tag-stripped expected text + suppressed
+            // duration/energy signals on tagged chunks) lives INSIDE the
+            // scorer, so the raw source text goes through as-is.
+            return $this->scorer->score($sourceText, $transcript, $this->energyFeatures($bytes, $transcript));
         } catch (Throwable $e) {
             Log::warning('ASR QA failed', ['label' => $label, 'error' => $e->getMessage()]);
 

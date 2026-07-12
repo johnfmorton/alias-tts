@@ -30,6 +30,15 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
     chunks don't false-flag. Studio chunk cards on a turbo voice show a row
     of clickable tag chips that insert at the cursor, and the Takes & tuning
     help text now explains whichever engine's knobs are on screen.
+  - **Rendered tags survive stitching.** A chunk ending in a sound tag puts
+    loud, wanted non-speech exactly where the tail-artifact cleanup hunts
+    Chatterbox's drone — it was cropping the laugh/sniff right off. Every
+    stitching surface (final builds, stitch previews, the /v1 paths, the
+    inspector, and the Genblaze runner) now spares the tail of a tag-ending
+    turbo chunk, keeping the safe silence trim and seam fades; and ASR-QA
+    excuses its tail/gap signals on tagged chunks (a tag at the end is not
+    junk to trim, a mid-text gasp is not a pause to re-roll) while still
+    catching genuinely dropped words.
   - **Per-engine spend metering** — lifetime characters are now counted per
     model (`tts_spend_counters`, existing spend backfilled as classic) and
     priced at per-model rates (`TTS_COST_PER_1K_CHARS`,

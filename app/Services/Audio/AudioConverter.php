@@ -76,7 +76,15 @@ class AudioConverter
      * @param  array<int, int>  $seamGapsMs  silence (ms) to insert after each chunk; the entry after the last chunk is ignored
      * @return array{0: string, 1: string, 2: string} [bytes, mimeType, extension]
      */
-    public function concatenate(array $inputChunks, string $outputFormat, string $inputContainer = 'wav', array $seamGapsMs = []): array
+    /**
+     * @param  array<int, bool>  $preserveTails  per-chunk (same indexes as $inputChunks):
+     *                                           true = this chunk's text legitimately ends in rendered
+     *                                           non-speech (a Turbo sound tag like [laugh]), so SKIP the
+     *                                           tail-ARTIFACT detectors — they cannot tell a wanted laugh
+     *                                           from the junk drone they hunt. The safe edge work (head
+     *                                           trim, bounded tail SILENCE trim, fades) still runs.
+     */
+    public function concatenate(array $inputChunks, string $outputFormat, string $inputContainer = 'wav', array $seamGapsMs = [], array $preserveTails = []): array
     {
         $inputChunks = array_values($inputChunks);
         $spec = $this->parseFormat($outputFormat);
@@ -88,7 +96,7 @@ class AudioConverter
         if (count($inputChunks) === 1) {
             // Trim the single chunk's edges too (drops the trailing artifact),
             // then encode to the requested format.
-            $trimmed = $this->trimChunk($inputChunks[0], $spec['rate'], $threshold, $fadeMs, $tailWindowMs);
+            $trimmed = $this->trimChunk($inputChunks[0], $spec['rate'], $threshold, $fadeMs, $tailWindowMs, (bool) ($preserveTails[0] ?? false));
 
             return $this->convert($trimmed, $outputFormat, 'wav');
         }
@@ -106,7 +114,7 @@ class AudioConverter
 
             foreach ($inputChunks as $i => $bytes) {
                 $chunkFile = tempnam(sys_get_temp_dir(), 'tts_cat_');
-                file_put_contents($chunkFile, $this->trimChunk($bytes, $spec['rate'], $threshold, $fadeMs, $tailWindowMs));
+                file_put_contents($chunkFile, $this->trimChunk($bytes, $spec['rate'], $threshold, $fadeMs, $tailWindowMs, (bool) ($preserveTails[$i] ?? false)));
                 $files[] = $chunkFile;
                 $entries[] = "file '".$chunkFile."'";
 
@@ -314,7 +322,7 @@ class AudioConverter
      * chunk is hard-cut at the detected speech end (then head-trimmed and faded);
      * otherwise the bounded body/tail graph above runs unchanged.
      */
-    private function trimChunk(string $bytes, int $rate, string $threshold, int $fadeMs, int $tailWindowMs): string
+    private function trimChunk(string $bytes, int $rate, string $threshold, int $fadeMs, int $tailWindowMs, bool $preserveTail = false): string
     {
         $fade = $this->seconds($fadeMs);
         $window = $this->seconds($tailWindowMs);
@@ -324,7 +332,12 @@ class AudioConverter
         // timeline (the detected cut time is measured on exactly these samples).
         $pcm = $this->runFilterToWav($bytes, $rate, null) ?? $bytes;
 
-        $cut = (bool) config('tts.chunk_tail_artifact_enabled', true)
+        // A tail-preserved chunk ends in WANTED non-speech (a rendered sound
+        // tag) — loud audio after the last word is precisely the signature the
+        // artifact detector hunts, so it MUST sit this one out. The bounded
+        // sub-threshold silence trim below is still safe (it only eats the
+        // quiet decay), so seams stay clean.
+        $cut = ! $preserveTail && (bool) config('tts.chunk_tail_artifact_enabled', true)
             ? $this->detectLongTailArtifact($pcm, $rate)
             : null;
 

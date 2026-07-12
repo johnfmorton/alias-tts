@@ -101,6 +101,22 @@ class AudioConverterTest extends TestCase
         $this->assertLessThan(1.4, $seconds, 'The long low-frequency tail must be cut.');
     }
 
+    public function test_preserve_tail_spares_a_rendered_sound_tag(): void
+    {
+        // Same shape as the synthetic-drone test — loud non-speech after the
+        // words — but here the "artifact" is a WANTED sound (a Turbo [laugh]
+        // rendered at the end of the chunk). The per-chunk preserveTails flag
+        // must sit the detector out so the tail survives; only the safe
+        // bounded silence trim + fades run (which touch nothing loud).
+        $converter = new AudioConverter(config('tts.ffmpeg_path', 'ffmpeg'));
+        $chunk = $this->wrapWav($this->noiseWav(1.0, 15000).$this->rawTone(1.0, 8000, 90.0));
+
+        [$out] = $converter->concatenate([$chunk], 'wav', 'wav', [], [true]);
+        $seconds = $this->wavDataBytes($out) / (44100 * 2);
+
+        $this->assertGreaterThan(1.8, $seconds, 'A preserved tail must keep the rendered sound.');
+    }
+
     public function test_clean_clip_is_not_over_trimmed_by_detector(): void
     {
         // No trailing artifact: broadband speech only. The detector must return

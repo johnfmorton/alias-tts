@@ -140,7 +140,7 @@ class FakeClient:
             return self._verdict_queue.pop(0)
         return dict(self._verdict)
 
-    def stitch(self, chunks, *, output_format, break_after=None):
+    def stitch(self, chunks, *, output_format, break_after=None, preserve_tail=None):
         self.calls.append(("stitch", len(chunks), break_after))
         return TtsResult(audio=_FAKE_MP3, content_type="audio/mpeg")
 
