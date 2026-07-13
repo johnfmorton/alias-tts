@@ -1693,4 +1693,64 @@ class StudioProjectTest extends TestCase
         $this->assertSame($before, Voice::count());
         $this->assertSame($project->voice_id, $this->duplicateOf($project)->voice_id);
     }
+
+    public function test_foreign_project_voice_changes_resolve_against_the_owner(): void
+    {
+        // Both users own a voice with the SAME slug. A SuperAdmin switching
+        // the voice on the owner's project must get the OWNER's row —
+        // resolving for the requester would stamp the admin's voice onto a
+        // project whose owner can't see it, which duplicate() would then have
+        // to clone back as a confusing "-2" copy.
+        $admin = $this->admin();
+        $owner = User::factory()->create(['is_super_admin' => false]);
+        Voice::create(['user_id' => $admin->id, 'slug' => 'narrator', 'name' => 'Admin Narrator']);
+        $ownerNarrator = Voice::create(['user_id' => $owner->id, 'slug' => 'narrator', 'name' => 'Owner Narrator']);
+
+        $project = $this->project();
+        $project->update(['user_id' => $owner->id]);
+        $first = $project->chunks()->orderBy('position')->first();
+
+        $this->actingAs($admin)
+            ->patchJson(route('admin.studio.projects.voice', $project), ['voice' => 'narrator'])
+            ->assertOk()
+            ->assertJsonPath('voice_name', 'Owner Narrator');
+        $this->assertSame($ownerNarrator->id, $project->refresh()->voice_id);
+
+        $this->actingAs($admin)
+            ->patchJson(route('admin.studio.projects.chunks.voice', [$project, $first]), ['voice' => 'narrator'])
+            ->assertOk()
+            ->assertJsonPath('voice_name', 'Owner Narrator');
+        $this->assertSame($ownerNarrator->id, $first->refresh()->voice_id);
+
+        // A voice only the ADMIN can reach does not resolve on the owner's
+        // project — better a 422 than a reference the owner can't follow.
+        Voice::create(['user_id' => $admin->id, 'slug' => 'admin-only', 'name' => 'Admin Only']);
+        $this->actingAs($admin)
+            ->patchJson(route('admin.studio.projects.voice', $project), ['voice' => 'admin-only'])
+            ->assertStatus(422);
+        $this->actingAs($admin)
+            ->patchJson(route('admin.studio.projects.chunks.voice', [$project, $first]), ['voice' => 'admin-only'])
+            ->assertStatus(422);
+    }
+
+    public function test_foreign_project_pickers_list_the_owners_voices(): void
+    {
+        // The show page's voice dropdowns must offer what the project's OWNER
+        // can generate with, not the visiting SuperAdmin's collection.
+        $admin = $this->admin();
+        $owner = User::factory()->create(['is_super_admin' => false]);
+        Voice::create(['user_id' => $admin->id, 'slug' => 'admins-own', 'name' => 'Admins Own']);
+        Voice::create(['user_id' => $owner->id, 'slug' => 'owners-own', 'name' => 'Owners Own']);
+
+        $project = $this->project();
+        $project->update(['user_id' => $owner->id]);
+
+        $slugs = $this->actingAs($admin)
+            ->get(route('admin.studio.projects.show', $project))
+            ->assertOk()
+            ->viewData('voices')
+            ->pluck('slug');
+        $this->assertTrue($slugs->contains('owners-own'));
+        $this->assertFalse($slugs->contains('admins-own'));
+    }
 }

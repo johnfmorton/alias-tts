@@ -235,7 +235,7 @@ class StudioProjectController extends Controller
             // no counter rows falls back to its legacy all-chatterbox total.
             'projectSpendByModel' => SpendCounters::forOwner('project', $project->id, (int) $project->spent_characters),
             'chunkSpendByModel' => SpendCounters::forOwners('chunk', $chunks->pluck('id')->all()),
-            'voices' => Voice::orderedFor($request->user()->id)->get(),
+            'voices' => Voice::orderedFor($this->voiceOwnerId($request, $project))->get(),
             // Offered final-audio formats for the header picker (token => "MP3"/"WAV").
             'outputFormats' => $this->outputFormatLabels(),
             // Named presets for the per-chunk "apply preset" pick (fills the
@@ -261,7 +261,7 @@ class StudioProjectController extends Controller
             return response()->json(['message' => $validator->errors()->first()], 422);
         }
 
-        $voice = Voice::resolveFor((string) $request->input('voice'), $request->user()->id);
+        $voice = Voice::resolveFor((string) $request->input('voice'), $this->voiceOwnerId($request, $project));
         if (! $voice) {
             return response()->json(['message' => 'Unknown voice.'], 422);
         }
@@ -340,7 +340,7 @@ class StudioProjectController extends Controller
         $slug = trim((string) $request->input('voice'));
         $voice = null;
         if ($slug !== '') {
-            $voice = Voice::resolveFor($slug, $request->user()->id);
+            $voice = Voice::resolveFor($slug, $this->voiceOwnerId($request, $project));
             if (! $voice) {
                 return response()->json(['message' => 'Unknown voice.'], 422);
             }
@@ -469,6 +469,19 @@ class StudioProjectController extends Controller
         }
 
         return $project->user?->name ?? 'a deleted user';
+    }
+
+    /**
+     * The user whose voice set this project's pickers and voice changes must
+     * resolve against: its OWNER, not the requester. Voices are per user, so
+     * resolving for a SuperAdmin editing someone else's project would stamp
+     * the SuperAdmin's voice row onto it — a voice the owner can't see, which
+     * duplicate() would then have to clone back as a confusing "-2" copy.
+     * Ownerless (pre-multi-user) projects fall back to the requester.
+     */
+    private function voiceOwnerId(Request $request, TtsProject $project): int
+    {
+        return $project->user_id ?? $request->user()->id;
     }
 
     /**
