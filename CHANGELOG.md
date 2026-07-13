@@ -4,6 +4,23 @@ All notable changes to this project are documented in this file. The format is
 based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this
 project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+- **Social/SEO link previews on the public pages.** A shared
+  `partials/social-meta` head block emits Open Graph and Twitter Card tags
+  (plus a canonical URL and description), wired into the landing, about, and
+  verify pages so a pasted link previews with a title, description, and
+  1200×630 image in Slack, iMessage, LinkedIn, Discord, and X. Image URLs are
+  absolute via `secure_asset()`, so keep prod `APP_URL` correct.
+
+### Changed
+- **About page: credit classic Chatterbox as the expressive engine.** The
+  Voices section previously listed only Turbo's advantages; it now names
+  Chatterbox (the default) as the expressive original with its exaggeration
+  dial, so the more-expressive default engine isn't undersold next to Turbo's
+  speed.
+
 ## [0.49.0] - 2026-07-12
 
 ### Added

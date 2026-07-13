@@ -5,6 +5,11 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="robots" content="noindex">
 <title>Verify the approved final — Alias TTS</title>
+@include('partials.social-meta', [
+    'metaTitle'       => 'Verify the approved final — Alias TTS',
+    'metaDescription' => 'Check that an audio file is the exact cut that was approved, untouched. Your browser fingerprints it locally — the file itself is never uploaded.',
+    'metaImage'       => 'images/social/alias-tts-verify-og.png',
+])
 <link rel="icon" href="/favicon.ico" sizes="32x32">
 <link rel="icon" href="/alias-icon.svg" type="image/svg+xml">
 <link rel="apple-touch-icon" href="/apple-touch-icon.png">

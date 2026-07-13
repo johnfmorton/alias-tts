@@ -4,6 +4,11 @@
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>Alias TTS — self-hosted, ElevenLabs- &amp; OpenAI-compatible text-to-speech</title>
+    @include('partials.social-meta', [
+        'metaTitle'       => 'Alias TTS — one server, two APIs, your voices',
+        'metaDescription' => 'Self-hosted text-to-speech with voice cloning that answers to two APIs — ElevenLabs and OpenAI. Point your app at a server you own; nothing else changes.',
+        'metaImage'       => 'images/social/alias-tts-og.png',
+    ])
     <link rel="icon" href="{{ asset('favicon.ico') }}" sizes="32x32">
     <link rel="icon" href="{{ asset('alias-icon.svg') }}" type="image/svg+xml">
     <link rel="apple-touch-icon" href="{{ asset('apple-touch-icon.png') }}">

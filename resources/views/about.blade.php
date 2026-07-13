@@ -4,7 +4,11 @@
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>About — Alias TTS</title>
-    <meta name="description" content="Alias TTS is a self-hosted text-to-speech server compatible with the ElevenLabs and OpenAI APIs — zero-shot voice cloning, automatic quality checks, a per-chunk Studio editor, and sealed, verifiable finals.">
+    @include('partials.social-meta', [
+        'metaTitle'       => 'Alias TTS — point your app here, nothing else changes',
+        'metaDescription' => 'Alias TTS is a self-hosted text-to-speech server compatible with the ElevenLabs and OpenAI APIs — zero-shot voice cloning, automatic quality checks, a per-chunk Studio editor, and sealed, verifiable finals.',
+        'metaImage'       => 'images/social/alias-tts-about-og.png',
+    ])
     <link rel="icon" href="{{ asset('favicon.ico') }}" sizes="32x32">
     <link rel="icon" href="{{ asset('alias-icon.svg') }}" type="image/svg+xml">
     <link rel="apple-touch-icon" href="{{ asset('apple-touch-icon.png') }}">
@@ -256,7 +260,9 @@
                 The engines (<a href="https://replicate.com/resemble-ai/chatterbox" class="text-zinc-300 underline decoration-zinc-700 underline-offset-2 transition hover:decoration-zinc-400">Chatterbox</a>
                 and <a href="https://replicate.com/resemble-ai/chatterbox-turbo" class="text-zinc-300 underline decoration-zinc-700 underline-offset-2 transition hover:decoration-zinc-400">Chatterbox&nbsp;Turbo</a>, MIT-licensed)
                 are zero-shot: a clean 15–30&nbsp;second reference clip is the entire setup. No training job, no waiting.
-                Each voice picks its engine — Turbo is faster, ships built-in voices, and renders sound tags like <span class="text-zinc-300">[laugh]</span>.
+                Each voice picks its engine: Chatterbox — the default — is the expressive original, with an exaggeration
+                dial for animated delivery when the read has to carry. Turbo is faster, ships built-in voices, and renders
+                sound tags like <span class="text-zinc-300">[laugh]</span>.
             </p>
 
             <div class="mt-10 grid items-start gap-10 lg:grid-cols-2">
