@@ -1044,9 +1044,11 @@ class ProjectService
      * voices its new owner can't reach — the picker couldn't show them, and
      * switching to an own voice would mark every generated chunk Stale. Any
      * referenced voice outside the duplicator's reach (project-level or a
-     * per-chunk override) is cloned into their account verbatim (see
-     * {@see VoiceService::cloneTo()}; an already-used voice_id gets a "-2"
-     * suffix) and the copy is pointed at the clones, keeping it fully editable.
+     * per-chunk override) is matched to an identical-sounding voice they
+     * already have ({@see VoiceService::equivalentFor()}) or, failing that,
+     * cloned into their account verbatim (see {@see VoiceService::cloneTo()};
+     * an already-used voice_id gets a "-2" suffix), and the copy is pointed
+     * at the stand-ins, keeping it fully editable.
      */
     public function duplicate(TtsProject $source, User $user): TtsProject
     {
@@ -1054,17 +1056,28 @@ class ProjectService
         $base = config('tts.storage_path').'/projects/';
         $newProjectId = (string) Str::uuid7();
 
-        /** @var array<string, Voice> $adopted source voice id => the clone now owned by $user */
+        /** @var array<string, Voice> $adopted source voice id => the voice now standing in for it */
         $adopted = [];
+        /** @var list<Voice> $minted the subset of $adopted freshly cloned (to unwind on failure) */
+        $minted = [];
 
         try {
             // Phase A0 — bring unreachable voices along (shared built-ins and
-            // the duplicator's own pass through untouched).
+            // the duplicator's own pass through untouched). A voice the
+            // duplicator can already reach that sounds identical — same
+            // provider/model/tuning and a byte-identical clip — is reused
+            // rather than cloned, so re-duplicating never piles up "-2",
+            // "-3"… copies of a voice they effectively already have.
             $voiceIds = $source->chunks->pluck('voice_id')->push($source->voice_id)->filter()->unique();
             foreach (Voice::whereIn('id', $voiceIds)->get() as $voice) {
-                if ($voice->user_id !== null && $voice->user_id !== $user->id) {
-                    $adopted[$voice->id] = $this->voices->cloneTo($voice, $user->id);
+                if ($voice->user_id === null || $voice->user_id === $user->id) {
+                    continue;
                 }
+                $standIn = $this->voices->equivalentFor($voice, $user->id);
+                if ($standIn === null) {
+                    $standIn = $minted[] = $this->voices->cloneTo($voice, $user->id);
+                }
+                $adopted[$voice->id] = $standIn;
             }
             $mapVoice = fn (?string $id) => isset($adopted[$id]) ? $adopted[$id]->id : $id;
 
@@ -1209,9 +1222,11 @@ class ProjectService
             // row references anything under the new id, so wipe it wholesale.
             $disk->deleteDirectory($base.$newProjectId);
 
-            // The adopted voice clones live outside the transaction (their
-            // clips are file I/O), so unwind them too — row and clip.
-            foreach ($adopted as $clone) {
+            // Freshly minted voice clones live outside the transaction (their
+            // clips are file I/O), so unwind them too — row and clip. Only
+            // the minted ones: a reused pre-existing voice is not ours to
+            // delete.
+            foreach ($minted as $clone) {
                 $this->voices->delete($clone);
             }
 

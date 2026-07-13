@@ -361,6 +361,58 @@ class VoiceService
     }
 
     /**
+     * A voice $ownerId can already reach that would SOUND identical to
+     * $source: same provider, model and tuning, and a byte-identical
+     * reference clip (or both clipless). Project duplication points the copy
+     * at such a voice instead of {@see cloneTo()}-minting a redundant "-2"
+     * clone — the common case being the same recording registered in both
+     * accounts. Prefers a same-slug match when several qualify. A clip that
+     * is missing from the disk can't be verified, so it never matches.
+     */
+    public function equivalentFor(Voice $source, int $ownerId): ?Voice
+    {
+        $disk = Storage::disk(config('tts.storage_disk'));
+
+        $sourceSha = null;
+        if ($source->reference_audio_path !== null) {
+            if (! $disk->exists($source->reference_audio_path)) {
+                return null;
+            }
+            $sourceSha = sha1($disk->get($source->reference_audio_path));
+        }
+
+        $candidates = Voice::visibleTo($ownerId)
+            ->whereKeyNot($source->id)
+            ->where('provider', $source->provider)
+            ->where('model', $source->model)
+            ->get()
+            ->sortBy(fn (Voice $v) => $v->slug === $source->slug ? 0 : 1);
+
+        foreach ($candidates as $candidate) {
+            // Loose array comparison: same key/value pairs, key order aside.
+            if (($candidate->settings ?? []) != ($source->settings ?? [])) {
+                continue;
+            }
+
+            if ($sourceSha === null) {
+                if ($candidate->reference_audio_path === null) {
+                    return $candidate;
+                }
+
+                continue;
+            }
+
+            if ($candidate->reference_audio_path !== null
+                && $disk->exists($candidate->reference_audio_path)
+                && sha1($disk->get($candidate->reference_audio_path)) === $sourceSha) {
+                return $candidate;
+            }
+        }
+
+        return null;
+    }
+
+    /**
      * The first free slug starting from $base ("$base", then "$base-2", …).
      * Collisions only matter inside the owner's reachable set (their own
      * voices + the shared ones) — another user's identical slug doesn't block

@@ -235,7 +235,7 @@ class StudioProjectController extends Controller
             // no counter rows falls back to its legacy all-chatterbox total.
             'projectSpendByModel' => SpendCounters::forOwner('project', $project->id, (int) $project->spent_characters),
             'chunkSpendByModel' => SpendCounters::forOwners('chunk', $chunks->pluck('id')->all()),
-            'voices' => Voice::orderedFor($this->voiceOwnerId($request, $project))->get(),
+            'voices' => Voice::orderedFor($this->projectOwnerId($request, $project))->get(),
             // Offered final-audio formats for the header picker (token => "MP3"/"WAV").
             'outputFormats' => $this->outputFormatLabels(),
             // Named presets for the per-chunk "apply preset" pick (fills the
@@ -261,7 +261,7 @@ class StudioProjectController extends Controller
             return response()->json(['message' => $validator->errors()->first()], 422);
         }
 
-        $voice = Voice::resolveFor((string) $request->input('voice'), $this->voiceOwnerId($request, $project));
+        $voice = Voice::resolveFor((string) $request->input('voice'), $this->projectOwnerId($request, $project));
         if (! $voice) {
             return response()->json(['message' => 'Unknown voice.'], 422);
         }
@@ -340,7 +340,7 @@ class StudioProjectController extends Controller
         $slug = trim((string) $request->input('voice'));
         $voice = null;
         if ($slug !== '') {
-            $voice = Voice::resolveFor($slug, $this->voiceOwnerId($request, $project));
+            $voice = Voice::resolveFor($slug, $this->projectOwnerId($request, $project));
             if (! $voice) {
                 return response()->json(['message' => 'Unknown voice.'], 422);
             }
@@ -417,13 +417,18 @@ class StudioProjectController extends Controller
      */
     public function duplicate(Request $request, TtsProject $project): RedirectResponse
     {
+        // Snapshot before duplicating: only voices minted BY the copy are
+        // announced below. A pre-existing voice the copy was matched to is
+        // not news to its owner.
+        $preexisting = Voice::pluck('id');
+
         $copy = $this->projects->duplicate($project, $request->user());
 
         $message = 'Project duplicated — you are now viewing the copy.';
-        // Duplicating another user's project clones its voices to the
+        // Duplicating another user's project may clone voices to the
         // duplicator (voices are per user); say so, or the new rows on their
         // Voices page appear out of nowhere.
-        $adopted = $this->adoptedVoiceNames($project, $copy);
+        $adopted = $this->adoptedVoiceNames($project, $copy, $preexisting);
         if ($adopted->isNotEmpty()) {
             $names = $adopted->map(fn (string $name) => "“{$name}”")->join(', ', ' and ');
             $message .= $adopted->count() === 1
@@ -438,13 +443,15 @@ class StudioProjectController extends Controller
     /**
      * Names of the voice clones {@see ProjectService::duplicate()} just minted
      * for the duplicator: the voices the copy references that the source does
-     * not. Empty for the everyday case of duplicating your own project.
+     * not and that did not exist before the call. Empty for the everyday case
+     * of duplicating your own project, and for a foreign voice matched to an
+     * identical one the duplicator already had.
      */
-    private function adoptedVoiceNames(TtsProject $source, TtsProject $copy): Collection
+    private function adoptedVoiceNames(TtsProject $source, TtsProject $copy, Collection $preexisting): Collection
     {
         $refs = fn (TtsProject $p) => $p->chunks()->pluck('voice_id')->push($p->voice_id)->filter()->unique();
 
-        return Voice::whereIn('id', $refs($copy)->diff($refs($source)))->pluck('name');
+        return Voice::whereIn('id', $refs($copy)->diff($refs($source))->diff($preexisting))->pluck('name');
     }
 
     /** Source-text editor for "Start over" (re-chunk from scratch). */
@@ -472,14 +479,17 @@ class StudioProjectController extends Controller
     }
 
     /**
-     * The user whose voice set this project's pickers and voice changes must
-     * resolve against: its OWNER, not the requester. Voices are per user, so
-     * resolving for a SuperAdmin editing someone else's project would stamp
-     * the SuperAdmin's voice row onto it — a voice the owner can't see, which
+     * The user whose per-user resources actions on this project must resolve
+     * against: its OWNER, not the requester. Voices are per user, so resolving
+     * for a SuperAdmin editing someone else's project would stamp the
+     * SuperAdmin's voice row onto it — a voice the owner can't see, which
      * duplicate() would then have to clone back as a confusing "-2" copy.
-     * Ownerless (pre-multi-user) projects fall back to the requester.
+     * Pronunciation lexicons are strictly per-writer for the same reason: a
+     * reset must re-chunk with the OWNER's approved pronunciations, not the
+     * visiting admin's. Ownerless (pre-multi-user) projects fall back to the
+     * requester.
      */
-    private function voiceOwnerId(Request $request, TtsProject $project): int
+    private function projectOwnerId(Request $request, TtsProject $project): int
     {
         return $project->user_id ?? $request->user()->id;
     }
@@ -494,7 +504,7 @@ class StudioProjectController extends Controller
             'text' => ['required', 'string', 'max:'.(int) config('tts.max_async_text_length', 40000)],
         ]);
 
-        $this->projects->resetFromText($project, $data['text'], $this->dictionary->approvedMap($request->user()?->id));
+        $this->projects->resetFromText($project, $data['text'], $this->dictionary->approvedMap($this->projectOwnerId($request, $project)));
 
         return redirect()->route('admin.studio.projects.show', $project)
             ->with('success', 'Project reset — generate the chunks below.');

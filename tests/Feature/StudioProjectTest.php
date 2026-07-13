@@ -4,6 +4,7 @@ namespace Tests\Feature;
 
 use App\Enums\ChunkStatus;
 use App\Enums\ProjectStatus;
+use App\Models\PronunciationEntry;
 use App\Models\TtsChunk;
 use App\Models\TtsChunkTake;
 use App\Models\TtsProject;
@@ -1692,6 +1693,116 @@ class StudioProjectTest extends TestCase
 
         $this->assertSame($before, Voice::count());
         $this->assertSame($project->voice_id, $this->duplicateOf($project)->voice_id);
+    }
+
+    public function test_duplicate_reuses_an_identical_voice_instead_of_cloning(): void
+    {
+        // The duplicator already owns a voice that sounds identical to the
+        // foreign project's — same tuning and a byte-identical clip, just
+        // registered separately (different slug even). The copy must point at
+        // THAT voice; minting a "-2" clone of a voice they effectively have
+        // would only clutter their Voices page.
+        $admin = $this->admin();
+        $mine = Voice::create([
+            'user_id' => $admin->id,
+            'slug' => 'my-take',
+            'name' => 'My Take',
+            'settings' => ['seed' => 7],
+            'reference_audio_path' => "voices/u{$admin->id}/my-take.wav",
+        ]);
+        Storage::disk('local')->put($mine->reference_audio_path, 'RIFFsameclip');
+
+        $owner = User::factory()->create(['is_super_admin' => false]);
+        $theirs = Voice::create([
+            'user_id' => $owner->id,
+            'slug' => 'narrator',
+            'name' => 'Narrator',
+            'settings' => ['seed' => 7],
+            'reference_audio_path' => "voices/u{$owner->id}/narrator.wav",
+        ]);
+        Storage::disk('local')->put($theirs->reference_audio_path, 'RIFFsameclip');
+
+        $project = $this->projectWithVoice($theirs);
+        $project->update(['user_id' => $owner->id]);
+
+        $before = Voice::count();
+        // No "also copied to your voices" — nothing was minted.
+        $this->actingAs($admin)->post(route('admin.studio.projects.duplicate', $project))
+            ->assertSessionHas('success', 'Project duplicated — you are now viewing the copy.');
+
+        $this->assertSame($before, Voice::count());
+        $this->assertSame($mine->id, $this->duplicateOf($project)->voice_id);
+    }
+
+    public function test_duplicate_still_clones_when_the_lookalike_differs_in_tuning(): void
+    {
+        // Same clip bytes but different tuning is NOT the same voice — the
+        // copy must keep generating exactly like the source, so a clone is
+        // minted rather than reusing the near-miss.
+        $admin = $this->admin();
+        $mine = Voice::create([
+            'user_id' => $admin->id,
+            'slug' => 'my-take',
+            'name' => 'My Take',
+            'settings' => ['seed' => 7, 'exaggeration' => 1.2],
+            'reference_audio_path' => "voices/u{$admin->id}/my-take.wav",
+        ]);
+        Storage::disk('local')->put($mine->reference_audio_path, 'RIFFsameclip');
+
+        $owner = User::factory()->create(['is_super_admin' => false]);
+        $theirs = Voice::create([
+            'user_id' => $owner->id,
+            'slug' => 'narrator',
+            'name' => 'Narrator',
+            'settings' => ['seed' => 7],
+            'reference_audio_path' => "voices/u{$owner->id}/narrator.wav",
+        ]);
+        Storage::disk('local')->put($theirs->reference_audio_path, 'RIFFsameclip');
+
+        $project = $this->projectWithVoice($theirs);
+        $project->update(['user_id' => $owner->id]);
+
+        $before = Voice::count();
+        $this->actingAs($admin)->post(route('admin.studio.projects.duplicate', $project))
+            ->assertSessionHas('success', fn (string $message) => str_contains($message, 'also copied to your voices'));
+
+        $this->assertSame($before + 1, Voice::count());
+        $clone = Voice::findOrFail($this->duplicateOf($project)->voice_id);
+        $this->assertNotSame($mine->id, $clone->id);
+        $this->assertSame($admin->id, $clone->user_id);
+        $this->assertSame(['seed' => 7], $clone->settings);
+    }
+
+    public function test_foreign_project_reset_applies_the_owners_pronunciation_dictionary(): void
+    {
+        // Pronunciation lexicons are strictly per-writer. A SuperAdmin
+        // resetting (re-chunking) someone else's project must apply the
+        // OWNER's approved pronunciations to the owner's text — not their own.
+        $admin = $this->admin();
+        $owner = User::factory()->create(['is_super_admin' => false]);
+        foreach ([[$admin->id, 'ADMIN-JIF'], [$owner->id, 'OWNER-JIF']] as [$userId, $phonetic]) {
+            PronunciationEntry::create([
+                'user_id' => $userId,
+                'term' => 'GIF',
+                'phonetic' => $phonetic,
+                'match_mode' => 'case_sensitive',
+                'source' => 'user',
+                'approved' => true,
+            ]);
+        }
+
+        $project = $this->project();
+        $project->update(['user_id' => $owner->id]);
+
+        $this->actingAs($admin)
+            ->post(route('admin.studio.projects.reset', $project), [
+                'text' => 'The GIF format works well in this sentence, which is long enough to chunk.',
+            ])
+            ->assertRedirect(route('admin.studio.projects.show', $project));
+
+        $normalized = $project->refresh()->normalized_text;
+        $this->assertStringContainsString('OWNER-JIF', $normalized);
+        $this->assertStringNotContainsString('ADMIN-JIF', $normalized);
     }
 
     public function test_foreign_project_voice_changes_resolve_against_the_owner(): void

@@ -13,6 +13,12 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   verify pages so a pasted link previews with a title, description, and
   1200×630 image in Slack, iMessage, LinkedIn, Discord, and X. Image URLs are
   absolute via `secure_asset()`, so keep prod `APP_URL` correct.
+- **Branded pages for nginx-level failures.** Errors nginx raises before the
+  app can respond (deny-rule 403s, php-fpm unreachable/timeout 5xx) used to
+  show nginx's bare default page; self-contained static pages under
+  `public/errors/` now match the app's designed error views. Laravel-level
+  errors still render their Blade views; prod needs matching `error_page`
+  directives in the Forge panel.
 
 ### Changed
 - **About page: credit classic Chatterbox as the expressive engine.** The
@@ -20,6 +26,24 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   Chatterbox (the default) as the expressive original with its exaggeration
   dial, so the more-expressive default engine isn't undersold next to Turbo's
   speed.
+
+### Fixed
+- **Support edits resolve against the project owner's data, not the
+  visiting admin's.** A SuperAdmin editing another user's project used to
+  pick from and resolve their OWN voice list when switching the project's (or
+  a chunk's) voice, silently stamping a voice row the owner couldn't see onto
+  the owner's project — which a later duplicate then had to clone back as a
+  confusing "Voice 2" copy. Voice pickers and both voice-change endpoints now
+  scope to the project owner, and "Start over" re-chunks with the owner's
+  approved pronunciation dictionary rather than the admin's (lexicons are
+  strictly per-writer).
+- **Duplicating a project no longer mints a redundant voice clone.** When the
+  duplicator already has a voice that sounds identical to the source
+  project's — same engine, same tuning, byte-identical reference clip — the
+  copy now points at that voice instead of cloning a "-2" duplicate. Near
+  misses (same clip, different tuning) still clone so the copy keeps
+  generating exactly like the source, and the success message now names only
+  voices that were genuinely copied in.
 
 ## [0.49.0] - 2026-07-12
 
