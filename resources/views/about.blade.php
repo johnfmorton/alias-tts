@@ -6,7 +6,7 @@
     <title>About — Alias TTS</title>
     @include('partials.social-meta', [
         'metaTitle'       => 'Alias TTS — point your app here, nothing else changes',
-        'metaDescription' => 'Alias TTS is a self-hosted text-to-speech server compatible with the ElevenLabs and OpenAI APIs — zero-shot voice cloning, automatic quality checks, a per-chunk Studio editor, and sealed, verifiable finals.',
+        'metaDescription' => 'Self-hosted, ElevenLabs- and OpenAI-compatible text-to-speech: cloned voices, automatic QA, and sealed, verifiable finals.',
         'metaImage'       => 'images/social/alias-tts-about-og.png',
     ])
     <link rel="icon" href="{{ asset('favicon.ico') }}" sizes="32x32">

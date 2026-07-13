@@ -3,10 +3,10 @@
 <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>Alias TTS — self-hosted, ElevenLabs- &amp; OpenAI-compatible text-to-speech</title>
+    <title>Alias TTS — self-hosted ElevenLabs &amp; OpenAI text-to-speech</title>
     @include('partials.social-meta', [
         'metaTitle'       => 'Alias TTS — one server, two APIs, your voices',
-        'metaDescription' => 'Self-hosted text-to-speech with voice cloning that answers to two APIs — ElevenLabs and OpenAI. Point your app at a server you own; nothing else changes.',
+        'metaDescription' => 'Self-hosted text-to-speech with voice cloning, compatible with the ElevenLabs and OpenAI APIs — on a server you own.',
         'metaImage'       => 'images/social/alias-tts-og.png',
     ])
     <link rel="icon" href="{{ asset('favicon.ico') }}" sizes="32x32">
