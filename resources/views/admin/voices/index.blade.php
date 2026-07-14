@@ -1,5 +1,10 @@
 <x-layout title="Voices" description="Each voice maps a voice_id to a reference clip for zero-shot cloning. Your voices are yours alone — other users only ever see the built-ins and their own.">
-    <div class="mb-4 flex justify-end">
+    <div class="mb-4 flex flex-wrap items-center justify-end gap-3">
+        {{-- SuperAdmin-only: the owner filter, landing on the admin's own voices. --}}
+        @if($showOwner)
+            <x-owner-filter :action="route('admin.voices.index')" :owners="$owners" :owner-id="$ownerId" />
+        @endif
+
         {{-- Single "Add voice" entry point: the main segment goes straight to the
              New voice screen (the common path); the caret menu adds the import
              path, replacing the old always-visible Choose File → Import pair. --}}

@@ -7,6 +7,7 @@ use App\Http\Requests\StoreVoiceRequest;
 use App\Http\Requests\UpdateVoiceRequest;
 use App\Models\ApiKey;
 use App\Models\TuningPreset;
+use App\Models\User;
 use App\Models\Voice;
 use App\Services\SpeechService;
 use App\Services\VoiceClipService;
@@ -32,14 +33,33 @@ class VoiceController extends Controller
         $user = $request->user();
 
         // Everyone sees the shared built-ins plus their own voices, in their
-        // own drag order; a SuperAdmin sees every user's voices, owner-labeled.
-        $query = $user->isSuperAdmin()
-            ? Voice::orderedQuery($user->id)->with('user')
-            : Voice::orderedFor($user->id);
+        // own drag order. A SuperAdmin gets the same owner filter as Studio:
+        // the list lands on their own voices, ?owner=<id> shows what that user
+        // sees (theirs plus the shared built-ins), ?owner=all shows every
+        // voice. Regular users ignore the param — it must never widen their view.
+        $ownerId = null;
+        if ($user->isSuperAdmin()) {
+            $owner = (string) $request->query('owner', '');
+            $ownerId = ctype_digit($owner) ? (int) $owner : ($owner === 'all' ? null : $user->id);
+        }
+
+        $query = match (true) {
+            ! $user->isSuperAdmin() => Voice::orderedFor($user->id),
+            $ownerId === null => Voice::orderedQuery($user->id)->with('user'),
+            default => Voice::orderedQuery($user->id)->visibleTo($ownerId)->with('user'),
+        };
 
         return view('admin.voices.index', [
             'voices' => $query->withCount('speeches')->get(),
             'showOwner' => $user->isSuperAdmin(),
+            // The owner-filter dropdown's tail: users who actually own a voice,
+            // minus the signed-in admin (rendered first, then "All owners").
+            'owners' => $user->isSuperAdmin()
+                ? User::whereIn('id', Voice::whereNotNull('user_id')->select('user_id'))
+                    ->whereKeyNot($user->id)
+                    ->orderBy('name')->get(['id', 'name'])
+                : collect(),
+            'ownerId' => $ownerId,
         ]);
     }
 

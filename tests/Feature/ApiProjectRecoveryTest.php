@@ -263,9 +263,11 @@ class ApiProjectRecoveryTest extends TestCase
             'output_format' => config('tts.default_output_format'),
         ]);
 
-        // Tier-1 discovery: the list badges it, the page explains it.
+        // Tier-1 discovery: the list badges it, the page explains it. The
+        // project is ownerless, so it sits outside the SuperAdmin's default
+        // own-projects scope — widen to all owners.
         $this->actingAs($this->admin())
-            ->get(route('admin.studio.index'))
+            ->get(route('admin.studio.index', ['owner' => 'all']))
             ->assertOk()
             ->assertSee('API failure');
 
@@ -307,7 +309,7 @@ class ApiProjectRecoveryTest extends TestCase
 
         // The index no longer badges it and the page no longer explains it.
         $this->actingAs($this->admin())
-            ->get(route('admin.studio.index'))
+            ->get(route('admin.studio.index', ['owner' => 'all']))
             ->assertOk()
             ->assertDontSee('API failure');
 

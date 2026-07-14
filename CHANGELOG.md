@@ -4,6 +4,23 @@ All notable changes to this project are documented in this file. The format is
 based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this
 project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+- **Owner filter on the Voices page (SuperAdmin).** The same control as the
+  Studio projects list: it lands on your own voices (yours plus the shared
+  built-ins), picking another user shows what *they* see — their voices plus
+  the built-ins — and "All owners" shows every voice, owner-labeled. Regular
+  users' scope is unchanged; the parameter never widens what they can see.
+
+### Changed
+- **Studio's owner filter now lands on your own projects.** The dropdown lists
+  the signed-in admin first ("(you)"), then "All owners", then the remaining
+  project owners alphabetically — instead of defaulting to everyone's projects
+  mixed together. Widening is an explicit `?owner=all`; note that ownerless
+  projects (e.g. API-failure recoveries whose key had no owner) only appear
+  under "All owners".
+
 ## [0.50.0] - 2026-07-13
 
 ### Added

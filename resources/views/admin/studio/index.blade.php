@@ -48,21 +48,12 @@
             <div class="flex flex-wrap items-center justify-between gap-3 border-b border-white/[0.07] px-[22px] py-[18px]">
                 <p class="text-[12.5px] text-zinc-400">Every project keeps its takes — pick the best read for each chunk.</p>
                 <div class="flex flex-wrap items-center gap-3">
-                    {{-- SuperAdmin-only: narrow everyone's projects to one owner. A plain
-                         GET form (?owner=) so pagination — withQueryString — keeps the
-                         filter; the hidden tab field lands the reload on this view. --}}
-                    @if(auth()->user()->isSuperAdmin() && $owners->isNotEmpty())
-                        <form method="GET" action="{{ route('admin.studio.index') }}" class="flex items-center gap-2">
+                    {{-- SuperAdmin-only: the owner filter, landing on the admin's own
+                         projects; the hidden tab field lands the reload on this view. --}}
+                    @if(auth()->user()->isSuperAdmin())
+                        <x-owner-filter :action="route('admin.studio.index')" :owners="$owners" :owner-id="$ownerId">
                             <input type="hidden" name="tab" value="projects">
-                            <label for="project-owner-filter" class="text-xs text-zinc-400">Owner</label>
-                            <select id="project-owner-filter" name="owner" onchange="this.form.requestSubmit()"
-                                    class="rounded-[8px] border border-white/12 bg-inset px-2.5 py-1.5 text-sm text-zinc-200 focus:border-accent/50 focus:outline-none">
-                                <option value="">All owners</option>
-                                @foreach($owners as $ownerOpt)
-                                    <option value="{{ $ownerOpt->id }}" @selected($ownerId === $ownerOpt->id)>{{ $ownerOpt->name }}</option>
-                                @endforeach
-                            </select>
-                        </form>
+                        </x-owner-filter>
                     @endif
                     <a href="{{ route('admin.studio.projects.create') }}"
                        class="shrink-0 rounded-[9px] bg-accent px-4 py-[9px] text-[13.5px] font-semibold text-accent-on transition hover:bg-cyan-400">New project</a>

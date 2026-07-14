@@ -67,15 +67,68 @@ class VoicePerUserTest extends TestCase
             ->assertDontSee('theirs');
     }
 
-    public function test_a_super_admin_sees_every_voice_owner_labeled(): void
+    public function test_a_super_admins_voices_page_defaults_to_their_own_scope(): void
+    {
+        $other = User::factory()->create(['is_super_admin' => false, 'name' => 'Vera Owner']);
+        $this->voiceFor($other, 'theirs');
+        $this->voiceFor(null, 'shared-voice');
+        $admin = $this->admin();
+        $this->voiceFor($admin, 'mine');
+
+        $this->actingAs($admin)->get(route('admin.voices.index'))
+            ->assertOk()
+            ->assertSee('mine')
+            ->assertSee('shared-voice')
+            ->assertDontSee('theirs')
+            // Vera still appears — as an option in the owner dropdown, which
+            // lists the signed-in admin first, then the widener, then the rest.
+            ->assertSeeInOrder(['(you)', 'All owners', 'Vera Owner']);
+    }
+
+    public function test_a_super_admin_can_widen_to_every_voice_owner_labeled(): void
     {
         $other = User::factory()->create(['is_super_admin' => false, 'name' => 'Vera Owner']);
         $this->voiceFor($other, 'theirs');
 
-        $this->actingAs($this->admin())->get(route('admin.voices.index'))
+        $this->actingAs($this->admin())->get(route('admin.voices.index', ['owner' => 'all']))
             ->assertOk()
             ->assertSee('theirs')
             ->assertSee('Vera Owner');
+    }
+
+    public function test_a_super_admin_can_filter_voices_to_one_owners_view(): void
+    {
+        $other = User::factory()->create(['is_super_admin' => false, 'name' => 'Vera Owner']);
+        $this->voiceFor($other, 'theirs');
+        $this->voiceFor(null, 'shared-voice');
+        $admin = $this->admin();
+        $this->voiceFor($admin, 'mine');
+
+        // Filtering to Vera shows what Vera sees: her voices plus the shared
+        // built-ins — not the admin's own.
+        $this->actingAs($admin)->get(route('admin.voices.index', ['owner' => $other->id]))
+            ->assertOk()
+            ->assertSee('theirs')
+            ->assertSee('shared-voice')
+            ->assertDontSee('mine');
+    }
+
+    public function test_the_owner_filter_never_widens_a_regular_users_voices(): void
+    {
+        $me = $this->user();
+        $other = $this->user();
+        $this->voiceFor($me, 'mine');
+        $this->voiceFor($other, 'theirs');
+
+        $this->actingAs($me)->get(route('admin.voices.index', ['owner' => 'all']))
+            ->assertOk()
+            ->assertSee('mine')
+            ->assertDontSee('theirs');
+
+        $this->actingAs($me)->get(route('admin.voices.index', ['owner' => $other->id]))
+            ->assertOk()
+            ->assertSee('mine')
+            ->assertDontSee('theirs');
     }
 
     public function test_pickers_exclude_other_users_voices(): void

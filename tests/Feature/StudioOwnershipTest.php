@@ -64,13 +64,31 @@ class StudioOwnershipTest extends TestCase
             ->assertDontSee('Owner');
     }
 
-    public function test_superadmin_index_lists_everyones_projects_with_owner(): void
+    public function test_superadmin_index_defaults_to_their_own_projects(): void
+    {
+        $alice = $this->user();
+        $alice->update(['name' => 'Alice']);
+        $this->projectOwnedBy($alice, 'Alice project');
+        $admin = $this->user(superAdmin: true);
+        $this->projectOwnedBy($admin, 'Admin project');
+
+        $this->actingAs($admin)->get(route('admin.studio.index'))
+            ->assertOk()
+            ->assertSee('Admin project')
+            ->assertDontSee('Alice project')
+            // Alice still appears — as an option in the owner dropdown, which
+            // lists the signed-in admin first, then the widener, then the rest.
+            ->assertSeeInOrder(['(you)', 'All owners', 'Alice']);
+    }
+
+    public function test_superadmin_can_widen_the_index_to_everyones_projects(): void
     {
         $alice = $this->user();
         $alice->update(['name' => 'Alice']);
         $this->projectOwnedBy($alice, 'Alice project');
 
-        $this->actingAs($this->user(superAdmin: true))->get(route('admin.studio.index'))
+        $this->actingAs($this->user(superAdmin: true))
+            ->get(route('admin.studio.index', ['owner' => 'all']))
             ->assertOk()
             ->assertSee('Alice project')
             ->assertSee('Alice')
@@ -103,6 +121,13 @@ class StudioOwnershipTest extends TestCase
         // Passing someone else's id must not leak their projects.
         $this->actingAs($alice)
             ->get(route('admin.studio.index', ['owner' => $bob->id]))
+            ->assertOk()
+            ->assertSee('Alice project')
+            ->assertDontSee('Bob project');
+
+        // Neither must the SuperAdmin-only widener.
+        $this->actingAs($alice)
+            ->get(route('admin.studio.index', ['owner' => 'all']))
             ->assertOk()
             ->assertSee('Alice project')
             ->assertDontSee('Bob project');
