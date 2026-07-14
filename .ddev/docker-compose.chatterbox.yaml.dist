@@ -1,0 +1,36 @@
+# Local Chatterbox TTS sidecar as a DDEV add-on service (CPU inference).
+# OPT-IN, unlike the whisper add-on: the image build pulls multi-GB torch
+# wheels, so this file ships with a .dist suffix that DDEV ignores (an
+# .example suffix would be swallowed by DDEV's own .ddev/.gitignore).
+# Activate it with:
+#
+#     cp .ddev/docker-compose.chatterbox.yaml.dist .ddev/docker-compose.chatterbox.yaml
+#     ddev restart
+#
+# then point the app at it in .env (see docs/CHATTERBOX-LOCAL.md):
+#
+#     TTS_PROVIDER=local
+#     TTS_LOCAL_CHATTERBOX_URL=http://chatterbox:8766
+#
+# On Apple Silicon prefer running the sidecar natively on the host instead
+# (http://host.docker.internal:8766) — containers get no GPU/Metal and the
+# virtualized CPU is slower.
+services:
+  chatterbox:
+    container_name: ddev-${DDEV_SITENAME}-chatterbox
+    build:
+      context: ../chatterbox-sidecar
+    image: ddev-${DDEV_SITENAME}-chatterbox
+    restart: "no"
+    labels:
+      com.ddev.site-name: ${DDEV_SITENAME}
+      com.ddev.approot: ${DDEV_APPROOT}
+    expose:
+      - "8766"
+    volumes:
+      - "../chatterbox-sidecar:/app"
+      # Model downloads (~3.8GB per engine) persist across rebuilds.
+      - "chatterbox-models:/models"
+
+volumes:
+  chatterbox-models:

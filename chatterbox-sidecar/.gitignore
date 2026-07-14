@@ -1,0 +1,8 @@
+# Python virtualenv created on the host (see docs/CHATTERBOX-LOCAL.md)
+.venv/
+# Bytecode caches
+__pycache__/
+*.pyc
+# Runtime files written by `ddev chatterbox start` (the log is covered by the
+# repo root's *.log rule)
+.sidecar.pid

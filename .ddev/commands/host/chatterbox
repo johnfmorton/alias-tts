@@ -1,0 +1,103 @@
+#!/usr/bin/env bash
+
+## Description: Manage the local Chatterbox TTS sidecar (a host process; see docs/CHATTERBOX-LOCAL.md)
+## Usage: chatterbox [start|stop|status|logs]
+## Example: "ddev chatterbox start"
+
+# Safe to call from DDEV hooks: every guard exits 0 with a hint instead of
+# failing, so a post-start hook can never break `ddev start` for developers
+# who haven't set the sidecar up.
+
+set -u
+
+APPROOT="${DDEV_APPROOT:-$(cd "$(dirname "$0")/../../.." && pwd)}"
+SIDECAR_DIR="$APPROOT/chatterbox-sidecar"
+VENV="$SIDECAR_DIR/.venv"
+PORT="${CHATTERBOX_PORT:-8766}"
+PIDFILE="$SIDECAR_DIR/.sidecar.pid"
+LOGFILE="$SIDECAR_DIR/sidecar.log"
+HEALTH_URL="http://127.0.0.1:${PORT}/health"
+
+healthy() {
+    curl -s -m 2 "$HEALTH_URL" >/dev/null 2>&1
+}
+
+# The PID from the pidfile, but only if that process is alive AND is still a
+# uvicorn (guards against recycled PIDs after a reboot).
+running_pid() {
+    [ -f "$PIDFILE" ] || return 1
+    local pid
+    pid=$(cat "$PIDFILE" 2>/dev/null) || return 1
+    [ -n "$pid" ] && kill -0 "$pid" 2>/dev/null || return 1
+    ps -p "$pid" -o command= 2>/dev/null | grep -q uvicorn || return 1
+    echo "$pid"
+}
+
+cmd_start() {
+    if healthy; then
+        echo "Chatterbox sidecar already running on port ${PORT}."
+        return 0
+    fi
+
+    if [ ! -x "$VENV/bin/uvicorn" ]; then
+        echo "Chatterbox sidecar not set up (no venv at chatterbox-sidecar/.venv) — skipping."
+        echo "See docs/CHATTERBOX-LOCAL.md to install it."
+        return 0
+    fi
+
+    echo "Starting Chatterbox sidecar on port ${PORT} …"
+    nohup "$VENV/bin/uvicorn" app:app --app-dir "$SIDECAR_DIR" \
+        --host 127.0.0.1 --port "$PORT" >>"$LOGFILE" 2>&1 &
+    echo $! >"$PIDFILE"
+    disown
+
+    for _ in $(seq 1 20); do
+        healthy && break
+        sleep 0.5
+    done
+
+    if healthy; then
+        echo "Chatterbox sidecar up at ${HEALTH_URL} (log: chatterbox-sidecar/sidecar.log)."
+    else
+        echo "Sidecar started but not healthy yet — check chatterbox-sidecar/sidecar.log."
+    fi
+}
+
+cmd_stop() {
+    local pid
+    if pid=$(running_pid); then
+        kill "$pid" 2>/dev/null
+        rm -f "$PIDFILE"
+        echo "Chatterbox sidecar stopped (pid ${pid})."
+    elif healthy; then
+        echo "A sidecar answers on port ${PORT} but wasn't started by this command — stop it where you started it."
+    else
+        rm -f "$PIDFILE"
+        echo "Chatterbox sidecar is not running."
+    fi
+}
+
+cmd_status() {
+    if healthy; then
+        curl -s -m 2 "$HEALTH_URL" | python3 -m json.tool 2>/dev/null || curl -s -m 2 "$HEALTH_URL"
+    else
+        echo "Chatterbox sidecar is not running on port ${PORT}."
+        return 1
+    fi
+}
+
+cmd_logs() {
+    if [ -f "$LOGFILE" ]; then
+        tail -n 50 "$LOGFILE"
+    else
+        echo "No log yet at chatterbox-sidecar/sidecar.log."
+    fi
+}
+
+case "${1:-status}" in
+    start) cmd_start ;;
+    stop) cmd_stop ;;
+    status) cmd_status ;;
+    logs) cmd_logs ;;
+    *) echo "Usage: ddev chatterbox [start|stop|status|logs]" && exit 1 ;;
+esac

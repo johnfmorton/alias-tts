@@ -202,6 +202,12 @@ class HealthReport
             return;
         }
 
+        if ($provider === 'local') {
+            $this->checkLocalSidecar();
+
+            return;
+        }
+
         if ($provider !== 'replicate') {
             $this->add('provider', HealthStatus::Warn, 'Provider', "unknown provider '{$provider}'");
 
@@ -232,6 +238,44 @@ class HealthReport
         } catch (Throwable $e) {
             $this->add('provider', HealthStatus::Warn, 'Provider [replicate]', 'could not reach Replicate: '.$e->getMessage());
         }
+    }
+
+    /**
+     * The local Chatterbox sidecar (TTS_PROVIDER=local, a development driver):
+     * reachability only — engines lazy-load on first use, so "not loaded yet"
+     * is the healthy idle state. See docs/CHATTERBOX-LOCAL.md.
+     */
+    private function checkLocalSidecar(): void
+    {
+        $url = (string) config('tts.providers.local.url');
+
+        $this->checkModelCatalog();
+
+        try {
+            $response = Http::timeout(5)->connectTimeout(3)->get($url.'/health');
+        } catch (Throwable $e) {
+            $this->add('provider', HealthStatus::Fail, 'Provider [local]', "sidecar unreachable at {$url} — start it (see docs/CHATTERBOX-LOCAL.md)");
+
+            return;
+        }
+
+        if (! $response->successful()) {
+            $this->add('provider', HealthStatus::Fail, 'Provider [local]', 'sidecar unhealthy (HTTP '.$response->status().'): '.($response->json('error') ?? trim($response->body())));
+
+            return;
+        }
+
+        $loaded = array_keys(array_filter(
+            (array) $response->json('models', []),
+            fn ($state) => is_array($state) && ($state['loaded'] ?? false),
+        ));
+
+        $this->add('provider', HealthStatus::Pass, 'Provider [local]', sprintf(
+            'sidecar reachable at %s (device %s; %s)',
+            $url,
+            $response->json('device') ?? '?',
+            $loaded === [] ? 'engines lazy-load on first use' : 'loaded: '.implode(', ', $loaded),
+        ));
     }
 
     /**

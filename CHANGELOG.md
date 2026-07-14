@@ -4,6 +4,33 @@ All notable changes to this project are documented in this file. The format is
 based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this
 project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+- **Run Chatterbox locally for development (`TTS_PROVIDER=local`).** A new
+  in-repo FastAPI sidecar (`chatterbox-sidecar/`) serves both engines —
+  classic Chatterbox and Chatterbox Turbo — on the developer's own machine,
+  lazy-loading each model on first use. The new local provider drives it
+  through the same model catalog, so input caps, sound tags, tuning knobs,
+  and seed pins behave as on Replicate; no credits, no rate limits, and it
+  works offline once the ~3.8 GB-per-engine models are cached. A clip-less
+  Turbo voice speaks the model's built-in voice locally (named presets are a
+  Replicate deployment feature). Setup for macOS, Linux, and Windows — with
+  machine requirements — in `docs/CHATTERBOX-LOCAL.md`.
+- **`ddev chatterbox` command + opt-in autostart.** `ddev chatterbox
+  start|stop|status|logs` manages the sidecar as a background host process;
+  copying `.ddev/config.local.yaml.dist` to the git-ignored
+  `.ddev/config.local.yaml` makes `ddev start`/`ddev stop` bring it up and
+  down automatically, per developer. A containerized alternative ships as
+  `.ddev/docker-compose.chatterbox.yaml.dist` (CPU-only; opt-in so `ddev
+  start` never forces a multi-GB torch image build on developers who don't
+  use it).
+- **`tts:chatterbox:health [--deep]` and Health-page awareness.** The command
+  reports sidecar reachability and per-engine load state; `--deep` proves a
+  full synthesis round-trip returns WAV. `tts:doctor` and the admin Health
+  page now check the sidecar when the local provider is active instead of
+  warning about an unknown provider.
+
 ## [0.51.0] - 2026-07-14
 
 ### Added

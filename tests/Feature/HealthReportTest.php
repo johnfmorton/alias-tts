@@ -7,6 +7,7 @@ use App\Models\ApiKey;
 use App\Models\Voice;
 use App\Services\Health\HealthCheckResult;
 use App\Services\Health\HealthReport;
+use Illuminate\Http\Client\ConnectionException;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
@@ -399,6 +400,54 @@ class HealthReportTest extends TestCase
         Http::fake(['alias.test/up' => Http::response('', 405)]);
 
         $this->assertSame(HealthStatus::Pass, $this->resultForDeep('upload_limit')->status);
+    }
+
+    public function test_local_provider_passes_when_the_sidecar_is_reachable(): void
+    {
+        config(['tts.provider' => 'local', 'tts.providers.local.url' => 'http://127.0.0.1:8766']);
+        Http::fake(['127.0.0.1:8766/health' => Http::response([
+            'status' => 'ok',
+            'device' => 'cpu',
+            'models' => [
+                'chatterbox' => ['loaded' => false],
+                'chatterbox-turbo' => ['loaded' => true],
+            ],
+        ])]);
+
+        $provider = $this->resultFor('provider');
+
+        $this->assertSame(HealthStatus::Pass, $provider->status);
+        $this->assertStringContainsString('loaded: chatterbox-turbo', $provider->detail);
+    }
+
+    public function test_local_provider_reports_lazy_loading_before_first_use(): void
+    {
+        config(['tts.provider' => 'local', 'tts.providers.local.url' => 'http://127.0.0.1:8766']);
+        Http::fake(['127.0.0.1:8766/health' => Http::response([
+            'status' => 'ok',
+            'device' => 'cpu',
+            'models' => [
+                'chatterbox' => ['loaded' => false],
+                'chatterbox-turbo' => ['loaded' => false],
+            ],
+        ])]);
+
+        $provider = $this->resultFor('provider');
+
+        $this->assertSame(HealthStatus::Pass, $provider->status);
+        $this->assertStringContainsString('lazy-load', $provider->detail);
+    }
+
+    public function test_local_provider_fails_when_the_sidecar_is_unreachable(): void
+    {
+        config(['tts.provider' => 'local', 'tts.providers.local.url' => 'http://127.0.0.1:8766']);
+        Http::fake(['127.0.0.1:8766/*' => fn () => throw new ConnectionException('Connection refused')]);
+
+        $provider = $this->resultFor('provider');
+
+        $this->assertSame(HealthStatus::Fail, $provider->status);
+        $this->assertStringContainsString('unreachable', $provider->detail);
+        $this->assertStringContainsString('docs/CHATTERBOX-LOCAL.md', $provider->detail);
     }
 
     private function resultFor(string $key): HealthCheckResult

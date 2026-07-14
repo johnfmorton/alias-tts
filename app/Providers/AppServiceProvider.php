@@ -8,6 +8,7 @@ use App\Services\Enhance\FakeEnhanceProvider;
 use App\Services\Enhance\ReplicateEnhanceProvider;
 use App\Services\Health\HealthReport;
 use App\Services\Tts\FakeTtsProvider;
+use App\Services\Tts\LocalChatterboxProvider;
 use App\Services\Tts\ReplicateChatterboxProvider;
 use App\Services\Tts\TtsProvider;
 use Aws\CommandInterface;
@@ -44,6 +45,11 @@ class AppServiceProvider extends ServiceProvider
                 'replicate' => new ReplicateChatterboxProvider(
                     config('tts.providers.replicate', []),
                     (int) config('tts.request_timeout', 300),
+                    config('tts.models', []),
+                ),
+                'local' => new LocalChatterboxProvider(
+                    config('tts.providers.local', []),
+                    (int) config('tts.providers.local.timeout', 300),
                     config('tts.models', []),
                 ),
                 default => throw new InvalidArgumentException(

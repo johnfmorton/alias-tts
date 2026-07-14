@@ -721,5 +721,16 @@ return [
             // set to ~10000 to stay under a 6/min limit without 429s.
             'min_request_gap_ms' => (int) env('REPLICATE_MIN_REQUEST_GAP_MS', 0),
         ],
+
+        // Development driver (TTS_PROVIDER=local): Chatterbox inference on the
+        // in-repo sidecar (chatterbox-sidecar/) running on the developer's own
+        // machine — no Replicate credit spent. From inside DDEV a host-run
+        // sidecar is http://host.docker.internal:8766. See docs/CHATTERBOX-LOCAL.md.
+        'local' => [
+            'url' => rtrim((string) env('TTS_LOCAL_CHATTERBOX_URL', 'http://127.0.0.1:8766'), '/'),
+            // Whole-call budget. Generation is synchronous AND single-file on
+            // the sidecar, so this must cover queue wait + generation.
+            'timeout' => (int) env('TTS_LOCAL_CHATTERBOX_TIMEOUT', 300),
+        ],
     ],
 ];

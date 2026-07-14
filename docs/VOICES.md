@@ -47,6 +47,10 @@ metered per engine at its own rate (`TTS_COST_PER_1K_CHARS` /
 knobs (see [STUDIO-TUNING.md](STUDIO-TUNING.md)). Switching an existing
 voice's engine re-validates its clip against the new engine's rules.
 
+Both engines normally run on Replicate; developers can serve them from their
+own machine instead with `TTS_PROVIDER=local` (see
+[CHATTERBOX-LOCAL.md](CHATTERBOX-LOCAL.md)).
+
 ### Sound tags (Chatterbox Turbo)
 
 Turbo renders these tags inside the text as actual sounds:

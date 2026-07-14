@@ -42,3 +42,7 @@ Thumbs.db
 # of a connector package strands its untracked __pycache__ under the old name.
 __pycache__/
 *.pyc
+
+# Opt-in activation of the local Chatterbox DDEV add-on (the .example original
+# stays tracked; see docs/CHATTERBOX-LOCAL.md).
+/.ddev/docker-compose.chatterbox.yaml

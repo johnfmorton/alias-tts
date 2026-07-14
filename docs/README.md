@@ -14,6 +14,9 @@ Start with the group that matches what you're doing.
   whole-render generate → QA → re-roll → stitch pipeline.
 - **[ASR-SETUP.md](ASR-SETUP.md)** — the Whisper ASR sidecar: per-chunk quality
   scoring and automatic re-roll/trim of flawed takes.
+- **[CHATTERBOX-LOCAL.md](CHATTERBOX-LOCAL.md)** — dev-only: run the Chatterbox
+  engines on your own machine (`TTS_PROVIDER=local`) instead of Replicate — no
+  credits, works offline; macOS/Linux/Windows setup.
 - **[SSO-SETUP.md](SSO-SETUP.md)** — optional Google / GitHub sign-in for the
   dashboard (invite-only account linking).
 

@@ -1,0 +1,10 @@
+# chatterbox-sidecar dependencies. See docs/CHATTERBOX-LOCAL.md for install steps.
+chatterbox-tts==0.1.7
+# resemble-perth (Chatterbox's audio watermarker) still imports pkg_resources,
+# which setuptools 81 removed. Without this pin the watermarker silently
+# resolves to None and model init fails with
+# "TypeError: 'NoneType' object is not callable".
+setuptools<81
+fastapi>=0.110,<1.0
+uvicorn[standard]>=0.27
+python-multipart>=0.0.9

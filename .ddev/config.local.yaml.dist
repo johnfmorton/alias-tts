@@ -1,0 +1,15 @@
+# Per-developer DDEV overrides — OPT-IN autostart for the local Chatterbox
+# TTS sidecar (docs/CHATTERBOX-LOCAL.md). The live copy is git-ignored by
+# DDEV itself (.ddev/.gitignore: /config.local.y*ml), so activating this
+# never affects other developers:
+#
+#     cp .ddev/config.local.yaml.dist .ddev/config.local.yaml
+#     ddev restart
+#
+# The hook is harmless without the sidecar venv — `ddev chatterbox start`
+# prints a one-line hint and exits cleanly instead of failing the start.
+hooks:
+  post-start:
+    - exec-host: .ddev/commands/host/chatterbox start
+  post-stop:
+    - exec-host: .ddev/commands/host/chatterbox stop
