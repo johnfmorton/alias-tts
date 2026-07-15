@@ -308,8 +308,10 @@ return [
     // trailing artifact: the detector then hard-cuts mid-word (e.g. "...built in"
     // loses the "n"). Before measuring the cut, the speech end is extended forward
     // over a short voiced coda: contiguous windows that are loud, voiced (a clear
-    // fundamental), and AT/BELOW the speech body level (the over_speech_db gate, so
-    // a louder re-swell swoosh is NOT folded). The fold is bounded to this many ms
+    // fundamental), and AT/BELOW the speech PEAK window level + over_speech_db (so
+    // a louder re-swell swoosh is NOT folded; the peak — not the span's mean RMS,
+    // which pauses dilute until an ordinary stressed final word reads "louder than
+    // speech" and gets cut). The fold is bounded to this many ms
     // so a sustained voiced drone (multi-second) is NOT mistaken for a coda and is
     // still cut. Purely acoustic (voicing + loudness + duration) — no phoneme/
     // language assumptions; a nasal is voiced + low-ZCR in any language. 0 disables.

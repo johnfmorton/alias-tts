@@ -41,6 +41,17 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   chunks labeled "skipped — not in final audio" rather than omitting them.
 
 ### Fixed
+- **A stressed final word is no longer clipped at a stitch seam.** The
+  per-chunk tail trim's voiced-coda rescue compared each word-final voiced
+  window against the chunk's mean RMS — a reference every pause dilutes — so
+  an ordinary stressed sentence-final word ("…to love what you *do*") could
+  measure "louder than speech", be mistaken for a re-swell swoosh artifact,
+  and get hard-cut mid-vowel right before concatenation (heard as the word
+  clipped at the seam; ASR QA can't catch it, since Whisper reconstructs the
+  word from the surviving onset). The gate now references the chunk's peak
+  speech window: nothing tapering off a word beats everything the speaker
+  said, while a genuinely appended swoosh still trips it. Drone, blip, and
+  swoosh removal are unchanged.
 - **Studio's 🎲 seed button now rolls a visible random seed.** It previously
   cleared the field back to blank (= inherit), which looked like a no-op
   whenever the project pinned a seed — the placeholder showed the same

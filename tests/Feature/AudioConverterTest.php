@@ -242,6 +242,41 @@ class AudioConverterTest extends TestCase
         $this->assertLessThan(1.5, $seconds, 'The trailing silence after the coda must still be trimmed.');
     }
 
+    public function test_coda_fold_keeps_a_stressed_final_word_on_a_pause_heavy_chunk(): void
+    {
+        // Regression for the clipped "do" ("...to love what you do."): the coda
+        // fold's over-speech gate compared each voiced window to the span's MEAN
+        // RMS, which pauses and quiet passages dilute — on a real 10.6s chunk the
+        // mean sat at -25.9 dB while the loudest speech window was -18.8 dB, so the
+        // stressed, fully-voiced final word ("do", -19.7 dB — QUIETER than the
+        // chunk's own speech peak) measured "6 dB over speech", was ruled a re-swell
+        // swoosh, and hard-cut mid-word at the stitch seam. The reference must be
+        // the speech PEAK window: no part of a word beats everything the speaker
+        // said by over_speech_db; a real appended swoosh does. Layout: a loud
+        // phrase, then pauses and QUIETER phrases (mean ~-16 dB, peak ~-11.6 dB),
+        // then a voiced final word at ~-8 dB — above the diluted mean +6 (the old
+        // cut) but below the peak +6 (a word, not a swoosh) — then trailing silence.
+        // The pauses are kept under min_artifact_ms so the blip-peel stays out of it.
+        $converter = new AudioConverter(config('tts.ffmpeg_path', 'ffmpeg'));
+        $chunk = $this->wrapWav(
+            $this->noiseWav(0.45, 15000)        // loud phrase (high ZCR, ~-11.6 dB peak)
+            .$this->rawTone(0.35, 0, 0.0)       // pause (dilutes the mean)
+            .$this->noiseWav(0.45, 8000)        // quieter phrase (~-17 dB)
+            .$this->rawTone(0.35, 0, 0.0)       // pause
+            .$this->noiseWav(0.45, 8000)        // quieter phrase
+            .$this->rawTone(0.25, 18400, 120.0) // stressed voiced final word (~-8 dB)
+            .$this->rawTone(0.6, 0, 0.0)        // trailing silence
+        );
+
+        [$out] = $converter->concatenate([$chunk], 'wav', 'wav', []);
+        $seconds = $this->wavDataBytes($out) / (44100 * 2);
+
+        // Speech + pauses + the final word survive (~2.36s; the trailing silence is
+        // still trimmed). The mean-referenced gate cut at the word's onset (~2.11s).
+        $this->assertGreaterThan(2.25, $seconds, 'A stressed voiced final word must not be clipped on a pause-heavy chunk.');
+        $this->assertLessThan(2.55, $seconds, 'The trailing silence after the final word must still be trimmed.');
+    }
+
     public function test_voicing_detector_removes_a_loud_unvoiced_noise_tail(): void
     {
         // The blind spot the voicing path closes: a LOUD, broadband NOISE tail —

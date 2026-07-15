@@ -583,9 +583,15 @@ class AudioConverter
      * assumptions, since a nasal is voiced + low-ZCR in any language.
      *
      * From the window after $lastSpeechWin, fold each contiguous window that is loud
-     * (above the floor), VOICED (a clear fundamental), and AT/BELOW the speech body
-     * level + over_speech_db — i.e. energy tapering off the word, not a louder
-     * re-swell swoosh. Stop folding at the first window that is quiet (the word
+     * (above the floor), VOICED (a clear fundamental), and AT/BELOW the speech PEAK
+     * window level + over_speech_db — i.e. energy tapering off the word, not a louder
+     * re-swell swoosh. The reference must be the loudest 50 ms speech window, NOT the
+     * span's mean RMS: the mean averages in every pause, so on a pause-heavy chunk a
+     * merely-ordinary stressed final word ("...love what you DO") measured 6 dB over
+     * the diluted mean while sitting BELOW the chunk's own speech peak — and the gate
+     * cut the word ("do" clipped at the #5/#6 seam). Nothing tapering off a word can
+     * exceed everything the speaker said by over_speech_db; a real appended swoosh can.
+     * Stop folding at the first window that is quiet (the word
      * ended), too loud (a swoosh), or unvoiced (leave a fricative/hiss tail to the
      * other paths). If the voiced run runs LONGER than voiced_coda_max_ms it is a
      * sustained drone, not a coda — don't extend at all, so the drone is still cut.
@@ -604,11 +610,10 @@ class AudioConverter
         $codaMaxWin = (int) round($codaMaxSec / $windowSec);
         $nWindows = count($dbWindows);
 
-        // Speech body reference: RMS up to the ZCR-path speech end.
-        $totalSamples = intdiv(strlen($pcmWav) - $offset, 2);
-        $speechEnd = ($lastSpeechWin + 1) * $win / $rate;
-        $speechDb = $this->spanRmsDbfs($pcmWav, $offset, $rate, $totalSamples, 0.0, $speechEnd);
-        if ($speechDb === null) {
+        // Speech reference: the loudest window up to the ZCR-path speech end (a
+        // pause-diluted mean RMS under-reads speech and gets stressed words cut).
+        $speechPeakDb = max(array_slice($dbWindows, 0, $lastSpeechWin + 1));
+        if (! is_finite($speechPeakDb)) {
             return $lastSpeechWin;
         }
 
@@ -620,8 +625,8 @@ class AudioConverter
             if ($dbWindows[$w] <= $floorDb) {
                 break; // quiet — the word ended; coda complete
             }
-            if ($dbWindows[$w] > $speechDb + $overSpeechDb) {
-                return $lastSpeechWin; // louder than speech — a re-swell swoosh, not a coda; cut as before
+            if ($dbWindows[$w] > $speechPeakDb + $overSpeechDb) {
+                return $lastSpeechWin; // louder than any speech — a re-swell swoosh, not a coda; cut as before
             }
             if (! $this->windowIsVoiced($pcmWav, $offset, $w * $win, $win, $rate)) {
                 break; // loud unvoiced — a fricative/hiss tail; leave it to the other paths
