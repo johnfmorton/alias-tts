@@ -11,6 +11,7 @@ use App\Models\TtsProject;
 use App\Models\Voice;
 use App\Services\SpeechService;
 use App\Services\Tts\VoiceSettingsResolver;
+use App\Support\VoiceAliases;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Storage;
 use Symfony\Component\HttpFoundation\Response;
@@ -44,9 +45,10 @@ class TextToSpeechController extends Controller
     {
         $apiKey = $request->attributes->get('api_key');
 
-        // Scoped to the key owner's voices (+ shared built-ins) — one user's
-        // key can never generate with another user's cloned voice.
-        $voice = Voice::resolveFor($voice_id, $apiKey?->user_id);
+        // Operator aliases (config tts.elevenlabs_voice_aliases) map first, then
+        // resolution is scoped to the key owner's voices (+ shared built-ins) —
+        // one user's key can never generate with another user's cloned voice.
+        $voice = Voice::resolveFor(VoiceAliases::elevenLabs($voice_id), $apiKey?->user_id);
         if (! $voice) {
             return $this->error("A voice with voice_id '{$voice_id}' could not be found.", 404);
         }
@@ -83,9 +85,10 @@ class TextToSpeechController extends Controller
     {
         $apiKey = $request->attributes->get('api_key');
 
-        // Scoped to the key owner's voices (+ shared built-ins) — one user's
-        // key can never generate with another user's cloned voice.
-        $voice = Voice::resolveFor($voice_id, $apiKey?->user_id);
+        // Operator aliases (config tts.elevenlabs_voice_aliases) map first, then
+        // resolution is scoped to the key owner's voices (+ shared built-ins) —
+        // one user's key can never generate with another user's cloned voice.
+        $voice = Voice::resolveFor(VoiceAliases::elevenLabs($voice_id), $apiKey?->user_id);
         if (! $voice) {
             return $this->error("A voice with voice_id '{$voice_id}' could not be found.", 404);
         }

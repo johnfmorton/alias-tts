@@ -19,6 +19,17 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   the substitution-map JSON is grammar-enforced for any pulled model. The
   Health page names `OLLAMA_HOST` (with per-topology values) as the fix when
   the keyless provider isn't configured, instead of asking for an API key.
+- **ElevenLabs voice-ID aliasing (`elevenlabs_voice_aliases`).** The ElevenLabs
+  dialect gains the same opt-in alias map the OpenAI endpoint has had: map real
+  ElevenLabs voice IDs (e.g. `21m00Tcm4TlvDq8ikWAM`) to your own voices in
+  `config/tts.php` and an existing ElevenLabs client works with zero
+  client-side changes — across `POST /v1/text-to-speech/{voice_id}` (plus
+  `/stream` and `/jobs`) and `POST /v1/projects`. Keys match exactly
+  (ElevenLabs IDs are case-sensitive), unlisted IDs pass through unchanged,
+  aliasing never widens voice visibility beyond the key owner's set, and 404s
+  keep echoing the client's original ID. The full resolution/fallback
+  procedure (alias map → owner-scoped slug → UUID → dialect-shaped 404) is now
+  documented for both dialects in docs/VOICES.md ("How a voice ID resolves").
 
 ### Fixed
 - **Studio's 🎲 seed button now rolls a visible random seed.** It previously

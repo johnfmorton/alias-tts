@@ -10,6 +10,7 @@ use App\Services\SpeechService;
 use App\Services\Tts\ModelCatalog;
 use App\Services\Tts\VoiceSettingsResolver;
 use App\Support\OpenAiError;
+use App\Support\VoiceAliases;
 use Symfony\Component\HttpFoundation\Response;
 use Throwable;
 
@@ -27,7 +28,9 @@ use Throwable;
  *   input           -> text
  *   voice           -> a Alias voice SLUG (passthrough; OpenAI's fixed preset
  *                      names like "alloy" can be mapped to a chosen voice via
- *                      config('tts.openai_voice_aliases'))
+ *                      config('tts.openai_voice_aliases') — the ElevenLabs
+ *                      surface has a sibling map, tts.elevenlabs_voice_aliases;
+ *                      see {@see VoiceAliases})
  *   response_format -> an ElevenLabs output_format token (mp3/wav/pcm)
  *   model           -> an engine override when it names a catalog model
  *                      ('chatterbox' / 'chatterbox-turbo') or an operator alias
@@ -64,7 +67,7 @@ class OpenAiSpeechController extends Controller
 
         // Scoped to the key owner's voices (+ shared built-ins), exactly like the
         // ElevenLabs path — one user's key can never generate with another's voice.
-        $voice = Voice::resolveFor($this->voiceSlug($request->voiceName()), $apiKey?->user_id);
+        $voice = Voice::resolveFor(VoiceAliases::openAi($request->voiceName()), $apiKey?->user_id);
         if (! $voice) {
             return OpenAiError::json(
                 "The voice '{$request->voiceName()}' could not be found.",
@@ -91,18 +94,6 @@ class OpenAiSpeechController extends Controller
         }
 
         return $this->audioResponse($speech);
-    }
-
-    /**
-     * Map an OpenAI `voice` value to a Alias voice slug. Passthrough by default
-     * (treat it as a slug); an operator can map OpenAI's fixed preset names to
-     * their own voices via config('tts.openai_voice_aliases').
-     */
-    private function voiceSlug(string $voice): string
-    {
-        $aliases = (array) config('tts.openai_voice_aliases', []);
-
-        return (string) ($aliases[strtolower($voice)] ?? $voice);
     }
 
     /**

@@ -88,12 +88,26 @@ return [
     'default_voice_slug' => env('TTS_DEFAULT_VOICE_SLUG', 'default'),
     'default_voice_female_slug' => env('TTS_DEFAULT_VOICE_FEMALE_SLUG', 'default-female'),
 
+    // ElevenLabs-compatible endpoints (POST /v1/text-to-speech/{voice_id},
+    // /stream and /jobs, plus POST /v1/projects' voice_id field). The incoming
+    // voice_id is a Alias slug (or voice UUID) by default; map real ElevenLabs
+    // voice IDs to your own voices here so an existing ElevenLabs client works
+    // with zero client-side changes. Keys are matched EXACTLY — ElevenLabs IDs
+    // are case-sensitive — and unlisted IDs pass through unchanged. An alias
+    // key shadows a real slug of the same value. Full resolution procedure:
+    // docs/VOICES.md ("How a voice ID resolves").
+    'elevenlabs_voice_aliases' => [
+        // '21m00Tcm4TlvDq8ikWAM' => 'default-female', // Rachel -> bundled female
+        // 'pNInz6obpgDQGcFmaJgB' => 'default',        // Adam   -> bundled male
+    ],
+
     // OpenAI-compatible endpoint (POST /v1/audio/speech). OpenAI clients send a
     // `voice` from a fixed preset list (alloy, echo, nova, shimmer, …), whereas
     // Alias has arbitrary voice slugs and cloned voices. The `voice` field is
     // treated as a Alias slug by default; map OpenAI's preset names to your own
     // voices here so a stock OpenAI client resolves to a real voice. Unlisted
-    // names pass through unchanged. See docs/OPENAI-COMPAT.md.
+    // names pass through unchanged. See docs/OPENAI-COMPAT.md; full resolution
+    // procedure: docs/VOICES.md ("How a voice ID resolves").
     'openai_voice_aliases' => [
         // 'alloy' => 'default',
         // 'nova'  => 'default-female',

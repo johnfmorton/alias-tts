@@ -90,6 +90,23 @@ class ProjectApiTest extends TestCase
             ->assertJsonPath('detail.message', fn ($m) => str_contains((string) $m, 'does-not-exist'));
     }
 
+    public function test_a_voice_alias_maps_an_elevenlabs_voice_id_to_a_slug(): void
+    {
+        config(['tts.elevenlabs_voice_aliases' => ['21m00Tcm4TlvDq8ikWAM' => 'my-voice']]);
+
+        $this->admin();
+        $key = $this->makeKey();
+        $this->makeVoice();
+
+        $this->withHeaders(['xi-api-key' => $key->key])
+            ->postJson('/v1/projects', [
+                'voice_id' => '21m00Tcm4TlvDq8ikWAM',
+                'text' => 'Hello there.',
+            ])
+            ->assertStatus(201)
+            ->assertJsonPath('voice_id', 'my-voice');
+    }
+
     public function test_it_validates_required_text_and_voice(): void
     {
         $key = $this->makeKey();

@@ -8,6 +8,7 @@ use App\Models\TtsProject;
 use App\Models\Voice;
 use App\Services\ProjectService;
 use App\Services\Tts\VoiceSettingsResolver;
+use App\Support\VoiceAliases;
 use Illuminate\Support\Carbon;
 use Symfony\Component\HttpFoundation\Response;
 
@@ -39,9 +40,12 @@ class ProjectApiController extends Controller
             return $this->error('An API key is required to create a project.', 401);
         }
 
-        $voice = Voice::resolveFor((string) $request->input('voice_id'), $apiKey->user_id);
+        // Operator aliases (config tts.elevenlabs_voice_aliases) map first; the
+        // 404 keeps echoing the raw client value, never the alias target.
+        $voiceId = (string) $request->input('voice_id');
+        $voice = Voice::resolveFor(VoiceAliases::elevenLabs($voiceId), $apiKey->user_id);
         if (! $voice) {
-            return $this->error("A voice with voice_id '{$request->input('voice_id')}' could not be found.", 404);
+            return $this->error("A voice with voice_id '{$voiceId}' could not be found.", 404);
         }
 
         $project = $this->projects->createFromText(

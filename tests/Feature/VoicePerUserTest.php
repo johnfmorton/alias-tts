@@ -352,6 +352,21 @@ class VoicePerUserTest extends TestCase
         ])->assertNotFound();
     }
 
+    public function test_a_voice_alias_cannot_bypass_owner_scoping(): void
+    {
+        // The alias map only rewrites the incoming string — resolution stays
+        // scoped to the key owner, so an alias pointing at another user's
+        // voice must 404 exactly like the raw slug would.
+        $mine = ApiKey::generate('mine', userId: $this->user()->id);
+        $this->voiceFor($this->user(), 'theirs');
+
+        config(['tts.elevenlabs_voice_aliases' => ['21m00Tcm4TlvDq8ikWAM' => 'theirs']]);
+
+        $this->postJson('/v1/text-to-speech/21m00Tcm4TlvDq8ikWAM', ['text' => 'Hello there'], [
+            'xi-api-key' => $mine->key,
+        ])->assertNotFound();
+    }
+
     public function test_an_api_key_can_generate_with_a_shared_and_its_owners_voice(): void
     {
         $me = $this->user();

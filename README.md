@@ -177,7 +177,10 @@ count against the same per-key rate limit.
 
 Existing ElevenLabs clients work by swapping the base URL and key. `{voice_id}`
 matches a Voice's **slug** first, then its UUID — set a slug equal to your
-existing ElevenLabs `voice_id` for a true drop-in swap.
+existing ElevenLabs `voice_id` for a true drop-in swap, or map real ElevenLabs
+IDs to your voices with `elevenlabs_voice_aliases` in `config/tts.php` (the
+full resolution procedure is in
+[docs/VOICES.md](docs/VOICES.md#how-a-voice-id-resolves)).
 
 **Auth:** `xi-api-key: <key>` header (also accepts `X-API-Key` / Bearer).
 **Errors:** JSON `{"detail":{"message":"..."}}` (ElevenLabs shape).
@@ -233,7 +236,9 @@ changing only the base URL and key. Authenticate with a **Alias** key via
 The one semantic difference: `voice` is a **Alias voice slug**, not an OpenAI
 preset (OpenAI has no custom voices to map to). For stock clients that only know
 `alloy`/`nova`/etc., a config map (`openai_voice_aliases`) can alias the preset
-names to your voices. `model` is accepted and ignored; `response_format`
+names to your voices (see
+[docs/VOICES.md](docs/VOICES.md#how-a-voice-id-resolves) for the full
+resolution procedure). `model` is accepted and ignored; `response_format`
 supports `mp3` and `wav` (`pcm` returns a WAV container); streaming,
 `opus`/`aac`/`flac`, `speed`, and `instructions` are not supported. The full
 support contract — exactly what's honored, accepted-but-ignored, and rejected —

@@ -8,7 +8,8 @@ is the entire setup, no training job.
 
 > Tip: set a voice's `voice_id` to your existing ElevenLabs voice ID for a
 > drop-in swap — clients keep their configured ID and simply point at this
-> service instead.
+> service instead. Or map IDs to voices in config with
+> `elevenlabs_voice_aliases` — see [How a voice ID resolves](#how-a-voice-id-resolves).
 
 ## Ownership
 
@@ -25,6 +26,57 @@ every user's voices, owner-labeled, on the Voices page.
   dropdown; the first voice is what the New Project form preselects.
 - `voice_id`s are unique within a user's reachable set (their own + the
   shared built-ins), so two users can each own a `john` voice.
+
+## How a voice ID resolves
+
+Every `/v1` endpoint that takes a voice identifier — both dialects — runs the
+same four-step procedure. Only step 1 (the alias map) differs per dialect.
+
+| | ElevenLabs dialect | OpenAI dialect |
+|---|---|---|
+| endpoints | `POST /v1/text-to-speech/{voice_id}` (+ `/stream`, `/jobs`), `POST /v1/projects` | `POST /v1/audio/speech` |
+| incoming field | `{voice_id}` path segment / `voice_id` body field | `voice` body field |
+| alias map (step 1) | `tts.elevenlabs_voice_aliases` | `tts.openai_voice_aliases` |
+| alias key matching | **exact** (ElevenLabs IDs are case-sensitive) | **case-insensitive** (fixed lowercase preset names) |
+| 404 shape | `{"detail":{"message":…,"status":404}}` | `{"error":{…,"code":"voice_not_found","param":"voice"}}` |
+
+### The procedure
+
+1. **Alias map** (optional, empty by default, `config/tts.php`). If the
+   incoming value is a key in the dialect's map, the mapped value replaces it
+   for the remaining steps; otherwise it passes through unchanged. One pass
+   only — an alias's output is never looked up in the map again.
+2. **Slug match, owner-scoped.** The value is matched against `slug` among
+   the voices *visible to the API key's owner*: their own voices plus the
+   shared built-ins (see [Ownership](#ownership)).
+3. **UUID match, owner-scoped.** No slug hit → the value is tried as a
+   voice's internal UUID, same visibility scope.
+4. **404.** Nothing matched → a dialect-shaped 404 (table above). The message
+   always echoes the *original* client-supplied identifier, never the alias
+   target — operator config is not leaked to clients.
+
+Example ElevenLabs map (`config/tts.php`), letting a client that still sends
+real ElevenLabs voice IDs work with zero client-side changes:
+
+```php
+'elevenlabs_voice_aliases' => [
+    '21m00Tcm4TlvDq8ikWAM' => 'default-female', // Rachel -> bundled female
+    'pNInz6obpgDQGcFmaJgB' => 'default',        // Adam   -> bundled male
+],
+```
+
+### Consequences worth knowing
+
+- **An alias key shadows a real `voice_id`.** If the map contains `x` and a
+  visible voice's slug is also `x`, the alias wins.
+- **Aliasing never widens visibility.** An alias pointing at another user's
+  voice slug still 404s — steps 2–3 stay scoped to the key's owner.
+- **Only the `/v1` API dialects consult the maps.** Studio/admin pages and
+  the internal pipeline resolve voices directly, with no aliasing.
+- **Two ways to drop-in-replace ElevenLabs**, and they compose: set a voice's
+  `voice_id` to your real ElevenLabs ID (per-voice, data-level), or map IDs
+  in `elevenlabs_voice_aliases` (config-level; survives voice renames, and
+  several client IDs can point at one voice).
 
 ## Engines
 

@@ -96,6 +96,11 @@ preset. Two ways to make a client work:
    to the API key's owner, so one key can never generate with another user's
    voice.
 
+The full resolution/fallback procedure (alias map → owner-scoped slug → UUID →
+404) is documented in [VOICES.md](VOICES.md#how-a-voice-id-resolves); the
+ElevenLabs dialect has a symmetric map, `elevenlabs_voice_aliases`, for
+mapping real ElevenLabs voice IDs.
+
 **Not supported:** the OpenAI preset voices as *actual distinct voices*
 (`alloy` does not sound like OpenAI's alloy), and creating/cloning a voice
 through this endpoint. Manage voices in the Alias dashboard.

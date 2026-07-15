@@ -69,6 +69,61 @@ class TextToSpeechTest extends TestCase
             ->assertJsonPath('detail.message', fn ($m) => str_contains((string) $m, 'does-not-exist'));
     }
 
+    public function test_a_voice_alias_maps_an_elevenlabs_voice_id_to_a_slug(): void
+    {
+        config(['tts.elevenlabs_voice_aliases' => ['21m00Tcm4TlvDq8ikWAM' => 'my-voice']]);
+
+        $key = $this->makeKey();
+        $this->makeVoice();
+
+        $response = $this->withHeaders(['xi-api-key' => $key->key])
+            ->postJson('/v1/text-to-speech/21m00Tcm4TlvDq8ikWAM', ['text' => 'Hello.']);
+
+        $response->assertStatus(200);
+        $this->assertSame('my-voice', Speech::first()->voice->slug);
+    }
+
+    public function test_a_voice_alias_maps_on_the_queued_jobs_endpoint(): void
+    {
+        config(['tts.elevenlabs_voice_aliases' => ['21m00Tcm4TlvDq8ikWAM' => 'my-voice']]);
+
+        $key = $this->makeKey();
+        $this->makeVoice();
+
+        $response = $this->withHeaders(['xi-api-key' => $key->key])
+            ->postJson('/v1/text-to-speech/21m00Tcm4TlvDq8ikWAM/jobs', ['text' => 'Hello.']);
+
+        $response->assertSuccessful();
+        $this->assertSame('my-voice', Speech::first()->voice->slug);
+    }
+
+    public function test_alias_lookup_is_case_sensitive_and_a_miss_passes_through(): void
+    {
+        // ElevenLabs voice IDs are case-sensitive, so the map matches exactly;
+        // anything unlisted falls through to normal slug/UUID resolution.
+        config(['tts.elevenlabs_voice_aliases' => ['21m00Tcm4TlvDq8ikWAM' => 'my-voice']]);
+
+        $key = $this->makeKey();
+        $this->makeVoice();
+
+        $this->withHeaders(['xi-api-key' => $key->key])
+            ->postJson('/v1/text-to-speech/21m00tcm4tlvdq8ikwam', ['text' => 'Hello.'])
+            ->assertStatus(404);
+    }
+
+    public function test_an_alias_to_a_missing_voice_404s_with_the_original_voice_id(): void
+    {
+        config(['tts.elevenlabs_voice_aliases' => ['21m00Tcm4TlvDq8ikWAM' => 'not-a-real-slug']]);
+
+        $key = $this->makeKey();
+
+        $this->withHeaders(['xi-api-key' => $key->key])
+            ->postJson('/v1/text-to-speech/21m00Tcm4TlvDq8ikWAM', ['text' => 'Hello.'])
+            ->assertStatus(404)
+            ->assertJsonPath('detail.message', fn ($m) => str_contains((string) $m, '21m00Tcm4TlvDq8ikWAM')
+                && ! str_contains((string) $m, 'not-a-real-slug'));
+    }
+
     public function test_it_generates_mp3_audio(): void
     {
         $key = $this->makeKey();
