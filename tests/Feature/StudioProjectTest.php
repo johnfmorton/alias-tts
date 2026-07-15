@@ -12,6 +12,7 @@ use App\Models\TuningPreset;
 use App\Models\User;
 use App\Models\UserSetting;
 use App\Models\Voice;
+use App\Services\Audio\AudioConverter;
 use App\Services\ProjectService;
 use App\Services\Tts\FakeTtsProvider;
 use App\Services\Tts\TtsProvider;
@@ -73,6 +74,54 @@ class StudioProjectTest extends TestCase
         $this->app->instance(TtsProvider::class, $spy);
 
         return $spy;
+    }
+
+    /** Swap in an AudioConverter that records each concatenate() call's seam gaps. */
+    private function recordingConverter(): AudioConverter
+    {
+        $recorder = new class extends AudioConverter
+        {
+            /** @var list<array<int, int>> one entry per concatenate() call */
+            public array $seamGaps = [];
+
+            public function concatenate(array $inputChunks, string $outputFormat, string $inputContainer = 'wav', array $seamGapsMs = [], array $preserveTails = []): array
+            {
+                $this->seamGaps[] = $seamGapsMs;
+
+                return ['stitched', 'audio/mpeg', 'mp3'];
+            }
+        };
+        $this->app->instance(AudioConverter::class, $recorder);
+
+        return $recorder;
+    }
+
+    /**
+     * A 3-chunk project shaped like a paragraph split across A+B followed by C:
+     * A ends on a sentence break, B carries the paragraph break, all generated.
+     *
+     * @return array{0: TtsProject, 1: TtsChunk, 2: TtsChunk, 3: TtsChunk}
+     */
+    private function paragraphSplitProject(User $admin): array
+    {
+        $project = $this->project();
+        [$first, $second] = $project->chunks()->orderBy('position')->get();
+        $first->update(['break_after' => 'sentence']);
+        $second->update(['break_after' => 'paragraph']);
+        $third = TtsChunk::create([
+            'tts_project_id' => $project->id,
+            'position' => 2,
+            'text' => 'A closing paragraph long enough to be its own chunk.',
+            'break_after' => 'sentence',
+            'status' => ChunkStatus::Pending,
+            'characters' => 52,
+        ]);
+
+        foreach ([$first, $second, $third] as $chunk) {
+            $this->actingAs($admin)->post(route('admin.studio.projects.chunks.generate', [$project, $chunk]));
+        }
+
+        return [$project, $first, $second, $third];
     }
 
     /** A 2-chunk project bound to the given (or a fresh cloning) voice. */
@@ -743,6 +792,46 @@ class StudioProjectTest extends TestCase
 
         $this->actingAs($admin)->postJson(route('admin.studio.projects.rebuild', $project))->assertOk();
         $this->assertSame(ProjectStatus::Ready, $project->refresh()->status);
+    }
+
+    public function test_a_skipped_chunks_break_still_sizes_the_seam_gap(): void
+    {
+        // A (sentence) · B (paragraph, skipped) · C — the pause where B used to
+        // be must keep B's paragraph gap, not collapse to A's sentence gap: the
+        // text boundary between A and C is still a paragraph boundary.
+        config(['tts.chunk_gap_ms' => 120, 'tts.paragraph_gap_ms' => 400]);
+        $admin = $this->admin();
+        [$project, , $second] = $this->paragraphSplitProject($admin);
+
+        $recorder = $this->recordingConverter();
+
+        $this->actingAs($admin)->postJson(route('admin.studio.projects.rebuild', $project))->assertOk();
+        $this->assertSame([120, 400, 120], $recorder->seamGaps[0]);
+
+        $this->actingAs($admin)
+            ->patchJson(route('admin.studio.projects.chunks.skip', [$project, $second]), ['skipped' => true])
+            ->assertOk();
+        $this->actingAs($admin)->postJson(route('admin.studio.projects.rebuild', $project))->assertOk();
+        $this->assertSame([400, 120], $recorder->seamGaps[1]);
+    }
+
+    public function test_preview_paces_a_seam_across_a_skipped_chunk_like_the_final(): void
+    {
+        // Previewing A+C while B (paragraph break) is skipped must use the same
+        // folded gap the rebuilt final will, or the audition misrepresents it.
+        config(['tts.chunk_gap_ms' => 120, 'tts.paragraph_gap_ms' => 400]);
+        $admin = $this->admin();
+        [$project, $first, $second, $third] = $this->paragraphSplitProject($admin);
+        $this->actingAs($admin)
+            ->patchJson(route('admin.studio.projects.chunks.skip', [$project, $second]), ['skipped' => true])
+            ->assertOk();
+
+        $recorder = $this->recordingConverter();
+
+        $this->actingAs($admin)
+            ->postJson(route('admin.studio.projects.preview', $project), ['chunks' => [$first->id, $third->id]])
+            ->assertOk();
+        $this->assertSame([400, 120], $recorder->seamGaps[0]);
     }
 
     public function test_rebuild_refuses_when_every_chunk_is_skipped(): void

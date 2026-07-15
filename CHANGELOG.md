@@ -4,6 +4,17 @@ All notable changes to this project are documented in this file. The format is
 based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this
 project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Fixed
+- **Skipping a chunk no longer shortens the pause it leaves behind.** The
+  stitcher sizes each seam from the preceding chunk's break, so skipping a
+  paragraph-ending chunk used to collapse that paragraph pause (400 ms) to the
+  previous chunk's sentence gap (120 ms) — audibly rushing the join. A skipped
+  chunk's break now folds into the preceding seam (the larger break wins) in
+  both the rebuilt final and the stitch preview, so the pause where the chunk
+  used to be still matches the text boundary that remains.
+
 ## [0.53.0] - 2026-07-15
 
 ### Added

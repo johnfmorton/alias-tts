@@ -833,8 +833,9 @@ class ProjectService
     /**
      * Concatenate the chunks' stored raw audio (in order) into the project's
      * final file — local ffmpeg only, no provider calls. Skipped chunks are left
-     * out entirely (audio or not). Requires every included chunk to have audio;
-     * reports how many are missing otherwise.
+     * out entirely (audio or not), though their break still sizes the seam where
+     * they used to be. Requires every included chunk to have audio; reports how
+     * many are missing otherwise.
      */
     public function rebuild(TtsProject $project): TtsProject
     {
@@ -844,9 +845,7 @@ class ProjectService
             throw new RuntimeException('This project has no chunks.');
         }
 
-        // Collection-side on purpose: a SQL where('skipped', …) would error in
-        // the rollback-resilience tests that run with the column dropped.
-        $included = $chunks->reject(fn (TtsChunk $chunk) => $chunk->skipped)->values();
+        [$included, $seamGapsMs] = $this->partitionForStitch($chunks);
         if ($included->isEmpty()) {
             throw new RuntimeException('Every chunk is skipped — include at least one chunk before rebuilding.');
         }
@@ -856,7 +855,7 @@ class ProjectService
             throw new RuntimeException("{$missing} chunk(s) still need to be generated before rebuilding.");
         }
 
-        [$bytes, $mime, $ext] = $this->concatenateChunks($included, $project->output_format);
+        [$bytes, $mime, $ext] = $this->concatenateChunks($included, $project->output_format, $seamGapsMs);
 
         $path = config('tts.storage_path').'/projects/'.$project->id.'/final.'.$ext;
         Storage::disk($this->disk())->put($path, $bytes);
@@ -884,42 +883,84 @@ class ProjectService
      */
     public function previewConcat(TtsProject $project, array $chunkIds): array
     {
+        // The whole ordered chunk list, not just the selection: a skipped chunk
+        // between two selected chunks contributes no audio but its break still
+        // sizes the seam (see partitionForStitch), so the preview paces that
+        // seam exactly the way rebuild() will.
+        $selected = array_fill_keys(array_map('strval', $chunkIds), true);
         $chunks = $project->chunks()
-            ->whereIn('id', $chunkIds)
-            ->whereNotNull('audio_path')
             ->orderBy('position')
             ->get()
-            ->reject(fn (TtsChunk $chunk) => $chunk->skipped)
+            ->filter(fn (TtsChunk $chunk) => $chunk->skipped
+                || (isset($selected[(string) $chunk->id]) && $chunk->audio_path !== null))
             ->values();
 
-        if ($chunks->isEmpty()) {
+        [$included, $seamGapsMs] = $this->partitionForStitch($chunks);
+
+        if ($included->isEmpty()) {
             throw new RuntimeException('Select at least one generated chunk to preview.');
         }
 
-        [$bytes, $mime] = $this->concatenateChunks($chunks, $project->output_format);
+        [$bytes, $mime] = $this->concatenateChunks($included, $project->output_format, $seamGapsMs);
 
         return [$bytes, $mime];
     }
 
     /**
-     * Concatenate chunks' stored raw audio (in their given order) with the right
-     * seam silence per chunk. Shared by rebuild() and previewConcat().
+     * Split an ordered chunk list into the chunks that reach the stitch and the
+     * silence to insert after each one. A skipped chunk contributes no audio,
+     * but its break still shapes the pacing: its gap folds into the preceding
+     * included chunk's seam (the larger break wins), so skipping a
+     * paragraph-ending chunk keeps the paragraph pause instead of collapsing it
+     * to the previous chunk's sentence gap. Shared by rebuild() and
+     * previewConcat().
      *
-     * @param  Collection<int, TtsChunk>  $chunks
-     * @return array{0: string, 1: string, 2: string} [bytes, mimeType, extension]
+     * @param  Collection<int, TtsChunk>  $chunks  in stitch order, skipped chunks included
+     * @return array{0: Collection<int, TtsChunk>, 1: array<int, int>}
      */
-    private function concatenateChunks($chunks, string $outputFormat): array
+    private function partitionForStitch($chunks): array
     {
         $sentenceGap = (int) config('tts.chunk_gap_ms', 120);
         $paragraphGap = (int) config('tts.paragraph_gap_ms', 400);
+        $gapAfter = fn (TtsChunk $chunk): int => $chunk->break_after === 'paragraph' ? $paragraphGap : $sentenceGap;
+
+        $included = [];
+        $seamGapsMs = [];
+        foreach ($chunks as $chunk) {
+            // Skip test is collection-side on purpose: a SQL where('skipped', …)
+            // would error in the rollback-resilience tests that run with the
+            // column dropped.
+            if ($chunk->skipped) {
+                if ($seamGapsMs !== []) {
+                    $seamGapsMs[count($seamGapsMs) - 1] = max(end($seamGapsMs), $gapAfter($chunk));
+                }
+
+                continue;
+            }
+            $included[] = $chunk;
+            $seamGapsMs[] = $gapAfter($chunk);
+        }
+
+        return [new Collection($included), $seamGapsMs];
+    }
+
+    /**
+     * Concatenate chunks' stored raw audio (in their given order), inserting
+     * $seamGapsMs[i] ms of silence after chunk i. Callers derive both arguments
+     * from {@see partitionForStitch()}.
+     *
+     * @param  Collection<int, TtsChunk>  $chunks
+     * @param  array<int, int>  $seamGapsMs
+     * @return array{0: string, 1: string, 2: string} [bytes, mimeType, extension]
+     */
+    private function concatenateChunks($chunks, string $outputFormat, array $seamGapsMs): array
+    {
         $disk = Storage::disk($this->disk());
 
         $rawParts = [];
-        $seamGapsMs = [];
         $preserveTails = [];
         foreach ($chunks as $chunk) {
             $rawParts[] = $disk->get($chunk->audio_path);
-            $seamGapsMs[] = $chunk->break_after === 'paragraph' ? $paragraphGap : $sentenceGap;
             // A chunk whose effective voice renders sound tags AND whose text
             // ends in one keeps its tail — the artifact detectors would crop
             // the rendered laugh/sigh as junk.
