@@ -299,6 +299,35 @@ class ProjectSealTest extends TestCase
         $this->assertNotEmpty($manifest['chunks'][0]['text']);
     }
 
+    public function test_receipt_labels_skipped_chunks(): void
+    {
+        $admin = $this->admin();
+        $svc = app(ProjectService::class);
+        $project = $this->readyProject();
+
+        // Skip the first chunk AFTER it was generated, rebuild so the final
+        // reflects the skip, then seal — the receipt shows the whole project
+        // with the skipped chunk labeled, not silently omitted.
+        $chunk = $project->chunks()->orderBy('position')->first();
+        $svc->setChunkSkipped($chunk, true);
+        $svc->rebuild($project->refresh());
+        $this->actingAs($admin)->postJson(route('admin.studio.projects.seal', $project))->assertOk();
+
+        $res = $this->actingAs($admin)->get(route('admin.studio.projects.receipt', $project));
+        $zip = $this->openZip($res->getContent());
+        $manifest = json_decode($zip->getFromName('manifest.json'), true);
+        $receipt = $zip->getFromName('receipt.html');
+        $zip->close();
+
+        $this->assertCount(2, $manifest['chunks']); // the skipped chunk is still listed
+        $this->assertTrue($manifest['chunks'][0]['skipped']);
+        $this->assertFalse($manifest['chunks'][1]['skipped']);
+        $this->assertNotEmpty($manifest['chunks'][0]['text']); // its script text survives
+
+        // The label appears exactly once — under the skipped chunk only.
+        $this->assertSame(1, substr_count($receipt, 'skipped — not in final audio'));
+    }
+
     public function test_receipt_prints_the_selected_takes_text_not_the_current_chunk_text(): void
     {
         // A take can be re-selected after the chunk's text was edited, so the

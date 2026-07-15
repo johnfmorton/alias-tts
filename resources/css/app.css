@@ -104,6 +104,20 @@
 }
 
 /*
+ * Skipped chunk ("present but silent"): everything below the header row dims —
+ * exactly the content that won't be heard in the final — while the header
+ * (badges + controls) stays crisp and everything remains interactive, so the
+ * chunk can still be auditioned or regenerated before re-including it. The
+ * header flex div is the card's first child; JS toggles data-skipped in place.
+ */
+.studio-chunk[data-skipped='1'] > :not(:first-child) {
+    opacity: 0.45;
+}
+.studio-chunk[data-skipped='1'] {
+    border-color: rgb(63 63 70 / 0.5);
+}
+
+/*
  * Custom audio player (design 4A) — one anatomy at three weights so the final
  * audio reads as the hero and chunk/take players stay quieter. The native <audio>
  * lives inside as `.aplayer__native` (hidden) and does the actual playback; the JS

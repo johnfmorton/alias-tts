@@ -158,6 +158,18 @@ class StudioOwnershipTest extends TestCase
         $this->assertSame('Owned project', $project->fresh()->title);
     }
 
+    public function test_chunk_skip_is_forbidden_for_a_non_owner(): void
+    {
+        $project = $this->projectOwnedBy($this->user());
+        $chunk = $project->chunks()->orderBy('position')->first();
+
+        $this->actingAs($this->user())
+            ->patchJson(route('admin.studio.projects.chunks.skip', [$project, $chunk]), ['skipped' => true])
+            ->assertForbidden();
+
+        $this->assertFalse((bool) $chunk->fresh()->skipped);
+    }
+
     public function test_the_owner_and_a_superadmin_can_open_a_project(): void
     {
         $owner = $this->user();

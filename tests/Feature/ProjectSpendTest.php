@@ -162,9 +162,12 @@ class ProjectSpendTest extends TestCase
         $bytes = $service->previewChunkTuning($chunk, ['exaggeration' => 0.7]);
         $service->useChunkPreview($chunk, $bytes, ['exaggeration' => 0.7]); // a 'use' take — not billable
 
-        // Re-run only the counters migration: its backfill must sum the takes
+        // Re-run the spent-characters migration: its backfill must sum the takes
         // that exist, skipping the 'use' copy (generate + preview = 2 renders).
-        Artisan::call('migrate:rollback', ['--step' => 1]);
+        // Five steps because the take-duration column, the turbo preset knobs,
+        // the per-model spend counters, and the per-chunk skip flag sit on top
+        // of it — bump this when a migration lands above them.
+        Artisan::call('migrate:rollback', ['--step' => 5]);
         Artisan::call('migrate', ['--force' => true]);
 
         $this->assertSame(2 * mb_strlen($chunk->text), $chunk->fresh()->spent_characters);

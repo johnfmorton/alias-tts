@@ -398,6 +398,25 @@ class ProjectService
     }
 
     /**
+     * Mark a chunk skipped (left out of the stitched final) or included again —
+     * the reversible, non-destructive sibling of {@see deleteChunk}: text, audio
+     * and takes all stay. A change marks the project's final out of date (the
+     * built file no longer reflects intent); a no-op toggle deliberately
+     * doesn't, so re-sending the same state can't stale a Ready project.
+     */
+    public function setChunkSkipped(TtsChunk $chunk, bool $skipped): TtsChunk
+    {
+        if ((bool) $chunk->skipped === $skipped) {
+            return $chunk;
+        }
+
+        $chunk->update(['skipped' => $skipped]);
+        $this->markFinalOutdated($chunk->project);
+
+        return $chunk;
+    }
+
+    /**
      * Synthesize one chunk and store its raw audio. Used for both first
      * generation and regeneration after an edit. Marks the project's final file
      * out of date. Throws on provider failure (after recording it on the chunk).
@@ -813,8 +832,9 @@ class ProjectService
 
     /**
      * Concatenate the chunks' stored raw audio (in order) into the project's
-     * final file — local ffmpeg only, no provider calls. Requires every chunk to
-     * have audio; reports how many are missing otherwise.
+     * final file — local ffmpeg only, no provider calls. Skipped chunks are left
+     * out entirely (audio or not). Requires every included chunk to have audio;
+     * reports how many are missing otherwise.
      */
     public function rebuild(TtsProject $project): TtsProject
     {
@@ -824,12 +844,19 @@ class ProjectService
             throw new RuntimeException('This project has no chunks.');
         }
 
-        $missing = $chunks->whereNull('audio_path')->count();
+        // Collection-side on purpose: a SQL where('skipped', …) would error in
+        // the rollback-resilience tests that run with the column dropped.
+        $included = $chunks->reject(fn (TtsChunk $chunk) => $chunk->skipped)->values();
+        if ($included->isEmpty()) {
+            throw new RuntimeException('Every chunk is skipped — include at least one chunk before rebuilding.');
+        }
+
+        $missing = $included->whereNull('audio_path')->count();
         if ($missing > 0) {
             throw new RuntimeException("{$missing} chunk(s) still need to be generated before rebuilding.");
         }
 
-        [$bytes, $mime, $ext] = $this->concatenateChunks($chunks, $project->output_format);
+        [$bytes, $mime, $ext] = $this->concatenateChunks($included, $project->output_format);
 
         $path = config('tts.storage_path').'/projects/'.$project->id.'/final.'.$ext;
         Storage::disk($this->disk())->put($path, $bytes);
@@ -861,7 +888,9 @@ class ProjectService
             ->whereIn('id', $chunkIds)
             ->whereNotNull('audio_path')
             ->orderBy('position')
-            ->get();
+            ->get()
+            ->reject(fn (TtsChunk $chunk) => $chunk->skipped)
+            ->values();
 
         if ($chunks->isEmpty()) {
             throw new RuntimeException('Select at least one generated chunk to preview.');
@@ -1191,6 +1220,7 @@ class ProjectService
                         'settings' => $chunk->settings,
                         'characters' => $chunk->characters,
                         'status' => $plan['downgraded'] ? ChunkStatus::Pending : $chunk->status,
+                        'skipped' => (bool) $chunk->skipped,
                         'audio_path' => $plan['audio_path'],
                         'error_message' => $plan['downgraded'] ? null : $chunk->error_message,
                         'asr_score' => $plan['downgraded'] ? null : $chunk->asr_score,

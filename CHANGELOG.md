@@ -30,6 +30,15 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   keep echoing the client's original ID. The full resolution/fallback
   procedure (alias map → owner-scoped slug → UUID → dialect-shaped 404) is now
   documented for both dialects in docs/VOICES.md ("How a voice ID resolves").
+- **Skip a chunk in the final assembly (Studio).** Each chunk card gains a
+  🔊/🔇 toggle next to the trash can: a skipped chunk stays in the project —
+  text, tuning, and takes intact, still playable and regenerable — but is left
+  out of the stitched final and stitch previews, and Generate all and the
+  Build-final readiness check ignore it (an ungenerated skipped chunk no
+  longer blocks the build). The row dims to make the exclusion visible, and
+  toggling marks a built final stale (clearing its seal) so the next build
+  reflects the change. Sealed receipts and the /verify page list skipped
+  chunks labeled "skipped — not in final audio" rather than omitting them.
 
 ### Fixed
 - **Studio's 🎲 seed button now rolls a visible random seed.** It previously

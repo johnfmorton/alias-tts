@@ -130,6 +130,17 @@ effective voice, the seed pin, and the take history:
   placeholder.
 - On a turbo chunk, a **Sound tags** chip row inserts `[laugh]`-style tags at
   the cursor (see [VOICES.md](VOICES.md#sound-tags-chatterbox-turbo)).
+- **Skip (🔊/🔇, next to the trash can)** leaves the chunk out of the final
+  assembly without deleting it — the reversible alternative to the trash can.
+  A skipped chunk keeps its text, tuning, and takes (dimmed in the editor, an
+  amber *skipped* pill), stays playable and regenerable by hand, but is
+  excluded from **Build final** and stitch previews and ignored by
+  **Generate all** and the Build-final readiness check — an ungenerated
+  skipped chunk doesn't block the build. Toggling it marks a built final
+  stale (and clears its seal) so the next build reflects the change; a sealed
+  receipt lists skipped chunks labeled "skipped — not in final audio" rather
+  than omitting them. The Genblaze pipeline is unaffected (it re-chunks the
+  raw source text).
 
 ## Seed
 

@@ -290,7 +290,9 @@ seams, or fixing one sentence in a long piece without regenerating the whole fil
   individual chunks, generate or regenerate a single chunk at a time, preview the
   stitch across a seam, then rebuild and download the final MP3 (or WAV, per your
   settings). Edited chunks are marked stale so you can see what needs
-  regenerating. (Chunk reordering isn't supported yet.)
+  regenerating. A chunk can also be **skipped** (🔇) — left out of the stitched
+  final without deleting it; its text and takes stay, and the receipt lists it
+  as skipped. (Chunk reordering isn't supported yet.)
 - **Approve & seal** — mark a build as the approved final and **seal** it: the
   project records a SHA-256 of the exact audio bytes plus a frozen snapshot, and
   you can download a receipt `.zip` (the audio, a human-readable `receipt.html`

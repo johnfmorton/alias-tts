@@ -226,6 +226,8 @@
                      data-delete-url="{{ route('admin.studio.projects.chunks.destroy', [$project, $chunk]) }}"
                      data-audio-url="{{ route('admin.studio.projects.chunks.audio', [$project, $chunk]) }}"
                      data-takes-url="{{ route('admin.studio.projects.chunks.takes.index', [$project, $chunk]) }}"
+                     data-skip-url="{{ route('admin.studio.projects.chunks.skip', [$project, $chunk]) }}"
+                     data-skipped="{{ $chunk->skipped ? '1' : '0' }}"
                      data-takes='@json($takesByChunk[$chunk->id])'>
                     <div class="flex flex-wrap items-center justify-between gap-2">
                         <div class="flex items-center gap-2 text-sm text-zinc-400">
@@ -244,6 +246,9 @@
                             {{-- ASR transcript-QA verdict; only when the chunk's current audio was scored. --}}
                             <span class="chunk-asr-badge {{ $asrBadge ? 'inline-flex cursor-help rounded-md border px-2 py-0.5 text-xs '.($asrBadge['tone'] === 'ok' ? $chunkStyles['completed'] : $chunkStyles['failed']) : 'hidden' }}"
                                   @if($asrBadge) title="{{ $asrBadge['title'] }}" @endif>{{ $asrBadge['text'] ?? '' }}</span>
+                            {{-- "Present but silent": shown while the chunk is skipped. Class strings
+                                 must stay identical to setChunkSkipped() in app.js. --}}
+                            <span class="chunk-skip-pill {{ $chunk->skipped ? 'inline-flex' : 'hidden' }} rounded-md border border-amber-500/30 bg-amber-500/10 px-2 py-0.5 text-xs text-amber-300">skipped</span>
                             <span class="chunk-dirty hidden rounded-md border border-amber-500/30 bg-amber-500/10 px-2 py-0.5 text-xs text-amber-300">● unsaved</span>
                         </div>
                         <div class="flex items-center gap-2">
@@ -265,6 +270,14 @@
                             <button type="button" class="chunk-save rounded-lg border border-zinc-700 px-3 py-1.5 text-sm hover:bg-zinc-800 disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-transparent" disabled>Save text</button>
                             <button type="button" class="chunk-generate rounded-lg border border-zinc-700 px-3 py-1.5 text-sm hover:bg-zinc-800 disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-transparent"
                                     title="Render this chunk's audio from its current text and tuning.">▶ {{ $chunk->isCompleted() ? 'Regenerate' : 'Generate' }}</button>
+                            {{-- Skip toggle: leave this chunk out of the stitched final without deleting
+                                 it. Reversible, so no confirm step. Class strings must stay identical to
+                                 setChunkSkipped() in app.js. --}}
+                            <button type="button"
+                                    class="chunk-skip rounded-lg border px-2.5 py-1.5 text-sm {{ $chunk->skipped
+                                        ? 'border-amber-500/40 bg-amber-500/10 text-amber-300'
+                                        : 'border-zinc-700 text-zinc-500 hover:border-amber-700/60 hover:text-amber-300' }}"
+                                    title="{{ $chunk->skipped ? 'Include this chunk in the final audio.' : 'Skip this chunk in the final audio.' }}">{{ $chunk->skipped ? '🔇' : '🔊' }}</button>
                             @if($chunks->count() > 1)
                                 {{-- Delete this chunk (two-step inline confirm). Hidden entirely for a
                                      one-chunk project — a project needs at least one chunk. --}}

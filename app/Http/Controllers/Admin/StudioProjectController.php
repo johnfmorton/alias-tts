@@ -591,6 +591,33 @@ class StudioProjectController extends Controller
         ]);
     }
 
+    /**
+     * Toggle "skip in final assembly" — the reversible, non-destructive sibling
+     * of destroy: the chunk keeps its text, audio and takes but is excluded
+     * from rebuild/preview stitching. Takes an explicit {skipped: bool} body
+     * (idempotent under double-clicks). A built final goes stale because it no
+     * longer reflects intent.
+     */
+    public function skipChunk(Request $request, TtsProject $project, TtsChunk $chunk): JsonResponse
+    {
+        $this->assertChunkBelongs($project, $chunk);
+
+        $validator = Validator::make($request->all(), [
+            'skipped' => ['required', 'boolean'],
+        ]);
+        if ($validator->fails()) {
+            return response()->json(['message' => $validator->errors()->first()], 422);
+        }
+
+        $chunk = $this->projects->setChunkSkipped($chunk, $request->boolean('skipped'));
+
+        return response()->json([
+            'ok' => true,
+            'skipped' => (bool) $chunk->skipped,
+            'project_status' => $project->refresh()->status->value,
+        ]);
+    }
+
     public function generateChunk(TtsProject $project, TtsChunk $chunk): JsonResponse
     {
         $this->assertChunkBelongs($project, $chunk);

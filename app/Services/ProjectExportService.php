@@ -127,6 +127,9 @@ class ProjectExportService
                 'asr_summary' => $badge
                     ? trim($badge['text'].($badge['title'] !== '' ? ' ('.$badge['title'].')' : ''))
                     : null,
+                // Listed even when skipped — the receipt shows the whole project,
+                // with skipped chunks labeled rather than silently omitted.
+                'skipped' => (bool) $chunk->skipped,
                 'source_audio_sha256' => $sha,
             ];
         }
@@ -168,7 +171,8 @@ class ProjectExportService
             'chunks' => $chunks,
             'note' => 'final_sha256 is the SHA-256 of the bytes in '.$finalName.'. Each chunk\'s '
                 .'source_audio_sha256 covers its source take audio BEFORE trim/stitch/encode, so it '
-                .'is input provenance and does not reconstruct the final file.',
+                .'is input provenance and does not reconstruct the final file. Chunks marked '
+                .'"skipped": true are listed for provenance but are not part of the final audio.',
         ];
     }
 }

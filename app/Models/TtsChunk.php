@@ -26,6 +26,7 @@ class TtsChunk extends Model
         'voice_id',
         'settings',
         'status',
+        'skipped',
         'audio_path',
         'characters',
         'error_message',
@@ -35,6 +36,9 @@ class TtsChunk extends Model
 
     protected $casts = [
         'status' => ChunkStatus::class,
+        // Excluded from stitched output but kept in the project (reversible);
+        // composes with status — a chunk can be skipped AND pending/completed.
+        'skipped' => 'boolean',
         'position' => 'integer',
         'characters' => 'integer',
         // Lifetime characters synthesized for this chunk (never decremented —

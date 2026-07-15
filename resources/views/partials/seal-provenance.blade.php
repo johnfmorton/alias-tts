@@ -30,7 +30,11 @@
     @foreach($chunks as $row)
       <tr>
         <td class="num">{{ $row['position'] + 1 }}</td>
-        <td>{{ $row['text'] }}</td>
+        <td>
+          {{ $row['text'] }}
+          {{-- `?? false` keeps receipts sealed before the skip flag rendering unchanged. --}}
+          @if($row['skipped'] ?? false)<br><span class="muted">skipped — not in final audio</span>@endif
+        </td>
         <td class="num">
           {{ $row['voice'] ?? '—' }}
           @if($row['voice_inherited'])<br><span class="muted">project default</span>@endif

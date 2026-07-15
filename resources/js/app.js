@@ -1237,7 +1237,10 @@ function initStudioProject() {
 
     function reflectActionState() {
         const status = projectStatus.textContent.trim();
-        const cards = [...root.querySelectorAll('.studio-chunk')];
+        // Skipped chunks don't count as outstanding work: they're excluded from
+        // the stitch, so an ungenerated-but-skipped chunk must not hold Build
+        // final hostage. All-skipped leaves Build final off (the server 422s it).
+        const cards = [...root.querySelectorAll('.studio-chunk')].filter((c) => !isChunkSkipped(c));
         const anyCompleted = cards.some(isChunkCompleted);
         const anyPending = cards.some((c) => !isChunkCompleted(c));
         const allCompleted = cards.length > 0 && ! anyPending;
@@ -1532,8 +1535,10 @@ function initStudioProject() {
         runGeneration(card, card.dataset.generateUrl, card.querySelector('.chunk-generate'), 'Generating…');
 
     async function generateAll() {
+        // Skipped chunks are excluded from the final, so don't spend on them here;
+        // regenerating one by hand (its own ▶ button) still works while skipped.
         const cards = [...root.querySelectorAll('.studio-chunk')]
-            .filter((c) => c.querySelector('.chunk-status').textContent.trim() !== 'completed');
+            .filter((c) => c.querySelector('.chunk-status').textContent.trim() !== 'completed' && !isChunkSkipped(c));
         if (!cards.length) {
             setStatus(finalStatus, 'Every chunk is already generated — build the final to stitch.', 'ok');
             return;
@@ -1592,12 +1597,43 @@ function initStudioProject() {
     const isChunkCompleted = (card) =>
         card && card.querySelector('.chunk-status')?.textContent.trim() === 'completed';
 
-    // Show the inline "Preview stitch" connector only between two generated chunks.
+    // Skipped = left out of the stitched final (reversible). data-skipped also
+    // drives the row's dimmed look via CSS.
+    const isChunkSkipped = (card) => card?.dataset.skipped === '1';
+
+    // Flip a card's skipped state in place: dataset (CSS dim), the "skipped"
+    // pill, and the 🔊/🔇 button. Pill and button classNames are rewritten
+    // wholesale (hidden must beat inline-flex — the hidden/display gotcha) and
+    // must stay identical to the Blade initial state in show.blade.php.
+    function setChunkSkipped(card, skipped) {
+        card.dataset.skipped = skipped ? '1' : '0';
+
+        const pill = card.querySelector('.chunk-skip-pill');
+        if (pill) {
+            pill.className = `chunk-skip-pill ${skipped ? 'inline-flex' : 'hidden'} rounded-md border border-amber-500/30 bg-amber-500/10 px-2 py-0.5 text-xs text-amber-300`;
+        }
+
+        const btn = card.querySelector('.chunk-skip');
+        if (btn) {
+            btn.className = `chunk-skip rounded-lg border px-2.5 py-1.5 text-sm ${skipped
+                ? 'border-amber-500/40 bg-amber-500/10 text-amber-300'
+                : 'border-zinc-700 text-zinc-500 hover:border-amber-700/60 hover:text-amber-300'}`;
+            btn.title = skipped ? 'Include this chunk in the final audio.' : 'Skip this chunk in the final audio.';
+            btn.textContent = skipped ? '🔇' : '🔊';
+            // endBusy() restores dataset.originalText (captured once by startBusy),
+            // so it must track the new icon or the old one reappears after a toggle.
+            btn.dataset.originalText = btn.textContent;
+        }
+    }
+
+    // Show the inline "Preview stitch" connector only between two generated,
+    // included chunks — a seam next to a skipped chunk won't exist in the final.
     function refreshSeams() {
         root.querySelectorAll('.chunk-seam').forEach((seam) => {
             const prev = root.querySelector(`.studio-chunk[data-chunk-id="${seam.dataset.prev}"]`);
             const next = root.querySelector(`.studio-chunk[data-chunk-id="${seam.dataset.next}"]`);
-            seam.classList.toggle('hidden', !(isChunkCompleted(prev) && isChunkCompleted(next)));
+            seam.classList.toggle('hidden', !(isChunkCompleted(prev) && isChunkCompleted(next)
+                && !isChunkSkipped(prev) && !isChunkSkipped(next)));
         });
     }
 
@@ -2076,6 +2112,36 @@ function initStudioProject() {
         // renumbers the list, so — like insert — reload to re-render it. The
         // control isn't rendered for a one-chunk project (guard the wiring too).
         const deleteBtn = card.querySelector('.chunk-delete');
+        // Skip toggle: reversible (no confirm), updates in place — no reload. The
+        // explicit body state (not a blind flip) keeps double-clicks idempotent.
+        const skipBtn = card.querySelector('.chunk-skip');
+        if (skipBtn) {
+            skipBtn.addEventListener('click', async () => {
+                if (skipBtn.dataset.busy) return;
+                const skipped = !isChunkSkipped(card);
+                startBusy(skipBtn, '…');
+                try {
+                    const res = await fetch(card.dataset.skipUrl, {
+                        method: 'PATCH',
+                        headers: { 'X-CSRF-TOKEN': csrfToken(), 'Accept': 'application/json', 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ skipped }),
+                    });
+                    if (!res.ok) throw new Error(await errorMessage(res));
+                    const data = await res.json();
+                    endBusy(skipBtn);
+                    setChunkSkipped(card, data.skipped);
+                    setProjectStatus(data.project_status); // also re-lights the action cluster
+                    refreshSeams();
+                    setStatus(finalStatus, data.skipped
+                        ? "✓ Chunk skipped — it won't be in the final."
+                        : '✓ Chunk included again.', 'ok');
+                } catch (err) {
+                    endBusy(skipBtn);
+                    setStatus(finalStatus, `✗ ${err.message}`, 'error');
+                }
+            });
+        }
+
         const deleteConfirm = card.querySelector('.chunk-delete-confirm');
         if (deleteBtn && deleteConfirm) {
             // Toggle hidden AND inline-flex together so neither lingers and wins

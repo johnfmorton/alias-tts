@@ -640,6 +640,188 @@ class StudioProjectTest extends TestCase
             ->assertJsonPath('message', 'Select at least one generated chunk to preview.');
     }
 
+    // --- Skip in final assembly ---------------------------------------------------
+
+    public function test_a_chunk_can_be_skipped_and_included_again(): void
+    {
+        $project = $this->project();
+        $chunk = $project->chunks()->orderBy('position')->first();
+
+        $this->actingAs($this->admin())
+            ->patchJson(route('admin.studio.projects.chunks.skip', [$project, $chunk]), ['skipped' => true])
+            ->assertOk()
+            ->assertJsonPath('ok', true)
+            ->assertJsonPath('skipped', true);
+        $this->assertTrue($chunk->refresh()->skipped);
+
+        $this->actingAs($this->admin())
+            ->patchJson(route('admin.studio.projects.chunks.skip', [$project, $chunk]), ['skipped' => false])
+            ->assertOk()
+            ->assertJsonPath('skipped', false);
+        $this->assertFalse($chunk->refresh()->skipped);
+    }
+
+    public function test_skip_toggle_validates_the_flag(): void
+    {
+        $project = $this->project();
+        $chunk = $project->chunks()->orderBy('position')->first();
+
+        $this->actingAs($this->admin())
+            ->patchJson(route('admin.studio.projects.chunks.skip', [$project, $chunk]), [])
+            ->assertStatus(422)
+            ->assertJsonStructure(['message']);
+
+        $this->actingAs($this->admin())
+            ->patchJson(route('admin.studio.projects.chunks.skip', [$project, $chunk]), ['skipped' => 'maybe'])
+            ->assertStatus(422)
+            ->assertJsonStructure(['message']);
+
+        $this->assertFalse($chunk->refresh()->skipped);
+    }
+
+    public function test_skip_toggle_is_a_404_for_a_foreign_chunk(): void
+    {
+        $project = $this->project();
+        $foreignChunk = $this->project()->chunks()->orderBy('position')->first();
+
+        $this->actingAs($this->admin())
+            ->patchJson(route('admin.studio.projects.chunks.skip', [$project, $foreignChunk]), ['skipped' => true])
+            ->assertNotFound();
+    }
+
+    public function test_skipping_a_chunk_marks_the_final_stale(): void
+    {
+        $admin = $this->admin();
+        $project = $this->generateAndBuild($this->project(), $admin);
+        app(ProjectService::class)->seal($project, $admin);
+        $chunk = $project->chunks()->orderBy('position')->first();
+
+        $this->actingAs($admin)
+            ->patchJson(route('admin.studio.projects.chunks.skip', [$project, $chunk]), ['skipped' => true])
+            ->assertOk()
+            ->assertJsonPath('project_status', ProjectStatus::Stale->value);
+        $project->refresh();
+        $this->assertSame(ProjectStatus::Stale, $project->status);
+        $this->assertNull($project->sealed_at); // the sealed final no longer reflects intent
+
+        // Re-sending the SAME state is a no-op: it must not stale a fresh final.
+        $this->actingAs($admin)->postJson(route('admin.studio.projects.rebuild', $project))->assertOk();
+        $this->actingAs($admin)
+            ->patchJson(route('admin.studio.projects.chunks.skip', [$project, $chunk]), ['skipped' => true])
+            ->assertOk()
+            ->assertJsonPath('project_status', ProjectStatus::Ready->value);
+    }
+
+    public function test_rebuild_excludes_skipped_chunks(): void
+    {
+        $admin = $this->admin();
+        $project = $this->generateAndBuild($this->project(), $admin);
+        $bothChunks = strlen(Storage::disk('local')->get($project->final_audio_path));
+
+        $chunk = $project->chunks()->orderBy('position')->first();
+        $this->actingAs($admin)
+            ->patchJson(route('admin.studio.projects.chunks.skip', [$project, $chunk]), ['skipped' => true])
+            ->assertOk();
+        $this->actingAs($admin)->postJson(route('admin.studio.projects.rebuild', $project))->assertOk();
+
+        $oneChunk = strlen(Storage::disk('local')->get($project->refresh()->final_audio_path));
+        $this->assertLessThan($bothChunks, $oneChunk);
+    }
+
+    public function test_rebuild_ignores_missing_audio_on_skipped_chunks(): void
+    {
+        $admin = $this->admin();
+        $project = $this->project();
+        [$first, $second] = $project->chunks()->orderBy('position')->get();
+        $this->actingAs($admin)->post(route('admin.studio.projects.chunks.generate', [$project, $first]));
+
+        // Ungenerated, but skipped — it isn't part of the stitch, so it must not
+        // block the rebuild the way an ungenerated included chunk does.
+        $this->actingAs($admin)
+            ->patchJson(route('admin.studio.projects.chunks.skip', [$project, $second]), ['skipped' => true])
+            ->assertOk();
+
+        $this->actingAs($admin)->postJson(route('admin.studio.projects.rebuild', $project))->assertOk();
+        $this->assertSame(ProjectStatus::Ready, $project->refresh()->status);
+    }
+
+    public function test_rebuild_refuses_when_every_chunk_is_skipped(): void
+    {
+        $admin = $this->admin();
+        $project = $this->project();
+        foreach ($project->chunks()->get() as $chunk) {
+            $this->actingAs($admin)
+                ->patchJson(route('admin.studio.projects.chunks.skip', [$project, $chunk]), ['skipped' => true])
+                ->assertOk();
+        }
+
+        $this->actingAs($admin)
+            ->postJson(route('admin.studio.projects.rebuild', $project))
+            ->assertStatus(422)
+            ->assertJsonPath('message', 'Every chunk is skipped — include at least one chunk before rebuilding.');
+    }
+
+    public function test_preview_excludes_skipped_chunks(): void
+    {
+        $admin = $this->admin();
+        $project = $this->project();
+        $chunks = $project->chunks()->orderBy('position')->get();
+        foreach ($chunks as $chunk) {
+            $this->actingAs($admin)->post(route('admin.studio.projects.chunks.generate', [$project, $chunk]));
+        }
+        $ids = $chunks->pluck('id')->all();
+
+        $both = $this->actingAs($admin)
+            ->postJson(route('admin.studio.projects.preview', $project), ['chunks' => $ids])
+            ->assertOk()
+            ->getContent();
+
+        $this->actingAs($admin)
+            ->patchJson(route('admin.studio.projects.chunks.skip', [$project, $chunks->first()]), ['skipped' => true])
+            ->assertOk();
+
+        // The same selection now stitches one chunk fewer.
+        $withSkip = $this->actingAs($admin)
+            ->postJson(route('admin.studio.projects.preview', $project), ['chunks' => $ids])
+            ->assertOk()
+            ->getContent();
+        $this->assertLessThan(strlen($both), strlen($withSkip));
+    }
+
+    public function test_preview_rejects_an_all_skipped_selection(): void
+    {
+        $admin = $this->admin();
+        $project = $this->project();
+        $chunks = $project->chunks()->orderBy('position')->get();
+        foreach ($chunks as $chunk) {
+            $this->actingAs($admin)->post(route('admin.studio.projects.chunks.generate', [$project, $chunk]));
+            $this->actingAs($admin)
+                ->patchJson(route('admin.studio.projects.chunks.skip', [$project, $chunk]), ['skipped' => true])
+                ->assertOk();
+        }
+
+        $this->actingAs($admin)
+            ->postJson(route('admin.studio.projects.preview', $project), ['chunks' => $chunks->pluck('id')->all()])
+            ->assertStatus(422)
+            ->assertJsonPath('message', 'Select at least one generated chunk to preview.');
+    }
+
+    public function test_duplicate_copies_the_skip_flag(): void
+    {
+        $admin = $this->admin();
+        $project = $this->generateAndBuild($this->project(), $admin);
+        [$first, $second] = $project->chunks()->orderBy('position')->get();
+        $this->actingAs($admin)
+            ->patchJson(route('admin.studio.projects.chunks.skip', [$project, $first]), ['skipped' => true])
+            ->assertOk();
+
+        $this->actingAs($admin)->post(route('admin.studio.projects.duplicate', $project));
+
+        $copyChunks = $this->duplicateOf($project)->chunks()->orderBy('position')->get();
+        $this->assertTrue($copyChunks[0]->skipped);
+        $this->assertFalse($copyChunks[1]->skipped);
+    }
+
     public function test_editing_a_chunk_marks_it_and_the_project_stale(): void
     {
         $project = $this->project();
@@ -1341,16 +1523,17 @@ class StudioProjectTest extends TestCase
         // Re-run the takes migration against the already-generated chunk, as a real
         // deploy would: drop + recreate the table so up()'s backfill runs over the
         // existing audio (the chunk's audio_path is untouched by the rollback).
-        // Twenty-one steps because the takes table is the twenty-first-newest
+        // Twenty-two steps because the takes table is the twenty-second-newest
         // migration (native presets, project-seal, bundled default voices, account
         // fields, two-factor/connected-accounts, the unowned-api-key reassignment,
         // project ownership, the magic-login-table drop, per-user settings,
         // per-user voices, per-user presets, the take-text snapshot, the
         // default-clip replacement, the voice-clips staging table, the per-user
         // slug scoping, the preset-temperature column, the spent-characters
-        // counters, the take-duration column, the turbo preset knobs, and the
-        // per-model spend counters all sit on top of it).
-        Artisan::call('migrate:rollback', ['--step' => 21]);
+        // counters, the take-duration column, the turbo preset knobs, the
+        // per-model spend counters, and the per-chunk skip flag all sit on top
+        // of it).
+        Artisan::call('migrate:rollback', ['--step' => 22]);
         Artisan::call('migrate', ['--force' => true]);
 
         $takes = $chunk->refresh()->takes()->get();

@@ -125,6 +125,8 @@ Route::prefix('studio')->name('studio.')->group(function () {
             Route::post('/{project}/chunks', [StudioProjectController::class, 'storeChunk'])->name('chunks.store');
             Route::patch('/{project}/chunks/{chunk}', [StudioProjectController::class, 'updateChunk'])->name('chunks.update');
             Route::delete('/{project}/chunks/{chunk}', [StudioProjectController::class, 'destroyChunk'])->name('chunks.destroy');
+            // Reversible "leave this chunk out of the final" toggle — non-destructive sibling of destroy.
+            Route::patch('/{project}/chunks/{chunk}/skip', [StudioProjectController::class, 'skipChunk'])->name('chunks.skip');
             Route::patch('/{project}/chunks/{chunk}/voice', [StudioProjectController::class, 'updateChunkVoice'])->name('chunks.voice');
             Route::patch('/{project}/chunks/{chunk}/tuning', [StudioProjectController::class, 'tuneChunk'])->name('chunks.tuning');
             Route::post('/{project}/chunks/{chunk}/preview-tuning', [StudioProjectController::class, 'previewChunkTuning'])->name('chunks.preview-tuning');
