@@ -379,7 +379,7 @@
                                            value="{{ $chunk->settings['seed'] ?? '' }}" placeholder="{{ $inheritSeedText }}"
                                            class="chunk-seed w-full rounded-lg border border-zinc-700 bg-zinc-950 px-2 py-1 text-right text-sm tabular-nums">
                                     <button type="button" class="chunk-seed-random rounded-lg border border-zinc-700 px-1.5 py-1 text-xs text-zinc-400 hover:bg-zinc-800"
-                                            title="Clear to a random seed" aria-label="Clear to a random seed">🎲</button>
+                                            title="Roll a random seed" aria-label="Roll a random seed">🎲</button>
                                 </span>
                                 <div class="text-[10px] text-zinc-600">pins the draw, not the result</div>
                             </div>

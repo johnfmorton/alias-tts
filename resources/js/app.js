@@ -2016,10 +2016,11 @@ function initStudioProject() {
         card.querySelector('.chunk-text').addEventListener('input', invalidatePreview);
         card.querySelector('.chunk-voice').addEventListener('change', invalidatePreview);
 
-        // 🎲 clears the seed field back to a random draw (blank = inherit/random).
+        // 🎲 rolls a fresh random seed into the field so the pin is visible and
+        // re-usable (clearing the field by hand still means inherit/random).
         card.querySelector('.chunk-seed-random')?.addEventListener('click', () => {
             const seedInput = card.querySelector('.chunk-seed');
-            seedInput.value = '';
+            seedInput.value = Math.floor(Math.random() * 1_000_000);
             seedInput.dispatchEvent(new Event('input', { bubbles: true }));
         });
 

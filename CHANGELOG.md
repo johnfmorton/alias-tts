@@ -4,6 +4,30 @@ All notable changes to this project are documented in this file. The format is
 based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this
 project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+- **Fully-local pronunciation detection via Ollama (`ollama` provider).** The
+  pronunciation pre-processor's detection LLM can now be a model served by a
+  local [Ollama](https://ollama.com) instance — no API key, no per-call cost,
+  and no text leaves the machine, pairing with `TTS_PROVIDER=local` for an
+  end-to-end offline dev stack. Select `ollama` as the detection provider and
+  point `OLLAMA_HOST` at the server as seen from the runner
+  (`http://host.docker.internal:11434` from the DDEV runner container;
+  `http://127.0.0.1:11434` beside a host runner); the default model is
+  `gemma4:26b`. Structured output uses Ollama's native `format` parameter, so
+  the substitution-map JSON is grammar-enforced for any pulled model. The
+  Health page names `OLLAMA_HOST` (with per-topology values) as the fix when
+  the keyless provider isn't configured, instead of asking for an API key.
+
+### Fixed
+- **Studio's 🎲 seed button now rolls a visible random seed.** It previously
+  cleared the field back to blank (= inherit), which looked like a no-op
+  whenever the project pinned a seed — the placeholder showed the same
+  inherited number. Clicking the dice now drops a fresh random seed into the
+  field so the pin is visible and re-usable; clearing the field by hand still
+  means inherit/random.
+
 ## [0.52.0] - 2026-07-14
 
 ### Added
