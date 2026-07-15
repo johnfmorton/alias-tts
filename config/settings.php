@@ -239,9 +239,9 @@ $keys = [
         'config' => 'tts.pronunciation.llm_provider',
         'env' => 'TTS_PRONUNCIATION_LLM_PROVIDER',
         'type' => 'enum',
-        'options' => ['replicate', 'gemini', 'openai', 'anthropic'],
+        'options' => ['replicate', 'gemini', 'openai', 'anthropic', 'ollama'],
         'label' => 'Detection LLM provider',
-        'help' => 'Which Genblaze chat provider detects mispronounced terms. "replicate" reuses your existing Replicate token; "anthropic", "gemini", and "openai" call those APIs directly and need their own key (ANTHROPIC_API_KEY, GEMINI_API_KEY, OPENAI_API_KEY) in the runner\'s environment. The health page shows whether the chosen provider is ready.',
+        'help' => 'Which Genblaze chat provider detects mispronounced terms. "replicate" reuses your existing Replicate token; "anthropic", "gemini", and "openai" call those APIs directly and need their own key (ANTHROPIC_API_KEY, GEMINI_API_KEY, OPENAI_API_KEY) in the runner\'s environment. "ollama" runs a local model instead — no key and no text leaves the machine; set OLLAMA_HOST to where Ollama listens as seen from the runner, and TTS_PRONUNCIATION_MODEL to a pulled model. The health page shows whether the chosen provider is ready.',
     ],
 ];
 

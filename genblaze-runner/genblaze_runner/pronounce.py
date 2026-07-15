@@ -52,6 +52,8 @@ class SubstitutionMap(BaseModel):
 # --- provider registry ----------------------------------------------------
 
 # provider -> (connector module, env var holding the key, default model)
+# (For keyless providers the env-var slot holds their required connection
+# setting instead — see the ollama entry.)
 _PROVIDERS: dict[str, tuple[str, str, str]] = {
     # Default: Replicate's LLMs wrapped as a Genblaze chat provider (custom,
     # in-runner — there is no published genblaze-replicate CHAT adapter). Reuses
@@ -71,6 +73,12 @@ _PROVIDERS: dict[str, tuple[str, str, str]] = {
     # Anthropic has no published genblaze chat adapter either, so it's a second
     # custom in-runner provider (Messages API + tool-use structured output).
     "anthropic": ("genblaze_runner.providers.anthropic_chat", "ANTHROPIC_API_KEY", "claude-haiku-4-5"),
+    # Fully-local option: a model served by Ollama on the same machine — no key,
+    # no per-call cost, and no text leaves the box (pairs with TTS_PROVIDER=local
+    # for an offline dev stack). Keyless, so the env-var slot holds the required
+    # server address instead: where Ollama listens FROM THE RUNNER's vantage
+    # (see the module docstring for per-topology values).
+    "ollama": ("genblaze_runner.providers.ollama_chat", "OLLAMA_HOST", "gemma4:26b"),
 }
 
 
@@ -174,8 +182,9 @@ def _call_chat(provider: str, messages: list[ChatMessage], *, model: str, temper
         # the JSON-only system prompt (like Replicate) and parse the returned text.
         return chat(model, messages, temperature=temperature)
 
-    # Custom providers: anthropic forces a tool from the schema; replicate ignores it.
-    response_format = SubstitutionMap if provider == "anthropic" else None
+    # Custom providers: anthropic forces a tool from the schema, ollama constrains
+    # sampling with it (native `format`); replicate ignores it.
+    response_format = SubstitutionMap if provider in ("anthropic", "ollama") else None
     return chat(messages, model=model, response_format=response_format, temperature=temperature)
 
 

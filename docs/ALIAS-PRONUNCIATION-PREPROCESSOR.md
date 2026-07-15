@@ -255,8 +255,10 @@ Provider guidance:
   reasoning — a frontier model is overkill.
 - **Candidates:** Claude Haiku 4.5 (strong at not over-editing + clean JSON),
   `gemini-2.5-flash` (cheap, good free tier), `gpt-5-nano`.
-  Local Ollama (Gemma) is viable for zero per-call cost once the prompt is
-  tightly constrained — validate JSON output carefully.
+  Local Ollama is a first-class provider (`ollama`, see below) — zero per-call
+  cost and no text leaves the machine; JSON validity is grammar-enforced via
+  Ollama's schema `format`, so any pulled model returns parseable output (a
+  weaker model costs suggestion quality, which the review screen absorbs).
 - **Temperature:** 0–0.3 for stable, repeatable maps.
 - **Caching:** keep the system prompt fixed so it caches; per-call you only pay
   for the (small) text body and the (tiny) JSON output.
@@ -286,9 +288,10 @@ hold a per-engine form if an SSML/IPA-capable backend is added.
   **Replicate's LLMs wrapped as a custom Genblaze chat provider**
   (`genblaze-runner/genblaze_runner/providers/replicate_chat.py`) — reusing `REPLICATE_API_TOKEN`,
   behind the same `chat()` interface as the off-the-shelf adapters, so swapping to
-  **Gemini / OpenAI** (off-the-shelf `genblaze-google`/`genblaze-openai`) or
-  **Anthropic** (another custom provider, tool-use) is a Settings change with no
-  code change. (Chat is NOT manifest-tracked in genblaze — provenance is recorded
+  **Gemini / OpenAI** (off-the-shelf `genblaze-google`/`genblaze-openai`),
+  **Anthropic** (another custom provider, tool-use), or **Ollama** (custom
+  provider for a fully-local model — keyless, schema-enforced JSON via Ollama's
+  `format`) is a Settings change with no code change. (Chat is NOT manifest-tracked in genblaze — provenance is recorded
   as a lightweight provider/model/tokens/prompt-hash dict; the B2 manifest story
   stays with the TTS pipeline.) Runner endpoint `POST /pronounce`; degrade-safe
   everywhere.
@@ -307,5 +310,15 @@ hold a per-engine form if an SSML/IPA-capable backend is added.
   uses tool-use for guaranteed-valid JSON. The detection schema is lenient
   (accepts `respelling` alias for `phonetic`, optional category/confidence)
   since Replicate LLMs have no enforced JSON mode.
+- **Fully local:** select the `ollama` provider and detection runs on a model
+  served by [Ollama](https://ollama.com) — no API key, no per-call cost, no
+  text leaving the machine (pairs with `TTS_PROVIDER=local` for an offline dev
+  stack, see `docs/CHATTERBOX-LOCAL.md`). Set `OLLAMA_HOST` in the RUNNER's
+  environment to where Ollama listens *from the runner's vantage*
+  (`http://host.docker.internal:11434` from the DDEV runner container;
+  `http://127.0.0.1:11434` beside a host-process runner) and
+  `TTS_PRONUNCIATION_MODEL` to a pulled model (e.g. `gemma4:26b` — a mid-size
+  instruct model is plenty for this detection task). JSON validity is
+  grammar-enforced via Ollama's schema `format` parameter.
 - **Not wired up:** the off-the-shelf Gemini/OpenAI adapters ship with the
   runner (`pip install -e '.[pronounce]'`) but aren't offered in Settings.

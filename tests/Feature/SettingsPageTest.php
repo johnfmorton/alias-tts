@@ -346,13 +346,14 @@ class SettingsPageTest extends TestCase
 
         $admin = $this->admin();
 
+        // 'ollama' also proves the newest enum value survives validation.
         $this->actingAs($admin)
             ->put(route('admin.settings.update'), $this->validPayload([
-                'tts_pronunciation_llm_provider' => 'openai',
+                'tts_pronunciation_llm_provider' => 'ollama',
             ]))
             ->assertRedirect(route('admin.settings.index'))
             ->assertSessionHas('success');
 
-        $this->assertSame('openai', $this->row($admin, 'tts.pronunciation.llm_provider')->value);
+        $this->assertSame('ollama', $this->row($admin, 'tts.pronunciation.llm_provider')->value);
     }
 }

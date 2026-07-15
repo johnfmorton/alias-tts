@@ -82,14 +82,25 @@ def test_available_providers_lists_replicate_first_and_importable():
     status = pronounce.available_providers()
 
     assert list(status.keys())[0] == "replicate"
-    assert {"replicate", "gemini", "openai", "anthropic"} <= set(status)
-    # Replicate and Anthropic are in-runner modules, so they are always importable.
+    assert {"replicate", "gemini", "openai", "anthropic", "ollama"} <= set(status)
+    # Replicate, Anthropic, and Ollama are in-runner modules, so always importable.
     assert status["replicate"]["importable"] is True
     assert status["anthropic"]["importable"] is True
+    assert status["ollama"]["importable"] is True
     assert set(status["replicate"]) == {"importable", "keyed"}
+
+
+def test_ollama_reports_keyed_from_its_host_setting(monkeypatch):
+    # Keyless provider: "keyed" tracks OLLAMA_HOST, its required connection setting.
+    monkeypatch.delenv("OLLAMA_HOST", raising=False)
+    assert pronounce.available_providers()["ollama"]["keyed"] is False
+
+    monkeypatch.setenv("OLLAMA_HOST", "http://host.docker.internal:11434")
+    assert pronounce.available_providers()["ollama"]["keyed"] is True
 
 
 def test_default_model_resolves():
     assert pronounce.default_model("replicate") == "meta/llama-4-scout-instruct"
     assert pronounce.default_model("anthropic") == "claude-haiku-4-5"
+    assert pronounce.default_model("ollama") == "gemma4:26b"
     assert pronounce.default_model("bogus") is None

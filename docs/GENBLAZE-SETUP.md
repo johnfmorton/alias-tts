@@ -88,6 +88,7 @@ TTS_ASR_ENABLED=true                       # optional: enables the re-roll quali
 | `AWS_URL` | Optional: public URL base for object links if you front the bucket |
 | `B2_KEY_ID` / `B2_APP_KEY` / `B2_BUCKET` / `B2_REGION` / `B2_PUBLIC_URL_BASE` | **Legacy** Backblaze-only fallback, used only when the `AWS_*` block above is unset. New installs should use `AWS_*`. |
 | `TTS_STORAGE_ROOT` | Optional: the app's shared-bucket subfolder — uploads go under `<root>/genblaze/` so both sides agree (read directly; `ALIAS_STORAGE_ROOT` overrides) |
+| `OLLAMA_HOST` | Only for the `ollama` pronunciation provider (keyless, local): where Ollama listens **as seen from the runner** — `http://127.0.0.1:11434` beside a host runner, `http://host.docker.internal:11434` from the DDEV runner container |
 | `GENBLAZE_MAX_CONCURRENCY` | Parallel chunk generations (default `2`; use `1` if Replicate throttles) |
 | `GENBLAZE_MAX_REROLLS` | Re-roll budget per chunk (default `3`) |
 | `GENBLAZE_OUTPUT_DIR` | Local temp dir for audio before upload (default: system temp) |
@@ -199,7 +200,7 @@ ENV_FILE="$SITE/current/.env"
 export PYTHONPATH="$SITE/current/genblaze-runner:$SITE/current/connectors/genblaze-alias"
 
 set -a
-. <(grep -E '^(REPLICATE_API_TOKEN|ANTHROPIC_API_KEY|GEMINI_API_KEY|OPENAI_API_KEY|B2_KEY_ID|B2_APP_KEY|B2_BUCKET|B2_REGION|B2_PUBLIC_URL_BASE|AWS_ACCESS_KEY_ID|AWS_SECRET_ACCESS_KEY|AWS_BUCKET|AWS_DEFAULT_REGION|AWS_ENDPOINT|AWS_URL|TTS_INTERNAL_SECRET|TTS_STORAGE_ROOT|APP_URL)=' "$ENV_FILE")
+. <(grep -E '^(REPLICATE_API_TOKEN|ANTHROPIC_API_KEY|GEMINI_API_KEY|OPENAI_API_KEY|OLLAMA_HOST|B2_KEY_ID|B2_APP_KEY|B2_BUCKET|B2_REGION|B2_PUBLIC_URL_BASE|AWS_ACCESS_KEY_ID|AWS_SECRET_ACCESS_KEY|AWS_BUCKET|AWS_DEFAULT_REGION|AWS_ENDPOINT|AWS_URL|TTS_INTERNAL_SECRET|TTS_STORAGE_ROOT|APP_URL)=' "$ENV_FILE")
 set +a
 
 export ALIAS_INTERNAL_SECRET="${TTS_INTERNAL_SECRET:-}"

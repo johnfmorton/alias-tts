@@ -548,7 +548,12 @@ class HealthReport
         }
 
         if (! ($status['keyed'] ?? false)) {
-            $this->add('pronunciation', HealthStatus::Warn, 'Pronunciation pre-processor', "ON via \"{$provider}\", but its API key isn't set in the runner's environment, so detection is skipped — add the provider's key (e.g. ANTHROPIC_API_KEY) to run-genblaze.sh and restart the daemon.", $docs);
+            // "keyed" covers the provider's required env var; for the keyless
+            // ollama provider that's OLLAMA_HOST, so name the right fix.
+            $detail = $provider === 'ollama'
+                ? 'ON via "ollama", but OLLAMA_HOST isn\'t set in the runner\'s environment, so detection is skipped — point it at your Ollama server as seen from the runner (http://host.docker.internal:11434 from the DDEV runner container; http://127.0.0.1:11434 beside a host runner) and restart the runner.'
+                : "ON via \"{$provider}\", but its API key isn't set in the runner's environment, so detection is skipped — add the provider's key (e.g. ANTHROPIC_API_KEY) to run-genblaze.sh and restart the daemon.";
+            $this->add('pronunciation', HealthStatus::Warn, 'Pronunciation pre-processor', $detail, $docs);
 
             return;
         }

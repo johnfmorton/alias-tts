@@ -236,6 +236,22 @@ Laravel app (`.env`):
 | `TTS_LOCAL_CHATTERBOX_URL` | `http://127.0.0.1:8766` | sidecar base URL; from DDEV use `http://host.docker.internal:8766` (host-run) or `http://chatterbox:8766` (containerized) |
 | `TTS_LOCAL_CHATTERBOX_TIMEOUT` | `300` | whole-call budget in seconds — the sidecar generates one request at a time, so this covers queue wait too |
 
+## Going fully local: pronunciation detection too
+
+`TTS_PROVIDER=local` keeps *audio generation* on your machine, but the
+pronunciation pre-processor (if enabled) still calls a cloud LLM by default.
+To close that last gap, point it at [Ollama](https://ollama.com):
+
+```env
+TTS_PRONUNCIATION_LLM_PROVIDER=ollama
+TTS_PRONUNCIATION_MODEL=gemma4:26b            # any pulled model
+OLLAMA_HOST=http://host.docker.internal:11434 # from the DDEV runner container
+```
+
+No API key — `OLLAMA_HOST` is the provider's one required setting, and the
+DDEV runner container picks all three up from `.env` on restart. Details in
+`docs/ALIAS-PRONUNCIATION-PREPROCESSOR.md`.
+
 ## Performance expectations
 
 Benchmarked on an Apple M4 Max (64 GB), CPU device, warm model — Chatterbox

@@ -171,6 +171,27 @@ class HealthReportTest extends TestCase
         $this->assertNotNull($p->helpUrl);
     }
 
+    public function test_pronunciation_names_ollama_host_as_the_fix_for_an_unkeyed_ollama(): void
+    {
+        // The keyless local provider's required setting is OLLAMA_HOST, not an
+        // API key — the warn must name it, with the per-topology values.
+        config([
+            'tts.pronunciation.enabled' => true,
+            'tts.pronunciation.llm_provider' => 'ollama',
+            'tts.genblaze.runner_url' => 'http://runner.test',
+        ]);
+        Http::fake(['runner.test/health' => Http::response($this->runnerHealth([
+            'pronounce' => ['ollama' => ['importable' => true, 'keyed' => false]],
+        ]))]);
+
+        $p = $this->resultFor('pronunciation');
+
+        $this->assertSame(HealthStatus::Warn, $p->status);
+        $this->assertStringContainsString('OLLAMA_HOST', $p->detail);
+        $this->assertStringContainsString('host.docker.internal:11434', $p->detail);
+        $this->assertStringNotContainsString('API key', $p->detail);
+    }
+
     public function test_genblaze_fails_when_the_configured_runner_is_unreachable(): void
     {
         config(['tts.genblaze.runner_url' => 'http://runner.test']);
