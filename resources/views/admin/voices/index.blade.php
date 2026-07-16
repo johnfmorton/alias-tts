@@ -77,7 +77,7 @@
                                     class="cursor-grab select-none px-1 text-zinc-600 hover:text-zinc-300 active:cursor-grabbing">⋮⋮</button>
                         </td>
                         <td class="px-4 py-3">
-                            <button data-copy="{{ $voice->slug }}" class="font-mono text-zinc-200 hover:text-cyan-400" title="Click to copy">{{ $voice->slug }}</button>
+                            <button data-copy="{{ $voice->slug }}" class="text-left font-mono text-zinc-200 hover:text-cyan-400" title="Click to copy">{{ $voice->slug }}</button>
                         </td>
                         <td class="px-4 py-3 text-zinc-300">
                             {{ $voice->name }}
