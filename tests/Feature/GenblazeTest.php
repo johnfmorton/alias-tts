@@ -3,6 +3,7 @@
 namespace Tests\Feature;
 
 use App\Models\User;
+use App\Models\UserSetting;
 use App\Models\Voice;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Http;
@@ -192,6 +193,68 @@ class GenblazeTest extends TestCase
             ->assertJsonPath('result.pronunciation.applied.0', 'B2')
             // The job records pronunciation as the first LIVE pipeline step.
             ->assertJsonPath('progress.0.step', 'pronounce');
+    }
+
+    public function test_run_voices_quotes_when_the_users_setting_is_on(): void
+    {
+        config(['filesystems.disks.s3.bucket' => 'johnfmorton']);
+        Voice::create(['slug' => 'v', 'name' => 'V']);
+        $admin = $this->admin();
+        // The job applies the DISPATCHING user's settings (applyForUser), so the
+        // per-user opt-in decides the transform even on the queue.
+        UserSetting::create(['user_id' => $admin->id, 'key' => 'tts.spoken_quotes', 'value' => 'open_close']);
+        Http::fake([
+            'runner.test/pronounce' => Http::response(['available' => true, 'substitutions' => []]),
+            'runner.test/run' => Http::response([
+                'final_url' => 'https://s3.us-west-001.backblazeb2.com/johnfmorton/genblaze/runs/x/assets/final.mp3',
+                'final_manifest_hash' => 'abc', 'final_manifest_verified' => true,
+                'reroll_count' => 0, 'chunks' => [],
+            ]),
+        ]);
+
+        $start = $this->actingAs($admin)
+            ->postJson(route('admin.studio.genblaze.run'), ['text' => 'He said, "Hello there." Now go.', 'voice' => 'v'])
+            ->assertStatus(202);
+
+        // The voiced text — quotes spoken, AFTER pronunciation — reaches the runner.
+        Http::assertSent(fn ($req) => str_contains($req->url(), 'runner.test/run')
+            && $req['text'] === 'He said, open quote, Hello there, close quote. Now go.');
+
+        // The quotes pass is reported as its own pipeline step, after pronounce.
+        $this->actingAs($admin)
+            ->getJson($start->json('status_url'))
+            ->assertOk()
+            ->assertJsonPath('progress.0.step', 'pronounce')
+            ->assertJsonPath('progress.1.step', 'quotes')
+            ->assertJsonPath('progress.1.detail', '1 quotation(s) voiced');
+    }
+
+    public function test_run_leaves_quotes_alone_by_default(): void
+    {
+        config(['filesystems.disks.s3.bucket' => 'johnfmorton']);
+        Voice::create(['slug' => 'v', 'name' => 'V']);
+        Http::fake([
+            'runner.test/pronounce' => Http::response(['available' => true, 'substitutions' => []]),
+            'runner.test/run' => Http::response([
+                'final_url' => 'https://s3.us-west-001.backblazeb2.com/johnfmorton/genblaze/runs/x/assets/final.mp3',
+                'final_manifest_hash' => 'abc', 'final_manifest_verified' => true,
+                'reroll_count' => 0, 'chunks' => [],
+            ]),
+        ]);
+
+        $start = $this->actingAs($this->admin())
+            ->postJson(route('admin.studio.genblaze.run'), ['text' => 'He said, "Hello there." Now go.', 'voice' => 'v'])
+            ->assertStatus(202);
+
+        // Byte-identical text, and no quotes step in the progress list.
+        Http::assertSent(fn ($req) => str_contains($req->url(), 'runner.test/run')
+            && $req['text'] === 'He said, "Hello there." Now go.');
+
+        $progress = $this->actingAs($this->admin())
+            ->getJson($start->json('status_url'))
+            ->assertOk()
+            ->json('progress');
+        $this->assertNotContains('quotes', array_column($progress ?? [], 'step'));
     }
 
     public function test_run_rejects_missing_text_and_unknown_voice(): void

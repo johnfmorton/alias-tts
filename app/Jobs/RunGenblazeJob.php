@@ -7,6 +7,7 @@ use App\Services\Genblaze\GenblazeRunStore;
 use App\Services\Pronunciation\PronunciationDetector;
 use App\Services\Pronunciation\PronunciationSubstituter;
 use App\Services\Settings\SettingsManager;
+use App\Services\SpokenQuotes;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Bus\Dispatchable;
@@ -45,6 +46,7 @@ class RunGenblazeJob implements ShouldQueue
         GenblazeRunStore $store,
         PronunciationDetector $detector,
         PronunciationSubstituter $substituter,
+        SpokenQuotes $quotes,
     ): void {
         $store->markRunning($this->runId);
 
@@ -71,8 +73,23 @@ class RunGenblazeJob implements ShouldQueue
                     : 'unavailable',
             ]);
 
+            // Spoken quote marks — strictly AFTER pronunciation, so the
+            // inserted words can never be rewritten by a dictionary entry.
+            // Resolved AFTER applyForUser above = the dispatching user's
+            // setting; default off, and off is a byte-identical no-op.
+            $mode = (string) config('tts.spoken_quotes', SpokenQuotes::MODE_OFF);
+            $quoted = $quotes->apply($applied['text'], $mode, (int) config('tts.block_space_run', 4));
+            if ($mode !== SpokenQuotes::MODE_OFF) {
+                $store->appendProgress($this->runId, [
+                    'step' => 'quotes',
+                    'detail' => $quoted['applied']
+                        ? $quoted['applied'].' quotation(s) voiced'
+                        : 'no paired quotes found',
+                ]);
+            }
+
             $result = $runner->run(
-                text: $applied['text'],
+                text: $quoted['text'],
                 voice: $this->voice,
                 seed: $this->seed,
                 runId: $this->runId,

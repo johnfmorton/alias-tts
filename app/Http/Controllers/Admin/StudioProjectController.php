@@ -14,6 +14,7 @@ use App\Services\ProjectExportService;
 use App\Services\ProjectService;
 use App\Services\Pronunciation\PronunciationDetector;
 use App\Services\Pronunciation\PronunciationDictionary;
+use App\Services\SpokenQuotes;
 use App\Services\TextNormalizer;
 use App\Services\Tts\ChatterboxTuning;
 use App\Services\Tts\ModelCatalog;
@@ -196,6 +197,9 @@ class StudioProjectController extends Controller
             outputFormat: config('tts.project_output_format') ?: config('tts.default_output_format'),
             seed: $request->filled('seed') ? (int) $request->input('seed') : ($voice->settings['seed'] ?? null),
             pronunciationMap: $pronunciationMap,
+            // The requester's per-user setting (ApplyUserSettings middleware),
+            // resolved here — never inside ProjectService — so /v1 stays off.
+            spokenQuotes: (string) config('tts.spoken_quotes', SpokenQuotes::MODE_OFF),
             userId: $request->user()?->id,
         );
     }
@@ -504,7 +508,12 @@ class StudioProjectController extends Controller
             'text' => ['required', 'string', 'max:'.(int) config('tts.max_async_text_length', 40000)],
         ]);
 
-        $this->projects->resetFromText($project, $data['text'], $this->dictionary->approvedMap($this->projectOwnerId($request, $project)));
+        $this->projects->resetFromText(
+            $project,
+            $data['text'],
+            $this->dictionary->approvedMap($this->projectOwnerId($request, $project)),
+            (string) config('tts.spoken_quotes', SpokenQuotes::MODE_OFF),
+        );
 
         return redirect()->route('admin.studio.projects.show', $project)
             ->with('success', 'Project reset — generate the chunks below.');

@@ -52,6 +52,7 @@ class ProjectService
         private AsrClient $asr,
         private ChunkRemediator $remediator,
         private PronunciationSubstituter $substituter,
+        private SpokenQuotes $quotes,
         private VoiceService $voices,
     ) {}
 
@@ -74,10 +75,16 @@ class ProjectService
         ?int $seed,
         ?ApiKey $apiKey = null,
         array $pronunciationMap = [],
+        // Spoken-quote mode is an explicit parameter (never a config() read
+        // here): /v1 requests run under the key owner's settings overlay, and
+        // /v1/projects + createFromSpeech() funnel through this method — only
+        // the Studio controllers opt in, so the API path stays untouched.
+        string $spokenQuotes = SpokenQuotes::MODE_OFF,
         ?int $userId = null,
         ?string $origin = null,
     ): TtsProject {
         $normalized = $this->substituter->apply($this->normalizer->normalize($text), $pronunciationMap)['text'];
+        $normalized = $this->quotes->apply($normalized, $spokenQuotes, (int) config('tts.block_space_run', 4))['text'];
         $segments = $this->segmentText($normalized);
 
         $project = TtsProject::create([
@@ -245,13 +252,14 @@ class ProjectService
      *
      * @param  list<array{term: string, phonetic: string, match_mode?: string}>  $pronunciationMap
      */
-    public function resetFromText(TtsProject $project, string $text, array $pronunciationMap = []): TtsProject
+    public function resetFromText(TtsProject $project, string $text, array $pronunciationMap = [], string $spokenQuotes = SpokenQuotes::MODE_OFF): TtsProject
     {
         // Re-chunking throws the old audio away — un-approve first (the snapshot is
         // also removed by the directory wipe below).
         $this->clearSeal($project);
 
         $normalized = $this->substituter->apply($this->normalizer->normalize($text), $pronunciationMap)['text'];
+        $normalized = $this->quotes->apply($normalized, $spokenQuotes, (int) config('tts.block_space_run', 4))['text'];
         $segments = $this->segmentText($normalized);
 
         // Mutate the rows in a transaction; only wipe audio off disk once it

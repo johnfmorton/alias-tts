@@ -6,6 +6,22 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Added
+- **Spoken quote marks — quoted passages announced aloud, news-narration
+  style (opt-in).** A new per-user setting (Settings → Speech generation →
+  "Spoken quote marks") voices paired double quotes as words, three ways:
+  "open quote … close quote", "quote … close quote", or "quote" at the opening
+  only. Detection is deliberately conservative: curly marks are trusted as
+  written, a straight `"` is read from context, and only marks that confidently
+  pair are altered — a stray inches mark (`5' 10"`) or an unclosed quote is
+  always left byte-for-byte as typed. Long quotations that continue across
+  paragraphs (re-opened each paragraph, closed once at the end) are announced
+  once at the true start and closed once at the true end. Applies after the
+  pronunciation dictionary in Studio projects and the Genblaze demo (which
+  reports a `quotes` pipeline step); direct `/v1` API calls — including the
+  Bespoken plugin — are never affected, even when the key's owner has opted
+  in. See `docs/SPOKEN-QUOTES.md`.
+
 ### Fixed
 - **Skipping a chunk no longer shortens the pause it leaves behind.** The
   stitcher sizes each seam from the preceding chunk's break, so skipping a

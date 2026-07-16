@@ -6,6 +6,7 @@ use App\Enums\ProjectStatus;
 use App\Models\ApiKey;
 use App\Models\TtsProject;
 use App\Models\User;
+use App\Models\UserSetting;
 use App\Models\Voice;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
@@ -159,6 +160,30 @@ class ProjectApiTest extends TestCase
         // list uses to tell it apart from a hand-made project and from an audio
         // generation persisted by the text-to-speech endpoints ('api').
         $this->assertSame('api_project', $project->origin);
+    }
+
+    public function test_the_spoken_quotes_setting_never_touches_v1_projects(): void
+    {
+        // The key owner has opted in, and /v1 runs under the owner's settings
+        // overlay (ValidateApiKey) — but spoken quotes is a Studio/Genblaze
+        // feature only: the mode is passed into ProjectService by the Studio
+        // controllers, never read from config inside it. Pins the exclusion
+        // against future refactors.
+        $user = User::factory()->create();
+        UserSetting::create(['user_id' => $user->id, 'key' => 'tts.spoken_quotes', 'value' => 'open_close']);
+        $key = ApiKey::generate('test', null, $user->id);
+        $this->makeVoice();
+
+        $text = 'He said, "Hello there." Then he left without another word.';
+        $this->withHeaders(['xi-api-key' => $key->key])
+            ->postJson('/v1/projects', [
+                'title' => 'Quoted via API',
+                'voice_id' => 'my-voice',
+                'text' => $text,
+            ])
+            ->assertStatus(201);
+
+        $this->assertSame($text, TtsProject::firstWhere('title', 'Quoted via API')->normalized_text);
     }
 
     public function test_it_auto_generates_a_title_when_omitted(): void

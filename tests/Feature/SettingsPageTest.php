@@ -58,6 +58,7 @@ class SettingsPageTest extends TestCase
             'tts_pronunciation_llm_provider' => 'gemini',
             'tts_project_output_format' => 'mp3_44100_128',
             'tts_chunk_mode' => 'packed',
+            'tts_spoken_quotes' => 'off',
         ], $overrides);
     }
 
@@ -295,6 +296,49 @@ class SettingsPageTest extends TestCase
             ->assertSessionHasErrors('tts_chunk_mode');
 
         $this->assertNull($this->row($admin, 'tts.chunk_mode'));
+    }
+
+    public function test_generation_group_renders_with_spoken_quotes_labels(): void
+    {
+        $res = $this->actingAs($this->admin())->get(route('admin.settings.index'));
+
+        $res->assertOk();
+        $res->assertSee('Spoken quote marks');
+        $res->assertSee('Quote and close — say "quote" and "close quote" around quoted text');
+        $res->assertSee('Open only — say "quote" at the start; the closing mark is silent');
+    }
+
+    public function test_saving_persists_the_spoken_quotes_mode(): void
+    {
+        config(['tts.asr.enabled' => true]);
+        $this->setLocked('tts.asr.enabled', true);
+
+        $user = $this->user();
+
+        $this->actingAs($user)
+            ->put(route('admin.settings.update'), $this->validPayload([
+                'tts_spoken_quotes' => 'quote_close',
+            ]))
+            ->assertRedirect(route('admin.settings.index'))
+            ->assertSessionHas('success');
+
+        $this->assertSame('quote_close', $this->row($user, 'tts.spoken_quotes')->value);
+    }
+
+    public function test_an_unknown_spoken_quotes_mode_is_rejected(): void
+    {
+        config(['tts.asr.enabled' => true]);
+        $this->setLocked('tts.asr.enabled', true);
+
+        $admin = $this->admin();
+
+        $this->actingAs($admin)
+            ->put(route('admin.settings.update'), $this->validPayload([
+                'tts_spoken_quotes' => 'loud', // not an offered option
+            ]))
+            ->assertSessionHasErrors('tts_spoken_quotes');
+
+        $this->assertNull($this->row($admin, 'tts.spoken_quotes'));
     }
 
     public function test_saving_persists_the_project_output_format(): void

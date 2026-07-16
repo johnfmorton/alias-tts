@@ -29,6 +29,9 @@ Start with the group that matches what you're doing.
   settings-resolution chain, each engine's knobs, the ElevenLabs mapping, and
   the tuning surfaces (voice dials, the Tune-by-ear bench, presets, per-chunk
   Takes & tuning, the seed pin).
+- **[SPOKEN-QUOTES.md](SPOKEN-QUOTES.md)** — the opt-in "spoken quote marks"
+  setting: voicing paired double quotes as "open quote … close quote" (news
+  narration style), the pairing rules, and multi-paragraph quote handling.
 
 ## Integrating
 

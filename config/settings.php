@@ -53,6 +53,22 @@ $keys = [
         'help' => 'How your text is split into the pieces sent to the voice model. "Packed" groups sentences together up to the chunk budget — fewer, longer generation calls. "Per sentence" gives each sentence its own chunk — more calls, but in Studio each sentence becomes its own segment you can re-roll or edit independently. Either way, very short sentences still ride along with a neighbor so they are not garbled. Applies to everything you generate: projects, Studio, and your API keys.',
     ],
     [
+        'group' => 'generation',
+        'key' => 'spoken_quotes',
+        'config' => 'tts.spoken_quotes',
+        'env' => 'TTS_SPOKEN_QUOTES',
+        'type' => 'enum',
+        'options' => ['off', 'open_close', 'quote_close', 'open_only'],
+        'option_labels' => [
+            'off' => 'Off — quotation marks are left as written (default)',
+            'open_close' => 'Open and close — say "open quote" and "close quote" around quoted text',
+            'quote_close' => 'Quote and close — say "quote" and "close quote" around quoted text',
+            'open_only' => 'Open only — say "quote" at the start; the closing mark is silent',
+        ],
+        'label' => 'Spoken quote marks',
+        'help' => 'Reads quoted passages aloud the way automated news narration does. Only clearly paired double quotes ("…", “…”) are voiced; a stray mark — say, 5\' 10" — is always left exactly as written. A quote that continues across paragraphs is announced once at its true start and closed once at its true end. Applies to Studio projects and the Genblaze demo; direct /v1 API calls are never affected.',
+    ],
+    [
         'group' => 'asr',
         'key' => 'enabled',
         'config' => 'tts.asr.enabled',

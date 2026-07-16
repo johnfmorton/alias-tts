@@ -228,6 +228,14 @@ return [
     // on the Settings page.
     'chunk_mode' => env('TTS_CHUNK_MODE', 'packed'),
 
+    // Spoken quote markers: voice paired double quotes as words ("open quote …
+    // close quote"), like automated news narration. Only confidently PAIRED
+    // marks are touched — a stray " (e.g. inches) is always left as written.
+    // 'off' (default) | 'open_close' | 'quote_close' | 'open_only'. Per-user
+    // editable on the Settings page. Applies to Studio projects and the
+    // Genblaze demo; the /v1 API is never affected.
+    'spoken_quotes' => env('TTS_SPOKEN_QUOTES', 'off'),
+
     // Chunks shorter than this are merged into a neighbor so they are never sent
     // to the backend alone. Chatterbox is unreliable on very short inputs (a bare
     // "Why?" or a "The to-do list." heading) — it tends to return silence/garbage

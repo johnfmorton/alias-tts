@@ -223,6 +223,63 @@ class StudioProjectTest extends TestCase
         $this->assertSame('mp3_44100_128', TtsProject::firstWhere('title', 'Mp3 doc')->output_format);
     }
 
+    public function test_store_voices_quotes_when_the_setting_is_on(): void
+    {
+        // End-to-end through the ApplyUserSettings middleware: the per-user
+        // "Spoken quote marks" setting rewrites paired quotes in the chunked
+        // text while source_text keeps what the writer actually typed.
+        $admin = $this->admin();
+        Voice::create(['slug' => 'v', 'name' => 'V']);
+        UserSetting::create(['user_id' => $admin->id, 'key' => 'tts.spoken_quotes', 'value' => 'open_close']);
+
+        $text = 'He said, "Hello there." Then he left without another word.';
+        $this->actingAs($admin)->post(route('admin.studio.projects.store'), [
+            'title' => 'Quoted doc',
+            'voice' => 'v',
+            'text' => $text,
+        ]);
+
+        $project = TtsProject::firstWhere('title', 'Quoted doc');
+        $this->assertSame(
+            'He said, open quote, Hello there, close quote. Then he left without another word.',
+            $project->normalized_text
+        );
+        $this->assertSame($text, $project->source_text);
+    }
+
+    public function test_store_leaves_quotes_alone_by_default(): void
+    {
+        Voice::create(['slug' => 'v', 'name' => 'V']);
+
+        $text = 'He said, "Hello there." Then he left without another word.';
+        $this->actingAs($this->admin())->post(route('admin.studio.projects.store'), [
+            'title' => 'Plain doc',
+            'voice' => 'v',
+            'text' => $text,
+        ]);
+
+        $this->assertSame($text, TtsProject::firstWhere('title', 'Plain doc')->normalized_text);
+    }
+
+    public function test_reset_applies_the_spoken_quotes_setting(): void
+    {
+        $admin = $this->admin();
+        $project = $this->project();
+        UserSetting::create(['user_id' => $admin->id, 'key' => 'tts.spoken_quotes', 'value' => 'open_close']);
+
+        $newText = 'She replied, "On my way." And that settled the whole matter nicely.';
+        $this->actingAs($admin)
+            ->post(route('admin.studio.projects.reset', $project), ['text' => $newText])
+            ->assertRedirect(route('admin.studio.projects.show', $project));
+
+        $project->refresh();
+        $this->assertSame(
+            'She replied, open quote, On my way, close quote. And that settled the whole matter nicely.',
+            $project->normalized_text
+        );
+        $this->assertSame($newText, $project->source_text);
+    }
+
     public function test_a_delivery_preset_seeds_the_projects_tuning(): void
     {
         $admin = $this->admin();
