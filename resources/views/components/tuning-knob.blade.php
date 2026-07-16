@@ -29,6 +29,6 @@
     </div>
     <input type="range" min="{{ $min }}" max="{{ $max }}" step="{{ $step }}"
            value="{{ ($value !== '' && $value !== null) ? $value : ($placeholder !== '' ? $placeholder : $min) }}"
-           class="knob-range w-full accent-cyan-500" aria-label="{{ $label }}">
+           class="knob-range w-full cursor-pointer accent-cyan-500" aria-label="{{ $label }}">
     <div class="flex justify-between text-[10px] text-zinc-600"><span>{{ $min }}</span><span>{{ $max }}</span></div>
 </div>

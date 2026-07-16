@@ -30,6 +30,18 @@
 }
 
 /*
+ * Tailwind v4's preflight leaves buttons on the browser-default arrow cursor
+ * (v3 set pointer); restore the hand on every enabled button so clickable
+ * controls read as clickable. (Disabled buttons keep the arrow.)
+ */
+@layer base {
+    button:not(:disabled),
+    [role='button']:not(:disabled) {
+        cursor: pointer;
+    }
+}
+
+/*
  * Mobile global-nav sheet (Option 6C). Display, visibility and the slide-up/fade
  * transition are owned here rather than via Tailwind `hidden`/`flex` toggling,
  * which can't animate display:none and hits the hidden-vs-flex conflict. This
