@@ -212,7 +212,7 @@
                 <div>
                     <h3 class="text-[15px] font-semibold text-zinc-100">Per-key rate limits</h3>
                     <p class="mt-1.5 text-sm leading-relaxed text-zinc-400">
-                        Every API key carries its own hourly budget, set when you mint it — one noisy
+                        Give any API key its own hourly budget when you mint it — one noisy
                         integration can't starve the rest.
                     </p>
                 </div>
@@ -285,8 +285,9 @@
                     <div>
                         <h3 class="text-[15px] font-semibold text-zinc-100">Tune by ear</h3>
                         <p class="mt-1.5 text-sm leading-relaxed text-zinc-400">
-                            An A/B bench on the voice's edit page: compare two deliveries of the same line side
-                            by side, then save the winner as the voice's default or a named preset.
+                            An A/B bench on the voice's edit page: line up the same line at as many settings
+                            as you want to hear, generate them all, and save the winner as the voice's
+                            defaults or a named preset.
                         </p>
                     </div>
                     <div>
@@ -340,14 +341,25 @@
                 </div>
             </div>
 
-            <div class="mt-8 rounded-xl border border-zinc-800 bg-white/[0.02] px-6 py-5">
-                <h3 class="text-[15px] font-semibold text-zinc-100">Pronunciation dictionary</h3>
-                <p class="mt-1.5 max-w-3xl text-sm leading-relaxed text-zinc-400">
-                    An LLM pass flags the words a model will mangle — initialisms, product names, unusual proper
-                    nouns — and suggests phonetic respellings (<span class="k">DDEV</span> → <span class="k">dee dev</span>).
-                    Approve a fix once and it's applied to everything you generate afterward. Dictionaries are
-                    per-user, and clients can read them at <span class="k">GET /v1/pronunciations</span>.
-                </p>
+            <div class="mt-8 grid gap-3 lg:grid-cols-2">
+                <div class="rounded-xl border border-zinc-800 bg-white/[0.02] px-6 py-5">
+                    <h3 class="text-[15px] font-semibold text-zinc-100">Pronunciation dictionary</h3>
+                    <p class="mt-1.5 text-sm leading-relaxed text-zinc-400">
+                        An LLM pass flags the words a model will mangle — initialisms, product names, unusual proper
+                        nouns — and suggests phonetic respellings (<span class="k">DDEV</span> → <span class="k">dee dev</span>).
+                        Approve a fix once and it's applied to everything you generate afterward. Dictionaries are
+                        per-user, and clients can read them at <span class="k">GET /v1/pronunciations</span>.
+                    </p>
+                </div>
+                <div class="rounded-xl border border-zinc-800 bg-white/[0.02] px-6 py-5">
+                    <h3 class="text-[15px] font-semibold text-zinc-100">Spoken quotation marks</h3>
+                    <p class="mt-1.5 text-sm leading-relaxed text-zinc-400">
+                        An optional per-account setting voices paired quotes — <span class="k">open quote</span> …
+                        <span class="k">close quote</span> — the way broadcast narration does, so attribution
+                        survives the trip into audio. Only confidently paired marks are voiced (a stray inch
+                        mark stays written), it applies to Studio projects, and the raw API is never touched.
+                    </p>
+                </div>
             </div>
         </section>
 
@@ -361,7 +373,7 @@
             <h2 class="mt-4 text-3xl font-semibold tracking-tight">Fix the sentence, not the file.</h2>
             <p class="mt-4 max-w-2xl leading-relaxed text-zinc-400">
                 The APIs are the entry point; Studio is the power move — and it needs no new integration.
-                Flip one setting and the same call your app already makes lands here as an editable project,
+                By default, the same call your app already makes lands here as an editable project,
                 broken into chunks you can hear, edit, and regenerate one at a time. A forty-minute build
                 never gets thrown away over one flat line.
             </p>
@@ -370,9 +382,10 @@
                 <div>
                     <h3 class="text-[15px] font-semibold text-zinc-100">Start from the call you already make</h3>
                     <p class="mt-1.5 text-sm leading-relaxed text-zinc-400">
-                        Set <span class="k">api_project_mode</span> to <span class="k">always</span> and every
-                        request — either dialect — arrives as a project with its chunks and final audio. Or
-                        <span class="k">on_error</span>: a failed call leaves a fixable project, not a dead end.
+                        Out of the box (<span class="k">api_project_mode: always</span>), every request — either
+                        dialect — arrives as a project with its chunks and final audio. Dial it back to
+                        <span class="k">on_error</span> — a failed call leaves a fixable project, not a dead
+                        end — or <span class="k">never</span> for stateless calls.
                     </p>
                 </div>
                 <div>
@@ -397,17 +410,34 @@
                     </p>
                 </div>
                 <div>
+                    <h3 class="text-[15px] font-semibold text-zinc-100">A different voice per chunk</h3>
+                    <p class="mt-1.5 text-sm leading-relaxed text-zinc-400">
+                        Any chunk can override the project voice — a host and a guest, a narrator and a pull
+                        quote — each rendering with its own engine's settings, in one project and one final file.
+                    </p>
+                </div>
+                <div>
                     <h3 class="text-[15px] font-semibold text-zinc-100">Keep the take you approved</h3>
                     <p class="mt-1.5 text-sm leading-relaxed text-zinc-400">
                         Re-roll a chunk until it reads right, A/B the takes, and keep the winner — the exact
-                        audio you heard, byte for byte.
+                        audio you heard, byte for byte. Every take records the seed and settings it rendered
+                        at, and you can pin a seed for the next roll — a recorded reference point, not a
+                        replay guarantee.
+                    </p>
+                </div>
+                <div>
+                    <h3 class="text-[15px] font-semibold text-zinc-100">Skip a chunk, keep the record</h3>
+                    <p class="mt-1.5 text-sm leading-relaxed text-zinc-400">
+                        Mute a chunk out of the final build without deleting it. It stays in the project, and a
+                        sealed receipt lists it as skipped — the record never pretends it wasn't there.
                     </p>
                 </div>
                 <div>
                     <h3 class="text-[15px] font-semibold text-zinc-100">Build &amp; download</h3>
                     <p class="mt-1.5 text-sm leading-relaxed text-zinc-400">
                         Rebuild the final as MP3 or WAV, per your account's output setting, and download it from
-                        the same page.
+                        the same page. Need a new cut later? Duplicate the project and iterate — the approved
+                        original stays untouched.
                     </p>
                 </div>
             </div>
@@ -436,7 +466,8 @@
                         <h3 class="text-[15px] font-semibold text-zinc-100">The receipt</h3>
                         <p class="mt-1.5 text-sm leading-relaxed text-zinc-400">
                             A <span class="k">.zip</span> holding the audio, a human-readable provenance record —
-                            including the script of every chunk — and a machine-readable manifest.
+                            the script of every chunk, with skipped chunks listed and labeled, not erased —
+                            and a machine-readable manifest.
                         </p>
                     </div>
                     <div>
@@ -468,14 +499,15 @@
             </div>
             <h2 class="mt-4 text-3xl font-semibold tracking-tight">Yours, all the way down.</h2>
             <p class="mt-4 max-w-2xl leading-relaxed text-zinc-400">
-                Alias TTS is a stack you can read, point at, and run — not an account you rent.
+                Alias TTS is a stack you deploy, point at, and run — not an account you rent.
             </p>
 
             <div class="mt-10 grid gap-x-12 gap-y-8 sm:grid-cols-2 lg:grid-cols-3">
                 <div>
                     <h3 class="text-[15px] font-semibold text-zinc-100">Your server</h3>
                     <p class="mt-1.5 text-sm leading-relaxed text-zinc-400">
-                        A Laravel app you deploy anywhere PHP 8.3 runs, on SQLite, MySQL, or Postgres.
+                        A Laravel app you deploy anywhere PHP 8.3 runs — or as a single Docker
+                        container — on SQLite, MySQL, or Postgres.
                     </p>
                 </div>
                 <div>
@@ -487,18 +519,19 @@
                 <div>
                     <h3 class="text-[15px] font-semibold text-zinc-100">Your GPU bill</h3>
                     <p class="mt-1.5 text-sm leading-relaxed text-zinc-400">
-                        Generation runs on a pay-per-second GPU via Replicate. Low or bursty volume doesn't pay
-                        a monthly subscription.
+                        Generation runs on a pay-per-second GPU via Replicate — no monthly subscription —
+                        and Studio shows estimated spend per chunk and per project, so the meter is never
+                        a surprise. For development, an in-repo sidecar runs both engines on your own
+                        hardware, spending nothing.
                     </p>
                 </div>
-                {{-- Parked as the least compelling card; restore if the grid needs a sixth again.
                 <div>
                     <h3 class="text-[15px] font-semibold text-zinc-100">Your team</h3>
                     <p class="mt-1.5 text-sm leading-relaxed text-zinc-400">
-                        A multi-user dashboard: every account gets its own keys, voices, dictionary, and settings.
+                        A multi-user dashboard where every account gets its own keys, voices and voice
+                        order, dictionary, and settings — down to output format and chunking.
                     </p>
                 </div>
-                --}}
                 <div>
                     <h3 class="text-[15px] font-semibold text-zinc-100">Your health checks</h3>
                     <p class="mt-1.5 text-sm leading-relaxed text-zinc-400">
@@ -506,20 +539,11 @@
                         install, with one-click end-to-end test generations.
                     </p>
                 </div>
-                {{-- Sixth-card option A: provenance. Keep one of A/B and delete the other. --}}
                 <div>
                     <h3 class="text-[15px] font-semibold text-zinc-100">Your proof</h3>
                     <p class="mt-1.5 text-sm leading-relaxed text-zinc-400">
                         Seal a finished project and it ships with a receipt — anyone can verify,
                         byte for byte, that a file is the audio you approved.
-                    </p>
-                </div>
-                {{-- Sixth-card option B: pronunciation dictionary. --}}
-                <div>
-                    <h3 class="text-[15px] font-semibold text-zinc-100">Your dictionary</h3>
-                    <p class="mt-1.5 text-sm leading-relaxed text-zinc-400">
-                        Teach it how to say your names, brands, and acronyms once — every future
-                        generation pronounces them your way.
                     </p>
                 </div>
             </div>
