@@ -57,7 +57,7 @@ class SpokenQuotes
     private const RUN_PUNCT = ['.', ',', ';', ':', '!', '?', '…'];
 
     /**
-     * @return array{text: string, applied: int}  `applied` = quotations voiced
+     * @return array{text: string, applied: int} `applied` = quotations voiced
      */
     public function apply(string $text, string $mode, int $blockSpaceRun = 4): array
     {
