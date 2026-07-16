@@ -100,7 +100,7 @@
                         <td class="px-4 py-3">
                             <button data-test-voice="{{ route('admin.voices.test', $voice) }}" data-audio-target="#audio-{{ $voice->id }}"
                                     class="rounded-md border border-zinc-700 px-2.5 py-1 text-xs hover:bg-zinc-800 disabled:cursor-not-allowed disabled:opacity-40">Test</button>
-                            <audio id="audio-{{ $voice->id }}" controls class="mt-2 hidden w-44"></audio>
+                            <x-aplayer variant="take" audio-id="audio-{{ $voice->id }}" label="Play voice sample" class="mt-2 hidden w-64 max-w-full" />
                         </td>
                         <td class="px-4 py-3">
                             <div class="flex justify-end gap-1.5">

@@ -48,7 +48,7 @@
                             class="rounded-lg border border-cyan-700/50 bg-cyan-500/10 px-3 py-2 text-sm text-cyan-300 hover:bg-cyan-500/20">Test long text (async)</button>
                 </div>
                 <div id="health-test-status" class="text-sm text-zinc-400" role="status" aria-live="polite"></div>
-                <audio id="health-test-audio" controls class="hidden w-full"></audio>
+                <x-aplayer audio-id="health-test-audio" label="Play test audio" class="hidden w-full" />
             @endif
         </div>
     </div>

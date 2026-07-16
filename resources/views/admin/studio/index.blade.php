@@ -253,7 +253,7 @@
                     </div>
                     <div class="space-y-3 p-5">
                         <p id="studio-normalized" class="rounded-lg bg-inset p-3 text-sm break-words whitespace-pre-wrap text-zinc-300"></p>
-                        <audio id="studio-whole-audio" controls class="hidden w-full"></audio>
+                        <x-aplayer audio-id="studio-whole-audio" label="Play whole render" class="hidden w-full" />
                     </div>
                 </div>
 
@@ -275,7 +275,7 @@
                             </span>
                         </div>
                         <div id="studio-concat-status" class="text-sm text-zinc-400" role="status" aria-live="polite"></div>
-                        <audio id="studio-concat-audio" controls class="hidden w-full"></audio>
+                        <x-aplayer audio-id="studio-concat-audio" label="Play stitched result" class="hidden w-full" />
                     </div>
 
                     <ol id="studio-chunks" class="space-y-3"></ol>

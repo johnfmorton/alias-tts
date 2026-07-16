@@ -49,10 +49,45 @@ function setStatus(el, message, kind) {
 function playAudio(audio, blob) {
     if (!audio) return;
     audio.src = URL.createObjectURL(blob);
-    // Reveal the custom-player wrapper if this audio is skinned (Studio), else the
-    // bare audio element (the stateless inspector/bench players).
+    // Reveal the custom-player wrapper if this audio is skinned, else the bare
+    // audio element (a fallback — every player in the app is skinned now).
     (audio.closest('.aplayer') || audio).classList.remove('hidden');
     audio.play().catch(() => {});
+}
+
+// playAudio's counterpart: hide a player again (the wrapper when skinned).
+function hidePlayer(audio) {
+    if (audio) (audio.closest('.aplayer') || audio).classList.add('hidden');
+}
+
+// Build the app's standard player: the skinned `.aplayer` wrapper around a
+// hidden native audio (same anatomy as <x-aplayer> and Studio's takeRow).
+// Callers grab the native via `.aplayer__native` and run enhanceStudioPlayers()
+// on the wrapper (or an ancestor) once it's in the DOM.
+function buildAPlayer(variant, { label = 'Play audio', hidden = false, extraClass = '' } = {}) {
+    const el = document.createElement('div');
+    el.className = `aplayer aplayer--${variant}` + (hidden ? ' hidden' : '') + (extraClass ? ` ${extraClass}` : '');
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = 'aplayer__btn';
+    btn.setAttribute('aria-label', label);
+    const icon = document.createElement('span');
+    icon.className = 'aplayer__icon';
+    btn.append(icon);
+    const track = document.createElement('div');
+    track.className = 'aplayer__track';
+    const fill = document.createElement('div');
+    fill.className = 'aplayer__fill';
+    const knob = document.createElement('div');
+    knob.className = 'aplayer__knob';
+    track.append(fill, knob);
+    const time = document.createElement('span');
+    time.className = 'aplayer__time';
+    time.textContent = '0:00 / 0:00';
+    const audio = document.createElement('audio');
+    audio.className = 'aplayer__native';
+    el.append(btn, track, time, audio);
+    return el;
 }
 
 async function errorMessage(res) {
@@ -199,12 +234,7 @@ document.addEventListener('click', async (e) => {
                 },
             });
             if (!res.ok) throw new Error('Request failed');
-            const blob = await res.blob();
-            if (audio) {
-                audio.src = URL.createObjectURL(blob);
-                audio.classList.remove('hidden');
-                audio.play().catch(() => {});
-            }
+            playAudio(audio, await res.blob());
             testBtn.textContent = label;
         } catch (_) {
             // Transient inline error (like the data-copy "Copied!" flip) —
@@ -531,9 +561,8 @@ function initStudio() {
         body.className = 'mt-2 whitespace-pre-wrap break-words text-sm text-zinc-200';
         body.textContent = chunk.text;
 
-        const audio = document.createElement('audio');
-        audio.controls = true;
-        audio.className = 'mt-3 hidden w-full';
+        const player = buildAPlayer('take', { label: 'Play chunk', hidden: true, extraClass: 'mt-3' });
+        const audio = player.querySelector('.aplayer__native');
 
         if (els.voice) {
             genBtn.addEventListener('click', async () => {
@@ -549,7 +578,7 @@ function initStudio() {
             genBtn.classList.add('opacity-40');
         }
 
-        li.append(head, body, audio);
+        li.append(head, body, player);
         return li;
     }
 
@@ -599,10 +628,11 @@ function initStudio() {
 
         chunkStates = data.chunks.map((c) => ({ index: c.index, text: c.text, breakAfter: c.breakAfter, blob: null, checkbox: null }));
         els.chunks.replaceChildren(...data.chunks.map((c, i) => chunkCard(c, chunkStates[i])));
+        enhanceStudioPlayers(els.chunks); // skin the freshly-built chunk players
 
-        els.wholeAudio.classList.add('hidden');
+        hidePlayer(els.wholeAudio);
         els.concatBar.classList.add('hidden');
-        els.concatAudio.classList.add('hidden');
+        hidePlayer(els.concatAudio);
         setStatus(els.concatStatus, '');
         els.results.classList.remove('hidden');
     }
@@ -799,7 +829,7 @@ function initTuningBench(bench) {
 
     const loadAudio = (audio, blob) => {
         audio.src = URL.createObjectURL(blob);
-        audio.classList.remove('hidden');
+        (audio.closest('.aplayer') || audio).classList.remove('hidden');
     };
 
     async function generateRow(state, btn, autoplay = true) {
@@ -841,15 +871,16 @@ function initTuningBench(bench) {
         playBtn.className = 'grid h-[34px] w-[34px] place-items-center rounded-full border border-accent/50 text-accent transition hover:bg-accent/10';
         playBtn.textContent = '▶';
 
-        // Take cell: a "not generated" placeholder swapped for the audio once made.
+        // Take cell: a "not generated" placeholder swapped for the app's
+        // standard player (take weight) once made.
         const take = document.createElement('div');
+        take.className = 'min-w-0';
         const placeholder = document.createElement('span');
         placeholder.className = 'text-[13px] text-zinc-600';
         placeholder.textContent = 'not generated';
-        const audio = document.createElement('audio');
-        audio.controls = true;
-        audio.className = 'hidden h-8 w-full';
-        take.append(placeholder, audio);
+        const player = buildAPlayer('take', { label: 'Play take', hidden: true });
+        const audio = player.querySelector('.aplayer__native');
+        take.append(placeholder, player);
 
         const remove = document.createElement('button');
         remove.type = 'button';
@@ -872,6 +903,7 @@ function initTuningBench(bench) {
         });
 
         els.rows.append(li);
+        enhanceStudioPlayers(li); // skin the row's take player
     }
 
     async function generateAll() {
@@ -1675,35 +1707,18 @@ function initStudioProject() {
         li.className = 'chunk-take flex flex-wrap items-center gap-2 rounded-lg border px-2 py-1.5 '
             + (take.selected ? 'border-emerald-600/50 bg-emerald-500/10' : 'border-zinc-800 bg-zinc-950/40');
 
-        // Custom player (take weight): a skinned wrapper around a hidden native
-        // audio. enhanceStudioPlayers() (called by renderTakes) wires it up.
-        const player = document.createElement('div');
-        player.className = 'aplayer aplayer--take min-w-0 flex-1' + (take.selected ? ' aplayer--selected' : '');
-        const playBtn = document.createElement('button');
-        playBtn.type = 'button';
-        playBtn.className = 'aplayer__btn';
-        playBtn.setAttribute('aria-label', 'Play take');
-        const icon = document.createElement('span');
-        icon.className = 'aplayer__icon';
-        playBtn.append(icon);
-        const track = document.createElement('div');
-        track.className = 'aplayer__track';
-        const fill = document.createElement('div');
-        fill.className = 'aplayer__fill';
-        const knob = document.createElement('div');
-        knob.className = 'aplayer__knob';
-        track.append(fill, knob);
-        const time = document.createElement('span');
-        time.className = 'aplayer__time';
-        time.textContent = '0:00 / 0:00';
+        // Custom player (take weight): enhanceStudioPlayers() (called by
+        // renderTakes) wires it up.
+        const player = buildAPlayer('take', {
+            label: 'Play take',
+            extraClass: 'min-w-0 flex-1' + (take.selected ? ' aplayer--selected' : ''),
+        });
         // Recorded length: enhanceStudioPlayers prints it immediately, so the
         // duration is visible without playing (preload stays 'none' — no request).
         if (take.duration_ms) player.dataset.durationMs = take.duration_ms;
-        const audio = document.createElement('audio');
+        const audio = player.querySelector('.aplayer__native');
         audio.preload = 'none';
-        audio.className = 'aplayer__native';
         audio.src = take.audio_url;
-        player.append(playBtn, track, time, audio);
 
         const meta = document.createElement('div');
         meta.className = 'flex min-w-0 flex-col text-xs text-zinc-500';
@@ -2463,6 +2478,12 @@ function enhanceStudioPlayers(scope) {
 }
 
 initStudioProject();
+
+// Skin every statically-rendered player on the page (voices table, health,
+// the Studio inspector) — enhancing is idempotent, so pages that already
+// enhance their own scope are unaffected. Dynamically-built players are
+// enhanced where they're created.
+enhanceStudioPlayers();
 
 // Only one audio player at a time: when any <audio> starts, pause the others and
 // mark it `is-playing` (CSS keeps the active player bright and dims the rest, so
