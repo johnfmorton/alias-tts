@@ -302,10 +302,12 @@
                          block so `hidden` alone is safe — the flex lives one level in. --}}
                     <div data-engine-help="chatterbox-turbo" @class(['chunk-sound-tags', 'hidden' => $chunkModel !== 'chatterbox-turbo'])>
                         <div class="mt-1.5 flex flex-wrap items-center gap-1.5">
-                            <span class="text-[11px] uppercase tracking-wide text-zinc-600" title="Chatterbox Turbo renders these as actual sounds, not words. They work best mid-sentence — a tag at the very end of a chunk can trip take QA.">Sound tags</span>
+                            <span class="cursor-help text-[11px] uppercase tracking-wide text-zinc-500" title="Chatterbox Turbo renders these as actual sounds, not words. They work best mid-sentence — a tag at the very end of a chunk can trip take QA.">Sound tags</span>
+                            {{-- Chips show the literal token they insert; the brackets are
+                                 dimmed like editor syntax so the tag words stay scannable. --}}
                             @foreach(\App\Services\Tts\ParalinguisticTags::TAGS as $tag)
-                                <button type="button" class="chunk-tag-insert rounded-full border border-zinc-800 px-2 py-0.5 text-xs text-zinc-500 transition hover:border-zinc-600 hover:text-zinc-200"
-                                        data-tag="[{{ $tag }}]" title="Insert [{{ $tag }}] at the cursor">[{{ $tag }}]</button>
+                                <button type="button" class="chunk-tag-insert whitespace-nowrap rounded-full border border-white/10 bg-white/[0.04] px-2.5 py-0.5 font-mono text-xs text-zinc-200 transition hover:border-cyan-400/40 hover:bg-cyan-500/10 hover:text-cyan-100 active:bg-cyan-500/20"
+                                        data-tag="[{{ $tag }}]" title="Insert [{{ $tag }}] at the cursor"><span class="text-zinc-500">[</span>{{ $tag }}<span class="text-zinc-500">]</span></button>
                             @endforeach
                         </div>
                     </div>

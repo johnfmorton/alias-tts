@@ -4,6 +4,21 @@ All notable changes to this project are documented in this file. The format is
 based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this
 project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Changed
+- **Turbo sound tags are readable now.** The Studio chip row (`[sigh]`,
+  `[cough]`, `[laugh]`…) no longer fades into the card: chips get a real fill
+  and monospace tag text with the brackets dimmed like editor syntax, so the
+  words scan at a glance, and hovering shifts a chip to the cyan action accent
+  to make "click to insert at the cursor" obvious.
+
+### Fixed
+- **Long voice IDs no longer center when they wrap.** The click-to-copy
+  voice_id in the Voices table is a button, and buttons center their text by
+  default — invisible until a slug like `default-turbo-male` wrapped to two
+  lines. Wrapped IDs now stay left-aligned.
+
 ## [0.55.0] - 2026-07-16
 
 ### Added
