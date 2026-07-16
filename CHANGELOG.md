@@ -4,6 +4,44 @@ All notable changes to this project are documented in this file. The format is
 based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this
 project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+- **Pick your microphone right in the voice recorder.** Once the mic is
+  enabled, an input-device picker appears beside the recorder controls showing
+  every available microphone — switching re-points the live level meter
+  instantly, the choice is remembered for next time (falling back cleanly if
+  that device is gone), and the list refreshes as devices come and go (USB mic
+  plugged in, AirPods connecting). The picker is locked while a take is
+  recording, and if the in-use microphone disconnects mid-session the recorder
+  stops safely, keeps the partial take for review, and offers to re-enable.
+- **Reject & re-record from the take chooser.** When a recorded clip's
+  cleaned-up/original preview is up, a new "Reject & re-record" button
+  discards the take and drops straight back into the armed recorder — mic
+  still live, meter running — instead of "Start over"'s full reset (which
+  remains for switching to upload).
+
+### Changed
+- **"Use this recording" now shows its work.** The button goes busy
+  ("Cleaning up…") and can't double-fire while the clip is being prepared,
+  progress and errors are reported right next to the button (not only in the
+  footer status line), the "takes about a minute" message only appears when
+  cleanup will actually run, and Re-record is frozen mid-flight so a retake
+  can't be yanked away when the preview arrives.
+- **The teleprompter hint tells the truth.** "We'll clean up room noise and
+  normalize loudness after." now tracks the processing checkboxes — each half
+  of the promise appears only when the matching step (cleanup checkbox,
+  Store-raw off) will actually run.
+
+### Fixed
+- **The Enable-microphone button disappears once the mic is granted.** It was
+  meant to all along, but a CSS display conflict kept it visible alongside
+  Record; the mic-ready state now reads unambiguously.
+- **Clickable things look clickable again.** Tailwind v4 quietly dropped the
+  pointer (hand) cursor on buttons; it's restored app-wide for enabled
+  buttons, and the Studio tuning sliders got the pointer the voice-page dials
+  already had.
+
 ## [0.54.0] - 2026-07-16
 
 ### Added

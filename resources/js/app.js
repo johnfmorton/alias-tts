@@ -3194,6 +3194,7 @@ function initVoiceRecorder() {
     const fileInput = q('[data-clip-file]');
     const enhanceBox = q('[data-clip-enhance]');
     const previewBtn = q('[data-clip-preview]');
+    const rerecordBtn = q('[data-clip-rerecord]');
     const panel = q('[data-clip-panel]');
     const abPanel = q('[data-clip-ab]');
     const warningEl = q('[data-clip-ab-warning]');
@@ -3249,13 +3250,22 @@ function initVoiceRecorder() {
         refreshPreviewBtn();
     }
 
-    async function prepareClip(blob, filename) {
-        setStatus(statusEl, 'Cleaning up your clip — this takes about a minute…', 'muted');
-        startBusy(previewBtn, 'Cleaning up…');
+    // opts.trigger: the button that kicked this off — busied so it can't double-fire.
+    // opts.status: a status element beside that button (the recorder's), mirrored so
+    // progress isn't only reported by the widget-footer line the eye has left.
+    async function prepareClip(blob, filename, opts = {}) {
+        const trigger = opts.trigger || previewBtn;
+        const say = (msg, kind) => {
+            setStatus(statusEl, msg, kind);
+            if (opts.status && opts.status !== statusEl) setStatus(opts.status, msg, kind);
+        };
+        const enhancing = enhanceBox && enhanceBox.checked;
+        say(enhancing ? 'Cleaning up your clip — this takes about a minute…' : 'Preparing your clip…', 'muted');
+        startBusy(trigger, enhancing ? 'Cleaning up…' : 'Preparing…');
         try {
             const fd = new FormData();
             fd.append('audio', blob, filename);
-            if (enhanceBox && enhanceBox.checked) fd.append('enhance', '1');
+            if (enhancing) fd.append('enhance', '1');
             const res = await fetch(prepareUrl, {
                 method: 'POST',
                 headers: { 'X-CSRF-TOKEN': csrfToken(), 'Accept': 'application/json' },
@@ -3263,11 +3273,11 @@ function initVoiceRecorder() {
             });
             if (!res.ok) throw new Error(await errorMessage(res));
             renderAB(await res.json());
-            setStatus(statusEl, '', 'muted');
+            say('', 'muted');
         } catch (err) {
-            setStatus(statusEl, `✗ ${err.message}`, 'error');
+            say(`✗ ${err.message}`, 'error');
         } finally {
-            endBusy(previewBtn);
+            endBusy(trigger);
             refreshPreviewBtn();
         }
     }
@@ -3294,20 +3304,44 @@ function initVoiceRecorder() {
         panel.classList.add('hidden');       // swap the Upload/Record panel for the chooser
         abPanel.classList.remove('hidden');
         previewBtn.classList.add('hidden');
+        if (rerecordBtn) rerecordBtn.classList.toggle('hidden', !recordedBlob); // mic takes can be rejected in place
         if (fileInput) fileInput.disabled = true; // the token supersedes a raw upload
     }
 
     // Hook the mic recorder uses to route a recording through the same preview path.
-    widget.__prepareRecording = (blob, filename) => { recordedBlob = blob; prepareClip(blob, filename); };
+    widget.__prepareRecording = (blob, filename, opts) => { recordedBlob = blob; return prepareClip(blob, filename, opts); };
+
+    // The teleprompter's "We'll … after." sentence promises only what will run:
+    // room-noise cleanup follows the enhance checkbox, loudness normalization is
+    // skipped when Store raw is checked (mirrors VoiceController's normalize flag).
+    const processingEl = q('[data-recorder-processing]');
+    const rawBox = q('[data-clip-raw]');
+    function refreshProcessingHint() {
+        if (!processingEl) return;
+        const parts = [];
+        if (enhanceBox && enhanceBox.checked) parts.push('clean up room noise');
+        if (widget.dataset.normalizeEnabled && !(rawBox && rawBox.checked)) parts.push('normalize loudness');
+        processingEl.textContent = parts.length ? ` We'll ${parts.join(' and ')} after.` : '';
+    }
+    refreshProcessingHint();
+    if (rawBox) rawBox.addEventListener('change', refreshProcessingHint);
 
     if (fileInput) fileInput.addEventListener('change', () => { recordedBlob = null; clearPreview(); });
-    if (enhanceBox) enhanceBox.addEventListener('change', refreshPreviewBtn);
+    if (enhanceBox) enhanceBox.addEventListener('change', () => { refreshPreviewBtn(); refreshProcessingHint(); });
     previewBtn.addEventListener('click', () => {
         const file = fileInput && fileInput.files && fileInput.files[0];
         if (recordedBlob) prepareClip(recordedBlob, 'recording.webm');
         else if (file) prepareClip(file, file.name);
     });
     widget.querySelector('[data-clip-reset]')?.addEventListener('click', () => { recordedBlob = null; clearPreview(); });
+
+    // Reject the previewed mic take: back to the recorder, mic still armed, ready to retake.
+    rerecordBtn?.addEventListener('click', () => {
+        recordedBlob = null;
+        clearPreview();
+        setMode('record');
+        widget.__recorderRedo?.();
+    });
 
     // ── Teleprompter: swap the passage per script + A−/A+ sizing (persisted) ──
     const passageEl = q('[data-recorder-passage]');
@@ -3354,13 +3388,15 @@ function initVoiceMicRecorder(widget) {
     const reviewAudio = q('[data-recorder-player] .aplayer__native');
     const useBtn = q('[data-recorder-use]');
     const recStatus = q('[data-recorder-status]');
+    const deviceSel = q('[data-recorder-device]');
     if (!enableBtn) return;
 
     const targetMin = Number(widget.dataset.targetMin) || 15;
     const targetMax = Number(widget.dataset.targetMax) || 30;
     const maxSeconds = Number(widget.dataset.maxSeconds) || 60;
+    const DEVICE_KEY = 'aliasMicInput';
 
-    let stream = null, audioCtx = null, analyser = null, meterRAF = 0;
+    let stream = null, audioCtx = null, analyser = null, micSource = null, meterRAF = 0;
     let mr = null, chunks = [], recBlob = null, startedAt = 0, timerId = 0;
 
     const show = (node, on) => node && node.classList.toggle('hidden', !on);
@@ -3390,14 +3426,69 @@ function initVoiceMicRecorder(widget) {
         if (s >= maxSeconds) stopRecording(`Stopped at ${maxSeconds}s — that's plenty.`);
     }
 
+    // Capture constraints; a specific device can be requested, and the last-used
+    // device is preferred on re-enable (`ideal` falls back cleanly if it's gone).
+    function acquireStream(deviceId) {
+        // Browser DSP off — resemble-enhance does the cleanup, and its
+        // artifacts hurt cloning; AGC on for safe input levels.
+        const audio = { echoCancellation: false, noiseSuppression: false, autoGainControl: true, channelCount: 1 };
+        if (deviceId) audio.deviceId = { exact: deviceId };
+        else if (localStorage.getItem(DEVICE_KEY)) audio.deviceId = { ideal: localStorage.getItem(DEVICE_KEY) };
+        return navigator.mediaDevices.getUserMedia({ audio });
+    }
+
+    // track.stop() doesn't fire 'ended' — this only catches the device going away
+    // under us (USB mic unplugged, Bluetooth dropout), never our own switches.
+    function watchTrackEnd() {
+        stream.getAudioTracks()[0]?.addEventListener('ended', onTrackEnded, { once: true });
+    }
+    function onTrackEnded() {
+        if (mr && mr.state !== 'inactive') stopRecording('');
+        if (stream) stream.getTracks().forEach((t) => t.stop());
+        stream = null;
+        cancelAnimationFrame(meterRAF);
+        show(meterWrap, false); show(deviceSel, false);
+        showFlex(recordBtn, false); showFlex(stopBtn, false);
+        showFlex(enableBtn, true);
+        setStatus(recStatus, '✗ The microphone was disconnected — enable it again to continue.', 'error');
+    }
+
+    // The in-page input picker doubles as the "which mic is hot" readout. It can
+    // only be populated once permission is granted (labels are blank before), and
+    // it's disabled while recording — MediaRecorder is bound to the live stream.
+    async function refreshDeviceList() {
+        if (!deviceSel || !navigator.mediaDevices.enumerateDevices) return;
+        const inputs = (await navigator.mediaDevices.enumerateDevices()).filter((d) => d.kind === 'audioinput' && d.deviceId);
+        const current = stream?.getAudioTracks()[0]?.getSettings?.().deviceId;
+        deviceSel.replaceChildren();
+        inputs.forEach((d, i) => deviceSel.add(new Option(d.label || `Microphone ${i + 1}`, d.deviceId, false, d.deviceId === current)));
+        show(deviceSel, !!stream && inputs.length > 0);
+    }
+
+    // Swap the live stream to the picked device and re-point the level meter.
+    // Firefox may re-confirm with its own prompt (permissions are per-device there).
+    async function switchDevice() {
+        setStatus(recStatus, 'Switching microphone…', 'muted');
+        try {
+            const next = await acquireStream(deviceSel.value);
+            if (stream) stream.getTracks().forEach((t) => t.stop());
+            stream = next;
+            if (micSource) micSource.disconnect();
+            micSource = audioCtx.createMediaStreamSource(stream);
+            micSource.connect(analyser);
+            watchTrackEnd();
+            try { localStorage.setItem(DEVICE_KEY, deviceSel.value); } catch (_) {}
+            setStatus(recStatus, 'Microphone ready — press Record and read the passage.', 'muted');
+        } catch (err) {
+            setStatus(recStatus, '✗ Could not switch microphones: ' + (err?.message || err), 'error');
+        }
+        refreshDeviceList(); // reflect what's actually live (snaps the pick back on failure)
+    }
+
     async function enableMic() {
         setStatus(recStatus, 'Requesting microphone…', 'muted');
         try {
-            stream = await navigator.mediaDevices.getUserMedia({
-                // Browser DSP off — resemble-enhance does the cleanup, and its
-                // artifacts hurt cloning; AGC on for safe input levels.
-                audio: { echoCancellation: false, noiseSuppression: false, autoGainControl: true, channelCount: 1 },
-            });
+            stream = await acquireStream();
         } catch (err) {
             const denied = err && (err.name === 'NotAllowedError' || err.name === 'SecurityError');
             setStatus(recStatus, denied
@@ -3405,18 +3496,22 @@ function initVoiceMicRecorder(widget) {
                 : '✗ Could not access the microphone: ' + (err?.message || err), 'error');
             return;
         }
-        // AudioContext created on the user gesture (Safari requires it).
-        audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+        // AudioContext created on the user gesture (Safari requires it); reused
+        // if the mic is re-enabled after a disconnect.
+        if (!audioCtx || audioCtx.state === 'closed') audioCtx = new (window.AudioContext || window.webkitAudioContext)();
         if (audioCtx.state === 'suspended') await audioCtx.resume();
         analyser = audioCtx.createAnalyser();
         analyser.fftSize = 512;
-        audioCtx.createMediaStreamSource(stream).connect(analyser); // never to destination (feedback)
+        micSource = audioCtx.createMediaStreamSource(stream);
+        micSource.connect(analyser); // never to destination (feedback)
+        watchTrackEnd();
         show(meterWrap, true);
         updateMeter();
 
-        show(enableBtn, false);
+        showFlex(enableBtn, false); // static inline-flex would beat `hidden` (display-conflict gotcha)
         show(hintEl, false);
         showFlex(recordBtn, true);
+        refreshDeviceList();
         setStatus(recStatus, 'Microphone ready — press Record and read the passage.', 'muted');
     }
 
@@ -3440,6 +3535,7 @@ function initVoiceMicRecorder(widget) {
         timerId = setInterval(tick, 200);
         show(timerEl, true); show(guideEl, true); show(reviewWrap, false);
         showFlex(recordBtn, false); showFlex(stopBtn, true); show(redoBtn, false);
+        if (deviceSel) deviceSel.disabled = true; // the recorder is bound to this stream
         setStatus(recStatus, '', 'muted');
     }
 
@@ -3447,6 +3543,7 @@ function initVoiceMicRecorder(widget) {
         if (mr && mr.state !== 'inactive') mr.stop();
         clearInterval(timerId);
         showFlex(stopBtn, false); showFlex(recordBtn, false); show(redoBtn, true);
+        if (deviceSel) deviceSel.disabled = false;
         if (msg) setStatus(recStatus, msg, 'muted');
     }
 
@@ -3457,18 +3554,29 @@ function initVoiceMicRecorder(widget) {
         stream = null; audioCtx = null; analyser = null;
     }
 
-    enableBtn.addEventListener('click', enableMic);
-    recordBtn.addEventListener('click', startRecording);
-    stopBtn.addEventListener('click', () => stopRecording(''));
-    redoBtn.addEventListener('click', () => {
+    function resetForRetake() {
         show(reviewWrap, false); show(useBtn, false); show(redoBtn, false);
         showFlex(recordBtn, true); timerEl.textContent = '0:00'; show(guideEl, false);
         setStatus(recStatus, '', 'muted');
-    });
+    }
+
+    enableBtn.addEventListener('click', enableMic);
+    recordBtn.addEventListener('click', startRecording);
+    stopBtn.addEventListener('click', () => stopRecording(''));
+    deviceSel?.addEventListener('change', switchDevice);
+    // Keep the picker current as devices come and go (labels need a granted mic).
+    navigator.mediaDevices.addEventListener?.('devicechange', () => { if (stream) refreshDeviceList(); });
+    redoBtn.addEventListener('click', resetForRetake);
+    // The A/B chooser's Reject & re-record lands back here with the mic still armed.
+    widget.__recorderRedo = resetForRetake;
     useBtn.addEventListener('click', () => {
         if (!recBlob || recBlob.size < 1) { setStatus(recStatus, '✗ The recording is empty — try again.', 'error'); return; }
         const ext = /mp4|m4a/.test(recBlob.type) ? 'mp4' : recBlob.type.includes('ogg') ? 'ogg' : 'webm';
-        widget.__prepareRecording(recBlob, 'recording.' + ext);
+        // Freeze Re-record while the clip is preparing — a retake started mid-flight
+        // would be yanked away when the A/B chooser replaces the panel.
+        redoBtn.classList.add('pointer-events-none', 'opacity-50');
+        widget.__prepareRecording(recBlob, 'recording.' + ext, { trigger: useBtn, status: recStatus })
+            .finally(() => redoBtn.classList.remove('pointer-events-none', 'opacity-50'));
     });
     window.addEventListener('pagehide', teardown);
 }

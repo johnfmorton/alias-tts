@@ -15,7 +15,8 @@
     </div>
 
     <div id="voice-clip-widget" data-prepare-url="{{ route('admin.voices.clips.store') }}"
-         data-enhance-enabled="{{ $enhanceOn ? '1' : '' }}" data-target-min="15" data-target-max="30" data-max-seconds="60">
+         data-enhance-enabled="{{ $enhanceOn ? '1' : '' }}" data-normalize-enabled="{{ config('tts.normalize_reference') ? '1' : '' }}"
+         data-target-min="15" data-target-max="30" data-max-seconds="60">
         @if($enhanceOn)
             <div class="rounded-[14px] border border-white/8 bg-panel p-2">
                 {{-- Segmented control + Upload/Record bodies. Hidden once the A/B chooser is up. --}}
@@ -50,7 +51,8 @@
                                         </label>
                                     @endforeach
                                 </div>
-                                <div class="mt-4 border-t border-white/8 pt-4 text-[12.5px] leading-relaxed text-zinc-500">Read the passage at a natural pace. We'll clean up room noise and normalize loudness after.</div>
+                                {{-- The trailing sentence tracks the processing checkboxes below (refreshProcessingHint in app.js). --}}
+                                <div class="mt-4 border-t border-white/8 pt-4 text-[12.5px] leading-relaxed text-zinc-500">Read the passage at a natural pace.<span data-recorder-processing> We'll clean up room noise and normalize loudness after.</span></div>
                             </div>
 
                             <div class="flex flex-col rounded-[12px] border border-white/10 bg-inset p-6 md:px-7">
@@ -71,6 +73,9 @@
                                         <button type="button" data-recorder-stop class="hidden items-center gap-2 rounded-[10px] bg-white/10 px-5 py-3 text-[15px] font-semibold text-zinc-100 transition hover:bg-white/15"><span class="h-2.5 w-2.5 bg-zinc-100"></span>Stop</button>
                                         <button type="button" data-recorder-redo class="hidden text-sm text-zinc-400 hover:text-zinc-200">Re-record</button>
                                         <span data-recorder-timer class="hidden font-mono text-sm text-zinc-400">0:00</span>
+                                        {{-- Input picker: populated + shown once the mic is granted (labels are blank before). --}}
+                                        <select data-recorder-device aria-label="Microphone input device"
+                                                class="hidden max-w-[240px] rounded-[9px] border border-white/12 bg-inset px-2.5 py-2 text-[13px] text-zinc-300 focus:border-accent focus:outline-none focus:ring-2 focus:ring-accent/30 disabled:opacity-50"></select>
                                         <span data-recorder-hint class="text-[13px] text-zinc-500">Mic access is requested once, in your browser.</span>
                                     </div>
                                     <div data-recorder-meter-wrap class="mt-3 hidden h-2 overflow-hidden rounded bg-white/10"><div data-recorder-meter class="h-full w-0 rounded bg-emerald-500"></div></div>
@@ -119,6 +124,9 @@
                             <audio class="aplayer__native" preload="metadata"></audio>
                         </span>
                     </label>
+
+                    {{-- Mic path only (renderAB toggles it): discard this take and go straight back to an armed recorder. --}}
+                    <button type="button" data-clip-rerecord class="hidden rounded-[9px] border border-white/15 px-3.5 py-2 text-sm text-zinc-300 transition hover:border-bad/50 hover:text-bad">Reject &amp; re-record</button>
                 </div>
 
                 <p data-clip-status role="status" aria-live="polite" class="mx-4 mb-3 text-sm text-zinc-400"></p>
@@ -137,7 +145,7 @@
                     </span>
                 </label>
                 <label class="flex items-start gap-3 text-sm text-zinc-300">
-                    <input type="checkbox" name="raw" value="1" {{ old('raw') ? 'checked' : '' }} class="mt-0.5 rounded-[5px] border-white/25 bg-inset text-accent focus:ring-accent/30">
+                    <input type="checkbox" name="raw" value="1" data-clip-raw {{ old('raw') ? 'checked' : '' }} class="mt-0.5 rounded-[5px] border-white/25 bg-inset text-accent focus:ring-accent/30">
                     <span>Store raw <span class="text-zinc-500">(skip auto-normalization){{ $replace ? ' — only applies when replacing the clip' : '' }}</span></span>
                 </label>
             </div>
