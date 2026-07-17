@@ -259,7 +259,28 @@ class TextChunker
         $block = (string) preg_replace('/\s+([.,;:!?])/u', '$1', $block);
 
         // Collapse remaining whitespace (incl. soft newlines) to single spaces.
-        return trim((string) preg_replace('/\s+/u', ' ', $block));
+        $block = trim((string) preg_replace('/\s+/u', ' ', $block));
+
+        return $this->terminate($block);
+    }
+
+    /**
+     * Port of the Bespoken plugin's block terminator: every block must end in
+     * terminal punctuation, so a heading ("About 7× cheaper") reads as its own
+     * sentence instead of running into the next block — mergeShort() folds a
+     * short block forward with a bare space, and the TTS engines treat an
+     * unpunctuated seam as mid-sentence. Trailing soft punctuation is swapped
+     * for the period, matching what the plugin + TextNormalizer dedup rules
+     * net out to ("Here's why:" -> "Here's why."); closing quotes/brackets are
+     * looked through so a block ending in »stop."« is left alone.
+     */
+    private function terminate(string $block): string
+    {
+        if ($block === '' || preg_match('/[.!?…][\'"’”)\]»]*$/u', $block)) {
+            return $block;
+        }
+
+        return rtrim((string) preg_replace('/[,;:]+$/u', '', $block)).'.';
     }
 
     /**

@@ -39,6 +39,50 @@ class TextChunkerTest extends TestCase
         $this->assertSame([], (new TextChunker)->split('   ', 280));
     }
 
+    public function test_unpunctuated_block_gets_a_terminal_period(): void
+    {
+        // A pasted heading has no terminal punctuation; without the period it
+        // runs straight into the next paragraph when merged (the plugin appends
+        // one in Craft — Studio pastes never pass through the plugin).
+        $segments = (new TextChunker)->segment("About 7× cheaper\n\nA 1,200-word article costs less here.", 280);
+
+        $this->assertSame('About 7× cheaper.', $segments[0]['text']);
+        $this->assertSame('A 1,200-word article costs less here.', $segments[1]['text']);
+    }
+
+    public function test_merged_heading_keeps_its_period(): void
+    {
+        // With min-chars merging on, the short heading folds forward — the
+        // added period is what separates it from the paragraph's first sentence.
+        $texts = array_map(
+            static fn ($s) => $s['text'],
+            (new TextChunker)->segment("About 7× cheaper\n\nA 1,200-word article costs less here.", 280, minChars: 40),
+        );
+
+        $this->assertSame(['About 7× cheaper. A 1,200-word article costs less here.'], $texts);
+    }
+
+    public function test_trailing_soft_punctuation_becomes_the_period(): void
+    {
+        // Same net result the plugin + normalizer dedup produce ("why:." -> "why.").
+        $texts = array_map(
+            static fn ($s) => $s['text'],
+            (new TextChunker)->segment("Here's why:\n\nIt is cheaper.", 280),
+        );
+
+        $this->assertSame(["Here's why.", 'It is cheaper.'], $texts);
+    }
+
+    public function test_terminated_blocks_are_left_alone(): void
+    {
+        $texts = array_map(
+            static fn ($s) => $s['text'],
+            (new TextChunker)->segment("Really?\n\nHe said \"stop.\"\n\nWait…", 280),
+        );
+
+        $this->assertSame(['Really?', 'He said "stop."', 'Wait…'], $texts);
+    }
+
     public function test_segment_splits_blocks_on_space_runs_and_tags_breaks(): void
     {
         // The Bespoken plugin flattens posts to one line, marking blocks with
