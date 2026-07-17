@@ -695,7 +695,10 @@ class StudioController extends Controller
      * Build provider settings through the shared {@see VoiceSettingsResolver}
      * (config defaults -> voice defaults -> per-request debug overrides), then
      * fold in the seed. The inspector calls the provider directly, so the seed
-     * travels inside the settings array here (request override -> voice default).
+     * travels inside the settings array here — request-only, since the
+     * inspector feeds Studio project creation, where seed is a chunk-level
+     * pin, not a voice default (that default stays for the seedless /v1 API
+     * and CLI paths).
      *
      * @return array<string, mixed>
      */
@@ -703,9 +706,8 @@ class StudioController extends Controller
     {
         $settings = $this->settingsResolver->resolve($voice, $this->overrides($request));
 
-        $seed = $request->filled('seed') ? (int) $request->input('seed') : ($voice->settings['seed'] ?? null);
-        if ($seed !== null) {
-            $settings['seed'] = (int) $seed;
+        if ($request->filled('seed')) {
+            $settings['seed'] = (int) $request->input('seed');
         }
 
         // The chosen voice picks the engine (reserved keys ride OUTSIDE the

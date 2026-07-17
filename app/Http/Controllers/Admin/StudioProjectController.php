@@ -317,7 +317,10 @@ class StudioProjectController extends Controller
             settings: $this->settings($request, $voice),
             modelId: config('tts.default_model_id'),
             outputFormat: config('tts.project_output_format') ?: config('tts.default_output_format'),
-            seed: $request->filled('seed') ? (int) $request->input('seed') : ($voice->settings['seed'] ?? null),
+            // Studio's seed control is chunk-level only ("Take & tuning" pins a
+            // re-roll) — a new project starts unpinned even if the voice carries
+            // a default seed for the seedless /v1 API and CLI paths.
+            seed: $request->filled('seed') ? (int) $request->input('seed') : null,
             pronunciationMap: $pronunciationMap,
             // The requester's per-user setting (ApplyUserSettings middleware),
             // resolved here — never inside ProjectService — so /v1 stays off.
