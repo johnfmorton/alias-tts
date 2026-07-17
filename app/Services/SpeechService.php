@@ -33,6 +33,7 @@ class SpeechService
         private ChunkRemediator $remediator,
         private ProjectService $projects,
         private CreditService $credit,
+        private SpeechProgressStore $progress,
     ) {}
 
     /**
@@ -153,6 +154,11 @@ class SpeechService
                 $segments = [['text' => $speech->text, 'breakAfter' => 'sentence']];
             }
 
+            // Live "clip N of M" snapshot for the job-status poll. Best-effort
+            // cache writes; the store never throws into the render.
+            $total = count($segments);
+            $this->progress->begin($speech->id, $total);
+
             $sentenceGap = (int) config('tts.chunk_gap_ms', 120);
             $paragraphGap = (int) config('tts.paragraph_gap_ms', 400);
             $supportsTags = ModelCatalog::supportsTags($providerSettings['model'] ?? null);
@@ -191,7 +197,13 @@ class SpeechService
                 // artifact detectors would mistake the laugh/sigh for junk.
                 $preserveTails[] = $supportsTags && ParalinguisticTags::endsWith($segment['text']);
                 $failingIndex = null; // segment done; a later (concat/store) failure isn't its fault
+
+                // Counted only after synth + charge + QA (incl. hidden ASR
+                // re-rolls) succeed, so the count never decrements.
+                $this->progress->advance($speech->id, $i + 1, $total);
             }
+
+            $this->progress->stitching($speech->id, $total);
 
             [$bytes, $mime, $ext] = $this->converter->concatenate(
                 $rawParts,
@@ -218,6 +230,8 @@ class SpeechService
                 'mime_type' => $mime,
             ]);
 
+            $this->progress->clear($speech->id);
+
             $this->maybeCreateApiProject(
                 $speech,
                 $seed,
@@ -229,6 +243,8 @@ class SpeechService
                 'status' => SpeechStatus::Failed,
                 'error_message' => $e->getMessage(),
             ]);
+
+            $this->progress->clear($speech->id);
 
             $this->maybeCreateApiProject($speech, $seed, failed: true, failureReason: $e->getMessage(), failedChunkIndex: $failingIndex);
 

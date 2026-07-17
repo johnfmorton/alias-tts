@@ -6,6 +6,7 @@ use App\Enums\SpeechStatus;
 use App\Models\Speech;
 use App\Services\Credit\CreditService;
 use App\Services\Settings\SettingsManager;
+use App\Services\SpeechProgressStore;
 use App\Services\SpeechService;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
@@ -75,6 +76,10 @@ class GenerateSpeechJob implements ShouldQueue
      */
     public function failed(Throwable $e): void
     {
+        // A worker-timeout kill leaves the last progress snapshot behind
+        // (process()'s own cleanup never ran) — drop it with the record.
+        app(SpeechProgressStore::class)->clear($this->speechId);
+
         $speech = Speech::find($this->speechId);
 
         if ($speech && $speech->status !== SpeechStatus::Completed) {

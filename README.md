@@ -208,8 +208,11 @@ poll. Requires a running queue worker.
 
 - `POST /v1/text-to-speech/{voice_id}/jobs` → **202** `{ id, status, status_url, audio_url }`
   (or **200** if the result is already cached).
-- `GET /v1/text-to-speech/jobs/{id}` → `{ id, status, ... }` (`processing` →
-  `completed` / `failed`). Scoped to the calling key; not rate-limited.
+- `GET /v1/text-to-speech/jobs/{id}` → `{ id, status, progress, ... }`
+  (`processing` → `completed` / `failed`). Scoped to the calling key; not
+  rate-limited. While `processing`, `progress` reports the chunk loop live —
+  `{ stage, chunks_total, chunks_done, percent, message }`, e.g. "Creating
+  clip 25 of 50" — and is `null` otherwise.
 - `GET /v1/text-to-speech/jobs/{id}/audio` → the MP3 once `completed` (409 while
   still processing).
 

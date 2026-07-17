@@ -7,9 +7,13 @@ use App\Jobs\GenerateSpeechJob;
 use App\Models\ApiKey;
 use App\Models\Speech;
 use App\Models\Voice;
+use App\Services\SpeechProgressStore;
+use App\Services\Tts\FakeTtsProvider;
+use App\Services\Tts\TtsProvider;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Queue;
 use Illuminate\Support\Facades\Storage;
+use RuntimeException;
 use Tests\TestCase;
 
 /**
@@ -220,5 +224,168 @@ class AsyncSpeechTest extends TestCase
             $this->withHeaders($headers)->getJson("/v1/text-to-speech/jobs/{$id}")
                 ->assertStatus(200)->assertJsonPath('status', 'processing');
         }
+    }
+
+    public function test_status_reports_progress_while_processing(): void
+    {
+        Queue::fake(); // record stays Processing; we play the worker below
+
+        $key = $this->makeKey();
+        $this->makeVoice();
+        $headers = ['xi-api-key' => $key->key];
+
+        $id = $this->withHeaders($headers)
+            ->postJson('/v1/text-to-speech/my-voice/jobs', ['text' => 'A long article.'])
+            ->json('id');
+
+        $store = app(SpeechProgressStore::class);
+        $store->begin($id, 50);
+        $store->advance($id, 24, 50);
+
+        $this->withHeaders($headers)->getJson("/v1/text-to-speech/jobs/{$id}")
+            ->assertStatus(200)
+            ->assertJsonPath('status', 'processing')
+            ->assertJsonPath('progress.stage', 'generating')
+            ->assertJsonPath('progress.chunks_total', 50)
+            ->assertJsonPath('progress.chunks_done', 24)
+            ->assertJsonPath('progress.percent', 48)
+            ->assertJsonPath('progress.message', 'Creating clip 25 of 50');
+
+        $store->stitching($id, 50);
+
+        $this->withHeaders($headers)->getJson("/v1/text-to-speech/jobs/{$id}")
+            ->assertJsonPath('status', 'processing')
+            ->assertJsonPath('progress.stage', 'stitching')
+            ->assertJsonPath('progress.chunks_done', 50)
+            ->assertJsonPath('progress.percent', 100)
+            ->assertJsonPath('progress.message', 'Stitching 50 clips together');
+    }
+
+    public function test_progress_is_null_before_the_worker_writes(): void
+    {
+        Queue::fake(); // nothing has written a snapshot -> cache miss
+
+        $key = $this->makeKey();
+        $this->makeVoice();
+        $headers = ['xi-api-key' => $key->key];
+
+        $queued = $this->withHeaders($headers)
+            ->postJson('/v1/text-to-speech/my-voice/jobs', ['text' => 'Not started yet.']);
+
+        $queued->assertStatus(202)->assertJsonPath('progress', null);
+        $this->assertArrayHasKey('progress', $queued->json());
+
+        $this->withHeaders($headers)
+            ->getJson('/v1/text-to-speech/jobs/'.$queued->json('id'))
+            ->assertStatus(200)
+            ->assertJsonPath('status', 'processing')
+            ->assertJsonPath('progress', null);
+    }
+
+    public function test_progress_is_cleared_and_null_once_completed(): void
+    {
+        // QUEUE_CONNECTION=sync: the job runs inline, start to finish.
+        $key = $this->makeKey();
+        $this->makeVoice();
+
+        $queued = $this->withHeaders(['xi-api-key' => $key->key])
+            ->postJson('/v1/text-to-speech/my-voice/jobs', ['text' => 'Run to completion.']);
+
+        $queued->assertStatus(200)
+            ->assertJsonPath('status', 'completed')
+            ->assertJsonPath('progress', null);
+
+        // The snapshot itself was cleared, not just gated off by the status.
+        $this->assertNull(app(SpeechProgressStore::class)->get($queued->json('id')));
+    }
+
+    public function test_process_reports_each_chunk_then_stitching_then_clears(): void
+    {
+        config(['tts.chunk_chars' => 120]); // force several chunks (cf. ChunkingTest)
+
+        // Recording subclass: process() clears the snapshot on exit, so the
+        // intermediate writes can only be asserted by capturing the calls.
+        $store = new class extends SpeechProgressStore
+        {
+            /** @var list<array{string, int}> */
+            public array $calls = [];
+
+            public function begin(string $speechId, int $chunksTotal): void
+            {
+                $this->calls[] = ['begin', $chunksTotal];
+                parent::begin($speechId, $chunksTotal);
+            }
+
+            public function advance(string $speechId, int $chunksDone, int $chunksTotal): void
+            {
+                $this->calls[] = ['advance', $chunksDone];
+                parent::advance($speechId, $chunksDone, $chunksTotal);
+            }
+
+            public function stitching(string $speechId, int $chunksTotal): void
+            {
+                $this->calls[] = ['stitching', $chunksTotal];
+                parent::stitching($speechId, $chunksTotal);
+            }
+
+            public function clear(string $speechId): void
+            {
+                $this->calls[] = ['clear', 0];
+                parent::clear($speechId);
+            }
+        };
+        $this->app->instance(SpeechProgressStore::class, $store);
+
+        $key = $this->makeKey();
+        $this->makeVoice();
+        $text = str_repeat('This sentence pads the article well past a single chunk. ', 8);
+
+        $this->withHeaders(['xi-api-key' => $key->key])
+            ->postJson('/v1/text-to-speech/my-voice/jobs', ['text' => $text])
+            ->assertStatus(200)
+            ->assertJsonPath('status', 'completed');
+
+        $this->assertSame('begin', $store->calls[0][0]);
+        $total = $store->calls[0][1];
+        $this->assertGreaterThan(1, $total, 'Text was expected to split into multiple chunks.');
+
+        // Exactly: begin, advance 1..N in order, stitching, clear.
+        $this->assertSame(
+            array_merge(['begin'], array_fill(0, $total, 'advance'), ['stitching', 'clear']),
+            array_column($store->calls, 0),
+        );
+        $this->assertSame(range(1, $total), array_column(array_slice($store->calls, 1, $total), 1));
+    }
+
+    public function test_progress_hidden_after_failure(): void
+    {
+        $this->app->instance(TtsProvider::class, new class extends FakeTtsProvider
+        {
+            public function synthesize(string $text, ?string $referenceAudio, array $settings): string
+            {
+                throw new RuntimeException('provider exploded');
+            }
+        });
+
+        $key = $this->makeKey();
+        $this->makeVoice();
+        $headers = ['xi-api-key' => $key->key];
+
+        // Inline sync queue: the failure propagates out of dispatch as a 502.
+        $this->withHeaders($headers)
+            ->postJson('/v1/text-to-speech/my-voice/jobs', ['text' => 'Doomed.'])
+            ->assertStatus(502);
+
+        $speech = Speech::first();
+        $this->assertSame(SpeechStatus::Failed, $speech->status);
+
+        $this->withHeaders($headers)->getJson("/v1/text-to-speech/jobs/{$speech->id}")
+            ->assertStatus(200)
+            ->assertJsonPath('status', 'failed')
+            ->assertJsonPath('progress', null)
+            ->assertJsonPath('error', fn ($e) => is_string($e) && $e !== '');
+
+        // The catch-block cleanup dropped the snapshot itself.
+        $this->assertNull(app(SpeechProgressStore::class)->get($speech->id));
     }
 }

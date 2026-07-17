@@ -100,6 +100,30 @@ uses when talking to a Alias TTS server (same `xi-api-key` auth):
   `GET /v1/text-to-speech/jobs/{id}/audio`. Lifts the synchronous ceiling for
   long articles; requires a queue worker on the server (see
   [DEPLOYMENT.md](DEPLOYMENT.md)).
+
+  While a job is `processing`, the status response carries a live `progress`
+  snapshot the client can render directly:
+
+  ```json
+  {
+    "id": "9d1f6a2e-…",
+    "status": "processing",
+    "progress": {
+      "stage": "generating",
+      "chunks_total": 50,
+      "chunks_done": 24,
+      "percent": 48,
+      "message": "Creating clip 25 of 50"
+    }
+  }
+  ```
+
+  `progress` is optional and nullable: render `message` (plus `percent`) when
+  it's present, and fall back to an indeterminate "Processing…" when it's
+  `null` (job not started yet, an older server, or a server restart).
+  `"stage": "stitching"` means every clip is rendered and the final file is
+  being assembled. Only `status` is authoritative for completion — never gate
+  on `progress`.
 - **`POST /v1/projects`** — powers the plugin's "Create Alias TTS project"
   button: opens the entry's text as an editable Studio project on the server.
 - **`GET /v1/pronunciations`** — read-only sync of the per-user pronunciation
@@ -139,6 +163,8 @@ Plugin-side support lands in **Bespoken 5.4.0** (unreleased):
 
 Still open:
 
+- Rendering the jobs endpoint's `progress` snapshot ("Creating clip 25 of 50")
+  while a long article generates — available server-side now.
 - A **"Test connection"** button in the plugin settings.
 - An optional **voice picker** fetching from `GET /v1/voices` — that endpoint
   isn't implemented service-side yet.

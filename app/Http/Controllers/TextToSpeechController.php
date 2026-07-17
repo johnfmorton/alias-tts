@@ -9,6 +9,7 @@ use App\Models\ApiKey;
 use App\Models\Speech;
 use App\Models\TtsProject;
 use App\Models\Voice;
+use App\Services\SpeechProgressStore;
 use App\Services\SpeechService;
 use App\Services\Tts\VoiceSettingsResolver;
 use App\Support\VoiceAliases;
@@ -31,7 +32,7 @@ use Throwable;
  * ~300s ceiling:
  *
  *   POST /v1/text-to-speech/{voice_id}/jobs  -> 202 { id, status, status_url, audio_url }
- *   GET  /v1/text-to-speech/jobs/{id}        -> { id, status, ... }
+ *   GET  /v1/text-to-speech/jobs/{id}        -> { id, status, progress, ... }
  *   GET  /v1/text-to-speech/jobs/{id}/audio  -> audio bytes once completed
  */
 class TextToSpeechController extends Controller
@@ -39,6 +40,7 @@ class TextToSpeechController extends Controller
     public function __construct(
         private SpeechService $speechService,
         private VoiceSettingsResolver $settingsResolver,
+        private SpeechProgressStore $progress,
     ) {}
 
     public function store(TextToSpeechRequest $request, string $voice_id): Response
@@ -187,6 +189,12 @@ class TextToSpeechController extends Controller
             'audio_url' => route('tts.jobs.audio', ['id' => $speech->id]),
             'error' => $speech->status === SpeechStatus::Failed ? $speech->error_message : null,
             'recovery_url' => $this->recoveryUrlForSpeech($speech),
+            // Additive: live chunk progress, or null (worker not started yet,
+            // cache miss/expiry, or a terminal status — the Processing gate
+            // keeps a stale snapshot from ever surfacing next to one).
+            'progress' => $speech->status === SpeechStatus::Processing
+                ? $this->progress->payload($speech->id)
+                : null,
         ];
     }
 

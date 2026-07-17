@@ -4,6 +4,19 @@ All notable changes to this project are documented in this file. The format is
 based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this
 project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+- **Watch a long generation progress clip by clip.** While an async job is
+  `processing`, the status endpoint (`GET /v1/text-to-speech/jobs/{id}`) now
+  carries a `progress` object — `stage` (`generating` or `stitching`),
+  `chunks_done` / `chunks_total`, a `percent`, and a ready-made message like
+  "Creating clip 25 of 50" — so a polling client (the Bespoken plugin, a
+  script) can show a real progress bar instead of an indeterminate spinner.
+  Strictly additive to the ElevenLabs-compatible surface: the field is `null`
+  before the worker starts and after any terminal status, and clients that
+  ignore it behave exactly as before.
+
 ## [0.56.0] - 2026-07-16
 
 ### Added
