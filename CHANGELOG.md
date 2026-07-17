@@ -4,6 +4,20 @@ All notable changes to this project are documented in this file. The format is
 based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this
 project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Fixed
+- **A long "Generate remaining" run no longer dies mid-way.** A background run
+  is bounded by a fixed worker time budget per attempt; a big or slow run
+  could outlive it, getting killed mid-render and then refused a retry —
+  surfacing as `has been attempted too many times` with the run stuck
+  incomplete. The run now checkpoints itself as it nears the time limit and
+  hands the remaining chunks to a fresh attempt, so it always finishes
+  regardless of size. If a run is ever still interrupted (e.g. a hard worker
+  kill), the error now reads as "The run was interrupted by the background
+  time limit — finished clips are kept, Generate remaining picks up where it
+  left off" instead of the raw internal exception message.
+
 ## [0.58.0] - 2026-07-17
 
 ### Added

@@ -258,6 +258,11 @@ php artisan queue:work --queue=default --sleep=3 --tries=1
 - **`retry_after` must exceed the longest job**, or a long job is released and
   **double-run**. Since 0.4.1 it defaults to `TTS_ASYNC_TIMEOUT + 60` (1860s), so
   this is correct out of the box — set `DB_QUEUE_RETRY_AFTER` only to override.
+- **Studio runs of any size fit the budget.** `GenerateProjectChunksJob`
+  checkpoints near its timeout and re-dispatches a continuation job for the
+  remaining chunks (fresh attempt, fresh reservation), so a big or slow run is
+  never killed mid-render. `TTS_ASYNC_TIMEOUT` therefore bounds one worker
+  *attempt*, not the whole run.
 
 Without a worker, queued jobs sit unprocessed forever (the record stays
 `Processing` and clients poll indefinitely; a Studio run shows *queued* until

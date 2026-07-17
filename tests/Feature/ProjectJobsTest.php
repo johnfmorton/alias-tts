@@ -15,6 +15,7 @@ use App\Services\ProjectService;
 use App\Services\Tts\FakeTtsProvider;
 use App\Services\Tts\TtsProvider;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Queue\MaxAttemptsExceededException;
 use Illuminate\Support\Facades\Queue;
 use Illuminate\Support\Facades\Storage;
 use RuntimeException;
@@ -472,6 +473,76 @@ class ProjectJobsTest extends TestCase
         $this->assertSame(ProjectJobStatus::Completed, $job->status);
         $this->assertSame(2, $job->chunks_done);
         $this->assertSame(100, $job->statusPayload()['percent']);
+    }
+
+    // --- Checkpoint + continuation -------------------------------------------
+
+    public function test_a_run_out_of_time_checkpoints_into_a_continuation_job(): void
+    {
+        Queue::fake();
+        config(['tts.async_timeout' => 0]); // zero budget: checkpoint after every chunk
+        $project = $this->project();
+        $job = $this->queuedRun($project);
+
+        $this->runJob($job);
+
+        // Chunk one rendered, then the loop handed off instead of running out
+        // the clock — the run row stays live for the continuation.
+        $job->refresh();
+        $this->assertSame(ProjectJobStatus::Running, $job->status);
+        $this->assertSame(1, $job->chunks_done);
+        [$first, $second] = $project->chunks()->get();
+        $this->assertSame(ChunkStatus::Completed, $first->status);
+        $this->assertSame(ChunkStatus::Pending, $second->status);
+
+        Queue::assertPushed(
+            GenerateProjectChunksJob::class,
+            fn (GenerateProjectChunksJob $pushed) => $pushed->jobId === $job->id && $pushed->startIndex === 1,
+        );
+    }
+
+    public function test_a_continuation_resumes_at_its_cursor_without_re_rendering(): void
+    {
+        $project = $this->project();
+        [$first, $second] = $project->chunks()->get();
+        $first->update(['status' => ChunkStatus::Completed]);
+        $job = $this->queuedRun($project);
+        $startedAt = now()->subMinutes(20)->startOfSecond();
+        $job->update(['status' => ProjectJobStatus::Running, 'chunks_done' => 1, 'started_at' => $startedAt]);
+
+        (new GenerateProjectChunksJob($job->id, startIndex: 1))->handle(app(ProjectService::class));
+
+        $job->refresh();
+        $this->assertSame(ProjectJobStatus::Completed, $job->status);
+        $this->assertSame(2, $job->chunks_done);
+        $this->assertSame(ChunkStatus::Completed, $second->fresh()->status);
+        // The cursor skipped chunk one entirely: no re-render, no re-charge,
+        // no double count in chunks_done…
+        $this->assertSame(0, $first->takes()->count());
+        // …and the run keeps its original start time across the handoff.
+        $this->assertSame($startedAt->timestamp, $job->started_at->timestamp);
+    }
+
+    public function test_a_worker_kill_surfaces_a_friendly_error_but_other_failures_keep_theirs(): void
+    {
+        $project = $this->project();
+        $job = $this->queuedRun($project);
+        $job->update(['status' => ProjectJobStatus::Running]);
+
+        // What a dead worker leaves behind (timeout kill, retry refused).
+        (new GenerateProjectChunksJob($job->id))->failed(
+            new MaxAttemptsExceededException(GenerateProjectChunksJob::class.' has been attempted too many times.'),
+        );
+
+        $job->refresh();
+        $this->assertSame(ProjectJobStatus::Failed, $job->status);
+        $this->assertStringNotContainsString('attempted too many times', $job->error);
+        $this->assertStringContainsString('Generate remaining', $job->error);
+
+        // A real error keeps its own words.
+        $job->update(['status' => ProjectJobStatus::Running, 'error' => null]);
+        (new GenerateProjectChunksJob($job->id))->failed(new RuntimeException('disk exploded'));
+        $this->assertSame('disk exploded', $job->fresh()->error);
     }
 
     // --- Status poll ---------------------------------------------------------
