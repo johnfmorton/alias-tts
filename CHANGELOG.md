@@ -7,6 +7,20 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 ## [Unreleased]
 
 ### Added
+- **Clean up project.** A new ⋯-menu action deletes every take except each
+  chunk's selected one — rows and audio files — so an old project keeps only
+  the clips actually in use. Nothing that plays changes: the selected takes,
+  the built final, chunk statuses, and an existing approval all survive. The
+  action sits behind a confirm dialog and is refused while a background
+  generation run is working on the project.
+- **Download archive.** A new ⋯-menu download packages an approved project
+  into a single .zip for offline keeping: the approved audio, the provenance
+  receipt, and a clips/ folder holding every saved take, with the selected
+  one marked. The manifest lists each clip with its SHA-256, source, seed,
+  duration, and the text it read, so the alternates stay verifiable offline.
+  Run Clean up first to archive only the selected clips. Together the two
+  actions make it easy to keep a local record of a finished project and then
+  delete it from the site.
 - **Estimated time to generate the remaining clips.** As each clip renders, the
   app now records how long it took and learns a per-model average — a Chatterbox
   Turbo voice and a classic Chatterbox voice keep separate rates, and the cost of

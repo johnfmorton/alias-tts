@@ -679,6 +679,33 @@ class StudioProjectController extends Controller
         return Voice::whereIn('id', $refs($copy)->diff($refs($source))->diff($preexisting))->pluck('name');
     }
 
+    /**
+     * Housekeeping: delete every non-selected take (rows + files). The audio each
+     * chunk is using, the final, and the seal are all kept, so nothing that plays
+     * changes — this only reclaims the alternates before archiving/deleting a
+     * project. Full-page form POST from the ⋯ menu (behind a confirm), so it
+     * redirects like destroy().
+     */
+    public function cleanup(TtsProject $project): RedirectResponse
+    {
+        // A background run is minting new takes right now — cleaning up while it
+        // writes could delete a take in the moment between its insert and its
+        // selection. Same guard as rebuild(), phrased for a redirect.
+        if (TtsProjectJob::activeFor($project->id)) {
+            return redirect()->route('admin.studio.projects.show', $project)
+                ->with('error', 'A background generation run is working on this project — wait for it to finish or stop it first.');
+        }
+
+        $removed = $this->projects->cleanupTakes($project);
+
+        return redirect()->route('admin.studio.projects.show', $project)
+            ->with('success', match (true) {
+                $removed === 0 => 'Nothing to clean up — every take is a selected one.',
+                $removed === 1 => 'Project cleaned up — 1 unused take was removed.',
+                default => "Project cleaned up — {$removed} unused takes were removed.",
+            });
+    }
+
     /** Source-text editor for "Start over" (re-chunk from scratch). */
     public function edit(Request $request, TtsProject $project): View
     {
@@ -1444,6 +1471,33 @@ class StudioProjectController extends Controller
         // Shared base name so the .zip, the folder it unzips to, and the audio
         // inside all read as a set (love-what-you-do-sealed-bbe2014e.*).
         $filename = $project->sealedBaseName().'.zip';
+
+        return response($zip, 200)
+            ->header('Content-Type', 'application/zip')
+            ->header('Content-Disposition', 'attachment; filename="'.$filename.'"');
+    }
+
+    /**
+     * Download the everything-zip for offline archiving: the receipt package
+     * (approved audio + receipt.html + manifest.json) plus a clips/ directory
+     * holding every saved take — run Clean up first to archive only the selected
+     * ones. Sealed projects only, like receipt().
+     */
+    public function archive(TtsProject $project): Response
+    {
+        try {
+            $zip = $this->export->buildArchiveZip($project);
+        } catch (RuntimeException $e) {
+            return response()->json(['message' => $e->getMessage()], 422);
+        } catch (Throwable $e) {
+            report($e);
+
+            return response()->json(['message' => 'Archive failed: '.$e->getMessage()], 502);
+        }
+
+        // Same base name family as the receipt zip, tagged -archive so the two
+        // downloads never collide on disk.
+        $filename = $project->sealedBaseName().'-archive.zip';
 
         return response($zip, 200)
             ->header('Content-Type', 'application/zip')

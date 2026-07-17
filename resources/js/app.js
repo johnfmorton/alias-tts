@@ -1712,6 +1712,19 @@ function initStudioProject() {
         'Fingerprinting each chunk for the receipt…',
         'Building the provenance receipt and zipping it up…',
     ]);
+    // The archive (⋯ menu) reads and re-packages EVERY take in the project, so
+    // it runs the longest of the three. Close the menu first so the status line
+    // underneath is visible; an unapproved project surfaces the server's 422
+    // message there via fetchDownload's error path.
+    const archiveLink = document.getElementById('project-archive');
+    archiveLink?.addEventListener('click', () =>
+        document.getElementById('project-overflow-menu')?.classList.add('hidden'));
+    managedDownload(archiveLink, [
+        'Preparing your download…',
+        'Gathering the approved audio…',
+        'Collecting every clip in the project…',
+        'Building the receipt and zipping it all up…',
+    ]);
 
     // A chunk is "dirty" while its textarea differs from the last-saved text
     // (data-original). Show an amber badge + border and reveal Revert; warn before

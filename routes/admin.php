@@ -136,6 +136,10 @@ Route::prefix('studio')->name('studio.')->group(function () {
             Route::post('/{project}/reset', [StudioProjectController::class, 'reset'])->name('reset');
             // Deep copy: new rows + byte-copied audio, so the two projects share nothing.
             Route::post('/{project}/duplicate', [StudioProjectController::class, 'duplicate'])->name('duplicate');
+            // Housekeeping: delete every non-selected take (rows + files); the selected audio and final stay.
+            Route::post('/{project}/cleanup', [StudioProjectController::class, 'cleanup'])->name('cleanup');
+            // Everything-zip for offline archiving: the receipt package + every saved clip.
+            Route::get('/{project}/archive', [StudioProjectController::class, 'archive'])->name('archive');
             Route::get('/{project}/audio', [StudioProjectController::class, 'finalAudio'])->name('audio');
             Route::post('/{project}/preview', [StudioProjectController::class, 'previewConcat'])->name('preview');
             Route::post('/{project}/rebuild', [StudioProjectController::class, 'rebuild'])->name('rebuild');

@@ -165,6 +165,21 @@
                                         title="Make an independent copy of this project — its own text, chunks, and audio. Changes to either project never affect the other."
                                         class="block w-full rounded-lg px-3 py-2 text-left text-sm text-zinc-300 hover:bg-white/[0.04]">⧉ Duplicate project</button>
                             </form>
+                            <form method="POST" action="{{ route('admin.studio.projects.cleanup', $project) }}"
+                                  data-confirm="Every take except each chunk's selected one is deleted permanently. The audio in use, the final, and any approval are kept."
+                                  data-confirm-title="Clean up this project?"
+                                  data-confirm-label="Clean up project">
+                                @csrf
+                                <button type="submit"
+                                        title="Free up space by deleting the alternate takes you didn't pick. What you hear doesn't change."
+                                        class="block w-full rounded-lg px-3 py-2 text-left text-sm text-zinc-300 hover:bg-white/[0.04]">✂ Clean up project</button>
+                            </form>
+                            {{-- Everything-zip (approved audio + receipt + every clip) for keeping a
+                                 local record before deleting the project. Needs an approved final —
+                                 clicking earlier surfaces the server's message in the status line. --}}
+                            <a id="project-archive" href="{{ route('admin.studio.projects.archive', $project) }}" download
+                               title="Download a .zip of everything — the approved audio, its receipt, and every clip — so you can keep a local record and delete the project from the site."
+                               class="block rounded-lg px-3 py-2 text-sm text-zinc-300 hover:bg-white/[0.04]">⤓ Download archive</a>
                             <form method="POST" action="{{ route('admin.studio.projects.destroy', $project) }}"
                                   data-confirm="The project and all its audio are deleted permanently."
                                   data-confirm-title="Delete this project?"

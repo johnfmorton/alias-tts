@@ -3,6 +3,7 @@
 namespace App\Services;
 
 use App\Models\TtsChunk;
+use App\Models\TtsChunkTake;
 use App\Models\TtsProject;
 use Illuminate\Support\Facades\Storage;
 use RuntimeException;
@@ -37,20 +38,116 @@ class ProjectExportService
         }
 
         $data = $this->receiptData($project);
-        $finalName = $data['finalName'];
 
-        $receiptHtml = view('admin.studio.projects.receipt', $data)->render();
+        return $this->zipUp([
+            $data['finalName'] => $bytes,
+            'receipt.html' => view('admin.studio.projects.receipt', $data)->render(),
+            'manifest.json' => json_encode($data['manifest'], JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES),
+        ]);
+    }
 
+    /**
+     * The receipt zip plus a clips/ directory holding EVERY saved take in the
+     * project — the local record a user downloads before deleting a project
+     * from the site. The manifest gains a `clips` listing (one row per clip,
+     * with its SHA-256) so the alternates are provable, not just present.
+     */
+    public function buildArchiveZip(TtsProject $project): string
+    {
+        if (! $project->isSealed()) {
+            throw new RuntimeException('Approve the project as final first — the archive packages the approved audio, its receipt, and every clip.');
+        }
+
+        $bytes = $this->projects->sealedAudioBytes($project);
+        if ($bytes === null) {
+            throw new RuntimeException('The sealed audio is missing — re-seal the project.');
+        }
+
+        $data = $this->receiptData($project);
+        [$clips, $clipRows] = $this->clipEntries($project);
+
+        $manifest = $data['manifest'];
+        $manifest['clips'] = $clipRows;
+        $manifest['note'] .= ' The clips/ directory archives every saved take still in the project ("selected" marks '
+            .'the one in the final); a take whose audio file has gone missing is listed with "file": null.';
+
+        return $this->zipUp(array_merge([
+            $data['finalName'] => $bytes,
+            'receipt.html' => view('admin.studio.projects.receipt', $data)->render(),
+            'manifest.json' => json_encode($manifest, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES),
+        ], $clips));
+    }
+
+    /**
+     * Every saved clip for the archive: [zip entries (name => bytes), manifest
+     * rows]. One clip per distinct audio file — a legacy in-place set is many
+     * take rows sharing one file — numbered oldest-first within each chunk, the
+     * selected one suffixed `-selected`. A take whose file is gone from storage
+     * is still listed (file/sha256 null) so the archive never silently
+     * under-reports what existed.
+     *
+     * @return array{0: array<string, string>, 1: list<array<string, mixed>>}
+     */
+    private function clipEntries(TtsProject $project): array
+    {
+        $disk = Storage::disk(config('tts.storage_disk'));
+        $files = [];
+        $rows = [];
+
+        foreach ($project->chunks as $chunk) {
+            // Oldest first (the relation is newest-first) so clip numbers are stable.
+            $takes = $chunk->takes->reverse()->unique('audio_path')->values();
+
+            // A pre-takes-era chunk has audio but no take row for it — synthesize
+            // one so its selected clip isn't left out (duplicate() does the same).
+            if ($chunk->audio_path !== null && ! $takes->contains('audio_path', $chunk->audio_path)) {
+                $takes->push(new TtsChunkTake([
+                    'audio_path' => $chunk->audio_path,
+                    'text' => $chunk->text,
+                    'seed' => $chunk->settings['seed'] ?? $project->seed,
+                ]));
+            }
+
+            foreach ($takes as $i => $take) {
+                $selected = $take->audio_path === $chunk->audio_path;
+                $bytes = $take->audio_path && $disk->exists($take->audio_path) ? $disk->get($take->audio_path) : null;
+
+                $name = null;
+                if ($bytes !== null) {
+                    $ext = pathinfo((string) $take->audio_path, PATHINFO_EXTENSION) ?: 'wav';
+                    $name = sprintf('clips/chunk-%02d/take-%02d%s.%s', $chunk->position + 1, $i + 1, $selected ? '-selected' : '', $ext);
+                    $files[$name] = $bytes;
+                }
+
+                $rows[] = [
+                    'file' => $name,
+                    'chunk_position' => $chunk->position,
+                    'selected' => $selected,
+                    'source' => $take->source,
+                    'seed' => $take->seed,
+                    'duration_ms' => $take->duration_ms,
+                    'text' => $take->text,
+                    'sha256' => $bytes !== null ? hash('sha256', $bytes) : null,
+                ];
+            }
+        }
+
+        return [$files, $rows];
+    }
+
+    /** Zip the given name => bytes entries and return the archive's bytes. */
+    private function zipUp(array $entries): string
+    {
         $tmp = tempnam(sys_get_temp_dir(), 'receipt_').'.zip';
 
         try {
             $zip = new ZipArchive;
             if ($zip->open($tmp, ZipArchive::CREATE | ZipArchive::OVERWRITE) !== true) {
-                throw new RuntimeException('Could not create the receipt archive.');
+                throw new RuntimeException('Could not create the archive.');
             }
-            $zip->addFromString($finalName, $bytes);
-            $zip->addFromString('receipt.html', $receiptHtml);
-            $zip->addFromString('manifest.json', json_encode($data['manifest'], JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES));
+            foreach ($entries as $name => $bytes) {
+                $zip->addFromString($name, $bytes);
+            }
             $zip->close();
 
             return (string) file_get_contents($tmp);

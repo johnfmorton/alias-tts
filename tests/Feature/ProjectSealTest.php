@@ -454,6 +454,143 @@ class ProjectSealTest extends TestCase
         $this->assertStringContainsString(route('verify'), $receipt);
     }
 
+    // ---- Download archive (receipt package + every clip) --------------------
+
+    public function test_archive_requires_authentication(): void
+    {
+        $project = $this->readyProject();
+
+        $this->get(route('admin.studio.projects.archive', $project))
+            ->assertRedirect(route('login'));
+    }
+
+    public function test_archive_on_an_unsealed_project_is_refused(): void
+    {
+        $project = $this->readyProject();
+
+        $this->actingAs($this->admin())
+            ->get(route('admin.studio.projects.archive', $project))
+            ->assertStatus(422);
+    }
+
+    public function test_archive_contains_the_receipt_package_and_every_clip(): void
+    {
+        $admin = $this->admin();
+        $project = $this->readyProject();
+        // A second take on the first chunk — the archive must ship BOTH, with
+        // the selected one (the newest; re-roll selects its render) marked.
+        $chunk = $project->chunks()->orderBy('position')->first();
+        $this->actingAs($admin)->postJson(route('admin.studio.projects.chunks.reroll', [$project, $chunk]))->assertOk();
+        $this->actingAs($admin)->postJson(route('admin.studio.projects.rebuild', $project))->assertOk();
+        $this->actingAs($admin)->postJson(route('admin.studio.projects.seal', $project))->assertOk();
+        $project->refresh();
+
+        $res = $this->actingAs($admin)->get(route('admin.studio.projects.archive', $project));
+        $res->assertOk();
+        $this->assertSame('application/zip', $res->headers->get('content-type'));
+        $this->assertStringContainsString(
+            'filename="'.$project->sealedBaseName().'-archive.zip"',
+            (string) $res->headers->get('content-disposition'),
+        );
+
+        $zip = $this->openZip($res->getContent());
+        foreach ([
+            'receipt.html',
+            'manifest.json',
+            $this->sealedAudioName($project),
+            'clips/chunk-01/take-01.wav',
+            'clips/chunk-01/take-02-selected.wav',
+            'clips/chunk-02/take-01-selected.wav',
+        ] as $name) {
+            $entry = $zip->getFromName($name);
+            $this->assertNotFalse($entry, "missing zip entry: {$name}");
+            $this->assertNotSame('', $entry, "empty zip entry: {$name}");
+        }
+
+        // The selected clips are the exact bytes the chunks play.
+        $disk = Storage::disk('local');
+        $chunks = $project->chunks()->orderBy('position')->get();
+        $this->assertSame($disk->get($chunks[0]->audio_path), $zip->getFromName('clips/chunk-01/take-02-selected.wav'));
+        $this->assertSame($disk->get($chunks[1]->audio_path), $zip->getFromName('clips/chunk-02/take-01-selected.wav'));
+
+        // The manifest lists every clip with a hash that matches its zipped bytes.
+        $manifest = json_decode($zip->getFromName('manifest.json'), true);
+        $this->assertCount(3, $manifest['clips']);
+        foreach ($manifest['clips'] as $clip) {
+            $this->assertSame($clip['sha256'], hash('sha256', $zip->getFromName($clip['file'])), $clip['file']);
+        }
+        $this->assertSame(
+            ['clips/chunk-01/take-02-selected.wav', 'clips/chunk-02/take-01-selected.wav'],
+            array_values(array_column(array_filter($manifest['clips'], fn ($c) => $c['selected']), 'file')),
+        );
+        // The receipt package inside is unchanged: the manifest still opens with
+        // the same seal record the receipt zip carries.
+        $this->assertSame($project->final_sha256, $manifest['seal']['final_sha256']);
+        $zip->close();
+    }
+
+    public function test_archive_after_cleanup_ships_only_the_selected_clips(): void
+    {
+        $admin = $this->admin();
+        $project = $this->readyProject();
+        $chunk = $project->chunks()->orderBy('position')->first();
+        $this->actingAs($admin)->postJson(route('admin.studio.projects.chunks.reroll', [$project, $chunk]))->assertOk();
+        $this->actingAs($admin)->postJson(route('admin.studio.projects.rebuild', $project))->assertOk();
+        $this->actingAs($admin)->postJson(route('admin.studio.projects.seal', $project))->assertOk();
+
+        $this->actingAs($admin)->post(route('admin.studio.projects.cleanup', $project))
+            ->assertSessionHas('success', 'Project cleaned up — 1 unused take was removed.');
+
+        $res = $this->actingAs($admin)->get(route('admin.studio.projects.archive', $project));
+        $res->assertOk();
+
+        $zip = $this->openZip($res->getContent());
+        $clips = [];
+        for ($i = 0; $i < $zip->numFiles; $i++) {
+            $name = $zip->getNameIndex($i);
+            if (str_starts_with($name, 'clips/')) {
+                $clips[] = $name;
+            }
+        }
+        $zip->close();
+
+        sort($clips);
+        $this->assertSame([
+            'clips/chunk-01/take-01-selected.wav',
+            'clips/chunk-02/take-01-selected.wav',
+        ], $clips);
+    }
+
+    public function test_archive_lists_a_take_whose_file_is_missing_instead_of_dropping_it(): void
+    {
+        $admin = $this->admin();
+        $project = $this->readyProject();
+        $chunk = $project->chunks()->orderBy('position')->first();
+        $this->actingAs($admin)->postJson(route('admin.studio.projects.chunks.reroll', [$project, $chunk]))->assertOk();
+        $this->actingAs($admin)->postJson(route('admin.studio.projects.rebuild', $project))->assertOk();
+        $this->actingAs($admin)->postJson(route('admin.studio.projects.seal', $project))->assertOk();
+
+        // The non-selected take's file vanishes from storage out-of-band.
+        $chunk->refresh();
+        $orphan = $chunk->takes()->where('audio_path', '!=', $chunk->audio_path)->firstOrFail();
+        Storage::disk('local')->delete($orphan->audio_path);
+
+        $res = $this->actingAs($admin)->get(route('admin.studio.projects.archive', $project));
+        $res->assertOk();
+
+        $zip = $this->openZip($res->getContent());
+        $manifest = json_decode($zip->getFromName('manifest.json'), true);
+        $zip->close();
+
+        // Still listed — with a null file/hash — so the archive never silently
+        // under-reports the takes that existed.
+        $this->assertCount(3, $manifest['clips']);
+        $missing = array_values(array_filter($manifest['clips'], fn ($c) => $c['file'] === null));
+        $this->assertCount(1, $missing);
+        $this->assertNull($missing[0]['sha256']);
+        $this->assertFalse($missing[0]['selected']);
+    }
+
     // ---- Download filenames -------------------------------------------------
 
     public function test_final_download_filename_carries_the_content_fingerprint(): void

@@ -2047,6 +2047,153 @@ class StudioProjectTest extends TestCase
         $this->assertSame($project->voice_id, $this->duplicateOf($project)->voice_id);
     }
 
+    // ---- Clean up project (delete the non-selected takes) -------------------
+
+    public function test_cleanup_deletes_non_selected_takes_and_their_files(): void
+    {
+        $admin = $this->admin();
+        $project = $this->project();
+        $chunk = $project->chunks()->orderBy('position')->first();
+        $this->actingAs($admin)->post(route('admin.studio.projects.chunks.generate', [$project, $chunk]));
+        $this->actingAs($admin)->postJson(route('admin.studio.projects.chunks.reroll', [$project, $chunk]))->assertOk();
+        $this->actingAs($admin)->postJson(route('admin.studio.projects.chunks.reroll', [$project, $chunk]))->assertOk();
+
+        $chunk->refresh();
+        $paths = $chunk->takes()->pluck('audio_path');
+        $this->assertCount(3, $paths);
+
+        $this->actingAs($admin)->post(route('admin.studio.projects.cleanup', $project))
+            ->assertRedirect(route('admin.studio.projects.show', $project))
+            ->assertSessionHas('success', 'Project cleaned up — 2 unused takes were removed.');
+
+        // Only the selected take survives, and what the chunk plays is unchanged.
+        $takes = $chunk->refresh()->takes()->get();
+        $this->assertCount(1, $takes);
+        $this->assertSame($chunk->audio_path, $takes->first()->audio_path);
+
+        $disk = Storage::disk('local');
+        $this->assertTrue($disk->exists($chunk->audio_path));
+        foreach ($paths as $path) {
+            if ($path !== $chunk->audio_path) {
+                $this->assertFalse($disk->exists($path), "unselected take file should be gone: {$path}");
+            }
+        }
+    }
+
+    public function test_cleanup_keeps_the_final_and_the_seal(): void
+    {
+        $admin = $this->admin();
+        $project = $this->project();
+        $chunk = $project->chunks()->orderBy('position')->first();
+        foreach ($project->chunks()->get() as $c) {
+            $this->actingAs($admin)->post(route('admin.studio.projects.chunks.generate', [$project, $c]));
+        }
+        $this->actingAs($admin)->postJson(route('admin.studio.projects.chunks.reroll', [$project, $chunk]))->assertOk();
+        $this->actingAs($admin)->postJson(route('admin.studio.projects.rebuild', $project))->assertOk();
+        $this->actingAs($admin)->postJson(route('admin.studio.projects.seal', $project))->assertOk();
+
+        $this->actingAs($admin)->post(route('admin.studio.projects.cleanup', $project))
+            ->assertSessionHas('success', 'Project cleaned up — 1 unused take was removed.');
+
+        // Cleanup never touches audio that plays, so the approval must survive.
+        $project->refresh();
+        $this->assertTrue($project->isSealed());
+        $this->assertSame(ProjectStatus::Ready, $project->status);
+        $this->assertTrue(Storage::disk('local')->exists($project->final_audio_path));
+        $this->actingAs($admin)->get(route('admin.studio.projects.receipt', $project))->assertOk();
+    }
+
+    public function test_cleanup_with_nothing_to_remove(): void
+    {
+        $admin = $this->admin();
+        $project = $this->generateAndBuild($this->project(), $admin);
+
+        $this->actingAs($admin)->post(route('admin.studio.projects.cleanup', $project))
+            ->assertRedirect(route('admin.studio.projects.show', $project))
+            ->assertSessionHas('success', 'Nothing to clean up — every take is a selected one.');
+
+        // One selected take per chunk, all untouched.
+        $this->assertSame(2, TtsChunkTake::count());
+    }
+
+    public function test_cleanup_keeps_legacy_takes_sharing_the_selected_file(): void
+    {
+        // A legacy in-place set: several take rows referencing the chunk's ONE
+        // file. None of them may be deleted — removing any would take the
+        // shared file (the selected audio) with it.
+        $admin = $this->admin();
+        $project = $this->project();
+        $chunk = $project->chunks()->orderBy('position')->first();
+        $this->actingAs($admin)->post(route('admin.studio.projects.chunks.generate', [$project, $chunk]));
+        $chunk->refresh();
+        $chunk->takes()->create([
+            'audio_path' => $chunk->audio_path,
+            'text' => $chunk->text,
+            'source' => 'generate',
+        ]);
+
+        $this->actingAs($admin)->post(route('admin.studio.projects.cleanup', $project))
+            ->assertSessionHas('success', 'Nothing to clean up — every take is a selected one.');
+
+        $this->assertCount(2, $chunk->refresh()->takes()->get());
+        $this->assertTrue(Storage::disk('local')->exists($chunk->audio_path));
+    }
+
+    public function test_cleanup_removes_all_takes_of_a_chunk_with_no_selected_audio(): void
+    {
+        // No selected audio means no take is selected — cleanup archives the
+        // project down to what's actually in use, which here is nothing.
+        $admin = $this->admin();
+        $project = $this->project();
+        $chunk = $project->chunks()->orderBy('position')->first();
+        $this->actingAs($admin)->post(route('admin.studio.projects.chunks.generate', [$project, $chunk]));
+        $chunk->refresh();
+        $takePath = $chunk->audio_path;
+        $chunk->update(['audio_path' => null]);
+
+        $this->actingAs($admin)->post(route('admin.studio.projects.cleanup', $project))
+            ->assertSessionHas('success', 'Project cleaned up — 1 unused take was removed.');
+
+        $this->assertCount(0, $chunk->refresh()->takes()->get());
+        $this->assertFalse(Storage::disk('local')->exists($takePath));
+    }
+
+    public function test_cleanup_requires_project_access(): void
+    {
+        $owner = User::factory()->create(['is_super_admin' => false]);
+        $project = $this->project();
+        $project->update(['user_id' => $owner->id]);
+        $chunk = $project->chunks()->orderBy('position')->first();
+        $this->actingAs($owner)->post(route('admin.studio.projects.chunks.generate', [$project, $chunk]));
+        $this->actingAs($owner)->postJson(route('admin.studio.projects.chunks.reroll', [$project, $chunk]))->assertOk();
+
+        $this->actingAs(User::factory()->create(['is_super_admin' => false]))
+            ->post(route('admin.studio.projects.cleanup', $project))
+            ->assertForbidden();
+
+        $this->assertCount(2, $chunk->refresh()->takes()->get());
+    }
+
+    public function test_cleanup_is_refused_while_a_background_run_is_active(): void
+    {
+        $admin = $this->admin();
+        $project = $this->project();
+        $chunk = $project->chunks()->orderBy('position')->first();
+        $this->actingAs($admin)->post(route('admin.studio.projects.chunks.generate', [$project, $chunk]));
+        $this->actingAs($admin)->postJson(route('admin.studio.projects.chunks.reroll', [$project, $chunk]))->assertOk();
+        TtsProjectJob::create([
+            'tts_project_id' => $project->id,
+            'chunk_ids' => $project->chunks()->pluck('id')->all(),
+            'chunks_total' => 2,
+        ]);
+
+        $this->actingAs($admin)->post(route('admin.studio.projects.cleanup', $project))
+            ->assertRedirect(route('admin.studio.projects.show', $project))
+            ->assertSessionHas('error');
+
+        $this->assertCount(2, $chunk->refresh()->takes()->get());
+    }
+
     public function test_duplicate_reuses_an_identical_voice_instead_of_cloning(): void
     {
         // The duplicator already owns a voice that sounds identical to the

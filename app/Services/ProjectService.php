@@ -1379,6 +1379,40 @@ class ProjectService
         }
     }
 
+    /**
+     * Housekeeping: delete every take that is NOT the chunk's currently selected
+     * audio — rows and files — so an old project keeps only the clips that are
+     * actually in use. Every take sharing the selected file is kept (legacy
+     * in-place sets reference one file), and nothing that plays changes: chunk
+     * audio, the final, the seal, and the spend counters are all untouched.
+     *
+     * @return int the number of takes removed
+     */
+    public function cleanupTakes(TtsProject $project): int
+    {
+        $disk = Storage::disk($this->disk());
+        $removed = 0;
+
+        foreach ($project->chunks as $chunk) {
+            $unselected = $chunk->takes->filter(
+                fn (TtsChunkTake $take) => $take->audio_path !== $chunk->audio_path
+            );
+
+            // Distinct paths only (legacy takes can share one file); the selected
+            // file can't appear here because of the filter above.
+            foreach ($unselected->pluck('audio_path')->filter()->unique() as $path) {
+                $disk->delete($path);
+            }
+
+            foreach ($unselected as $take) {
+                $take->delete();
+                $removed++;
+            }
+        }
+
+        return $removed;
+    }
+
     /** Delete a project, its chunks (cascade), and all of its stored audio. */
     public function deleteProject(TtsProject $project): void
     {
