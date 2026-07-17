@@ -13,7 +13,7 @@ final class RemediationOutcome
     public function __construct(
         public readonly string $bytes,
         public readonly ?ChunkQualityVerdict $verdict,
-        public readonly string $action,        // none|rerolled|rerolled_unrecovered|trimmed|trim_failed|unscored
+        public readonly string $action,        // none|kept|rerolled|rerolled_unrecovered|trimmed|trim_failed|unscored
         public readonly int $rerollAttempts = 0,
         public readonly ?int $trimmedToMs = null,
     ) {}

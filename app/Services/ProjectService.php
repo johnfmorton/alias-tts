@@ -697,6 +697,21 @@ class ProjectService
             return;
         }
 
+        // Remediation that changed nothing: every re-roll scored at or below
+        // the flagged take ('kept'), or the only fix was a tail trim that
+        // failed ('trim_failed'). Recording the outcome would add a
+        // byte-identical "remediate" take to the history — keep the original
+        // take and its honest flagged badge instead.
+        if (in_array($outcome->action, ['kept', 'trim_failed'], true)) {
+            Log::info('ASR remediation kept the flagged take', [
+                'chunk' => $chunk->id,
+                'action' => $outcome->action,
+                'attempts' => $outcome->rerollAttempts,
+            ]);
+
+            return;
+        }
+
         // A null outcome verdict means a re-roll couldn't be scored (sidecar
         // dropped): keep the new audio but leave the original verdict on the chunk.
         $this->recordTake(

@@ -209,6 +209,35 @@ class AsrChunkQaTest extends TestCase
         $this->assertEqualsWithDelta(5 / count($tokens), $chunk->asr_score, 0.01);
     }
 
+    public function test_auto_reroll_that_never_improves_records_no_duplicate_take(): void
+    {
+        config(['tts.asr.action' => 'auto', 'tts.asr.max_rerolls' => 2]);
+        $provider = $this->countingProvider();
+        $chunk = $this->firstChunk();
+
+        $tokens = preg_split('/\s+/', $chunk->text);
+        $take = fn (int $words) => $this->fakeTranscript(implode(' ', array_slice($tokens, 0, $words)), 8.0);
+
+        // Every re-roll scores at or below the flagged take — keep-best falls
+        // back to the original bytes, and recording them again would just put a
+        // byte-identical "remediate" take in the history.
+        Http::fake([
+            'asr.test/transcribe' => Http::sequence()
+                ->push($take(4))
+                ->push($take(3))
+                ->push($take(2)),
+        ]);
+
+        app(ProjectService::class)->generateChunk($chunk);
+        $chunk->refresh();
+
+        $this->assertSame(3, $provider->calls);              // initial + 2 losing re-rolls
+        $this->assertSame(1, $chunk->takes()->count());      // the flagged take, no duplicate
+        $this->assertFalse($chunk->asr_report['ok']);        // its badge stays honest
+        $this->assertArrayNotHasKey('action', $chunk->asr_report);
+        $this->assertEqualsWithDelta(4 / count($tokens), $chunk->asr_score, 0.01);
+    }
+
     public function test_auto_trims_a_tail_only_chunk_without_rerolling(): void
     {
         config(['tts.asr.action' => 'auto', 'tts.asr.max_rerolls' => 2]);

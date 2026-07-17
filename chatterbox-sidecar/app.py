@@ -193,6 +193,15 @@ def synthesize(
                 torch.manual_seed(seed)
                 random.seed(seed)
                 np.random.seed(seed % 2**32)
+            else:
+                # An unpinned request must be genuinely random. Without this,
+                # the global RNG continues from wherever the previous — possibly
+                # pinned — generation left it, which is deterministic given
+                # (seed, text): a QA re-roll after a pinned take would draw the
+                # same "alternative take" every time.
+                fresh = torch.seed()
+                random.seed(fresh)
+                np.random.seed(fresh % 2**32)
 
             kwargs: dict[str, float | int | str] = {}
             if model == "chatterbox":

@@ -91,9 +91,11 @@ class ChunkRemediator
     /**
      * Remediate a flagged take (action=auto). For re-roll-class problems
      * ({@see REROLL_PROBLEMS}) re-roll via $resynthesize up to max_rerolls,
-     * keeping the best-coverage take and stopping on the first clean one; for a
-     * trim-only take (TAIL/TAILNOISE), precise-trim at the ASR speech end (no
-     * re-roll). A re-rolled take that ends up trim-only is trimmed too.
+     * keeping the best-coverage take and stopping on the first clean one; when
+     * every candidate scores at or below the flagged take the outcome is
+     * 'kept' (original bytes, nothing to apply). For a trim-only take
+     * (TAIL/TAILNOISE), precise-trim at the ASR speech end (no re-roll). A
+     * re-rolled take that ends up trim-only is trimmed too.
      *
      * When $allowReroll is false (a MANUAL re-roll — the user asked for exactly one
      * fresh take) re-rolling is suppressed: a junk tail is still precise-trimmed
@@ -120,6 +122,7 @@ class ChunkRemediator
         $bestBytes = $bytes;
         $bestVerdict = $verdict;
         $recovered = false;
+        $improved = false;
         $attempts = 0;
         $max = $this->asr->maxRerolls();
 
@@ -144,8 +147,16 @@ class ChunkRemediator
             if ($candidateVerdict->ok || $candidateVerdict->score > $bestVerdict->score) {
                 $bestBytes = $candidate;
                 $bestVerdict = $candidateVerdict;
+                $improved = true;
             }
             $recovered = $candidateVerdict->ok;
+        }
+
+        // No candidate beat the flagged take — keep-best fell back to the
+        // original bytes. A distinct action so callers know nothing changed:
+        // recording "the remediated take" would just duplicate the flagged one.
+        if (! $improved) {
+            return new RemediationOutcome($bytes, $verdict, 'kept', $attempts);
         }
 
         // If the winning take's only remaining problems are junk tails, trim them.
