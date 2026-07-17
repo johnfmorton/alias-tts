@@ -4,6 +4,19 @@ All notable changes to this project are documented in this file. The format is
 based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this
 project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+- **Skip the pronunciation check when creating a project.** The new-project
+  screen now runs the pronunciation check as an interruptible step with a
+  **Skip** button beside it. Clicking Skip ends the check and goes straight to
+  the Studio project page with the text already split into chunks — the check is
+  optional, but chunking is not. Any respellings already in your dictionary are
+  still applied. If the check finds nothing to review, or you let it finish, the
+  flow is unchanged (a direct create, or the review screen). Behind the scenes
+  the check now runs as an abortable request that creates nothing until you
+  commit, so skipping can never leave a half-made or duplicate project.
+
 ## [0.58.1] - 2026-07-17
 
 ### Fixed

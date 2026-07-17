@@ -4,7 +4,10 @@
             No voices configured — <a class="underline" href="{{ route('admin.voices.create') }}">add a voice</a> before creating a project.
         </div>
     @else
-        <form id="create-project-form" method="POST" action="{{ route('admin.studio.projects.review') }}" class="space-y-5 rounded-xl border border-zinc-800 bg-zinc-900/50 p-6">
+        <form id="create-project-form" method="POST" action="{{ route('admin.studio.projects.review') }}"
+              data-detect-url="{{ route('admin.studio.projects.detect') }}"
+              data-store-url="{{ route('admin.studio.projects.store') }}"
+              class="space-y-5 rounded-xl border border-zinc-800 bg-zinc-900/50 p-6">
             @csrf
             <div>
                 <label for="title" class="mb-1.5 block text-sm font-medium">Title</label>
@@ -51,7 +54,16 @@
             <div class="space-y-2">
                 <div class="flex items-center gap-3">
                     <button type="submit" class="rounded-lg bg-cyan-500 px-4 py-2 text-sm font-medium text-zinc-950 hover:bg-cyan-400">Create project</button>
-                    <a href="{{ route('admin.studio.index') }}" class="text-sm text-zinc-400 hover:text-zinc-200">Cancel</a>
+                    {{-- Idle: a plain "never mind" back to Studio. Once the
+                         pronunciation check is running, JS hides this and shows
+                         "Skip" in its place (below). --}}
+                    <a id="create-project-cancel" href="{{ route('admin.studio.index') }}" class="text-sm text-zinc-400 hover:text-zinc-200">Cancel</a>
+                    {{-- Shown only while the check runs: abort the LLM gate and
+                         create straight from the chunks (applies the existing
+                         dictionary, no review step). --}}
+                    <button type="button" id="skip-pronunciation" hidden
+                            title="Skip the pronunciation check and create the project now"
+                            class="text-sm text-zinc-400 hover:text-zinc-200">Skip</button>
                 </div>
                 <p id="create-project-status" class="text-sm text-zinc-400" role="status" aria-live="polite"></p>
             </div>

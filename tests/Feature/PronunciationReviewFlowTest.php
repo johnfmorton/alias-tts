@@ -221,4 +221,108 @@ class PronunciationReviewFlowTest extends TestCase
         $this->assertSame(1, TtsProject::count());
         Http::assertNothingSent();
     }
+
+    // --- Async gate: detect() (JSON) + token hand-off to review() ------------
+
+    public function test_detect_returns_a_token_and_creates_nothing_when_suggestions_exist(): void
+    {
+        Http::fake(['runner.test/pronounce' => Http::response([
+            'available' => true,
+            'substitutions' => [
+                ['term' => 'DDEV', 'phonetic' => 'dee dev', 'category' => 'initialism', 'confidence' => 'high'],
+            ],
+        ])]);
+
+        $res = $this->actingAs($this->admin())
+            ->postJson(route('admin.studio.projects.detect'), ['text' => 'Install DDEV first.', 'voice' => 'v'])
+            ->assertOk();
+
+        $this->assertNotEmpty($res->json('token'));
+        // The gate is read-only — nothing is persisted until the client commits.
+        $this->assertSame(0, TtsProject::count());
+    }
+
+    public function test_detect_reports_skip_when_there_is_nothing_to_review(): void
+    {
+        Http::fake(['runner.test/pronounce' => Http::response(['available' => true, 'substitutions' => []])]);
+
+        $this->actingAs($this->admin())
+            ->postJson(route('admin.studio.projects.detect'), ['text' => 'Plain text here.', 'voice' => 'v'])
+            ->assertOk()
+            ->assertJson(['skip' => true]);
+
+        $this->assertSame(0, TtsProject::count());
+    }
+
+    public function test_reviews_token_renders_cached_suggestions_without_re_running_the_check(): void
+    {
+        Http::fake(['runner.test/pronounce' => Http::response([
+            'available' => true,
+            'substitutions' => [
+                ['term' => 'DDEV', 'phonetic' => 'dee dev', 'category' => 'initialism', 'confidence' => 'high'],
+            ],
+        ])]);
+
+        $admin = $this->admin();
+        $token = $this->actingAs($admin)
+            ->postJson(route('admin.studio.projects.detect'), ['text' => 'Install DDEV first.', 'voice' => 'v'])
+            ->json('token');
+
+        // Re-posting with the token renders the review screen from the cache…
+        $this->actingAs($admin)
+            ->post(route('admin.studio.projects.review'), [
+                'text' => 'Install DDEV first.',
+                'voice' => 'v',
+                'detect_token' => $token,
+            ])
+            ->assertOk()
+            ->assertSee('DDEV')
+            ->assertSee('dee dev');
+
+        // …paying for exactly one runner call (detect), not a second in review.
+        Http::assertSentCount(1);
+        $this->assertSame(0, TtsProject::count());
+    }
+
+    public function test_review_token_is_one_shot_and_falls_back_to_an_inline_check(): void
+    {
+        Http::fake(['runner.test/pronounce' => Http::response([
+            'available' => true,
+            'substitutions' => [
+                ['term' => 'DDEV', 'phonetic' => 'dee dev', 'category' => 'initialism', 'confidence' => 'high'],
+            ],
+        ])]);
+
+        $admin = $this->admin();
+        $token = $this->actingAs($admin)
+            ->postJson(route('admin.studio.projects.detect'), ['text' => 'Install DDEV first.', 'voice' => 'v'])
+            ->json('token');
+
+        // First use consumes the token.
+        $this->actingAs($admin)->post(route('admin.studio.projects.review'), [
+            'text' => 'Install DDEV first.', 'voice' => 'v', 'detect_token' => $token,
+        ])->assertOk();
+
+        // A replay finds nothing cached and re-runs the check inline (still works,
+        // just pays for another call) — proving the token can't be reused.
+        $this->actingAs($admin)->post(route('admin.studio.projects.review'), [
+            'text' => 'Install DDEV first.', 'voice' => 'v', 'detect_token' => $token,
+        ])->assertOk()->assertSee('dee dev');
+
+        Http::assertSentCount(2);
+    }
+
+    public function test_skip_uses_store_to_create_the_project_without_the_check(): void
+    {
+        // Skip hands off to store(): the create form's data, no pronunciation
+        // runner call at all, straight to the project page with chunks.
+        Http::fake();
+
+        $this->actingAs($this->admin())
+            ->post(route('admin.studio.projects.store'), ['text' => 'Install DDEV first.', 'voice' => 'v'])
+            ->assertRedirect();
+
+        $this->assertSame(1, TtsProject::count());
+        Http::assertNothingSent();
+    }
 }

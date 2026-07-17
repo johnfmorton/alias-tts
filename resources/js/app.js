@@ -3150,39 +3150,102 @@ function initGenblaze() {
 }
 initGenblaze();
 
-// New-project form: the "Create project" POST blocks while the server normalizes
-// the text and runs the (potentially ~minute-long) LLM pronunciation check before
-// it can render the review screen. Without feedback the page reads as frozen, so
-// show a spinner + honest step messaging until the browser navigates away.
+// New-project form: creating a project runs a (potentially ~minute-long) LLM
+// pronunciation check before the text is chunked. To keep that check skippable,
+// JS drives it as an abortable fetch to `detect` (which creates nothing) instead
+// of a blocking full-page POST:
+//   • suggestions found → hand off to `review` with the check's one-shot token
+//     (the server renders the review screen without re-running the check);
+//   • nothing to review → hand off to `store` (create + chunk, no review);
+//   • Skip clicked → abort the check and hand off to `store` — chunks intact,
+//     existing dictionary applied, no LLM gate. The aborted check made nothing
+//     server-side, so this can't duplicate the project.
+// With JS off the form falls back to its plain POST to `review` (unchanged).
 function initCreateProjectForm() {
     const form = document.getElementById('create-project-form');
     if (!form) return;
 
     const btn = form.querySelector('button[type=submit]');
     const status = document.getElementById('create-project-status');
-    let timers = [];
+    const skipBtn = document.getElementById('skip-pronunciation');
+    const cancelLink = document.getElementById('create-project-cancel');
+    const detectUrl = form.dataset.detectUrl;
+    const reviewUrl = form.action; // the form's own action is the review route
+    const storeUrl = form.dataset.storeUrl;
+
+    let controller = null; // aborts the in-flight pronunciation check
+    let navigating = false; // set once we hand off to a real full-page submit
 
     const reset = () => {
-        timers.forEach(clearTimeout);
-        timers = [];
+        controller = null;
+        navigating = false;
         if (btn) endBusy(btn);
         setStatus(status, '');
+        if (skipBtn) skipBtn.hidden = true;
+        if (cancelLink) cancelLink.hidden = false;
+    };
+
+    // Full-page POST to `action` (with any extra hidden fields), which the server
+    // answers with a redirect to the project or the review screen. form.submit()
+    // doesn't fire the submit event, so the handler below never re-intercepts it;
+    // the spinner clears when the browser navigates away.
+    const navigateTo = (action, fields = {}) => {
+        navigating = true;
+        Object.entries(fields).forEach(([name, value]) => {
+            const input = document.createElement('input');
+            input.type = 'hidden';
+            input.name = name;
+            input.value = value;
+            form.appendChild(input);
+        });
+        form.action = action;
+        form.submit();
     };
 
     // Native `required` validation blocks submit before this fires, so reaching
-    // here means the form is valid and the request is on its way.
-    form.addEventListener('submit', () => {
-        if (!btn) return;
-        startBusy(btn, 'Normalizing text…');
+    // here means the form is valid. Without the detect URL (or a hand-off already
+    // in progress) let the plain POST through — that's the no-JS fallback.
+    form.addEventListener('submit', async (e) => {
+        if (navigating || !btn || !detectUrl) return;
+        e.preventDefault();
+
+        startBusy(btn, 'Checking pronunciations…');
         setStatus(status, 'This can take up to a minute for long articles — please keep this page open.');
-        timers = [
-            setTimeout(() => setRunning(btn, 'Checking pronunciations…'), 900),
-        ];
+        if (cancelLink) cancelLink.hidden = true;
+        if (skipBtn) skipBtn.hidden = false;
+
+        controller = new AbortController();
+        try {
+            const res = await fetch(detectUrl, {
+                method: 'POST',
+                headers: { 'X-CSRF-TOKEN': csrfToken(), 'Accept': 'application/json', 'Content-Type': 'application/json' },
+                body: JSON.stringify(Object.fromEntries(new FormData(form))),
+                signal: controller.signal,
+            });
+            if (!res.ok) throw new Error(await errorMessage(res));
+            const data = await res.json();
+            data.token
+                ? navigateTo(reviewUrl, { detect_token: data.token })
+                : navigateTo(storeUrl);
+        } catch (err) {
+            if (err.name === 'AbortError') return; // Skip owns the hand-off
+            // The check itself failed (network/LLM) — fall back to the plain POST
+            // so a hiccup in an optional step never blocks project creation.
+            navigateTo(reviewUrl);
+        }
     });
 
-    // The form is a full-page POST, so a successful submit navigates away and the
-    // spinner clears on its own. But the back/forward cache can restore this page
-    // with the button still stuck in its busy state — reset it when that happens.
+    if (skipBtn) {
+        skipBtn.addEventListener('click', () => {
+            setStatus(status, 'Skipping pronunciation check…');
+            if (controller) controller.abort();
+            navigateTo(storeUrl);
+        });
+    }
+
+    // A hand-off is a full-page POST, so a successful submit navigates away and
+    // the spinner clears on its own. But the back/forward cache can restore this
+    // page mid-spin — reset it when that happens.
     window.addEventListener('pageshow', (e) => {
         if (e.persisted) reset();
     });

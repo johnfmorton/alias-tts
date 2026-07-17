@@ -111,6 +111,10 @@ Route::prefix('studio')->name('studio.')->group(function () {
     // Editable projects: persist chunks, regenerate one at a time, rebuild the stitch.
     Route::prefix('projects')->name('projects.')->group(function () {
         Route::get('/create', [StudioProjectController::class, 'create'])->name('create');
+        // Async pronunciation gate (JSON) the create form calls before it
+        // commits — see StudioProjectController::detect(); lets the slow LLM
+        // check run behind a Skip button without creating anything.
+        Route::post('/detect', [StudioProjectController::class, 'detect'])->name('detect');
         Route::post('/review', [StudioProjectController::class, 'review'])->name('review');
         Route::post('/apply', [StudioProjectController::class, 'applyAndStore'])->name('apply');
         Route::post('/', [StudioProjectController::class, 'store'])->name('store');

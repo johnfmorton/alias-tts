@@ -31,6 +31,7 @@ use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Collection;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Facades\Validator;
@@ -200,7 +201,9 @@ class StudioProjectController extends Controller
      */
     public function review(Request $request): RedirectResponse|View
     {
-        $data = $request->validate($this->createRules());
+        $data = $request->validate($this->createRules() + [
+            'detect_token' => ['nullable', 'string'],
+        ]);
 
         $voice = Voice::resolveFor($data['voice'], $request->user()->id);
         if (! $voice) {
@@ -208,26 +211,15 @@ class StudioProjectController extends Controller
         }
 
         $userId = $request->user()?->id;
-        $normalized = $this->normalizer->normalize($data['text']);
-        $detection = $this->detector->detect($normalized, $userId);
 
-        // Drop anything already in the writer's dictionary (the detector passes
-        // these as known_terms too — this is belt-and-suspenders).
-        $known = array_map(fn ($t) => mb_strtolower($t), $this->dictionary->knownTerms($userId));
-        $suggestions = array_values(array_filter(
-            $detection['substitutions'] ?? [],
-            fn ($s) => isset($s['term']) && ! in_array(mb_strtolower((string) $s['term']), $known, true),
-        ));
-
-        // Previously declined terms stay visible (the writer can change their
-        // mind per project) but must never come back pre-checked.
-        $rejected = $this->dictionary->rejectedTerms($userId);
-        $suggestions = array_map(function (array $s) use ($rejected) {
-            $s['previously_rejected'] = in_array(mb_strtolower((string) $s['term']), $rejected, true);
-            $s['checked'] = ! $s['previously_rejected'] && ($s['confidence'] ?? '') === 'high';
-
-            return $s;
-        }, $suggestions);
+        // The async create flow ({@see detect()} + initCreateProjectForm) has
+        // already run the ~minute-long LLM check and posts back its one-shot
+        // token — render the review screen from those cached suggestions rather
+        // than paying for the check a second time. A missing/expired token (JS
+        // off, or a direct POST) falls back to running the check inline here.
+        $detected = $this->pullCachedSuggestions($request, $userId)
+            ?? $this->detectSuggestions($data['text'], $userId);
+        $suggestions = $detected['suggestions'];
 
         // Nothing to review → apply the existing dictionary and create now.
         if ($suggestions === []) {
@@ -249,8 +241,94 @@ class StudioProjectController extends Controller
                 'cfg_weight' => $data['cfg_weight'] ?? null,
                 'temperature' => $data['temperature'] ?? null,
             ],
-            'provenance' => $detection['provenance'] ?? null,
+            'provenance' => $detected['provenance'] ?? null,
         ]);
+    }
+
+    /**
+     * Async pronunciation gate (JSON): the create form's JS calls this up front
+     * so the slow LLM check runs behind a live "Checking pronunciations…" state
+     * with a Skip button that can abort it. Creates NOTHING — it only reports
+     * whether there's anything to review, so aborting or skipping is always safe
+     * (no half-made project, no duplicate). When suggestions exist they're
+     * stashed under a one-shot token the client posts to {@see review()}, which
+     * renders the screen without re-running the check.
+     */
+    public function detect(Request $request): JsonResponse
+    {
+        $validator = Validator::make($request->all(), $this->createRules());
+        if ($validator->fails()) {
+            return response()->json(['message' => $validator->errors()->first()], 422);
+        }
+        $data = $validator->validated();
+
+        $userId = $request->user()?->id;
+        $detected = $this->detectSuggestions($data['text'], $userId);
+
+        // Nothing to review → tell the client to create straight away (store()).
+        if ($detected['suggestions'] === []) {
+            return response()->json(['skip' => true]);
+        }
+
+        $token = (string) Str::uuid();
+        Cache::put($this->detectCacheKey($userId, $token), $detected, now()->addMinutes(10));
+
+        return response()->json(['token' => $token]);
+    }
+
+    /**
+     * Run the LLM pronunciation check and shape the raw substitutions into the
+     * review screen's rows: drop terms already in the writer's dictionary (the
+     * detector passes these as known_terms too — belt-and-suspenders), mark
+     * ones the writer declined before so they never come back pre-checked, and
+     * pre-check only high-confidence newcomers.
+     *
+     * @return array{suggestions: list<array<string, mixed>>, provenance: array<string, mixed>|null}
+     */
+    private function detectSuggestions(string $text, ?int $userId): array
+    {
+        $normalized = $this->normalizer->normalize($text);
+        $detection = $this->detector->detect($normalized, $userId);
+
+        $known = array_map(fn ($t) => mb_strtolower($t), $this->dictionary->knownTerms($userId));
+        $suggestions = array_values(array_filter(
+            $detection['substitutions'] ?? [],
+            fn ($s) => isset($s['term']) && ! in_array(mb_strtolower((string) $s['term']), $known, true),
+        ));
+
+        $rejected = $this->dictionary->rejectedTerms($userId);
+        $suggestions = array_map(function (array $s) use ($rejected) {
+            $s['previously_rejected'] = in_array(mb_strtolower((string) $s['term']), $rejected, true);
+            $s['checked'] = ! $s['previously_rejected'] && ($s['confidence'] ?? '') === 'high';
+
+            return $s;
+        }, $suggestions);
+
+        return ['suggestions' => $suggestions, 'provenance' => $detection['provenance'] ?? null];
+    }
+
+    /**
+     * Consume the one-shot token {@see detect()} minted, returning its cached
+     * suggestions when present and valid. Scoped to the user and pulled (not
+     * peeked), so a token is good for exactly one review render.
+     *
+     * @return array{suggestions: list<array<string, mixed>>, provenance: array<string, mixed>|null}|null
+     */
+    private function pullCachedSuggestions(Request $request, ?int $userId): ?array
+    {
+        $token = trim((string) $request->input('detect_token', ''));
+        if ($token === '') {
+            return null;
+        }
+
+        $cached = Cache::pull($this->detectCacheKey($userId, $token));
+
+        return is_array($cached) ? $cached : null;
+    }
+
+    private function detectCacheKey(?int $userId, string $token): string
+    {
+        return "pron_detect:{$userId}:{$token}";
     }
 
     /**
