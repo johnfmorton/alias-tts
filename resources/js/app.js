@@ -1299,6 +1299,8 @@ function initStudioProject() {
     const rebuildUrl = root.dataset.rebuildUrl;
     const finalAudio = document.getElementById('project-final-audio');
     const finalStatus = document.getElementById('project-final-status');
+    const estimateEl = document.getElementById('project-generate-estimate');
+    const estimateUrl = root.dataset.estimateUrl;
     const projectStatus = document.getElementById('project-status');
     const downloadLink = document.getElementById('project-download');
     const generateAllBtn = document.getElementById('project-generate-all');
@@ -1478,6 +1480,29 @@ function initStudioProject() {
     let runActive = false;
     const stopBtn = document.getElementById('project-generate-stop');
 
+    // The pre-run time estimate lives in its own element and is refreshed
+    // whenever the outstanding set changes — reflectActionState() fires on every
+    // such change (it's what lights Generate remaining), so hooking it there
+    // keeps the estimate in step with the button. Debounced so a burst of status
+    // updates collapses to one request; skipped while a run is active (the live
+    // ETA owns the status line then) and the estimate hides. A null estimate
+    // (nothing outstanding) hides it too.
+    let estimateTimer;
+    function refreshEstimate() {
+        if (!estimateEl || !estimateUrl) return;
+        clearTimeout(estimateTimer);
+        estimateTimer = setTimeout(async () => {
+            if (runActive) { showEl(estimateEl, false); return; }
+            try {
+                const res = await fetch(estimateUrl, { headers: { 'Accept': 'application/json' } });
+                if (!res.ok) return;
+                const { estimate } = await res.json();
+                estimateEl.textContent = estimate || '';
+                showEl(estimateEl, !!estimate);
+            } catch (_) { /* the estimate is a nicety — never surface its failure */ }
+        }, 300);
+    }
+
     function reflectActionState() {
         const status = projectStatus.textContent.trim();
         // Skipped chunks don't count as outstanding work: they're excluded from
@@ -1529,6 +1554,8 @@ function initStudioProject() {
             look(receiptLink, 'primary');
             showEl(receiptLink, isSealed, 'inline-flex');
         }
+
+        refreshEstimate(); // keep the pre-run time hint in step with the outstanding set
     }
 
     const setProjectStatus = (status) => { badge(projectStatus, status); reflectSeal(); reflectActionState(); };

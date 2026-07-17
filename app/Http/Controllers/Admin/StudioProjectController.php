@@ -26,6 +26,7 @@ use App\Services\Tts\ChatterboxTuning;
 use App\Services\Tts\ModelCatalog;
 use App\Services\Tts\VoiceSettingsResolver;
 use App\Support\GenerationCost;
+use App\Support\GenerationEstimator;
 use App\Support\SpendCounters;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
@@ -428,13 +429,18 @@ class StudioProjectController extends Controller
     public function show(Request $request, TtsProject $project): View
     {
         $project->load('voice');
-        $chunks = $project->chunks()->with('takes')->get();
+        $chunks = $project->chunks()->with(['takes', 'voice'])->get();
+        $hasActiveRun = TtsProjectJob::activeFor($project->id) !== null;
 
         return view('admin.studio.projects.show', [
             'project' => $project,
             // A background "Generate remaining" run is queued/working — the page
             // resumes following it (polling) instead of offering a fresh start.
-            'hasActiveRun' => TtsProjectJob::activeFor($project->id) !== null,
+            'hasActiveRun' => $hasActiveRun,
+            // "About 2 min to generate the 40 remaining clips" — the up-front
+            // estimate from learned history, shown until a run takes the line
+            // over. Suppressed while a run is already following.
+            'preRunEstimate' => $hasActiveRun ? null : $this->preRunEstimate($project, $chunks),
             // The access policy lets a SuperAdmin open anyone's project for
             // support. When this viewer is not the owner, the page names the
             // owner and gates the first edit behind a warning dialog.
@@ -937,6 +943,48 @@ class StudioProjectController extends Controller
     }
 
     /**
+     * Learned-history estimate (ms) to generate a set of outstanding chunks,
+     * grouped by the model each will render on plus the inter-chunk pace. Drives
+     * the stored run estimate and the pre-run hint. `$chunks` must have `voice`
+     * loaded so the model lookup stays a single query for the whole set.
+     *
+     * @param  Collection<int, TtsChunk>  $chunks
+     */
+    private function estimateRemainingMs(TtsProject $project, $chunks): int
+    {
+        $counts = [];
+        foreach ($chunks as $chunk) {
+            $model = ModelCatalog::forVoice($chunk->voice ?? $project->voice);
+            $counts[$model] = ($counts[$model] ?? 0) + 1;
+        }
+
+        return GenerationEstimator::seedMs($counts, (int) config('tts.studio_generate_pace_ms', 800));
+    }
+
+    /**
+     * The at-a-glance "About X to generate the N remaining clips" hint the
+     * project page shows before a run starts (rendered into #project-final-status,
+     * which the run then takes over). Null when nothing is outstanding.
+     *
+     * @param  Collection<int, TtsChunk>  $chunks  all project chunks, voice loaded
+     */
+    private function preRunEstimate(TtsProject $project, $chunks): ?string
+    {
+        $outstanding = $chunks
+            ->reject(fn (TtsChunk $c) => $c->status === ChunkStatus::Completed || $c->skipped)
+            ->values();
+
+        if ($outstanding->isEmpty()) {
+            return null;
+        }
+
+        $human = GenerationEstimator::humanize((int) round($this->estimateRemainingMs($project, $outstanding) / 1000));
+        $n = $outstanding->count();
+
+        return ucfirst($human).' to generate the '.$n.' remaining '.($n === 1 ? 'clip' : 'clips').'.';
+    }
+
+    /**
      * "Generate remaining" — dispatch a background run over every outstanding
      * (non-completed, non-skipped) chunk, so the run survives the user leaving
      * the page. One run per project: a second click while one is active joins
@@ -949,12 +997,13 @@ class StudioProjectController extends Controller
             return response()->json(['ok' => true, 'job' => $active->statusPayload()]);
         }
 
-        $chunkIds = $project->chunks()
+        $outstanding = $project->chunks()
             ->where('status', '!=', ChunkStatus::Completed->value)
             ->where('skipped', false)
-            ->pluck('id');
+            ->with('voice')
+            ->get();
 
-        if ($chunkIds->isEmpty()) {
+        if ($outstanding->isEmpty()) {
             return response()->json(['message' => 'Every chunk is already generated — build the final to stitch.'], 422);
         }
 
@@ -968,8 +1017,11 @@ class StudioProjectController extends Controller
             'tts_project_id' => $project->id,
             'user_id' => $project->user_id,
             'created_by_id' => $request->user()?->id,
-            'chunk_ids' => $chunkIds->all(),
-            'chunks_total' => $chunkIds->count(),
+            'chunk_ids' => $outstanding->pluck('id')->all(),
+            'chunks_total' => $outstanding->count(),
+            // Up-front estimate from the learned per-model history: the pre-run
+            // number, and the seed the live ETA uses until the first chunk lands.
+            'estimated_ms' => $this->estimateRemainingMs($project, $outstanding),
         ]);
 
         GenerateProjectChunksJob::dispatch($job->id);
@@ -1100,6 +1152,22 @@ class StudioProjectController extends Controller
             'chunks' => $chunks,
             'project_status' => $project->status->value,
         ]);
+    }
+
+    /**
+     * Current pre-run estimate for the project's outstanding chunks (AJAX). The
+     * project page refetches this whenever the outstanding set changes — a chunk
+     * edited into staleness, generated, skipped, or its voice switched — so the
+     * "About X to generate the N remaining clips" hint stays current without a
+     * reload (the server-rendered value only reflects page-load state). A null
+     * estimate means nothing is outstanding, and the hint hides.
+     */
+    public function estimate(TtsProject $project): JsonResponse
+    {
+        $project->loadMissing('voice');
+        $chunks = $project->chunks()->with('voice')->get();
+
+        return response()->json(['estimate' => $this->preRunEstimate($project, $chunks)]);
     }
 
     /**

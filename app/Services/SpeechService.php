@@ -17,6 +17,7 @@ use App\Services\Tts\ModelCatalog;
 use App\Services\Tts\ParalinguisticTags;
 use App\Services\Tts\TtsProvider;
 use App\Services\Tts\VoiceReference;
+use App\Support\GenerationTimings;
 use Carbon\Carbon;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Storage;
@@ -157,7 +158,10 @@ class SpeechService
             // Live "clip N of M" snapshot for the job-status poll. Best-effort
             // cache writes; the store never throws into the render.
             $total = count($segments);
-            $this->progress->begin($speech->id, $total);
+            $model = $providerSettings['model'] ?? ModelCatalog::DEFAULT;
+            // Pass the model so the poll's ETA can seed from that engine's
+            // learned average before the first segment finishes.
+            $this->progress->begin($speech->id, $total, $model);
 
             $sentenceGap = (int) config('tts.chunk_gap_ms', 120);
             $paragraphGap = (int) config('tts.paragraph_gap_ms', 400);
@@ -168,6 +172,9 @@ class SpeechService
             $preserveTails = [];
             foreach ($segments as $i => $segment) {
                 $failingIndex = $i; // attribute a provider/QA throw to this segment
+                // Wall-clock for this segment (synth + any hidden QA reroll),
+                // fed to the learned per-model timing that drives the ETA.
+                $segStart = microtime(true);
                 $part = $this->provider->synthesize($segment['text'], $referencePath, $providerSettings);
 
                 // The render is paid the moment the provider returns, so debit
@@ -190,6 +197,8 @@ class SpeechService
                 if ($this->asr->enabled()) {
                     $part = $this->qualityCheck($speech, $i, $segment['text'], $part, $referencePath, $providerSettings);
                 }
+
+                GenerationTimings::record($model, (int) round((microtime(true) - $segStart) * 1000));
 
                 $rawParts[] = $part;
                 $seamGapsMs[] = $segment['breakAfter'] === 'paragraph' ? $paragraphGap : $sentenceGap;

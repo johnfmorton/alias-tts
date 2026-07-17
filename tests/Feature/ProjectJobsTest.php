@@ -14,6 +14,7 @@ use App\Services\Credit\CreditService;
 use App\Services\ProjectService;
 use App\Services\Tts\FakeTtsProvider;
 use App\Services\Tts\TtsProvider;
+use App\Support\GenerationTimings;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Queue\MaxAttemptsExceededException;
 use Illuminate\Support\Facades\Queue;
@@ -100,6 +101,40 @@ class ProjectJobsTest extends TestCase
         $job = TtsProjectJob::sole();
         $this->assertSame($project->chunks()->pluck('id')->all(), $job->chunk_ids);
         $this->assertSame(ProjectJobStatus::Queued, $job->status);
+        // Up-front estimate stamped at creation: 2 chunks at the learned (here
+        // default) per-model rate; pace is 0 in this suite.
+        $this->assertSame(2 * GenerationTimings::perChunkMs('chatterbox'), $job->estimated_ms);
+    }
+
+    public function test_project_page_shows_the_pre_run_estimate(): void
+    {
+        $project = $this->project();
+
+        $this->actingAs($this->admin())
+            ->get(route('admin.studio.projects.show', $project))
+            ->assertOk()
+            ->assertSee('to generate the 2 remaining clips');
+    }
+
+    public function test_estimate_endpoint_tracks_the_outstanding_set(): void
+    {
+        $project = $this->project();
+
+        // Two outstanding chunks → an estimate is offered (the page refetches
+        // this as chunks change state, so the hint survives client-side edits).
+        $res = $this->actingAs($this->admin())
+            ->getJson(route('admin.studio.projects.estimate', $project))
+            ->assertOk();
+        $this->assertStringContainsString('to generate the 2 remaining clips', $res->json('estimate'));
+
+        // Generate everything (sync queue runs it inline) → nothing outstanding.
+        $this->actingAs($this->admin())
+            ->postJson(route('admin.studio.projects.generate-remaining', $project));
+
+        $this->actingAs($this->admin())
+            ->getJson(route('admin.studio.projects.estimate', $project))
+            ->assertOk()
+            ->assertJsonPath('estimate', null);
     }
 
     public function test_generate_remaining_runs_inline_on_the_sync_queue(): void

@@ -4,6 +4,20 @@ All notable changes to this project are documented in this file. The format is
 based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this
 project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+- **Estimated time to generate the remaining clips.** As each clip renders, the
+  app now records how long it took and learns a per-model average — a Chatterbox
+  Turbo voice and a classic Chatterbox voice keep separate rates, and the cost of
+  any automatic re-rolls is folded in. From that history the project page shows an
+  up-front "About 2 min to generate the N remaining clips" before you start, and a
+  live "· about 2 min left" that ticks down as a background run works (also on the
+  Jobs page and the `/v1` API status poll). The pre-run estimate stays current as
+  you edit, skip, or re-voice clips, and self-corrects against the run's own pace
+  once it's underway. It's only ever an estimate — re-rolls are unpredictable — but
+  it gets steadier the more you generate.
+
 ## [0.59.1] - 2026-07-17
 
 ### Fixed

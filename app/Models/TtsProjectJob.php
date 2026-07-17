@@ -4,6 +4,7 @@ namespace App\Models;
 
 use App\Enums\ProjectJobStatus;
 use App\Jobs\GenerateProjectChunksJob;
+use App\Support\GenerationEstimator;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Concerns\HasUuids;
 use Illuminate\Database\Eloquent\Model;
@@ -36,6 +37,7 @@ class TtsProjectJob extends Model
         'error',
         'started_at',
         'finished_at',
+        'estimated_ms',
     ];
 
     protected $casts = [
@@ -47,6 +49,7 @@ class TtsProjectJob extends Model
         'cancel_requested' => 'boolean',
         'started_at' => 'datetime',
         'finished_at' => 'datetime',
+        'estimated_ms' => 'integer',
     ];
 
     public function project(): BelongsTo
@@ -110,6 +113,16 @@ class TtsProjectJob extends Model
             default => [sprintf('Stopped — %d of %d generated.', $this->chunks_done, $this->chunks_total), null],
         };
 
+        // Estimated time left — only while actually rendering, and folded into
+        // the same message string so every poller (project page, Jobs page)
+        // shows it with no client change. The live running average takes over
+        // once a chunk has finished; before that the stored up-front estimate
+        // seeds it (scaled to what's still outstanding).
+        $eta = GenerationEstimator::payload($this->etaMs($processed));
+        if ($this->status === ProjectJobStatus::Running && ! $this->cancel_requested && $eta['eta_human'] !== null) {
+            $message .= ' · '.$eta['eta_human'].' left';
+        }
+
         return [
             'id' => $this->id,
             'status' => $this->status->value,
@@ -124,7 +137,41 @@ class TtsProjectJob extends Model
             'error' => $this->error,
             'created_human' => $this->created_at?->diffForHumans(),
             'finished_human' => $this->finished_at?->diffForHumans(),
+            'eta_seconds' => $eta['eta_seconds'],
+            'eta_human' => $eta['eta_human'],
             'cancel_url' => $this->isActive() ? route('admin.jobs.cancel', $this) : null,
         ];
+    }
+
+    /**
+     * ms remaining for a running job, or null when there's nothing to estimate
+     * (not running, or every chunk processed). O(1) — pure arithmetic on the
+     * row's own columns, so the Jobs list can serialize many runs cheaply.
+     * Running average once ≥1 chunk is done; before that the stored up-front
+     * estimate, scaled to the still-outstanding share.
+     */
+    private function etaMs(int $processed): ?int
+    {
+        if ($this->status !== ProjectJobStatus::Running) {
+            return null;
+        }
+
+        $remaining = $this->chunks_total - $processed;
+        if ($remaining < 1) {
+            return null;
+        }
+
+        if ($this->started_at && $processed >= 1) {
+            $elapsedMs = max(0, now()->timestamp - $this->started_at->timestamp) * 1000;
+            if ($live = GenerationEstimator::liveMs($elapsedMs, $processed, $remaining)) {
+                return $live;
+            }
+        }
+
+        if ($this->estimated_ms) {
+            return (int) round($this->estimated_ms * $remaining / max(1, $this->chunks_total));
+        }
+
+        return null;
     }
 }

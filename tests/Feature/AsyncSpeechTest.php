@@ -239,26 +239,31 @@ class AsyncSpeechTest extends TestCase
             ->json('id');
 
         $store = app(SpeechProgressStore::class);
-        $store->begin($id, 50);
+        $store->begin($id, 50, 'chatterbox');
         $store->advance($id, 24, 50);
 
-        $this->withHeaders($headers)->getJson("/v1/text-to-speech/jobs/{$id}")
+        $res = $this->withHeaders($headers)->getJson("/v1/text-to-speech/jobs/{$id}")
             ->assertStatus(200)
             ->assertJsonPath('status', 'processing')
             ->assertJsonPath('progress.stage', 'generating')
             ->assertJsonPath('progress.chunks_total', 50)
             ->assertJsonPath('progress.chunks_done', 24)
-            ->assertJsonPath('progress.percent', 48)
-            ->assertJsonPath('progress.message', 'Creating clip 25 of 50');
+            ->assertJsonPath('progress.percent', 48);
+        // The clip line stays; the ETA is appended (exact value is timing-based).
+        $this->assertStringStartsWith('Creating clip 25 of 50', $res->json('progress.message'));
+        $this->assertStringContainsString('left', $res->json('progress.message'));
+        $this->assertNotNull($res->json('progress.eta_human'));
 
         $store->stitching($id, 50);
 
+        // Stitching means every clip is rendered — nothing left to estimate.
         $this->withHeaders($headers)->getJson("/v1/text-to-speech/jobs/{$id}")
             ->assertJsonPath('status', 'processing')
             ->assertJsonPath('progress.stage', 'stitching')
             ->assertJsonPath('progress.chunks_done', 50)
             ->assertJsonPath('progress.percent', 100)
-            ->assertJsonPath('progress.message', 'Stitching 50 clips together');
+            ->assertJsonPath('progress.message', 'Stitching 50 clips together')
+            ->assertJsonPath('progress.eta_human', null);
     }
 
     public function test_progress_is_null_before_the_worker_writes(): void
@@ -310,10 +315,10 @@ class AsyncSpeechTest extends TestCase
             /** @var list<array{string, int}> */
             public array $calls = [];
 
-            public function begin(string $speechId, int $chunksTotal): void
+            public function begin(string $speechId, int $chunksTotal, ?string $model = null): void
             {
                 $this->calls[] = ['begin', $chunksTotal];
-                parent::begin($speechId, $chunksTotal);
+                parent::begin($speechId, $chunksTotal, $model);
             }
 
             public function advance(string $speechId, int $chunksDone, int $chunksTotal): void

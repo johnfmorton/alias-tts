@@ -368,6 +368,23 @@ return [
     // asserts). 0 = no delay (back-to-back).
     'studio_generate_pace_ms' => (int) env('TTS_STUDIO_GENERATE_PACE_MS', 800),
 
+    // Learned generation-time estimate ("~2 min remaining"). Each successful
+    // render records its wall-clock into tts_generation_timings, bucketed by
+    // model, and the running average drives the ETA. `defaults` seed the
+    // estimate before an engine has any history (tune from prod observation);
+    // the sample bounds reject outliers (a cold GPU replica, a queue spike)
+    // that would otherwise skew the average. Set enabled=false to stop
+    // recording (existing history and estimates stay).
+    'timing' => [
+        'enabled' => (bool) env('TTS_TIMING_ENABLED', true),
+        'defaults' => [
+            'chatterbox' => (int) env('TTS_TIMING_DEFAULT_MS', 7000),
+            'chatterbox-turbo' => (int) env('TTS_TIMING_DEFAULT_TURBO_MS', 3500),
+        ],
+        'min_sample_ms' => (int) env('TTS_TIMING_MIN_MS', 300),
+        'max_sample_ms' => (int) env('TTS_TIMING_MAX_MS', 180000),
+    ],
+
     // Page size for the Studio → Projects tab list. Keeps a long project list from
     // burying the Inspector tab; the tab's count badge always shows the full total.
     'studio_projects_per_page' => (int) env('TTS_STUDIO_PROJECTS_PER_PAGE', 10),

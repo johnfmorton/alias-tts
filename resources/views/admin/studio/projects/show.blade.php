@@ -28,6 +28,7 @@
          data-verify-base="{{ route('verify') }}"
          data-generate-remaining-url="{{ route('admin.studio.projects.generate-remaining', $project) }}"
          data-generation-status-url="{{ route('admin.studio.projects.generation-status', $project) }}"
+         data-estimate-url="{{ route('admin.studio.projects.estimate', $project) }}"
          data-active-run="{{ $hasActiveRun ? '1' : '0' }}">
 
         @if($project->origin === 'api_failure')
@@ -185,6 +186,13 @@
                 <button type="button" id="project-seal-copy"
                         class="rounded-md border border-ok/50 px-2 py-0.5 text-xs text-ok hover:bg-ok/20">Copy verify link</button>
             </div>
+            {{-- Pre-run estimate ("About 2 min to generate the N remaining clips").
+                 Server-rendered for the initial paint, then kept current by
+                 refreshEstimate() in initStudioProject as the outstanding set
+                 changes (edits, generate, skip, voice switch). Its own element so
+                 transient status messages below never clobber it; hidden during a
+                 run (the live ETA shows in #project-final-status instead). --}}
+            <div id="project-generate-estimate" class="mt-2 text-sm text-zinc-500 {{ $preRunEstimate ? '' : 'hidden' }}" role="status">{{ $preRunEstimate ?? '' }}</div>
             <div id="project-final-status" class="mt-2 text-sm text-zinc-400" role="status" aria-live="polite"></div>
         </div>
 

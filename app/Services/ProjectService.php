@@ -21,6 +21,7 @@ use App\Services\Tts\ModelCatalog;
 use App\Services\Tts\ParalinguisticTags;
 use App\Services\Tts\TtsProvider;
 use App\Services\Tts\VoiceReference;
+use App\Support\GenerationTimings;
 use App\Support\SpendCounters;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
@@ -436,6 +437,13 @@ class ProjectService
         $project = $chunk->project;
 
         try {
+            // Wall-clock for the whole chunk generation — synth plus any hidden
+            // auto-reroll — so the learned average prices reroll cost too. Fed
+            // to the ETA model only on the success path (a failed render below
+            // records nothing, since a run's failed chunks don't spend the time
+            // a good one does).
+            $start = microtime(true);
+
             $settings = $this->providerSettings($project, $chunk, pinSeed: ! $reroll);
             $bytes = $this->provider->synthesize(
                 $chunk->text,
@@ -475,6 +483,11 @@ class ProjectService
             }
 
             $this->markFinalOutdated($project);
+
+            GenerationTimings::record(
+                ModelCatalog::forVoice($chunk->voice ?? $project->voice),
+                (int) round((microtime(true) - $start) * 1000),
+            );
         } catch (Throwable $e) {
             $chunk->update([
                 'status' => ChunkStatus::Failed,

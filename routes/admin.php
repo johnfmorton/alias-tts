@@ -143,6 +143,9 @@ Route::prefix('studio')->name('studio.')->group(function () {
             // the page; the page dispatches, then polls generation-status.
             Route::post('/{project}/generate-remaining', [StudioProjectController::class, 'generateRemaining'])->name('generate-remaining');
             Route::get('/{project}/generation-status', [StudioProjectController::class, 'generationStatus'])->name('generation-status');
+            // Live pre-run time estimate for the outstanding chunks; the page
+            // refetches it whenever the outstanding set changes.
+            Route::get('/{project}/estimate', [StudioProjectController::class, 'estimate'])->name('estimate');
             // Seal the final as the human-approved cut, then download a verifiable receipt zip.
             Route::post('/{project}/seal', [StudioProjectController::class, 'seal'])->name('seal');
             // Drop an approval made by mistake (clears the seal; audio untouched).
