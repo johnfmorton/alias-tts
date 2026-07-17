@@ -26,7 +26,9 @@
          data-unseal-url="{{ route('admin.studio.projects.unseal', $project) }}"
          data-receipt-url="{{ route('admin.studio.projects.receipt', $project) }}"
          data-verify-base="{{ route('verify') }}"
-         data-generate-pace-ms="{{ (int) config('tts.studio_generate_pace_ms', 800) }}">
+         data-generate-remaining-url="{{ route('admin.studio.projects.generate-remaining', $project) }}"
+         data-generation-status-url="{{ route('admin.studio.projects.generation-status', $project) }}"
+         data-active-run="{{ $hasActiveRun ? '1' : '0' }}">
 
         @if($project->origin === 'api_failure')
             <div id="project-failure-notice" class="mb-6 rounded-xl border border-red-500/30 bg-red-500/10 px-5 py-4 text-sm text-red-200">
@@ -125,6 +127,11 @@
                      reflectActionState() in app.js from the current project state. --}}
                 <div class="flex flex-wrap items-center gap-2">
                     <button type="button" id="project-generate-all" class="inline-flex items-center gap-1.5 rounded-[9px] px-4 py-[9px] text-sm transition">▶ Generate remaining</button>
+                    {{-- Stop the background run (shown only while one is in flight;
+                         see reflectActionState). The clip being rendered still lands. --}}
+                    <button type="button" id="project-generate-stop"
+                            title="Stop the background run — the clip being rendered finishes and is kept."
+                            class="hidden items-center gap-1.5 rounded-[9px] border border-red-500/30 px-4 py-[9px] text-sm text-red-400 transition hover:bg-red-500/10">■ Stop</button>
                     <button type="button" id="project-rebuild" class="inline-flex items-center gap-1.5 rounded-[9px] px-4 py-[9px] text-sm transition">↻ Build final</button>
                     {{-- Draft download (bare final audio) — hidden once approved; the
                          approved-version package below supersedes it. --}}

@@ -34,8 +34,30 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   Strictly additive to the ElevenLabs-compatible surface: the field is `null`
   before the worker starts and after any terminal status, and clients that
   ignore it behave exactly as before.
+- **"Generate remaining" keeps working after you leave the page.** Studio's
+  generate-everything button used to drive each chunk from the open browser
+  tab, so navigating away silently killed the rest of the run. It now
+  dispatches a background run to the queue worker: the project page follows
+  along live ("Creating clip 4 of 12", chunk cards filling in as clips land),
+  a **■ Stop** button winds the run down cleanly (the clip being rendered
+  finishes and is kept), and reopening the project mid-run picks the progress
+  back up right where it is. Clicking again while a run is active simply joins
+  it — never a second, competing run.
+- **A Jobs page to watch and manage background runs.** **Jobs** (in the
+  account menu) lists every "Generate remaining" run with its status, live
+  progress, and — when something goes wrong — the reason it failed, plus a
+  Stop for anything still queued or running. You see your own runs; a
+  SuperAdmin sees everyone's. A run stuck on *queued* here is the telltale
+  that no queue worker is draining the queue.
 
 ### Changed
+- **Manual chunk actions wait their turn during a background run.** While a
+  "Generate remaining" run is active, the per-chunk Generate/Re-roll buttons
+  and Build final are refused with a clear message (and disabled on the page) —
+  they'd race the worker over the same chunks, and the same money.
+- **Chunks no longer autoplay as they generate.** During a background run you
+  may not be on the page (or even in the room) when a clip lands, so finished
+  chunks now appear ready to play instead of starting themselves.
 - **Inspector copy no longer references the Bespoken plugin.** The normalized-
   text summary now reads "Cleaned and normalized text of N chars, split into
   M chunk(s), as shown below."

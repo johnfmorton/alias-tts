@@ -135,7 +135,7 @@ effective voice, the seed pin, and the take history:
   A skipped chunk keeps its text, tuning, and takes (dimmed in the editor, an
   amber *skipped* pill), stays playable and regenerable by hand, but is
   excluded from **Build final** and stitch previews and ignored by
-  **Generate all** and the Build-final readiness check — an ungenerated
+  **Generate remaining** and the Build-final readiness check — an ungenerated
   skipped chunk doesn't block the build. Toggling it marks a built final
   stale (and clears its seal) so the next build reflects the change; a sealed
   receipt lists skipped chunks labeled "skipped — not in final audio" rather

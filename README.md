@@ -304,6 +304,10 @@ seams, or fixing one sentence in a long piece without regenerating the whole fil
   regenerating. A chunk can also be **skipped** (🔇) — left out of the stitched
   final without deleting it; its text and takes stay, and the receipt lists it
   as skipped. (Chunk reordering isn't supported yet.)
+  **Generate remaining** renders every outstanding chunk as a **background run**
+  on the queue worker — it keeps going if you leave the page, the project page
+  follows along live (with a **Stop**), and the **Jobs** page (`/admin/jobs`)
+  lists every run with progress, failures, and a Stop of its own.
 - **Approve & seal** — mark a build as the approved final and **seal** it: the
   project records a SHA-256 of the exact audio bytes plus a frozen snapshot, and
   you can download a receipt `.zip` (the audio, a human-readable `receipt.html`

@@ -33,6 +33,7 @@
                 ['route' => 'admin.api-keys.index', 'pattern' => 'admin.api-keys.*', 'label' => 'API Keys'],
                 ['route' => 'admin.voices.index', 'pattern' => 'admin.voices.*', 'label' => 'Voices'],
                 ['route' => 'admin.pronunciations.index', 'pattern' => 'admin.pronunciations.*', 'label' => 'Pronunciations'],
+                ['route' => 'admin.jobs.index', 'pattern' => 'admin.jobs.*', 'label' => 'Jobs'],
             ],
         ],
         [

@@ -3,12 +3,15 @@
 namespace App\Http\Controllers\Admin;
 
 use App\Console\Commands\PruneRecoveryProjects;
+use App\Enums\ChunkStatus;
 use App\Http\Controllers\Concerns\ChecksCredit;
 use App\Http\Controllers\Concerns\ServesRangedAudio;
 use App\Http\Controllers\Controller;
+use App\Jobs\GenerateProjectChunksJob;
 use App\Models\TtsChunk;
 use App\Models\TtsChunkTake;
 use App\Models\TtsProject;
+use App\Models\TtsProjectJob;
 use App\Models\TuningPreset;
 use App\Models\User;
 use App\Models\Voice;
@@ -332,6 +335,9 @@ class StudioProjectController extends Controller
 
         return view('admin.studio.projects.show', [
             'project' => $project,
+            // A background "Generate remaining" run is queued/working — the page
+            // resumes following it (polling) instead of offering a fresh start.
+            'hasActiveRun' => TtsProjectJob::activeFor($project->id) !== null,
             // The access policy lets a SuperAdmin open anyone's project for
             // support. When this viewer is not the owner, the page names the
             // owner and gates the first edit behind a warning dialog.
@@ -743,6 +749,10 @@ class StudioProjectController extends Controller
     {
         $this->assertChunkBelongs($project, $chunk);
 
+        if ($error = $this->activeRunError($project)) {
+            return $error;
+        }
+
         if (trim((string) $chunk->text) === '') {
             return response()->json(['message' => 'This chunk is empty — add text before generating.'], 422);
         }
@@ -800,6 +810,10 @@ class StudioProjectController extends Controller
     {
         $this->assertChunkBelongs($project, $chunk);
 
+        if ($error = $this->activeRunError($project)) {
+            return $error;
+        }
+
         if (trim((string) $chunk->text) === '') {
             return response()->json(['message' => 'This chunk is empty — add text before generating.'], 422);
         }
@@ -823,6 +837,112 @@ class StudioProjectController extends Controller
             'project_status' => $project->refresh()->status->value,
             'spend' => $this->spendPayload($project, $chunk),
         ], $this->takesPayload($project, $chunk)));
+    }
+
+    /**
+     * "Generate remaining" — dispatch a background run over every outstanding
+     * (non-completed, non-skipped) chunk, so the run survives the user leaving
+     * the page. One run per project: a second click while one is active joins
+     * it instead of starting another. The page then follows via
+     * {@see generationStatus()}.
+     */
+    public function generateRemaining(Request $request, TtsProject $project): JsonResponse
+    {
+        if ($active = TtsProjectJob::activeFor($project->id)) {
+            return response()->json(['ok' => true, 'job' => $active->statusPayload()]);
+        }
+
+        $chunkIds = $project->chunks()
+            ->where('status', '!=', ChunkStatus::Completed->value)
+            ->where('skipped', false)
+            ->pluck('id');
+
+        if ($chunkIds->isEmpty()) {
+            return response()->json(['message' => 'Every chunk is already generated — build the final to stitch.'], 422);
+        }
+
+        // Same owner-credit gate as the per-chunk endpoints; the job re-checks
+        // before every chunk (the balance can drain mid-run).
+        if ($error = $this->creditError($project->user)) {
+            return $error;
+        }
+
+        $job = TtsProjectJob::create([
+            'tts_project_id' => $project->id,
+            'user_id' => $project->user_id,
+            'created_by_id' => $request->user()?->id,
+            'chunk_ids' => $chunkIds->all(),
+            'chunks_total' => $chunkIds->count(),
+        ]);
+
+        GenerateProjectChunksJob::dispatch($job->id);
+
+        // 202 unless the queue ran it inline (QUEUE_CONNECTION=sync) — then the
+        // run is already over and the payload says so.
+        $job->refresh();
+
+        return response()->json(['ok' => true, 'job' => $job->statusPayload()], $job->isActive() ? 202 : 200);
+    }
+
+    /**
+     * Poll target for the project page: the latest run's state plus per-chunk
+     * results. Chunks the run has finished with (completed/failed) carry the
+     * full card payload (takes, spend, badge) — the same shape generateChunk()
+     * returns, so the JS reuses the same render path; chunks still waiting are
+     * just {id, status} to keep the poll light.
+     */
+    public function generationStatus(TtsProject $project): JsonResponse
+    {
+        $job = TtsProjectJob::query()
+            ->where('tts_project_id', $project->id)
+            ->latest('created_at')
+            ->first();
+
+        if (! $job) {
+            return response()->json(['job' => null, 'chunks' => [], 'project_status' => $project->status->value]);
+        }
+
+        $chunks = TtsChunk::query()
+            ->whereIn('id', array_values((array) $job->chunk_ids))
+            ->where('tts_project_id', $project->id)
+            ->with('takes')
+            ->orderBy('position')
+            ->get()
+            ->map(function (TtsChunk $chunk) use ($project) {
+                $base = ['id' => $chunk->id, 'status' => $chunk->status->value];
+
+                if (! in_array($chunk->status, [ChunkStatus::Completed, ChunkStatus::Failed], true)) {
+                    return $base;
+                }
+
+                return array_merge($base, [
+                    'asr_badge' => $chunk->asrBadge(),
+                    'error' => $chunk->status === ChunkStatus::Failed ? $chunk->error_message : null,
+                    'spend' => $this->spendPayload($project, $chunk),
+                ], $this->takesPayload($project, $chunk));
+            })
+            ->values()
+            ->all();
+
+        return response()->json([
+            'job' => $job->statusPayload(),
+            'chunks' => $chunks,
+            'project_status' => $project->status->value,
+        ]);
+    }
+
+    /**
+     * A friendly 409 while a background run is active on this project — manual
+     * generate/reroll/rebuild would race the worker over the same chunks (and
+     * the same money).
+     */
+    private function activeRunError(TtsProject $project): ?JsonResponse
+    {
+        if (TtsProjectJob::activeFor($project->id)) {
+            return response()->json(['message' => 'A background generation run is working on this project — wait for it to finish or stop it first.'], 409);
+        }
+
+        return null;
     }
 
     /**
@@ -1001,6 +1121,10 @@ class StudioProjectController extends Controller
 
     public function rebuild(TtsProject $project): JsonResponse
     {
+        if ($error = $this->activeRunError($project)) {
+            return $error;
+        }
+
         try {
             $this->projects->rebuild($project);
         } catch (RuntimeException $e) {

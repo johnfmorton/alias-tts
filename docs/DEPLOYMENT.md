@@ -233,10 +233,14 @@ by hand or add your own scheduled entry once you trust it on your data. The hear
 cache every minute so `tts:doctor` can tell the cron is *actually firing* — not
 just that the task is registered.
 
-**Queue worker (required only for async long-text generation).** The synchronous
-endpoints need no worker. The async endpoints
+**Queue worker (required for async long-text generation and Studio background
+runs).** The synchronous endpoints need no worker. The async endpoints
 (`POST /v1/text-to-speech/{voice_id}/jobs` + poll) hand generation to a queued
 `GenerateSpeechJob`, which lifts the ~300s synchronous ceiling for long articles.
+Studio's **Generate remaining** likewise dispatches a queued
+`GenerateProjectChunksJob` so a long run survives the user leaving the page —
+the Jobs page (`/admin/jobs`) lists runs and a stuck *queued* row there is the
+telltale sign no worker is draining the queue.
 With the default `QUEUE_CONNECTION=database`, run a worker (Forge: **Processes →
 Background processes → Add background process**, or `php artisan queue:work` under a
 supervisor):
@@ -256,9 +260,11 @@ php artisan queue:work --queue=default --sleep=3 --tries=1
   this is correct out of the box — set `DB_QUEUE_RETRY_AFTER` only to override.
 
 Without a worker, queued jobs sit unprocessed forever (the record stays
-`Processing` and clients poll indefinitely). To skip async entirely, set
-`QUEUE_CONNECTION=sync` and the async endpoints degrade to synchronous (short text
-only).
+`Processing` and clients poll indefinitely; a Studio run shows *queued* until
+stopped). To skip async entirely, set `QUEUE_CONNECTION=sync` and the async
+endpoints degrade to synchronous (short text only; a Studio Generate remaining
+then runs inside the request, which long projects will outlive — a real worker
+is strongly preferred).
 
 > The scheduler/queue liveness checks in `tts:doctor` read a shared cache, so
 > `CACHE_STORE` must be `file`, `redis`, or `database` (not `array`).

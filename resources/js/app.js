@@ -1471,6 +1471,13 @@ function initStudioProject() {
     // A busy button never pulses — it's already doing the thing the pulse asks for.
     const setPulse = (el, on) => el?.classList.toggle('act-pulse', Boolean(on) && ! el.dataset.busy);
 
+    // A background "Generate remaining" run is in flight (this page is only
+    // following it — the queue worker does the generating). While true, the
+    // per-chunk generate/reroll buttons and Build final are locked: the server
+    // 409s them anyway, since they'd race the worker over the same chunks.
+    let runActive = false;
+    const stopBtn = document.getElementById('project-generate-stop');
+
     function reflectActionState() {
         const status = projectStatus.textContent.trim();
         // Skipped chunks don't count as outstanding work: they're excluded from
@@ -1495,13 +1502,17 @@ function initStudioProject() {
             setPulse(generateAllBtn, anyPending && (anyCompleted || hasFinal));
             showEl(generateAllBtn, anyPending, 'inline-flex');
         }
+        // Stop lives next to Generate remaining, only while a run is in flight.
+        showEl(stopBtn, runActive, 'inline-flex');
         // Build final stays off while any chunk needs generating: a stale chunk
         // still holds its OLD audio, so stitching now would put outdated audio
         // under the edited text (the server only rejects chunks with NO audio).
         // Once every chunk is current it lights and pulses until the final is
-        // (re)built; a ready final steps it down to a quiet secondary.
-        look(rebuildBtn, ready ? 'outline' : (allCompleted ? 'primary' : 'off'));
-        setPulse(rebuildBtn, allCompleted && ! ready);
+        // (re)built; a ready final steps it down to a quiet secondary. During a
+        // background run it's always off — the run isn't done stitching-worthy
+        // work yet, and the server 409s a rebuild mid-run.
+        look(rebuildBtn, runActive ? 'off' : (ready ? 'outline' : (allCompleted ? 'primary' : 'off')));
+        setPulse(rebuildBtn, ! runActive && allCompleted && ! ready);
 
         // The draft download (bare final audio) is offered until the project is
         // approved; then the approved-version package supersedes it, so it hides.
@@ -1770,40 +1781,142 @@ function initStudioProject() {
     const generateChunk = (card) =>
         runGeneration(card, card.dataset.generateUrl, card.querySelector('.chunk-generate'), 'Generating…');
 
-    async function generateAll() {
-        // Skipped chunks are excluded from the final, so don't spend on them here;
-        // regenerating one by hand (its own ▶ button) still works while skipped.
-        const cards = [...root.querySelectorAll('.studio-chunk')]
-            .filter((c) => c.querySelector('.chunk-status').textContent.trim() !== 'completed' && !isChunkSkipped(c));
-        if (!cards.length) {
-            setStatus(finalStatus, 'Every chunk is already generated — build the final to stitch.', 'ok');
-            return;
+    // ---- Background "Generate remaining" ------------------------------------
+    // The run executes on the queue worker, so it survives leaving the page
+    // (the old in-page loop died with the tab). This page only dispatches it,
+    // then follows along on the generation-status poll; a chunk card re-renders
+    // only when its selected take actually changed, so polling never rebuilds a
+    // take list the user is auditioning.
+    const generateRemainingUrl = root.dataset.generateRemainingUrl;
+    const generationStatusUrl = root.dataset.generationStatusUrl;
+    const RUN_POLL_MS = 3000;
+    let runTimer = null;
+    let runCancelUrl = null;
+    // chunkId -> the selected take last rendered, seeded from the blade payload
+    // so resuming a run (page load mid-run) doesn't rebuild untouched cards.
+    const renderedTakes = new Map();
+    root.querySelectorAll('.studio-chunk').forEach((card) => {
+        try {
+            renderedTakes.set(card.dataset.chunkId, JSON.parse(card.dataset.takes || '{}').selected_take_id ?? null);
+        } catch { /* no takes payload */ }
+    });
+
+    const setRunLock = (locked) => {
+        runActive = locked;
+        root.querySelectorAll('.studio-chunk').forEach((card) => {
+            const gen = card.querySelector('.chunk-generate');
+            if (gen) gen.disabled = locked || isDirty(card);
+            const reroll = card.querySelector('.chunk-reroll');
+            if (reroll) reroll.disabled = locked;
+        });
+    };
+
+    // One chunk entry from the poll. Light entries ({id, status}) are chunks the
+    // run hasn't finished with; full ones carry the same payload generateChunk()
+    // returns, and flow through the same render path. Returns whether the
+    // chunk's audio changed (the caller refreshes seams once per batch).
+    const applyRunChunk = (data) => {
+        const card = root.querySelector(`.studio-chunk[data-chunk-id="${data.id}"]`);
+        if (!card) return false;
+        setChunkStatus(card, data.status);
+        if (data.asr_badge !== undefined) setChunkAsrBadge(card, data.asr_badge ?? null);
+        if (data.selected_take_id === undefined || renderedTakes.get(data.id) === data.selected_take_id) {
+            return false;
         }
+        renderedTakes.set(data.id, data.selected_take_id);
+        const audio = card.querySelector('.chunk-audio');
+        if (audio && data.selected_take_id !== null) {
+            // No autoplay: chunks land while the user is elsewhere on the page
+            // (or was — a resumed run may deliver several at once).
+            audio.src = bust(card.dataset.audioUrl);
+            audio.closest('.aplayer')?.classList.remove('hidden');
+        }
+        card.querySelector('.chunk-generate').textContent = '▶ Regenerate';
+        card.querySelector('.chunk-tune-keep')?.classList.add('hidden'); // this take replaces any pending preview
+        renderTakes(card, data);
+        return true;
+    };
+
+    // Returns true when the run is over (or there is none) — the poll stops.
+    const applyRunState = (data) => {
+        if (!data.job) return true;
+        runCancelUrl = data.job.cancel_url;
+        const changed = (data.chunks || []).filter(applyRunChunk).length > 0;
+        if (changed) refreshSeams();
+        setProjectStatus(data.project_status);
+        setStatus(finalStatus, data.job.message, data.job.tone || undefined);
+        return !data.job.active;
+    };
+
+    async function pollRun() {
+        try {
+            const res = await fetch(generationStatusUrl, { headers: { 'Accept': 'application/json' } });
+            if (res.ok && applyRunState(await res.json())) {
+                endRun();
+                return;
+            }
+        } catch { /* transient — keep polling */ }
+        runTimer = setTimeout(pollRun, RUN_POLL_MS);
+    }
+
+    function followRun(initialMessage) {
+        if (runTimer) return;
+        setRunLock(true);
         startBusy(generateAllBtn, 'Generating…');
-        // Space out the stream of predictions: generation is already sequential,
-        // but a small gap between chunks makes a burst less likely to spin up cold
-        // GPU replicas on Replicate (which can fail with transient CUDA asserts).
-        const paceMs = Math.max(0, Number(root.dataset.generatePaceMs) || 0);
-        let done = 0;
-        let failed = 0;
-        for (const [i, card] of cards.entries()) {
-            try {
-                await generateChunk(card);
-                done++;
-            } catch (_) {
-                failed++;
-            }
-            setStatus(finalStatus, `Generated ${done}/${cards.length}${failed ? ` · ${failed} failed` : ''}…`);
-            if (paceMs && i < cards.length - 1) {
-                await sleep(paceMs);
-            }
-        }
+        reflectActionState(); // Stop appears; Build final goes off
+        if (initialMessage) setStatus(finalStatus, initialMessage);
+        runTimer = setTimeout(pollRun, 800); // first read right away-ish
+    }
+
+    function endRun() {
+        clearTimeout(runTimer);
+        runTimer = null;
+        runCancelUrl = null;
+        setRunLock(false);
         endBusy(generateAllBtn);
         reflectActionState(); // the pulse is suppressed while busy — re-apply it (e.g. failures left chunks outstanding)
-        setStatus(finalStatus, failed
-            ? `✗ ${failed} chunk(s) failed — retry them, then build the final.`
-            : `✓ All ${done} chunk(s) generated — build the final to stitch.`, failed ? 'error' : 'ok');
     }
+
+    async function generateAll() {
+        startBusy(generateAllBtn, 'Starting…');
+        try {
+            const res = await fetch(generateRemainingUrl, {
+                method: 'POST',
+                headers: { 'X-CSRF-TOKEN': csrfToken(), 'Accept': 'application/json' },
+            });
+            if (!res.ok) throw new Error(await errorMessage(res));
+            const data = await res.json();
+            endBusy(generateAllBtn);
+            // Clicking while a run is active just joins it; and under
+            // QUEUE_CONNECTION=sync the run already finished inline — the first
+            // poll sees the terminal payload and settles the page.
+            followRun(data.job?.message);
+        } catch (err) {
+            endBusy(generateAllBtn);
+            reflectActionState();
+            setStatus(finalStatus, `✗ ${err.message}`, 'error');
+        }
+    }
+
+    stopBtn?.addEventListener('click', async () => {
+        if (!runCancelUrl) return;
+        startBusy(stopBtn, 'Stopping…');
+        try {
+            const res = await fetch(runCancelUrl, {
+                method: 'POST',
+                headers: { 'X-CSRF-TOKEN': csrfToken(), 'Accept': 'application/json' },
+            });
+            if (!res.ok) throw new Error(await errorMessage(res));
+            const data = await res.json();
+            // A queued run cancels instantly; a running worker finishes the clip
+            // it's on, then winds down — the poll settles the page either way.
+            if (data.job) setStatus(finalStatus, data.job.message, data.job.tone || undefined);
+        } catch (err) {
+            setStatus(finalStatus, `✗ ${err.message}`, 'error');
+        } finally {
+            endBusy(stopBtn);
+        }
+    });
 
     async function rebuild() {
         startBusy(rebuildBtn, 'Rebuilding…');
@@ -2405,6 +2518,10 @@ function initStudioProject() {
 
     generateAllBtn.addEventListener('click', generateAll);
     rebuildBtn.addEventListener('click', rebuild);
+
+    // A run dispatched earlier is still working — pick it back up. (This is the
+    // whole point of the background run: leaving the page no longer kills it.)
+    if (root.dataset.activeRun === '1') followRun();
 
     // Don't let the user navigate away (or trigger a reload) with unsaved chunk
     // edits without a heads-up. Intentional reloads set skipUnloadGuard first.
@@ -3944,3 +4061,67 @@ function initPronunciationTest() {
     });
 }
 initPronunciationTest();
+
+// ---------------------------------------------------------------------------
+// Jobs page: background "Generate remaining" runs — live rows + Stop.
+// ---------------------------------------------------------------------------
+const JOB_STYLES = {
+    queued: 'border-zinc-700 bg-zinc-800 text-zinc-400',
+    running: 'border-cyan-500/30 bg-cyan-500/10 text-cyan-300',
+    completed: 'border-emerald-500/30 bg-emerald-500/10 text-emerald-300',
+    failed: 'border-red-500/30 bg-red-500/10 text-red-300',
+    cancelled: 'border-amber-500/30 bg-amber-500/10 text-amber-300',
+};
+
+function initJobsPage() {
+    const root = document.getElementById('jobs-page');
+    if (!root) return;
+
+    const rows = new Map([...root.querySelectorAll('.job-row')].map((r) => [r.dataset.jobId, r]));
+    const rowActive = (row) => ['queued', 'running'].includes(row.querySelector('.job-status').textContent.trim());
+    const anyActive = () => [...rows.values()].some(rowActive);
+
+    const apply = (job) => {
+        const row = rows.get(job.id);
+        if (!row) return; // a run dispatched after this page rendered — appears on reload
+        const pill = row.querySelector('.job-status');
+        pill.textContent = job.status;
+        pill.className = 'job-status inline-flex rounded-md border px-2 py-0.5 text-xs ' + (JOB_STYLES[job.status] || JOB_STYLES.queued);
+        row.querySelector('.job-progress').textContent = `${job.chunks_done + job.chunks_failed}/${job.chunks_total} · ${job.percent}%`;
+        row.querySelector('.job-message').textContent = job.message;
+        if (!job.active) row.querySelector('.job-cancel')?.classList.add('hidden');
+    };
+
+    // Poll only while something is actually moving; a page of settled runs is
+    // static until reloaded.
+    let timer = null;
+    const poll = async () => {
+        try {
+            const res = await fetch(root.dataset.statusUrl, { headers: { 'Accept': 'application/json' } });
+            if (res.ok) ((await res.json()).jobs || []).forEach(apply);
+        } catch { /* transient — next tick retries */ }
+        timer = anyActive() ? setTimeout(poll, 4000) : null;
+    };
+    if (anyActive()) timer = setTimeout(poll, 4000);
+
+    root.addEventListener('click', async (e) => {
+        const btn = e.target.closest('.job-cancel');
+        if (!btn || btn.dataset.busy) return;
+        startBusy(btn, 'Stopping…');
+        try {
+            const res = await fetch(btn.dataset.cancelUrl, {
+                method: 'POST',
+                headers: { 'X-CSRF-TOKEN': csrfToken(), 'Accept': 'application/json' },
+            });
+            if (!res.ok) throw new Error(await errorMessage(res));
+            const data = await res.json();
+            endBusy(btn);
+            if (data.job) apply(data.job);
+            if (!timer && anyActive()) timer = setTimeout(poll, 1500);
+        } catch (err) {
+            endBusy(btn);
+            setStatus(document.getElementById('jobs-status'), `✗ ${err.message}`, 'error');
+        }
+    });
+}
+initJobsPage();

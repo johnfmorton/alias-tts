@@ -8,6 +8,7 @@ use App\Models\PronunciationEntry;
 use App\Models\TtsChunk;
 use App\Models\TtsChunkTake;
 use App\Models\TtsProject;
+use App\Models\TtsProjectJob;
 use App\Models\TuningPreset;
 use App\Models\User;
 use App\Models\UserSetting;
@@ -532,15 +533,34 @@ class StudioProjectTest extends TestCase
             ->assertSee('data-inherits="1"', false);
     }
 
-    public function test_show_page_exposes_the_generate_pace_config(): void
+    public function test_show_page_exposes_the_background_run_endpoints(): void
     {
-        config(['tts.studio_generate_pace_ms' => 800]);
+        // Pacing moved server-side with the background run (GenerateProjectChunksJob);
+        // the page instead carries the dispatch/poll URLs and the resume flag.
         $project = $this->project();
 
         $this->actingAs($this->admin())
             ->get(route('admin.studio.projects.show', $project))
             ->assertOk()
-            ->assertSee('data-generate-pace-ms="800"', false);
+            ->assertSee('data-generate-remaining-url="'.route('admin.studio.projects.generate-remaining', $project).'"', false)
+            ->assertSee('data-generation-status-url="'.route('admin.studio.projects.generation-status', $project).'"', false)
+            ->assertSee('data-active-run="0"', false)
+            ->assertSee('id="project-generate-stop"', false);
+    }
+
+    public function test_show_page_flags_an_active_background_run(): void
+    {
+        $project = $this->project();
+        TtsProjectJob::create([
+            'tts_project_id' => $project->id,
+            'chunk_ids' => $project->chunks()->pluck('id')->all(),
+            'chunks_total' => 2,
+        ]);
+
+        $this->actingAs($this->admin())
+            ->get(route('admin.studio.projects.show', $project))
+            ->assertOk()
+            ->assertSee('data-active-run="1"', false);
     }
 
     public function test_show_page_renders_the_voice_picker(): void
@@ -1669,7 +1689,7 @@ class StudioProjectTest extends TestCase
         // Re-run the takes migration against the already-generated chunk, as a real
         // deploy would: drop + recreate the table so up()'s backfill runs over the
         // existing audio (the chunk's audio_path is untouched by the rollback).
-        // Twenty-three steps because the takes table is the twenty-third-newest
+        // Twenty-four steps because the takes table is the twenty-fourth-newest
         // migration (native presets, project-seal, bundled default voices, account
         // fields, two-factor/connected-accounts, the unowned-api-key reassignment,
         // project ownership, the magic-login-table drop, per-user settings,
@@ -1677,9 +1697,9 @@ class StudioProjectTest extends TestCase
         // default-clip replacement, the voice-clips staging table, the per-user
         // slug scoping, the preset-temperature column, the spent-characters
         // counters, the take-duration column, the turbo preset knobs, the
-        // per-model spend counters, the per-chunk skip flag, and the credit
-        // system all sit on top of it).
-        Artisan::call('migrate:rollback', ['--step' => 23]);
+        // per-model spend counters, the per-chunk skip flag, the credit
+        // system, and the project-jobs table all sit on top of it).
+        Artisan::call('migrate:rollback', ['--step' => 24]);
         Artisan::call('migrate', ['--force' => true]);
 
         $takes = $chunk->refresh()->takes()->get();

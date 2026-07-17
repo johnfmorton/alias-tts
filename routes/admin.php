@@ -6,6 +6,7 @@ use App\Http\Controllers\Admin\DashboardController;
 use App\Http\Controllers\Admin\GenblazeController;
 use App\Http\Controllers\Admin\HealthController;
 use App\Http\Controllers\Admin\HealthTestController;
+use App\Http\Controllers\Admin\ProjectJobController;
 use App\Http\Controllers\Admin\PronunciationController;
 use App\Http\Controllers\Admin\SettingsController;
 use App\Http\Controllers\Admin\SocialAuthController;
@@ -61,6 +62,13 @@ Route::middleware(EnsureUserIsSuperAdmin::class)->group(function () {
     Route::post('/users/{user}/credit', [UserController::class, 'grantCredit'])->name('users.credit');
     Route::delete('/users/{user}/credit', [UserController::class, 'unlimitedCredit'])->name('users.credit.unlimited');
 });
+
+// Jobs — background "Generate remaining" runs: live progress, Stop, failures.
+// Personal (own runs); a SuperAdmin sees everyone's. Ownership on cancel is
+// checked in the controller (the route binds any job).
+Route::get('/jobs', [ProjectJobController::class, 'index'])->name('jobs.index');
+Route::get('/jobs/status', [ProjectJobController::class, 'status'])->name('jobs.status');
+Route::post('/jobs/{job}/cancel', [ProjectJobController::class, 'cancel'])->name('jobs.cancel');
 
 // Settings — service configuration (env-pinned values are read-only).
 Route::get('/settings', [SettingsController::class, 'index'])->name('settings.index');
@@ -127,6 +135,10 @@ Route::prefix('studio')->name('studio.')->group(function () {
             Route::get('/{project}/audio', [StudioProjectController::class, 'finalAudio'])->name('audio');
             Route::post('/{project}/preview', [StudioProjectController::class, 'previewConcat'])->name('preview');
             Route::post('/{project}/rebuild', [StudioProjectController::class, 'rebuild'])->name('rebuild');
+            // "Generate remaining" runs on the queue worker so it survives leaving
+            // the page; the page dispatches, then polls generation-status.
+            Route::post('/{project}/generate-remaining', [StudioProjectController::class, 'generateRemaining'])->name('generate-remaining');
+            Route::get('/{project}/generation-status', [StudioProjectController::class, 'generationStatus'])->name('generation-status');
             // Seal the final as the human-approved cut, then download a verifiable receipt zip.
             Route::post('/{project}/seal', [StudioProjectController::class, 'seal'])->name('seal');
             // Drop an approval made by mistake (clears the seal; audio untouched).
