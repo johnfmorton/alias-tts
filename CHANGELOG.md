@@ -4,6 +4,15 @@ All notable changes to this project are documented in this file. The format is
 based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this
 project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.59.1] - 2026-07-17
+
+### Fixed
+- **Markdown bullet cleanup no longer rewrites unrelated line endings.** The
+  0.59.0 bullet-stripping step canonicalized CRLF newlines across the whole
+  input, which disturbed CRLF text that was not part of a list. The step now
+  handles CRLF only within the list items it rewrites, leaving the newlines of
+  surrounding text untouched.
+
 ## [0.59.0] - 2026-07-17
 
 ### Added
