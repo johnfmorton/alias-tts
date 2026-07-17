@@ -72,12 +72,13 @@ class TextNormalizer
         //    block; emphasis ("*note*"), a leading negative ("-5 degrees"), and
         //    math ("3 * 4") are spared by the required [ \t]+ after the marker.
         //    Any soft/doubled terminator this creates ("clips;." / "clips..") is
-        //    tidied by steps 6–7 below. Newlines are canonicalized first so the
-        //    wrap/blank detection is never fooled by a CRLF's trailing \r.
-        $text = str_replace(["\r\n", "\r"], "\n", $text);
+        //    tidied by steps 6–7 below. The \r? guards keep wrap/blank detection
+        //    and the continuation join correct under CRLF, without this step
+        //    rewriting the newlines of surrounding (non-list) text — TextNormalizer
+        //    stays a fixed point on line endings it did not touch.
         $text = (string) preg_replace_callback(
-            '/^[ \t]*[*+-][ \t]+(.+(?:\n(?![ \t]*(?:[*+-][ \t]|$)).+)*)/mu',
-            static fn ($m) => rtrim((string) preg_replace('/[ \t]*\n[ \t]*/u', ' ', $m[1])).'.',
+            '/^[ \t]*[*+-][ \t]+(.+(?:\n(?![ \t]*(?:[*+-][ \t]|\r?$)).+)*)/mu',
+            static fn ($m) => rtrim((string) preg_replace('/[ \t]*\r?\n[ \t]*/u', ' ', $m[1])).'.',
             $text,
         );
 

@@ -101,6 +101,23 @@ class TextNormalizerTest extends TestCase
         $this->assertSame($once, $this->normalize($once));
     }
 
+    public function test_rejoins_crlf_wrapped_bullet_and_ends_at_crlf_blank_line(): void
+    {
+        // Under CRLF, a soft-wrapped item still rejoins and a blank line still
+        // closes the list, so the trailing paragraph is not swallowed.
+        $out = $this->normalize("* first line\r\n  second line\r\n\r\nA separate paragraph.");
+        $this->assertStringContainsString('first line second line.', $out);
+        $this->assertStringContainsString('A separate paragraph.', $out);
+    }
+
+    public function test_leaves_crlf_newlines_in_non_list_text_untouched(): void
+    {
+        // TextNormalizer must stay a fixed point on line endings it did not
+        // touch — SpokenQuotes output (CRLF paragraphs) is normalized afterward.
+        $crlf = "One two.\r\n\r\nThree four.";
+        $this->assertSame($crlf, $this->normalize($crlf));
+    }
+
     public function test_leaves_inline_and_emphasis_asterisks_alone(): void
     {
         // A marker only counts at a line start followed by whitespace, so
