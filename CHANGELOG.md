@@ -17,6 +17,17 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   the check now runs as an abortable request that creates nothing until you
   commit, so skipping can never leave a half-made or duplicate project.
 
+### Fixed
+- **Pasted bullet lists no longer leak stray "*" into the audio.** Markdown list
+  markers (`*`, `-`, `+` at the start of a line) are now stripped during text
+  normalization, so a pasted bullet list can no longer reach the TTS engine as
+  literal asterisks that get spoken or corrupt a clip. Each item also gets its
+  own sentence-ending period, so bullets read as separate sentences instead of
+  running together, and a hard-wrapped item (with hanging-indent continuation
+  lines) is rejoined into one sentence rather than being split at the wrap. A
+  blank line still ends the list, and emphasis (`*note*`), a leading negative
+  number (`-5 degrees`), and inline math (`3 * 4`) are left untouched.
+
 ## [0.58.1] - 2026-07-17
 
 ### Fixed

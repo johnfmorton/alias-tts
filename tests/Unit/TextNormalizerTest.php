@@ -42,6 +42,79 @@ class TextNormalizerTest extends TestCase
         $this->assertStringNotContainsString('🎉', $result);
     }
 
+    public function test_strips_asterisk_bullet_markers_and_ends_each_item(): void
+    {
+        $list = "After generation, a loop checks for:\n\n* missing or dropped words\n* truncated speech\n* stalls and repetitions";
+        $result = $this->normalize($list);
+
+        $this->assertStringNotContainsString('*', $result);
+        // Each item ends in a period so the chunker reads it as its own sentence.
+        $this->assertStringContainsString('missing or dropped words.', $result);
+        $this->assertStringContainsString('truncated speech.', $result);
+        $this->assertStringContainsString('stalls and repetitions.', $result);
+    }
+
+    public function test_strips_dash_and_plus_bullet_markers(): void
+    {
+        $this->assertSame("first item.\nsecond item.", $this->normalize("- first item\n+ second item"));
+    }
+
+    public function test_strips_indented_bullet_markers(): void
+    {
+        $this->assertSame('nested item.', $this->normalize('    * nested item'));
+    }
+
+    public function test_normalizes_soft_and_doubled_terminators_on_bullets(): void
+    {
+        // A bullet already ending in soft punctuation collapses to one period;
+        // one already ending in a period does not gain a second.
+        $this->assertSame(
+            "run assets and manifests.\nvoice reference clips.",
+            $this->normalize("* run assets and manifests;\n* voice reference clips.")
+        );
+    }
+
+    public function test_preserves_terminal_mark_on_bullets(): void
+    {
+        $this->assertSame("Ready?\nGo!", $this->normalize("* Ready?\n* Go!"));
+    }
+
+    public function test_rejoins_soft_wrapped_bullet_lines(): void
+    {
+        // A hard-wrapped item (hanging-indent continuation lines) rejoins into a
+        // single sentence — the period lands at the end of the item, not the wrap.
+        $wrapped = "* this is a long bullet that\n  wraps to a second line\n* next bullet";
+        $this->assertSame("this is a long bullet that wraps to a second line.\nnext bullet.", $this->normalize($wrapped));
+    }
+
+    public function test_blank_line_ends_a_wrapped_bullet(): void
+    {
+        // A blank line closes the list, so the following paragraph is never
+        // swallowed into the last bullet.
+        $text = "* only bullet\nstill the bullet\n\nA separate paragraph.";
+        $this->assertSame("only bullet still the bullet.\n\nA separate paragraph.", $this->normalize($text));
+    }
+
+    public function test_bullet_normalization_is_idempotent(): void
+    {
+        $once = $this->normalize("* wrapped item\n  second line\n* plain item");
+        $this->assertSame($once, $this->normalize($once));
+    }
+
+    public function test_leaves_inline_and_emphasis_asterisks_alone(): void
+    {
+        // A marker only counts at a line start followed by whitespace, so
+        // emphasis and inline math survive.
+        $this->assertSame('This is *important* to note.', $this->normalize('This is *important* to note.'));
+        $this->assertSame('The area is 3 * 4 units.', $this->normalize('The area is 3 * 4 units.'));
+    }
+
+    public function test_leaves_leading_negative_number_alone(): void
+    {
+        // "-5" has no whitespace after the dash, so it is not a bullet marker.
+        $this->assertSame('-5 degrees outside.', $this->normalize('-5 degrees outside.'));
+    }
+
     public function test_drops_space_before_punctuation(): void
     {
         $this->assertSame('I use the editor.', $this->normalize('I use the editor .'));

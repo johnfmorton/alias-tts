@@ -3,10 +3,53 @@
 namespace Tests\Unit;
 
 use App\Services\TextChunker;
+use App\Services\TextNormalizer;
 use PHPUnit\Framework\TestCase;
 
 class TextChunkerTest extends TestCase
 {
+    public function test_pasted_bullet_list_becomes_one_sentence_per_item(): void
+    {
+        // End to end: a markdown bullet list, normalized then chunked, drops the
+        // "*" markers and reads each item as its own sentence instead of one
+        // run-on. Sentence mode surfaces the sentence boundaries as chunks.
+        $text = (new TextNormalizer)->normalize(
+            "After generation, a loop checks for:\n\n* missing or dropped words\n* truncated speech\n* stalls and repetitions\n* noise at the end of a clip"
+        );
+
+        $chunks = array_map(
+            static fn ($s) => $s['text'],
+            (new TextChunker)->segment($text, 280, mode: TextChunker::MODE_SENTENCE),
+        );
+
+        $this->assertSame([
+            'After generation, a loop checks for.',
+            'missing or dropped words.',
+            'truncated speech.',
+            'stalls and repetitions.',
+            'noise at the end of a clip.',
+        ], $chunks);
+    }
+
+    public function test_soft_wrapped_bullet_is_one_sentence_end_to_end(): void
+    {
+        // A hard-wrapped bullet stays a single sentence through the whole
+        // pipeline — the wrap does not become a spurious sentence boundary.
+        $text = (new TextNormalizer)->normalize(
+            "* keeps the strongest result and stitches\n  the winners into the final audio\n* rerolls defective takes"
+        );
+
+        $chunks = array_map(
+            static fn ($s) => $s['text'],
+            (new TextChunker)->segment($text, 280, mode: TextChunker::MODE_SENTENCE),
+        );
+
+        $this->assertSame([
+            'keeps the strongest result and stitches the winners into the final audio.',
+            'rerolls defective takes.',
+        ], $chunks);
+    }
+
     public function test_short_text_is_a_single_chunk(): void
     {
         $this->assertSame(['Hello world.'], (new TextChunker)->split('Hello world.', 280));

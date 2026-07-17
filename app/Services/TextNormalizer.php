@@ -62,13 +62,32 @@ class TextNormalizer
         //    and a single stray emoji can corrupt the generated audio.
         $text = (string) preg_replace(self::EMOJI_PATTERN, '', $text);
 
-        // 5. Drop horizontal whitespace left *before* end-of-token punctuation
+        // 5. Turn markdown list items into standalone sentences. A bullet item
+        //    runs from its marker ("*", "-", "+") through any following lines that
+        //    are neither blank nor a new marker — i.e. soft-wrapped continuation
+        //    lines — so a hard-wrapped item is rejoined into one line before its
+        //    period lands (otherwise the wrap would split the item mid-sentence).
+        //    The marker is dropped and a single period appended, so each item
+        //    reads as its own sentence once the chunker collapses the list into a
+        //    block; emphasis ("*note*"), a leading negative ("-5 degrees"), and
+        //    math ("3 * 4") are spared by the required [ \t]+ after the marker.
+        //    Any soft/doubled terminator this creates ("clips;." / "clips..") is
+        //    tidied by steps 6–7 below. Newlines are canonicalized first so the
+        //    wrap/blank detection is never fooled by a CRLF's trailing \r.
+        $text = str_replace(["\r\n", "\r"], "\n", $text);
+        $text = (string) preg_replace_callback(
+            '/^[ \t]*[*+-][ \t]+(.+(?:\n(?![ \t]*(?:[*+-][ \t]|$)).+)*)/mu',
+            static fn ($m) => rtrim((string) preg_replace('/[ \t]*\n[ \t]*/u', ' ', $m[1])).'.',
+            $text,
+        );
+
+        // 6. Drop horizontal whitespace left *before* end-of-token punctuation
         //    ("editor ." -> "editor."). Restricted to horizontal whitespace
         //    ([^\S\n]) so newlines / block boundaries survive; the (?=\s|$) guard
         //    leaves dot-prefixed tokens (".NET", ".gitignore") untouched.
         $text = (string) preg_replace('/[^\S\n]+([.,;:!?])(?=\s|$)/u', '$1', $text);
 
-        // 6. Collapse spurious doubled punctuation, again only across horizontal
+        // 7. Collapse spurious doubled punctuation, again only across horizontal
         //    whitespace so paragraph breaks are never bridged:
         //    a) soft punctuation then an appended period -> single period
         //       ("videos:." -> "videos.").
