@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers\Admin;
 
+use App\Http\Controllers\Concerns\ChecksCredit;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\StoreVoiceRequest;
 use App\Http\Requests\UpdateVoiceRequest;
@@ -22,6 +23,8 @@ use Throwable;
 
 class VoiceController extends Controller
 {
+    use ChecksCredit;
+
     public function __construct(
         private VoiceService $voices,
         private SpeechService $speechService,
@@ -231,6 +234,10 @@ class VoiceController extends Controller
     public function test(Request $request, Voice $voice): Response
     {
         abort_unless($voice->isVisibleTo($request->user()), 404);
+
+        if ($error = $this->creditError($request->user())) {
+            return $error;
+        }
 
         $apiKey = ApiKey::dashboardFor($request->user()->id);
 

@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Admin;
 
 use App\Enums\SpeechStatus;
+use App\Http\Controllers\Concerns\ChecksCredit;
 use App\Http\Controllers\Concerns\ServesRangedAudio;
 use App\Http\Controllers\Controller;
 use App\Models\ApiKey;
@@ -24,7 +25,7 @@ use Throwable;
  */
 class HealthTestController extends Controller
 {
-    use ServesRangedAudio;
+    use ChecksCredit, ServesRangedAudio;
 
     /** Short fixed text — one provider call, synchronous. */
     private const SHORT_TEXT = 'This is a short synchronous test of the text to speech provider.';
@@ -39,6 +40,10 @@ class HealthTestController extends Controller
         $voice = $this->resolveVoice($request);
         if (! $voice) {
             return response()->json(['message' => 'No voice configured — add a voice first.'], 422);
+        }
+
+        if ($error = $this->creditError($request->user())) {
+            return $error;
         }
 
         try {
@@ -75,6 +80,10 @@ class HealthTestController extends Controller
             return response()->json([
                 'message' => 'No queue worker is running — start one (php artisan queue:work) before testing async generation.',
             ], 409);
+        }
+
+        if ($error = $this->creditError($request->user())) {
+            return $error;
         }
 
         try {

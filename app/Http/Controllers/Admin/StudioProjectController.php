@@ -3,13 +3,16 @@
 namespace App\Http\Controllers\Admin;
 
 use App\Console\Commands\PruneRecoveryProjects;
+use App\Http\Controllers\Concerns\ChecksCredit;
 use App\Http\Controllers\Concerns\ServesRangedAudio;
 use App\Http\Controllers\Controller;
 use App\Models\TtsChunk;
 use App\Models\TtsChunkTake;
 use App\Models\TtsProject;
 use App\Models\TuningPreset;
+use App\Models\User;
 use App\Models\Voice;
+use App\Services\Credit\CreditService;
 use App\Services\ProjectExportService;
 use App\Services\ProjectService;
 use App\Services\Pronunciation\PronunciationDetector;
@@ -42,7 +45,7 @@ use Throwable;
  */
 class StudioProjectController extends Controller
 {
-    use ServesRangedAudio;
+    use ChecksCredit, ServesRangedAudio;
 
     public function __construct(
         private readonly ProjectService $projects,
@@ -51,6 +54,7 @@ class StudioProjectController extends Controller
         private readonly TextNormalizer $normalizer,
         private readonly PronunciationDetector $detector,
         private readonly PronunciationDictionary $dictionary,
+        private readonly CreditService $credit,
     ) {}
 
     public function create(Request $request): View
@@ -234,11 +238,20 @@ class StudioProjectController extends Controller
             // owner and gates the first edit behind a warning dialog.
             'foreignOwner' => $this->foreignOwner($request, $project),
             'chunks' => $chunks,
-            // Per-model spend splits for the readouts (each engine has its own
-            // rate). Loaded in one query per owner type; a chunk/project with
-            // no counter rows falls back to its legacy all-chatterbox total.
-            'projectSpendByModel' => SpendCounters::forOwner('project', $project->id, (int) $project->spent_characters),
-            'chunkSpendByModel' => SpendCounters::forOwners('chunk', $chunks->pluck('id')->all()),
+            // Per-model spend splits, pre-rendered into viewer-aware readouts
+            // (a limited user sees marked-up prices; a SuperAdmin the actual
+            // figures — see spendReadout()). Loaded in one query per owner
+            // type; a chunk/project with no counter rows falls back to its
+            // legacy all-chatterbox total.
+            'projectSpendReadout' => $this->spendReadout(
+                SpendCounters::forOwner('project', $project->id, (int) $project->spent_characters),
+                'project',
+            ),
+            'chunkSpendReadouts' => $this->chunkSpendReadouts($chunks),
+            // The project OWNER's remaining prepaid credit (null = unlimited,
+            // which hides the readout). Fresh read: charges are query-builder
+            // decrements the bound models never see.
+            'creditBalance' => $this->ownerBalanceMicro($project),
             'voices' => Voice::orderedFor($this->projectOwnerId($request, $project))->get(),
             // Offered final-audio formats for the header picker (token => "MP3"/"WAV").
             'outputFormats' => $this->outputFormatLabels(),
@@ -635,6 +648,12 @@ class StudioProjectController extends Controller
             return response()->json(['message' => 'This chunk is empty — add text before generating.'], 422);
         }
 
+        // Renders spend the PROJECT OWNER's credit (recordTake charges them),
+        // so the gate checks the owner too — even for a SuperAdmin editing here.
+        if ($error = $this->creditError($project->user)) {
+            return $error;
+        }
+
         try {
             $chunk = $this->projects->generateChunk($chunk);
         } catch (Throwable $e) {
@@ -686,6 +705,10 @@ class StudioProjectController extends Controller
             return response()->json(['message' => 'This chunk is empty — add text before generating.'], 422);
         }
 
+        if ($error = $this->creditError($project->user)) {
+            return $error;
+        }
+
         try {
             $chunk = $this->projects->generateChunk($chunk, reroll: true);
         } catch (Throwable $e) {
@@ -719,6 +742,10 @@ class StudioProjectController extends Controller
         $validator = Validator::make($request->all(), $this->knobRules());
         if ($validator->fails()) {
             return response()->json(['message' => $validator->errors()->first()], 422);
+        }
+
+        if ($error = $this->creditError($project->user)) {
+            return $error;
         }
 
         try {
@@ -1044,21 +1071,96 @@ class StudioProjectController extends Controller
 
         // Per-model splits so each engine's own rate prices its characters;
         // the totals above only decide readout visibility (spent > 0).
-        $chunkByModel = SpendCounters::forOwner('chunk', $chunk->id, $chunkSpent);
-        $projectByModel = SpendCounters::forOwner('project', $project->id, $projectSpent);
+        $chunkReadout = $this->spendReadout(SpendCounters::forOwner('chunk', $chunk->id, $chunkSpent), 'chunk');
+        $projectReadout = $this->spendReadout(SpendCounters::forOwner('project', $project->id, $projectSpent), 'project');
+
+        $balance = $this->ownerBalanceMicro($project);
 
         return [
             'chunk' => [
                 'spent' => $chunkSpent,
-                'label' => GenerationCost::label($chunkByModel),
-                'title' => GenerationCost::title($chunkByModel, 'chunk'),
+                'label' => $chunkReadout['label'],
+                'title' => $chunkReadout['title'],
             ],
             'project' => [
                 'spent' => $projectSpent,
-                'label' => 'est. spend '.GenerationCost::label($projectByModel),
-                'title' => GenerationCost::title($projectByModel, 'project'),
+                'label' => 'est. spend '.$projectReadout['label'],
+                'title' => $projectReadout['title'],
+            ],
+            // Server-formatted like the labels above (JS never does money
+            // math); null = the owner is unlimited and the readout stays hidden.
+            'balance' => $balance === null ? null : [
+                'label' => 'credit '.CreditService::formatMicro($balance),
+                'low' => $balance <= 0,
             ],
         ];
+    }
+
+    /**
+     * Viewer-aware {label, title} for one spend split: a SuperAdmin sees the
+     * actual provider figures (plus what users are billed, when a markup is
+     * configured); everyone else is quoted at the marked-up rate — their
+     * price, not the owner's Replicate bill.
+     *
+     * @param  int|array<string, int>  $byModel
+     * @return array{label: string, title: string}
+     */
+    private function spendReadout(int|array $byModel, string $scope): array
+    {
+        $markup = $this->credit->markup();
+
+        if (auth()->user()?->isSuperAdmin()) {
+            $title = GenerationCost::title($byModel, $scope);
+            if ($markup > 1.0) {
+                $title .= sprintf(
+                    ' Users are billed %s× = %s.',
+                    rtrim(rtrim(number_format($markup, 2), '0'), '.'),
+                    GenerationCost::label($byModel, $markup),
+                );
+            }
+
+            return ['label' => GenerationCost::label($byModel), 'title' => $title];
+        }
+
+        return [
+            'label' => GenerationCost::label($byModel, $markup),
+            'title' => GenerationCost::title($byModel, $scope, $markup),
+        ];
+    }
+
+    /**
+     * Pre-rendered per-chunk spend readouts for the initial page paint, keyed
+     * by chunk id (the action endpoints refresh them via spendPayload()).
+     *
+     * @param  Collection<int, TtsChunk>  $chunks
+     * @return array<string, array{label: string, title: string, spent: int}>
+     */
+    private function chunkSpendReadouts(Collection $chunks): array
+    {
+        $byModel = SpendCounters::forOwners('chunk', $chunks->pluck('id')->all());
+
+        return $chunks->mapWithKeys(function (TtsChunk $chunk) use ($byModel) {
+            $map = $byModel[$chunk->id]
+                ?? ($chunk->spent_characters > 0 ? ['chatterbox' => (int) $chunk->spent_characters] : []);
+
+            return [$chunk->id => $this->spendReadout($map, 'chunk') + ['spent' => (int) $chunk->spent_characters]];
+        })->all();
+    }
+
+    /**
+     * The project owner's CURRENT balance in micro-dollars (null = unlimited
+     * or ownerless). Always a fresh query: credit charges are query-builder
+     * decrements that route-bound models never see.
+     */
+    private function ownerBalanceMicro(TtsProject $project): ?int
+    {
+        if ($project->user_id === null) {
+            return null;
+        }
+
+        $balance = User::whereKey($project->user_id)->value('credit_balance_micro');
+
+        return $balance === null ? null : (int) $balance;
     }
 
     private function takesPayload(TtsProject $project, TtsChunk $chunk): array

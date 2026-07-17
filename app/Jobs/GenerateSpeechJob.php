@@ -4,6 +4,7 @@ namespace App\Jobs;
 
 use App\Enums\SpeechStatus;
 use App\Models\Speech;
+use App\Services\Credit\CreditService;
 use App\Services\Settings\SettingsManager;
 use App\Services\SpeechService;
 use Illuminate\Bus\Queueable;
@@ -44,6 +45,19 @@ class GenerateSpeechJob implements ShouldQueue
 
         // Record may have been deleted, or already finished (e.g. a duplicate).
         if (! $speech || $speech->status === SpeechStatus::Completed) {
+            return;
+        }
+
+        // Credit gate: the POST passed the middleware, but the balance can
+        // drain while the job sits queued. Nothing is spent yet, so fail the
+        // record cleanly — the status endpoint surfaces error_message verbatim
+        // to the polling client. No recovery project: process() never ran.
+        if (! app(CreditService::class)->canSpend($speech->apiKey?->user)) {
+            $speech->update([
+                'status' => SpeechStatus::Failed,
+                'error_message' => CreditService::OUT_OF_CREDIT_MESSAGE,
+            ]);
+
             return;
         }
 

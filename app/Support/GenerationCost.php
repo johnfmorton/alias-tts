@@ -62,17 +62,19 @@ final class GenerationCost
     }
 
     /**
-     * Compact label: "0¢", "0.1¢", "7.0¢", "$1.02".
+     * Compact label: "0¢", "0.1¢", "7.0¢", "$1.02". `$markup` scales the
+     * figure into the user-facing price (limited users see marked-up money,
+     * SuperAdmins the actual provider spend — see CreditService::markup()).
      *
      * @param  int|array<string, int>  $characters
      */
-    public static function label(int|array $characters): string
+    public static function label(int|array $characters, float $markup = 1.0): string
     {
         if (self::totalCharacters($characters) <= 0) {
             return '0¢';
         }
 
-        $dollars = self::dollars($characters);
+        $dollars = self::dollars($characters) * $markup;
 
         // 99.5¢ rounds to "$1.00", so switch to dollars there — never "100.0¢".
         if ($dollars >= 0.995) {
@@ -85,17 +87,20 @@ final class GenerationCost
     /**
      * Tooltip spelling out the estimate — and why it only ever grows. A
      * per-model map appends the per-engine breakdown so a mixed project shows
-     * where the money went.
+     * where the money went. With a markup (> 1) the rates shown are the
+     * marked-up ones and the wording drops "provider" — a limited user is
+     * quoted their own price, not the owner's Replicate bill.
      *
      * @param  int|array<string, int>  $characters
      */
-    public static function title(int|array $characters, string $scope): string
+    public static function title(int|array $characters, string $scope, float $markup = 1.0): string
     {
         $title = sprintf(
-            'Estimated provider spend across every take ever rendered for this %s: %s characters%s. Deleting takes never lowers it — that money is already spent.',
+            '%s across every take ever rendered for this %s: %s characters%s. Deleting takes never lowers it — that money is already spent.',
+            $markup > 1.0 ? 'Estimated cost' : 'Estimated provider spend',
             $scope,
             number_format(self::totalCharacters($characters)),
-            is_array($characters) ? '' : ' × $'.self::rateLabel(self::ratePer1k()).' per 1,000',
+            is_array($characters) ? '' : ' × $'.self::rateLabel(self::ratePer1k() * $markup).' per 1,000',
         );
 
         if (! is_array($characters)) {
@@ -111,7 +116,7 @@ final class GenerationCost
                 '%s: %s × $%s/1k',
                 ModelCatalog::label((string) $model),
                 number_format((int) $chars),
-                self::rateLabel(self::ratePer1k((string) $model)),
+                self::rateLabel(self::ratePer1k((string) $model) * $markup),
             );
         }
 

@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers\Admin;
 
+use App\Http\Controllers\Concerns\ChecksCredit;
 use App\Http\Controllers\Concerns\ServesRangedAudio;
 use App\Http\Controllers\Controller;
 use App\Jobs\RunGenblazeJob;
@@ -26,7 +27,7 @@ use Symfony\Component\HttpFoundation\Response;
  */
 class GenblazeController extends Controller
 {
-    use ServesRangedAudio;
+    use ChecksCredit, ServesRangedAudio;
 
     public function __construct(
         private readonly GenblazeRunnerClient $runner,
@@ -61,6 +62,10 @@ class GenblazeController extends Controller
         $voice = Voice::resolveFor((string) $request->input('voice'), $request->user()->id);
         if (! $voice) {
             return response()->json(['message' => 'Unknown voice.'], 422);
+        }
+
+        if ($error = $this->creditError($request->user())) {
+            return $error;
         }
 
         $id = (string) Str::uuid();

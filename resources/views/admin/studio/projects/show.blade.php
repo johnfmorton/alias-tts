@@ -94,9 +94,16 @@
                         {{-- Lifetime estimate — counts every render ever, so deleting
                              takes/chunks never lowers it (see GenerationCost). Priced
                              per engine (each model has its own rate); the tooltip
-                             spells out the per-model breakdown. --}}
+                             spells out the per-model breakdown. Labels are viewer-aware
+                             (marked-up for limited users, actual for SuperAdmins). --}}
                         <span id="project-spend" class="cursor-help text-sm text-zinc-500"
-                              title="{{ \App\Support\GenerationCost::title($projectSpendByModel, 'project') }}">est. spend {{ \App\Support\GenerationCost::label($projectSpendByModel) }}</span>
+                              title="{{ $projectSpendReadout['title'] }}">est. spend {{ $projectSpendReadout['label'] }}</span>
+                    @endif
+                    {{-- The OWNER's remaining prepaid credit; absent = unlimited. JS
+                         refreshes the text from spend.balance after every render. --}}
+                    @if($creditBalance !== null)
+                        <span id="credit-balance" class="cursor-help text-sm {{ $creditBalance <= 0 ? 'text-amber-400' : 'text-zinc-500' }}"
+                              title="Prepaid credit remaining for this project's owner. New generation pauses when it reaches $0 — existing audio stays available.">credit {{ \App\Services\Credit\CreditService::formatMicro($creditBalance) }}</span>
                     @endif
                     <span id="project-status" class="inline-flex rounded-md border px-2 py-0.5 text-xs {{ $statusBadgeClass }}">{{ $statusVal }}</span>
                 </div>
@@ -236,10 +243,10 @@
                             @if(\App\Support\GenerationCost::enabled())
                                 {{-- This chunk's lifetime render spend; hidden until the first
                                      take. JS toggles ONLY `hidden` (no competing display class).
-                                     Priced per engine via the chunk's counter split. --}}
-                                @php $chunkSpendMap = $chunkSpendByModel[$chunk->id] ?? ($chunk->spent_characters > 0 ? ['chatterbox' => (int) $chunk->spent_characters] : []); @endphp
+                                     Priced per engine via the chunk's counter split; the label
+                                     is viewer-aware (see spendReadout()). --}}
                                 <span class="chunk-spend cursor-help text-zinc-500 {{ $chunk->spent_characters > 0 ? '' : 'hidden' }}"
-                                      title="{{ \App\Support\GenerationCost::title($chunkSpendMap, 'chunk') }}">{{ \App\Support\GenerationCost::label($chunkSpendMap) }}</span>
+                                      title="{{ $chunkSpendReadouts[$chunk->id]['title'] }}">{{ $chunkSpendReadouts[$chunk->id]['label'] }}</span>
                             @endif
                             <span class="chunk-status inline-flex rounded-md border px-2 py-0.5 text-xs {{ $chunkStyles[$chunk->status->value] ?? $chunkStyles['pending'] }}">{{ $chunk->status->value }}</span>
                             @php $asrBadge = $chunk->asrBadge(); @endphp

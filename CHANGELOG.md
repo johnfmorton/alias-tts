@@ -6,6 +6,33 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Added
+- **Give a user a prepaid credit allotment.** Every account now carries an
+  optional dollar balance (the default is unlimited — nothing changes for
+  existing users). From the Users page a SuperAdmin can grant credit ("here's
+  $5 to try it"), adjust it down, or clear it back to unlimited; the table
+  shows every balance, and the user's drawer adds a ledger of recent charges
+  and grants plus lifetime billed-vs-actual totals. Every render — Studio
+  takes and previews, `/v1` calls in both dialects, Inspector experiments,
+  Genblaze runs — books an append-only ledger entry, so spend is accountable
+  per user even on unlimited accounts.
+- **Running out of credit pauses new generation, and only new generation.**
+  A drained balance stops fresh renders with a clear message — Studio buttons
+  explain it in a toast, the ElevenLabs-dialect API answers 402, the OpenAI
+  dialect answers the `insufficient_quota` error real OpenAI SDKs already
+  understand, and queued jobs fail cleanly instead of silently. Everything
+  already generated keeps working: playback, stitching, seal, receipts, and
+  downloads never check the balance. Work that started under budget finishes
+  (the balance may dip slightly negative), and the hourly API-key rate limit
+  still applies independently.
+- **Charge users a markup while seeing your actual costs.** A single
+  `TTS_CREDIT_MARKUP` multiplier (env-only, so users can't edit it) sets what
+  limited users are charged and shown — their est.-spend readouts, balance,
+  and Account page all quote their price, while SuperAdmins keep the actual
+  provider figures with a "users are billed N×" note. Limited users also get
+  a live remaining-credit readout in the Studio header and a balance card on
+  their Account page.
+
 ### Changed
 - **Turbo sound tags are readable now.** The Studio chip row (`[sigh]`,
   `[cough]`, `[laugh]`…) no longer fades into the card: chips get a real fill

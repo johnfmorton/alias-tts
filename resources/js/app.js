@@ -1776,6 +1776,15 @@ function initStudioProject() {
             header.textContent = spend.project.label;
             header.title = spend.project.title;
         }
+        // Remaining prepaid credit for the project owner; the span only exists
+        // for limited owners, and the label arrives server-formatted like the
+        // rest. `low` flips it to the warning color at/below $0.
+        const balance = document.getElementById('credit-balance');
+        if (balance && spend.balance) {
+            balance.textContent = spend.balance.label;
+            balance.classList.toggle('text-amber-400', !!spend.balance.low);
+            balance.classList.toggle('text-zinc-500', !spend.balance.low);
+        }
     }
 
     function renderTakes(card, data) {

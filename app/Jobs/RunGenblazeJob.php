@@ -2,12 +2,16 @@
 
 namespace App\Jobs;
 
+use App\Models\User;
+use App\Models\Voice;
+use App\Services\Credit\CreditService;
 use App\Services\Genblaze\GenblazeRunnerClient;
 use App\Services\Genblaze\GenblazeRunStore;
 use App\Services\Pronunciation\PronunciationDetector;
 use App\Services\Pronunciation\PronunciationSubstituter;
 use App\Services\Settings\SettingsManager;
 use App\Services\SpokenQuotes;
+use App\Services\Tts\ModelCatalog;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Bus\Dispatchable;
@@ -49,6 +53,16 @@ class RunGenblazeJob implements ShouldQueue
         SpokenQuotes $quotes,
     ): void {
         $store->markRunning($this->runId);
+
+        // Credit gate: the run hasn't spent anything yet, so an exhausted
+        // balance fails it cleanly here (the panel shows the message). The
+        // controller checked too, but the balance can drain while queued.
+        $credit = app(CreditService::class);
+        if (! $credit->canSpend($this->userId !== null ? User::find($this->userId) : null)) {
+            $store->fail($this->runId, CreditService::OUT_OF_CREDIT_MESSAGE);
+
+            return;
+        }
 
         // Run under the dispatching user's settings (settings are per-user).
         app(SettingsManager::class)->applyForUser($this->userId);
@@ -97,6 +111,21 @@ class RunGenblazeJob implements ShouldQueue
                 // user's setting; the runner forwards it to /v1/internal/chunk,
                 // which otherwise runs userless on instance defaults.
                 chunkMode: (string) config('tts.chunk_mode', 'packed'),
+            );
+
+            // One whole-text charge per SUCCESSFUL run, at the voice's engine
+            // rate. The runner's internal QA re-rolls are deliberately
+            // uncharged (unknowable from here), and a failed run charges
+            // nothing — the owner absorbs partial provider cost, and the
+            // markup is the buffer for both.
+            $voice = Voice::find($this->voice);
+            $credit->charge(
+                $this->userId,
+                mb_strlen($quoted['text']),
+                $voice !== null ? ModelCatalog::forVoice($voice) : ModelCatalog::DEFAULT,
+                'genblaze',
+                'genblaze_run',
+                $this->runId,
             );
 
             // Rides through GenblazeController::status() untouched so the panel can

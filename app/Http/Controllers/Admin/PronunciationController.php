@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers\Admin;
 
+use App\Http\Controllers\Concerns\ChecksCredit;
 use App\Http\Controllers\Controller;
 use App\Models\ApiKey;
 use App\Models\PronunciationEntry;
@@ -25,6 +26,8 @@ use Throwable;
  */
 class PronunciationController extends Controller
 {
+    use ChecksCredit;
+
     /** @var list<string> */
     private const CATEGORIES = ['initialism', 'acronym', 'tech_name', 'proper_noun', 'symbol_version', 'jargon'];
 
@@ -119,6 +122,10 @@ class PronunciationController extends Controller
 
         if (! $voice) {
             return response()->json(['message' => 'No voice available to test with.'], 422);
+        }
+
+        if ($error = $this->creditError($request->user())) {
+            return $error;
         }
 
         // Embed the respelling in a fixed carrier sentence. Respellings are
