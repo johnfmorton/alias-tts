@@ -153,14 +153,17 @@
 
     {{-- ── View 2 — Inspector ────────────────────────────────────────────── --}}
     <div data-studio-panel="inspector" @unless($activeTab === 'inspector') class="hidden" @endunless>
-        <p class="mb-4 text-[12.5px] text-zinc-400">Quick and stateless — paste a block of text, see how it chunks, and hear it. Nothing is saved.</p>
+        <p class="mb-4 text-[12.5px] text-zinc-400">Paste a block of text to see exactly how it will be cleaned, chunked, and priced — audition chunks, then create a project from your findings. Chunk renders you make here carry over into the project.</p>
 
         <div id="studio"
              data-preview-url="{{ route('admin.studio.preview') }}"
              data-synthesize-url="{{ route('admin.studio.synthesize') }}"
              data-stitch-url="{{ route('admin.studio.stitch') }}"
              data-concat-url="{{ route('admin.studio.concat') }}"
-             data-advanced-url="{{ route('admin.studio.advanced') }}">
+             data-advanced-url="{{ route('admin.studio.advanced') }}"
+             data-suggestions-url="{{ route('admin.studio.pronunciation.suggestions') }}"
+             data-approve-url="{{ route('admin.studio.pronunciation.approve') }}"
+             data-create-project-url="{{ route('admin.studio.projects.from-inspector') }}">
 
             {{-- Input --}}
             <div class="mb-6 rounded-[14px] border border-white/8 bg-panel p-5">
@@ -236,24 +239,47 @@
                         <div>
                             <h2 class="font-semibold">Normalized text</h2>
                             <p class="mt-1 text-sm text-zinc-400">
-                                Cleaned the way the Bespoken plugin cleans a post (<span id="studio-norm-chars">0</span> chars),
-                                then split into <span id="studio-chunk-count">0</span> chunk(s) below.
+                                Cleaned and normalized text of <span id="studio-norm-chars">0</span> chars,
+                                split into <span id="studio-chunk-count">0</span> chunk(s), as shown below.
+                            </p>
+                            <p id="studio-estimate" class="mt-1 hidden text-sm text-zinc-400">
+                                Estimated cost: <span id="studio-estimate-label" class="cursor-help font-medium text-zinc-200" title=""></span>
+                                <span id="studio-balance" class="ml-2 hidden rounded-full border border-white/12 px-2 py-0.5 text-xs text-zinc-400"></span>
                             </p>
                         </div>
-                        <div class="flex flex-wrap items-center gap-2">
-                            <button type="button" id="studio-whole" @disabled($voices->isEmpty())
-                                    class="rounded-lg border border-white/12 px-3 py-2 text-sm hover:bg-white/[0.04] disabled:opacity-40">
-                                ▶ Whole (single call)
-                            </button>
-                            <button type="button" id="studio-stitch" @disabled($voices->isEmpty())
-                                    class="rounded-lg border border-accent/50 bg-accent/10 px-3 py-2 text-sm text-accent hover:bg-accent/20 disabled:opacity-40">
-                                ▶ Stitched (production)
-                            </button>
-                        </div>
+                        {{-- ONE render action: the production stitch — the only render that
+                             sounds like what the app actually delivers. (A whole-text-as-one-
+                             call button used to sit here as a seam-vs-model diagnostic; it was
+                             removed because no delivery path ever produces that audio, so it
+                             only ever billed money for an unrepresentative render. The concat
+                             bar below covers seam diagnostics on the exact bytes heard.) --}}
+                        <button type="button" id="studio-stitch" @disabled($voices->isEmpty())
+                                title="Renders every chunk and joins them with the same trim and seam silence as a project's final file — this is what listeners actually get. Bills each chunk, like generating them all once."
+                                class="rounded-lg border border-accent/50 bg-accent/10 px-3 py-2 text-sm text-accent hover:bg-accent/20 disabled:opacity-40">
+                            ▶ Preview final audio
+                        </button>
                     </div>
                     <div class="space-y-3 p-5">
                         <p id="studio-normalized" class="rounded-lg bg-inset p-3 text-sm break-words whitespace-pre-wrap text-zinc-300"></p>
-                        <x-aplayer audio-id="studio-whole-audio" label="Play whole render" class="hidden w-full" />
+                        <x-aplayer audio-id="studio-whole-audio" label="Play final-audio preview" class="hidden w-full" />
+                    </div>
+                </div>
+
+                {{-- Pronunciation: dictionary respellings already applied above, plus
+                     new LLM suggestions (when the pre-processor is enabled) with a
+                     one-click add. Hidden until there is something to say. --}}
+                <div id="studio-pron" class="hidden rounded-[14px] border border-white/8 bg-panel">
+                    <div class="border-b border-white/8 px-5 py-4">
+                        <h2 class="font-semibold">Pronunciation</h2>
+                        <p class="mt-1 text-sm text-zinc-400">
+                            Respellings from <a class="text-cyan-400 hover:underline" href="{{ route('admin.pronunciations.index') }}">your dictionary</a>
+                            are already applied to the text above; new suggestions can be added to it here.
+                        </p>
+                    </div>
+                    <div class="space-y-3 p-5">
+                        <p id="studio-pron-applied" class="hidden rounded-lg bg-inset p-3 text-sm text-zinc-300"></p>
+                        <div id="studio-pron-status" class="text-sm text-zinc-400" role="status" aria-live="polite"></div>
+                        <ul id="studio-pron-suggestions" class="space-y-2"></ul>
                     </div>
                 </div>
 
@@ -270,7 +296,7 @@
                                 ▶ Concatenate selected
                             </button>
                             <span class="text-sm text-zinc-400">
-                                Tick generated chunks, then stitch them through production's trim + seam join.
+                                Tick “stitch test” on generated chunks, then hear them through production's trim + seam join.
                                 One chunk alone tests the trim; two adjacent test the seam.
                             </span>
                         </div>
@@ -279,6 +305,28 @@
                     </div>
 
                     <ol id="studio-chunks" class="space-y-3"></ol>
+                </div>
+
+                {{-- Closing CTA: keep the findings — create an editable project.
+                     Stashed chunk renders ride along as real takes (no re-billing). --}}
+                <div class="rounded-[14px] border border-accent/30 bg-panel p-5">
+                    <h2 class="font-semibold">Create a project from this</h2>
+                    <p class="mt-1 text-sm text-zinc-400">
+                        Keep this breakdown as an editable Studio project — regenerate chunks one at a time, pick takes, and build the final file.<span id="studio-carry-note" class="hidden text-zinc-300"></span>
+                    </p>
+                    <div class="mt-3 flex flex-wrap items-end gap-3">
+                        <div class="max-w-md grow">
+                            <label for="studio-project-title" class="mb-1.5 block text-sm text-zinc-400">Title <span class="text-xs text-zinc-500">— optional</span></label>
+                            <input id="studio-project-title" type="text" maxlength="200"
+                                   class="w-full rounded-lg border border-white/12 bg-inset px-3 py-2 text-sm focus:border-accent focus:outline-none focus:ring-2 focus:ring-accent/30"
+                                   placeholder="Named from the text if left blank">
+                        </div>
+                        <button type="button" id="studio-create-project" @disabled($voices->isEmpty())
+                                class="rounded-lg bg-accent px-4 py-2 text-sm font-medium text-accent-on hover:bg-cyan-400 disabled:opacity-40">
+                            Create project
+                        </button>
+                    </div>
+                    <div id="studio-create-status" class="mt-2 text-sm text-zinc-400" role="status" aria-live="polite"></div>
                 </div>
             </div>
         </div>

@@ -28,6 +28,7 @@ use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Collection;
+use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Facades\Validator;
 use Illuminate\Support\Str;
 use Illuminate\Validation\Rule;
@@ -86,6 +87,104 @@ class StudioProjectController extends Controller
 
         return redirect()->route('admin.studio.projects.show', $project)
             ->with('success', 'Project created — generate the chunks below.');
+    }
+
+    /**
+     * The Inspector's closing CTA (AJAX): create a project from the inspected
+     * text — same pipeline as {@see store()} (approved dictionary + spoken
+     * quotes) — and carry across any chunk renders the user already paid for
+     * there. The client sends the stash tokens {@see StudioController::synthesize()}
+     * minted; each token's RAW bytes attach to the chunk whose text and voice
+     * match the render's own provenance sidecar (a mismatch — say the text was
+     * edited, or the voice switched, after rendering — just leaves that chunk
+     * pending: stored audio must never contradict its script). Credit is NOT
+     * charged again; those renders were billed at synthesis time.
+     */
+    public function storeFromInspector(Request $request): JsonResponse
+    {
+        $validator = Validator::make($request->all(), $this->createRules() + [
+            'takes' => ['array', 'max:500'],
+            'takes.*.index' => ['required', 'integer', 'min:0'],
+            'takes.*.token' => ['required', 'uuid'],
+        ]);
+        if ($validator->fails()) {
+            return response()->json(['message' => $validator->errors()->first()], 422);
+        }
+        $data = $validator->validated();
+
+        $voice = Voice::resolveFor($data['voice'], $request->user()->id);
+        if (! $voice) {
+            return response()->json(['message' => 'Unknown voice.'], 422);
+        }
+
+        // Blank title → the same text-snippet naming API-made projects get.
+        if (trim((string) ($data['title'] ?? '')) === '') {
+            $data['title'] = trim(mb_substr($data['text'], 0, 40));
+        }
+
+        $project = $this->persist($request, $data, $voice, $data['text'], $this->dictionary->approvedMap($request->user()->id));
+
+        $attached = $this->attachInspectorTakes($request, $project, $voice, (array) ($data['takes'] ?? []));
+
+        $request->session()->flash('success', $attached > 0
+            ? sprintf('Project created — %d Inspector render%s carried over as %s.',
+                $attached, $attached === 1 ? '' : 's', $attached === 1 ? 'a take' : 'takes')
+            : 'Project created — generate the chunks below.');
+
+        return response()->json([
+            'ok' => true,
+            'url' => route('admin.studio.projects.show', $project),
+            'attached' => $attached,
+        ]);
+    }
+
+    /**
+     * Adopt stashed Inspector renders as takes on their matching chunks and
+     * count how many made it. Trusts only the server-written sidecar (text,
+     * voice, knobs, seed), never the client's claims; consumed stash files are
+     * deleted, unusable ones are left for the TTL prune.
+     *
+     * @param  list<array{index: int|string, token: string}>  $takes
+     */
+    private function attachInspectorTakes(Request $request, TtsProject $project, Voice $voice, array $takes): int
+    {
+        if ($takes === []) {
+            return 0;
+        }
+
+        $disk = Storage::disk('local');
+        $chunks = $project->chunks()->orderBy('position')->get()->keyBy('position');
+        $attached = 0;
+
+        foreach ($takes as $take) {
+            $chunk = $chunks->get((int) $take['index']);
+            $path = StudioController::stashPath($request->user()->id, (string) $take['token']);
+            $metaPath = StudioController::stashPath($request->user()->id, (string) $take['token'], 'json');
+
+            $meta = $disk->exists($metaPath) ? json_decode((string) $disk->get($metaPath), true) : null;
+
+            $usable = $chunk !== null
+                && is_array($meta)
+                && (string) ($meta['text'] ?? '') === $chunk->text
+                && (string) ($meta['voice_id'] ?? '') === (string) $voice->id
+                && $disk->exists($path);
+
+            if (! $usable) {
+                continue;
+            }
+
+            $this->projects->attachInspectorTake(
+                $chunk,
+                (string) $disk->get($path),
+                is_array($meta['settings'] ?? null) ? $meta['settings'] : [],
+                isset($meta['seed']) && (int) $meta['seed'] > 0 ? (int) $meta['seed'] : null,
+            );
+
+            $disk->delete([$path, $metaPath]);
+            $attached++;
+        }
+
+        return $attached;
     }
 
     /**

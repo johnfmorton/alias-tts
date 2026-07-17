@@ -81,6 +81,10 @@ Route::get('/health/test/{id}/audio', [HealthTestController::class, 'audio'])->n
 Route::prefix('studio')->name('studio.')->group(function () {
     Route::get('/', [StudioController::class, 'index'])->name('index');
     Route::post('/preview', [StudioController::class, 'preview'])->name('preview');
+    // Inspector pronunciation panel: LLM suggestions on the pasted text + one-click
+    // approval into the writer's dictionary (applies on the next preview).
+    Route::post('/pronunciation/suggestions', [StudioController::class, 'pronunciationSuggestions'])->name('pronunciation.suggestions');
+    Route::post('/pronunciation/approve', [StudioController::class, 'approvePronunciation'])->name('pronunciation.approve');
     Route::post('/synthesize', [StudioController::class, 'synthesize'])->name('synthesize');
     Route::post('/stitch', [StudioController::class, 'stitch'])->name('stitch');
     Route::post('/concat', [StudioController::class, 'concat'])->name('concat');
@@ -102,6 +106,9 @@ Route::prefix('studio')->name('studio.')->group(function () {
         Route::post('/review', [StudioProjectController::class, 'review'])->name('review');
         Route::post('/apply', [StudioProjectController::class, 'applyAndStore'])->name('apply');
         Route::post('/', [StudioProjectController::class, 'store'])->name('store');
+        // The Inspector's closing CTA — create a project from the inspected text,
+        // carrying any stashed chunk renders across as takes (AJAX, JSON).
+        Route::post('/from-inspector', [StudioProjectController::class, 'storeFromInspector'])->name('from-inspector');
 
         // Projects are personal: every {project} route requires the owner (or a
         // SuperAdmin) — TtsProjectPolicy::access. Chunk/take mismatches inside a

@@ -391,15 +391,18 @@
                 <div>
                     <h3 class="text-[15px] font-semibold text-zinc-100">Inspector</h3>
                     <p class="mt-1.5 text-sm leading-relaxed text-zinc-400">
-                        Paste text, pick a voice, and see exactly how production will normalize and chunk it —
-                        the preview uses the same code as the real pipeline and costs nothing.
+                        Paste text, pick a voice, and see exactly what production will do with it — the
+                        cleaned text, chunk boundaries, pronunciation fixes, and the estimated cost — before
+                        anything renders. The preview is free; audition chunks as you go, then create a
+                        project from your findings, and every render carries over as a take.
                     </p>
                 </div>
                 <div>
                     <h3 class="text-[15px] font-semibold text-zinc-100">Hear it three ways</h3>
                     <p class="mt-1.5 text-sm leading-relaxed text-zinc-400">
-                        One whole-text call, raw chunk-by-chunk, or stitched the way production joins it — and
-                        audition any single seam, QA flags inline, before rebuilding the whole file.
+                        Raw chunk-by-chunk, any single seam in isolation, or the full file stitched the way
+                        production joins it. In projects, QA flags sit inline on every chunk — a suspect take
+                        is visible before you rebuild.
                     </p>
                 </div>
                 <div>

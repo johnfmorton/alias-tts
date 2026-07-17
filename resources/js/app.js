@@ -427,6 +427,9 @@ function initStudio() {
         synthesize: root.dataset.synthesizeUrl,
         stitch: root.dataset.stitchUrl,
         concat: root.dataset.concatUrl,
+        suggestions: root.dataset.suggestionsUrl,
+        approve: root.dataset.approveUrl,
+        createProject: root.dataset.createProjectUrl,
     };
 
     const els = {
@@ -446,13 +449,23 @@ function initStudio() {
         chunkCount: document.getElementById('studio-chunk-count'),
         chunks: document.getElementById('studio-chunks'),
         previewBtn: document.getElementById('studio-preview'),
-        wholeBtn: document.getElementById('studio-whole'),
         wholeAudio: document.getElementById('studio-whole-audio'),
         stitchBtn: document.getElementById('studio-stitch'),
         concatBar: document.getElementById('studio-concat-bar'),
         concatBtn: document.getElementById('studio-concat'),
         concatStatus: document.getElementById('studio-concat-status'),
         concatAudio: document.getElementById('studio-concat-audio'),
+        estimate: document.getElementById('studio-estimate'),
+        estimateLabel: document.getElementById('studio-estimate-label'),
+        balance: document.getElementById('studio-balance'),
+        pron: document.getElementById('studio-pron'),
+        pronApplied: document.getElementById('studio-pron-applied'),
+        pronStatus: document.getElementById('studio-pron-status'),
+        pronSuggestions: document.getElementById('studio-pron-suggestions'),
+        carryNote: document.getElementById('studio-carry-note'),
+        projectTitle: document.getElementById('studio-project-title'),
+        createBtn: document.getElementById('studio-create-project'),
+        createStatus: document.getElementById('studio-create-status'),
     };
 
     let normalizedText = '';
@@ -470,7 +483,7 @@ function initStudio() {
     // Common generation params from the form controls. `text` is whatever we want
     // synthesized (a chunk, or the whole normalized text). Only the ACTIVE
     // engine's knobs ride along — the chosen voice decides which those are.
-    const params = (text) => {
+    const paramsObject = (text) => {
         const body = { text };
         if (els.voice?.value) body.voice = els.voice.value;
         if (knobValue(els.exaggeration) !== '') body.exaggeration = els.exaggeration.value;
@@ -479,8 +492,9 @@ function initStudio() {
         if (knobValue(els.topP) !== '') body.top_p = els.topP.value;
         if (knobValue(els.topK) !== '') body.top_k = els.topK.value;
         if (knobValue(els.repetitionPenalty) !== '') body.repetition_penalty = els.repetitionPenalty.value;
-        return new URLSearchParams(body);
+        return body;
     };
+    const params = (text) => new URLSearchParams(paramsObject(text));
 
     // The inspector's knob row follows the chosen voice's engine.
     if (els.voice && els.knobs) {
@@ -488,26 +502,30 @@ function initStudio() {
         syncKnobEngines(els.knobs, modelOfSelect(els.voice));
     }
 
-    async function fetchBlob(url, text) {
+    async function fetchBlob(url, text, extra = {}) {
+        const body = params(text);
+        Object.entries(extra).forEach(([k, v]) => body.set(k, v));
         const res = await fetch(url, {
             method: 'POST',
             headers: { 'X-CSRF-TOKEN': csrfToken(), 'Accept': 'audio/*' },
-            body: params(text),
+            body,
         });
         if (!res.ok) throw new Error(await errorMessage(res));
-        return res.blob();
+        // The stash token (per-chunk renders only) that lets "Create project"
+        // carry this exact render across as a take.
+        return { blob: await res.blob(), token: res.headers.get('X-Inspector-Take') };
     }
 
     // Generate `text`, play it into `audio`, drive `btn`'s busy state, and return
-    // the blob (or null on error) so callers can retain it.
-    async function generate(url, text, audio, btn, label) {
+    // {blob, token} (or null on error) so callers can retain them.
+    async function generate(url, text, audio, btn, label, extra = {}) {
         const t0 = performance.now();
         startBusy(btn, label);
         try {
-            const blob = await fetchBlob(url, text);
-            playAudio(audio, blob);
+            const result = await fetchBlob(url, text, extra);
+            playAudio(audio, result.blob);
             setStatus(els.status, `✓ ${label.replace('…', '')} done in ${elapsed(t0)}s.`, 'ok');
-            return blob;
+            return result;
         } catch (err) {
             setStatus(els.status, `✗ ${err.message}`, 'error');
             return null;
@@ -537,14 +555,18 @@ function initStudio() {
         count.textContent = `${chunk.chars} chars`;
         meta.append(num, count);
 
-        // "include" checkbox — hidden until this chunk has been generated.
+        // "stitch test" checkbox — hidden until this chunk has been generated.
+        // Scoped STRICTLY to the "▶ Concatenate selected" seam test; it must
+        // never read as project-inclusion (Create project carries every render
+        // regardless — real exclusion lives on the project's 🔇 skip toggle).
         const include = document.createElement('label');
         include.className = 'hidden cursor-pointer items-center gap-1.5 text-xs text-zinc-400';
+        include.title = "Include this render when “▶ Concatenate selected” stitches chunks through the production trim + seam join. Doesn't affect Create project — every render you make here carries over.";
         const cb = document.createElement('input');
         cb.type = 'checkbox';
         cb.checked = true;
         cb.className = 'accent-cyan-500';
-        include.append(cb, document.createTextNode('include'));
+        include.append(cb, document.createTextNode('stitch test'));
         state.checkbox = cb;
 
         const genBtn = document.createElement('button');
@@ -566,12 +588,17 @@ function initStudio() {
 
         if (els.voice) {
             genBtn.addEventListener('click', async () => {
-                const blob = await generate(urls.synthesize, chunk.text, audio, genBtn, 'Generating…');
-                if (!blob) return;
-                state.blob = blob;
+                // stash=1: the server parks the raw render under a token so the
+                // "Create project" CTA can adopt it as a take (no re-billing).
+                const result = await generate(urls.synthesize, chunk.text, audio, genBtn, 'Generating…', { stash: '1' });
+                if (!result) return;
+                state.blob = result.blob;
+                state.token = result.token;
+                state.voice = els.voice.value;
                 include.classList.remove('hidden');
                 include.classList.add('inline-flex');
                 refreshConcatBar();
+                refreshCarryNote();
             });
         } else {
             genBtn.disabled = true;
@@ -587,7 +614,7 @@ function initStudio() {
     async function concatSelected() {
         const chosen = chunkStates.filter((s) => s.blob && s.checkbox?.checked);
         if (!chosen.length) {
-            setStatus(els.concatStatus, 'Tick at least one generated chunk first.', 'error');
+            setStatus(els.concatStatus, 'Tick “stitch test” on at least one generated chunk first.', 'error');
             return;
         }
         const fd = new FormData();
@@ -626,15 +653,188 @@ function initStudio() {
         els.normChars.textContent = data.chars;
         els.chunkCount.textContent = data.chunks.length;
 
-        chunkStates = data.chunks.map((c) => ({ index: c.index, text: c.text, breakAfter: c.breakAfter, blob: null, checkbox: null }));
+        chunkStates = data.chunks.map((c) => ({ index: c.index, text: c.text, breakAfter: c.breakAfter, blob: null, token: null, voice: null, checkbox: null }));
         els.chunks.replaceChildren(...data.chunks.map((c, i) => chunkCard(c, chunkStates[i])));
         enhanceStudioPlayers(els.chunks); // skin the freshly-built chunk players
+
+        renderEstimate(data.estimate);
+        renderApplied(data.pronunciation?.applied ?? []);
 
         hidePlayer(els.wholeAudio);
         els.concatBar.classList.add('hidden');
         hidePlayer(els.concatAudio);
         setStatus(els.concatStatus, '');
+        setStatus(els.createStatus, '');
+        refreshCarryNote();
         els.results.classList.remove('hidden');
+    }
+
+    // Server-formatted cost estimate for one render of every chunk (the server
+    // owns all money math and viewer awareness — SuperAdmins see actual spend,
+    // everyone else their marked-up price). Absent = no rates configured.
+    function renderEstimate(estimate) {
+        if (!els.estimate) return;
+        els.estimate.classList.toggle('hidden', !estimate);
+        if (!estimate) return;
+        els.estimateLabel.textContent = estimate.label;
+        els.estimateLabel.title = estimate.title;
+        const balance = estimate.balance;
+        els.balance.classList.toggle('hidden', !balance);
+        if (balance) {
+            els.balance.textContent = balance.label;
+            els.balance.classList.toggle('text-red-300', balance.low);
+            els.balance.classList.toggle('border-red-500/40', balance.low);
+        }
+    }
+
+    // ── Pronunciation panel ─────────────────────────────────────────────────
+    // "Applied" lists the dictionary respellings already IN the text above;
+    // suggestions arrive async from the LLM and can be added with one click.
+
+    function syncPronVisibility() {
+        if (!els.pron) return;
+        const hasContent = !els.pronApplied.classList.contains('hidden')
+            || els.pronSuggestions.childElementCount > 0
+            || els.pronStatus.textContent.trim() !== '';
+        els.pron.classList.toggle('hidden', !hasContent);
+    }
+
+    function renderApplied(applied) {
+        if (!els.pronApplied) return;
+        if (applied.length) {
+            els.pronApplied.textContent = 'Applied: ' + applied.map((a) => `${a.term} → ${a.phonetic}`).join('  ·  ');
+        }
+        els.pronApplied.classList.toggle('hidden', !applied.length);
+        syncPronVisibility();
+    }
+
+    function suggestionRow(s) {
+        const li = document.createElement('li');
+        li.className = 'flex flex-wrap items-center justify-between gap-2 rounded-lg border border-white/8 bg-inset/60 px-3 py-2 text-sm';
+
+        const label = document.createElement('span');
+        const term = document.createElement('span');
+        term.className = 'font-medium text-zinc-200';
+        term.textContent = s.term;
+        const phonetic = document.createElement('span');
+        phonetic.className = 'text-cyan-300';
+        phonetic.textContent = s.phonetic;
+        label.append(term, document.createTextNode(' → '), phonetic);
+        if (s.note) {
+            const note = document.createElement('span');
+            note.className = 'ml-2 text-xs text-zinc-500';
+            note.textContent = s.note;
+            label.append(note);
+        }
+
+        const btn = document.createElement('button');
+        btn.type = 'button';
+        btn.className = 'rounded-lg border border-zinc-700 px-2.5 py-1 text-xs hover:bg-zinc-800';
+        btn.textContent = 'Add to dictionary';
+        btn.addEventListener('click', async () => {
+            startBusy(btn, 'Adding…');
+            try {
+                const body = new URLSearchParams({ term: s.term, phonetic: s.phonetic });
+                ['category', 'confidence', 'note', 'match_mode'].forEach((k) => { if (s[k]) body.set(k, s[k]); });
+                const res = await fetch(urls.approve, {
+                    method: 'POST',
+                    headers: { 'X-CSRF-TOKEN': csrfToken(), 'Accept': 'application/json' },
+                    body,
+                });
+                if (!res.ok) throw new Error(await errorMessage(res));
+                endBusy(btn);
+                const added = document.createElement('span');
+                added.className = 'text-xs text-emerald-300';
+                added.textContent = '✓ added';
+                btn.replaceWith(added);
+                setStatus(els.pronStatus, 'Added to your dictionary — run Preview again to apply it to the text.', 'ok');
+            } catch (err) {
+                endBusy(btn);
+                setStatus(els.pronStatus, `✗ ${err.message}`, 'error');
+            }
+        });
+
+        li.append(label, btn);
+        return li;
+    }
+
+    // Guards against a stale response landing after the user re-previewed.
+    let suggestionsSeq = 0;
+
+    async function loadSuggestions(text) {
+        if (!els.pron || !urls.suggestions) return;
+        const seq = ++suggestionsSeq;
+        els.pronSuggestions.replaceChildren();
+        setStatus(els.pronStatus, 'Checking for words worth respelling…');
+        syncPronVisibility();
+        try {
+            const res = await fetch(urls.suggestions, {
+                method: 'POST',
+                headers: { 'X-CSRF-TOKEN': csrfToken(), 'Accept': 'application/json' },
+                body: new URLSearchParams({ text }),
+            });
+            if (!res.ok) throw new Error(await errorMessage(res));
+            const data = await res.json();
+            if (seq !== suggestionsSeq) return;
+            if (!data.available || !data.suggestions.length) {
+                setStatus(els.pronStatus, data.available ? 'No new pronunciation suggestions for this text.' : '');
+                syncPronVisibility();
+                return;
+            }
+            setStatus(els.pronStatus, '');
+            els.pronSuggestions.replaceChildren(...data.suggestions.map(suggestionRow));
+            syncPronVisibility();
+        } catch {
+            // Detection is best-effort — a failure just means no suggestions panel.
+            if (seq === suggestionsSeq) {
+                setStatus(els.pronStatus, '');
+                syncPronVisibility();
+            }
+        }
+    }
+
+    // ── Create project (the closing CTA) ────────────────────────────────────
+
+    // Renders eligible to ride into the project: stashed, and made with the
+    // voice the project will actually be created with (switching the voice
+    // after rendering keeps the audio playable here, but it must not become a
+    // take that contradicts the project's voice).
+    const carryable = () => chunkStates.filter((s) => s.token && s.voice === (els.voice?.value ?? ''));
+
+    function refreshCarryNote() {
+        if (!els.carryNote) return;
+        const n = carryable().length;
+        els.carryNote.classList.toggle('hidden', n === 0);
+        if (n > 0) {
+            els.carryNote.textContent = ` ${n} chunk render${n === 1 ? '' : 's'} you made here will carry over as ${n === 1 ? 'a take' : 'takes'} — already paid for, no re-generation.`;
+        }
+    }
+
+    async function createProject() {
+        const text = els.text.value.trim();
+        if (!text) {
+            setStatus(els.createStatus, 'Paste some text first.', 'error');
+            return;
+        }
+        const body = paramsObject(text);
+        if (els.projectTitle?.value.trim()) body.title = els.projectTitle.value.trim();
+        body.takes = carryable().map((s) => ({ index: s.index, token: s.token }));
+
+        startBusy(els.createBtn, 'Creating…');
+        try {
+            const res = await fetch(urls.createProject, {
+                method: 'POST',
+                headers: { 'X-CSRF-TOKEN': csrfToken(), 'Accept': 'application/json', 'Content-Type': 'application/json' },
+                body: JSON.stringify(body),
+            });
+            if (!res.ok) throw new Error(await errorMessage(res));
+            const data = await res.json();
+            setStatus(els.createStatus, '✓ Project created — opening…', 'ok');
+            window.location.assign(data.url); // stay "busy" until the page swaps
+        } catch (err) {
+            setStatus(els.createStatus, `✗ ${err.message}`, 'error');
+            endBusy(els.createBtn);
+        }
     }
 
     async function preview() {
@@ -649,11 +849,13 @@ function initStudio() {
             const res = await fetch(urls.preview, {
                 method: 'POST',
                 headers: { 'X-CSRF-TOKEN': csrfToken(), 'Accept': 'application/json' },
-                body: new URLSearchParams({ text }),
+                // Full params: the voice picks the model that prices the estimate.
+                body: params(text),
             });
             if (!res.ok) throw new Error(await errorMessage(res));
             renderPreview(await res.json());
             setStatus(els.status, '');
+            loadSuggestions(text); // async LLM check — never blocks the breakdown
         } catch (err) {
             setStatus(els.status, `✗ ${err.message}`, 'error');
         } finally {
@@ -663,14 +865,15 @@ function initStudio() {
 
     els.previewBtn.addEventListener('click', preview);
     els.concatBtn.addEventListener('click', concatSelected);
+    els.createBtn?.addEventListener('click', createProject);
+    // Switching voices changes which stashed renders may carry into a project.
+    els.voice?.addEventListener('change', refreshCarryNote);
 
     // Editing the text invalidates the breakdown — hide it until re-previewed.
     els.text.addEventListener('input', () => els.results.classList.add('hidden'));
 
     initTuningKnobs(root); // wire the single-shot Exaggeration / CFG-Pace / Temperature sliders
 
-    els.wholeBtn?.addEventListener('click', () =>
-        generate(urls.synthesize, normalizedText, els.wholeAudio, els.wholeBtn, 'Generating whole…'));
     els.stitchBtn?.addEventListener('click', () =>
         generate(urls.stitch, normalizedText, els.wholeAudio, els.stitchBtn, 'Stitching…'));
 }
@@ -1085,6 +1288,7 @@ const TAKE_SOURCE_LABELS = {
     use: 'kept from a preview',
     remediate: 'QA auto-fix',
     duplicate: 'copied from the original project',
+    inspector: 'carried over from the Inspector',
 };
 
 function initStudioProject() {

@@ -284,11 +284,19 @@ available — see [docs/SSO-SETUP.md](docs/SSO-SETUP.md).
 the text-to-speech pipeline — useful for dialing in a voice, debugging chunk
 seams, or fixing one sentence in a long piece without regenerating the whole file.
 
-- **Inspector** — paste text and pick a voice to see exactly how it's normalized
-  and split into chunks (using the *same* normalizer and chunker as production, so
-  this preview costs nothing). Then hear it three ways for A/B comparison: as a
-  single whole-text call, chunk-by-chunk (raw, untrimmed provider audio so any seam
-  artifacts are audible), or stitched the way production concatenates it.
+- **Inspector** — paste text and pick a voice to see exactly what a project made
+  from it would read: cleaned and normalized, respelled by your approved
+  pronunciation dictionary, and split into chunks (the *same* pipeline projects
+  use, so this preview costs nothing). The breakdown includes an up-front
+  **estimated cost** for rendering every chunk once — quoted at your account's
+  rates, next to your remaining credit — and, when the pronunciation
+  pre-processor is enabled, new LLM respelling suggestions you can add to your
+  dictionary with one click. Then audition it: chunk-by-chunk (raw, untrimmed
+  provider audio so any seam artifacts are audible) or **Preview final audio** —
+  every chunk rendered and stitched exactly the way production builds the final
+  file. Done inspecting? **Create a project** straight from the breakdown —
+  chunks you already rendered carry over as real takes, so paid audio is never
+  thrown away.
 - **Projects** — saved, editable jobs. Create a project from text, edit or insert
   individual chunks, generate or regenerate a single chunk at a time, preview the
   stitch across a seam, then rebuild and download the final MP3 (or WAV, per your

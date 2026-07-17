@@ -488,6 +488,22 @@ class ProjectService
     }
 
     /**
+     * Attach a render made in the Inspector as a chunk's take — the Inspector →
+     * project carry-over. $bytes are the provider's RAW output (the Inspector
+     * stashes them pre-cleanup), stored exactly like {@see generateChunk()}
+     * stores its takes, so rebuild applies the one production cleanup pass.
+     * Credit is NOT charged: the render was billed when the Inspector made it
+     * (an 'inspector' ledger row); the spend counters DO increment — this
+     * project is where that spend now lives, same as the Speech→project import.
+     *
+     * @param  array<string, mixed>  $override  tuning knobs the render used
+     */
+    public function attachInspectorTake(TtsChunk $chunk, string $bytes, array $override = [], ?int $seed = null): TtsChunkTake
+    {
+        return $this->recordTake($chunk, $bytes, 'inspector', override: $override, seed: $seed, chargeCredit: false);
+    }
+
+    /**
      * Record one synthesized take of a chunk: write its own immutable audio file,
      * insert the take row (tuning override snapshot + optional ASR verdict), prune
      * old takes, and — unless it's a bare preview ($select=false) — point the chunk
@@ -499,13 +515,15 @@ class ProjectService
      * chunk inherited the project setting). It's snapshotted so the take list can
      * show what produced it and a later "select" can restore the same knobs.
      *
-     * @param  'generate'|'reroll'|'preview'|'use'|'remediate'  $source
+     * @param  'generate'|'reroll'|'preview'|'use'|'remediate'|'inspector'  $source
      * @param  array<string, mixed>  $override
      * @param  array<string, mixed>  $reportExtra  merged into asr_report (e.g. action=rerolled)
-     * @param  bool  $chargeCredit  false ONLY for the Speech→project import
-     *                              ({@see createGeneratedFromSpeech}), whose render was already
-     *                              charged per segment by SpeechService::process() — the spend
-     *                              counters below still increment (display), credit must not.
+     * @param  bool  $chargeCredit  false for renders already billed elsewhere: the
+     *                              Speech→project import ({@see createGeneratedFromSpeech},
+     *                              charged per segment by SpeechService::process()) and the
+     *                              Inspector carry-over ({@see attachInspectorTake}, charged
+     *                              at render time) — the spend counters below still
+     *                              increment (display), credit must not.
      */
     private function recordTake(
         TtsChunk $chunk,

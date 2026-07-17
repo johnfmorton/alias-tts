@@ -46,3 +46,6 @@ __pycache__/
 # Opt-in activation of the local Chatterbox DDEV add-on (the .example original
 # stays tracked; see docs/CHATTERBOX-LOCAL.md).
 /.ddev/docker-compose.chatterbox.yaml
+
+# Per-machine Claude Code permissions (shared skills in .claude/skills stay tracked).
+/.claude/settings.local.json

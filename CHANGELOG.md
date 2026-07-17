@@ -7,6 +7,24 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 ## [Unreleased]
 
 ### Added
+- **The Inspector now shows the whole story before you spend.** The Studio
+  Inspector's preview runs the same text pipeline projects use — cleanup and
+  normalization, your approved pronunciation respellings, and your spoken-quotes
+  setting — so the chunks on screen are exactly what a project would read. The
+  breakdown now includes an **estimated cost** for rendering every chunk once,
+  quoted at your account's rates (SuperAdmins see the actual provider figure,
+  plus what users are billed when a markup is configured) alongside your
+  remaining credit. When the pronunciation pre-processor is enabled, new LLM
+  respelling suggestions appear in the preview with a one-click **Add to
+  dictionary**.
+- **Create a project from the Inspector — renders included.** The Inspector's
+  closing action is now **Create project**: it turns the inspected text into an
+  editable Studio project, and any chunks you already generated in the Inspector
+  carry over as real takes (labeled "carried over from the Inspector") — the
+  audio you paid for and auditioned is kept, not thrown away, and nothing is
+  billed twice. A render only attaches when its text and voice still match the
+  project's chunk, so stored audio can never contradict its script.
+
 - **Watch a long generation progress clip by clip.** While an async job is
   `processing`, the status endpoint (`GET /v1/text-to-speech/jobs/{id}`) now
   carries a `progress` object — `stage` (`generating` or `stitching`),
@@ -16,6 +34,23 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   Strictly additive to the ElevenLabs-compatible surface: the field is `null`
   before the worker starts and after any terminal status, and clients that
   ignore it behave exactly as before.
+
+### Changed
+- **Inspector copy no longer references the Bespoken plugin.** The normalized-
+  text summary now reads "Cleaned and normalized text of N chars, split into
+  M chunk(s), as shown below."
+- **One clear render button in the Inspector.** "Stitched (production)" is now
+  **Preview final audio** — the render that sounds exactly like what a project
+  delivers, with a tooltip saying so. The old "Whole (single call)" button is
+  gone: it sent the entire text as one engine call, which no delivery path ever
+  produces, so it only billed money for unrepresentative audio. Seam
+  diagnostics are still covered by the concatenate bar, which stitches the
+  exact chunk renders you heard.
+- **The per-chunk "include" checkbox is now "stitch test".** It only ever
+  selected chunks for the "Concatenate selected" seam test, but next to the new
+  Create-project action it read like project inclusion. The new label and its
+  tooltip make the scope explicit: it has no effect on Create project — every
+  render you make in the Inspector carries over regardless.
 
 ## [0.56.0] - 2026-07-16
 
