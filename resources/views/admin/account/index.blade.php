@@ -11,6 +11,23 @@
 
 <x-layout title="Account" description="Manage your profile, security, and how you sign in." content-width="max-w-[720px]">
 
+    {{-- ============ Credit (metered accounts only) ============ --}}
+    @if($user->hasLimitedCredit())
+        <div class="{{ $card }} mb-5">
+            <h2 class="text-[17px] font-semibold text-zinc-100">Credit</h2>
+            <div class="mt-3 text-2xl font-bold {{ $user->credit_balance_micro <= 0 ? 'text-warn' : 'text-zinc-100' }}">
+                {{ \App\Services\Credit\CreditService::formatMicro($user->credit_balance_micro) }}
+            </div>
+            <p class="mt-2 text-sm text-zinc-500">
+                Speech generation spends this balance and pauses when it reaches $0 — audio you've already
+                generated stays available.
+                @if(config('tts.support_email'))
+                    Need more? Contact <a href="mailto:{{ config('tts.support_email') }}" class="text-accent hover:underline">{{ config('tts.support_email') }}</a>.
+                @endif
+            </p>
+        </div>
+    @endif
+
     {{-- ============ Profile ============ --}}
     <div class="{{ $card }} mb-5">
         <h2 class="text-[17px] font-semibold text-zinc-100">Profile</h2>

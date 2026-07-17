@@ -2,7 +2,7 @@
     $btnPrimary = 'inline-flex items-center justify-center rounded-[9px] bg-accent px-4 py-[9px] text-sm font-semibold text-accent-on transition hover:bg-accent/90';
     $btnSecondary = 'inline-flex items-center justify-center rounded-[9px] border border-white/14 px-4 py-[9px] text-sm text-zinc-300 transition hover:bg-white/[0.04]';
     $well = 'w-full rounded-[9px] border border-white/10 bg-inset px-[13px] py-[10px] text-sm text-zinc-200 placeholder:text-zinc-600 focus:border-accent/50 focus:outline-none';
-    $cols = 'grid-cols-[2fr_2.3fr_1.1fr_1.1fr_1.1fr_0.9fr]';
+    $cols = 'grid-cols-[2fr_2.3fr_1.1fr_1.1fr_1.1fr_1fr_0.9fr]';
 
     $roleBadge = fn (\App\Models\User $u) => $u->isSuperAdmin()
         ? '<span class="rounded-[6px] border border-accent/30 bg-accent/[0.12] px-[9px] py-[3px] text-xs font-semibold text-accent">SuperAdmin</span>'
@@ -88,7 +88,7 @@
     {{-- Table --}}
     <div class="overflow-hidden rounded-[14px] border border-white/8 bg-panel">
         <div class="grid {{ $cols }} border-b border-white/8 px-[22px] py-[13px] text-[11px] font-semibold tracking-wide text-zinc-500 uppercase">
-            <div>User</div><div>Email</div><div>Role</div><div>Status</div><div>Last active</div><div>Gens</div>
+            <div>User</div><div>Email</div><div>Role</div><div>Status</div><div>Last active</div><div>Balance</div><div>Gens</div>
         </div>
 
         @foreach($users as $u)
@@ -103,6 +103,10 @@
                 <div>{!! $roleBadge($u) !!}</div>
                 <div>{!! $statusBadge($u) !!}</div>
                 <div class="text-[13px] text-zinc-500">{{ $u->last_active_at?->diffForHumans() ?? '—' }}</div>
+                {{-- Prepaid balance; "Unlimited" = no metering (the default). --}}
+                <div class="text-[13px] {{ $u->hasLimitedCredit() ? ($u->credit_balance_micro <= 0 ? 'font-semibold text-warn' : 'text-zinc-200') : 'text-zinc-500' }}">
+                    {{ \App\Services\Credit\CreditService::formatMicro($u->credit_balance_micro) }}
+                </div>
                 <div class="text-sm text-zinc-200">{{ $gens[$u->id] ?? 0 }}</div>
             </a>
         @endforeach
@@ -115,6 +119,8 @@
             'gens' => $gens[$selected->id] ?? 0,
             'keys' => $keyCounts[$selected->id] ?? 0,
             'isSelf' => $selected->is(auth()->user()),
+            'creditTotals' => $creditTotals,
+            'creditRecent' => $creditRecent,
         ])
     @endif
 </x-layout>

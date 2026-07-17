@@ -4,8 +4,10 @@ namespace App\Http\Controllers\Admin;
 
 use App\Http\Controllers\Controller;
 use App\Models\ApiKey;
+use App\Models\CreditTransaction;
 use App\Models\Speech;
 use App\Models\User;
+use App\Services\Credit\CreditService;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
@@ -23,6 +25,8 @@ use Illuminate\View\View;
  */
 class UserController extends Controller
 {
+    public function __construct(private readonly CreditService $credit) {}
+
     public function index(Request $request): View
     {
         $users = User::query()
@@ -55,7 +59,56 @@ class UserController extends Controller
             'selected' => $selected,
             'activeCount' => $users->where('status', User::STATUS_ACTIVE)->count(),
             'invitedCount' => $users->where('status', User::STATUS_INVITED)->count(),
+            // Drawer-only credit detail: lifetime charged-vs-actual sums and
+            // the last few ledger rows (this page is SuperAdmin-gated, so the
+            // actual provider cost is fine to show).
+            'creditTotals' => $selected ? $this->credit->chargedTotals($selected) : null,
+            'creditRecent' => $selected
+                ? CreditTransaction::where('user_id', $selected->id)->latest('id')->limit(10)->get()
+                : collect(),
         ]);
+    }
+
+    /**
+     * Grant credit (positive dollars) or adjust it (negative). The balance is
+     * denominated in what USERS are charged (marked-up), so "$5" buys $5 of
+     * their pricing. Granting to an unlimited account starts metering it.
+     */
+    public function grantCredit(Request $request, User $user): RedirectResponse
+    {
+        $data = $request->validate([
+            'amount' => ['required', 'numeric', 'not_in:0', 'between:-10000,10000'],
+            'note' => ['nullable', 'string', 'max:255'],
+        ]);
+
+        $this->credit->grant(
+            $user,
+            CreditService::toMicro($data['amount']),
+            $request->user(),
+            $data['note'] ?? null,
+        );
+
+        $verb = (float) $data['amount'] > 0 ? 'Added' : 'Adjusted by';
+
+        return $this->backToUser($user, success: sprintf(
+            '%s %s — %s\'s balance is now %s.',
+            $verb,
+            CreditService::formatMicro(CreditService::toMicro($data['amount'])),
+            $user->name,
+            CreditService::formatMicro($user->credit_balance_micro),
+        ));
+    }
+
+    /** Clear the balance back to unlimited (NULL); the ledger keeps an audit row. */
+    public function unlimitedCredit(Request $request, User $user): RedirectResponse
+    {
+        if (! $user->hasLimitedCredit()) {
+            return $this->backToUser($user, error: $user->name.'\'s account is already unlimited.');
+        }
+
+        $this->credit->makeUnlimited($user, $request->user());
+
+        return $this->backToUser($user, success: $user->name.'\'s account is now unlimited.');
     }
 
     /** Create a user with a temporary password shown once to the admin. */

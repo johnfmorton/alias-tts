@@ -2,12 +2,14 @@
 
 namespace App\Http\Controllers\Admin;
 
+use App\Http\Controllers\Concerns\ChecksCredit;
 use App\Http\Controllers\Controller;
 use App\Models\TtsProject;
 use App\Models\TuningPreset;
 use App\Models\User;
 use App\Models\Voice;
 use App\Services\Audio\AudioConverter;
+use App\Services\Credit\CreditService;
 use App\Services\SpeechService;
 use App\Services\TextChunker;
 use App\Services\TextNormalizer;
@@ -43,12 +45,15 @@ use Throwable;
  */
 class StudioController extends Controller
 {
+    use ChecksCredit;
+
     public function __construct(
         private readonly TtsProvider $provider,
         private readonly AudioConverter $converter,
         private readonly TextChunker $chunker,
         private readonly TextNormalizer $normalizer,
         private readonly VoiceSettingsResolver $settingsResolver,
+        private readonly CreditService $credit,
     ) {}
 
     public function index(Request $request): View
@@ -202,6 +207,10 @@ class StudioController extends Controller
             return $error;
         }
 
+        if ($error = $this->creditError($request->user())) {
+            return $error;
+        }
+
         $voice = $this->resolveVoice($request);
         if (! $voice) {
             return response()->json(['message' => 'No voice configured — add a voice first.'], 422);
@@ -212,6 +221,15 @@ class StudioController extends Controller
                 (string) $request->input('text'),
                 $this->referencePath($voice),
                 $this->settings($request, $voice),
+            );
+
+            // Inspector renders bypass SpeechService/ProjectService, so this
+            // is their only billing point (ledger-only — no spend counters).
+            $this->credit->charge(
+                $request->user()->id,
+                mb_strlen((string) $request->input('text')),
+                ModelCatalog::forVoice($voice),
+                'inspector',
             );
 
             // Run the same per-chunk cleanup production uses (edge trim, fades,
@@ -249,6 +267,10 @@ class StudioController extends Controller
             return $error;
         }
 
+        if ($error = $this->creditError($request->user())) {
+            return $error;
+        }
+
         $voice = $this->resolveVoice($request);
         if (! $voice) {
             return response()->json(['message' => 'No voice configured — add a voice first.'], 422);
@@ -271,6 +293,14 @@ class StudioController extends Controller
             $preserveTails = [];
             foreach ($segments as $segment) {
                 $rawParts[] = $this->provider->synthesize($segment['text'], $reference, $settings);
+                // Paid the moment the provider returns — charge per segment so
+                // a later failure doesn't hide money already spent.
+                $this->credit->charge(
+                    $request->user()->id,
+                    mb_strlen($segment['text']),
+                    ModelCatalog::forVoice($voice),
+                    'inspector',
+                );
                 $seamGapsMs[] = $segment['breakAfter'] === 'paragraph' ? $paragraphGap : $sentenceGap;
                 $preserveTails[] = $this->preservesTail($voice, $segment['text']);
             }

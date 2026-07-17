@@ -1,0 +1,142 @@
+<?php
+
+namespace Tests\Feature;
+
+use App\Models\CreditTransaction;
+use App\Models\User;
+use App\Services\Credit\CreditService;
+use Illuminate\Foundation\Testing\RefreshDatabase;
+use Tests\TestCase;
+
+/**
+ * The SuperAdmin credit surface on the Users page (grant / adjust / make
+ * unlimited, balance column, drawer detail) and the read-only balance card a
+ * limited user sees on their own Account page.
+ */
+class UsersCreditAdminTest extends TestCase
+{
+    use RefreshDatabase;
+
+    private function admin(): User
+    {
+        return User::factory()->create(['is_super_admin' => true]);
+    }
+
+    private function limitedUser(int $micro = 5_000_000): User
+    {
+        $user = User::factory()->create();
+        $user->forceFill(['credit_balance_micro' => $micro])->save();
+
+        return $user;
+    }
+
+    public function test_a_grant_sets_the_balance_and_writes_an_audited_ledger_row(): void
+    {
+        $admin = $this->admin();
+        $user = User::factory()->create(); // unlimited until the first grant
+
+        $this->actingAs($admin)
+            ->post(route('admin.users.credit', $user), ['amount' => '5', 'note' => 'trial credit'])
+            ->assertRedirect(route('admin.users.index', ['user' => $user->id]))
+            ->assertSessionHas('success');
+
+        $this->assertSame(5_000_000, $user->fresh()->credit_balance_micro);
+
+        $tx = CreditTransaction::sole();
+        $this->assertSame(CreditTransaction::TYPE_GRANT, $tx->type);
+        $this->assertSame($admin->id, $tx->created_by);
+        $this->assertSame('trial credit', $tx->note);
+        $this->assertSame(5_000_000, $tx->amount_micro);
+    }
+
+    public function test_a_negative_amount_adjusts_the_balance_down(): void
+    {
+        $user = $this->limitedUser(5_000_000);
+
+        $this->actingAs($this->admin())
+            ->post(route('admin.users.credit', $user), ['amount' => '-2'])
+            ->assertSessionHas('success');
+
+        $this->assertSame(3_000_000, $user->fresh()->credit_balance_micro);
+        $this->assertSame(CreditTransaction::TYPE_ADJUSTMENT, CreditTransaction::sole()->type);
+    }
+
+    public function test_a_zero_amount_is_rejected(): void
+    {
+        $user = $this->limitedUser();
+
+        $this->actingAs($this->admin())
+            ->from(route('admin.users.index', ['user' => $user->id]))
+            ->post(route('admin.users.credit', $user), ['amount' => '0'])
+            ->assertSessionHasErrors('amount');
+
+        $this->assertSame(0, CreditTransaction::count());
+    }
+
+    public function test_make_unlimited_clears_the_balance(): void
+    {
+        $user = $this->limitedUser();
+
+        $this->actingAs($this->admin())
+            ->delete(route('admin.users.credit.unlimited', $user))
+            ->assertSessionHas('success');
+
+        $this->assertNull($user->fresh()->credit_balance_micro);
+        $this->assertSame(CreditTransaction::TYPE_ADJUSTMENT, CreditTransaction::sole()->type);
+
+        // Doing it again is a no-op with a clear error, not a duplicate row.
+        $this->actingAs($this->admin())
+            ->delete(route('admin.users.credit.unlimited', $user))
+            ->assertSessionHas('error');
+        $this->assertSame(1, CreditTransaction::count());
+    }
+
+    public function test_the_credit_routes_are_superadmin_only(): void
+    {
+        $user = $this->limitedUser();
+        $regular = User::factory()->create();
+
+        $this->actingAs($regular)
+            ->post(route('admin.users.credit', $user), ['amount' => '5'])
+            ->assertStatus(403);
+
+        $this->actingAs($regular)
+            ->delete(route('admin.users.credit.unlimited', $user))
+            ->assertStatus(403);
+    }
+
+    public function test_the_users_page_shows_balances_and_the_drawer_detail(): void
+    {
+        $admin = $this->admin();
+        $user = $this->limitedUser(5_000_000);
+        app(CreditService::class)->charge($user->id, 1000, 'chatterbox', 'api');
+
+        $response = $this->actingAs($admin)
+            ->get(route('admin.users.index', ['user' => $user->id]))
+            ->assertStatus(200)
+            // The admin's own row reads Unlimited; the user's shows dollars.
+            ->assertSee('Unlimited')
+            ->assertSee('Balance');
+
+        // Drawer: balance headline, lifetime billed-vs-actual, recent rows.
+        $response->assertSee('Credit')
+            ->assertSee('Make unlimited')
+            ->assertSee('cost you');
+    }
+
+    public function test_the_account_page_shows_the_card_only_to_limited_users(): void
+    {
+        $limited = $this->limitedUser(2_500_000);
+        $this->actingAs($limited)
+            ->get(route('admin.account.index'))
+            ->assertStatus(200)
+            ->assertSee('$2.50')
+            ->assertSee('pauses when it reaches $0');
+
+        $unlimited = User::factory()->create();
+        $this->actingAs($unlimited)
+            ->get(route('admin.account.index'))
+            ->assertStatus(200)
+            ->assertDontSee('pauses when it reaches $0');
+    }
+}

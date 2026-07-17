@@ -387,6 +387,17 @@ return [
     // tuning knobs are free. Set EVERY rate to 0 to hide the cost readouts
     // (e.g. when running a self-hosted provider that costs nothing per call).
 
+    // Prepaid credit (see CreditService). `markup` multiplies the actual
+    // per-model rates above into the price limited users are charged and
+    // shown; SuperAdmins always see both figures. Values below 1.0 are
+    // clamped up to 1.0 at read time. Env-only ON PURPOSE — this must never
+    // become a Settings-page key, because users edit their own settings.
+    // There is no on/off switch: the system is inert while every user's
+    // balance is NULL (unlimited), which is the default.
+    'credit' => [
+        'markup' => (float) env('TTS_CREDIT_MARKUP', 1.0),
+    ],
+
     'ttl_hours' => (int) env('TTS_TTL_HOURS', 720), // cache generated audio for 30 days
 
     // Whether a /v1 API generation also creates an editable Studio project:

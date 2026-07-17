@@ -15,6 +15,7 @@ use App\Services\Asr\AsrClient;
 use App\Services\Asr\ChunkQualityVerdict;
 use App\Services\Asr\ChunkRemediator;
 use App\Services\Audio\AudioConverter;
+use App\Services\Credit\CreditService;
 use App\Services\Pronunciation\PronunciationSubstituter;
 use App\Services\Tts\ModelCatalog;
 use App\Services\Tts\ParalinguisticTags;
@@ -54,6 +55,7 @@ class ProjectService
         private PronunciationSubstituter $substituter,
         private SpokenQuotes $quotes,
         private VoiceService $voices,
+        private CreditService $credit,
     ) {}
 
     /**
@@ -208,7 +210,7 @@ class ProjectService
                 'characters' => mb_strlen($segment['text']),
             ]);
 
-            $this->recordTake($chunk, $segment['audio'], 'generate');
+            $this->recordTake($chunk, $segment['audio'], 'generate', chargeCredit: false);
         }
 
         $this->carryFinalAudio($project, $speech);
@@ -500,6 +502,10 @@ class ProjectService
      * @param  'generate'|'reroll'|'preview'|'use'|'remediate'  $source
      * @param  array<string, mixed>  $override
      * @param  array<string, mixed>  $reportExtra  merged into asr_report (e.g. action=rerolled)
+     * @param  bool  $chargeCredit  false ONLY for the Speech→project import
+     *                              ({@see createGeneratedFromSpeech}), whose render was already
+     *                              charged per segment by SpeechService::process() — the spend
+     *                              counters below still increment (display), credit must not.
      */
     private function recordTake(
         TtsChunk $chunk,
@@ -511,6 +517,7 @@ class ProjectService
         bool $select = true,
         bool $keepAsrWhenUnscored = false,
         ?int $seed = null,
+        bool $chargeCredit = true,
     ): TtsChunkTake {
         $takeId = (string) Str::orderedUuid();
         $path = $this->takePath($chunk, $takeId);
@@ -561,6 +568,19 @@ class ProjectService
             $model = ModelCatalog::forVoice($chunk->voice ?? $chunk->project->voice);
             SpendCounters::add('chunk', $chunk->id, $model, $spent);
             SpendCounters::add('project', $chunk->tts_project_id, $model, $spent);
+
+            // Debit the PROJECT OWNER (a SuperAdmin rendering inside a user's
+            // project spends that user's credit, matching whose readouts grow).
+            if ($chargeCredit) {
+                $this->credit->charge(
+                    $chunk->project->user_id,
+                    $spent,
+                    $model,
+                    'studio_'.$source,
+                    'chunk',
+                    (string) $chunk->id,
+                );
+            }
         }
 
         if ($select) {

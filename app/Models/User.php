@@ -38,6 +38,9 @@ class User extends Authenticatable
             'password' => 'hashed',
             'is_super_admin' => 'boolean',
             'studio_advanced' => 'boolean',
+            // Prepaid credit in micro-dollars; NULL = unlimited. Deliberately
+            // NOT fillable — only CreditService writes it (ledger-backed).
+            'credit_balance_micro' => 'integer',
             'last_active_at' => 'datetime',
             // 2FA material is encrypted at rest; recovery codes are an encrypted array.
             'two_factor_secret' => 'encrypted',
@@ -127,5 +130,17 @@ class User extends Authenticatable
     public function apiKeys(): HasMany
     {
         return $this->hasMany(ApiKey::class);
+    }
+
+    /** Credit ledger rows (grants + charges), newest first via the index. */
+    public function creditTransactions(): HasMany
+    {
+        return $this->hasMany(CreditTransaction::class);
+    }
+
+    /** True when this account has a metered credit balance (NULL = unlimited). */
+    public function hasLimitedCredit(): bool
+    {
+        return $this->credit_balance_micro !== null;
     }
 }

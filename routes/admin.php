@@ -57,6 +57,9 @@ Route::middleware(EnsureUserIsSuperAdmin::class)->group(function () {
     Route::post('/users/{user}/force-reset', [UserController::class, 'forceReset'])->name('users.force-reset');
     Route::post('/users/{user}/impersonate', [UserController::class, 'impersonate'])->name('users.impersonate');
     Route::delete('/users/{user}', [UserController::class, 'destroy'])->name('users.destroy');
+    // Prepaid credit: grant/adjust a balance, or clear it back to unlimited.
+    Route::post('/users/{user}/credit', [UserController::class, 'grantCredit'])->name('users.credit');
+    Route::delete('/users/{user}/credit', [UserController::class, 'unlimitedCredit'])->name('users.credit.unlimited');
 });
 
 // Settings — service configuration (env-pinned values are read-only).

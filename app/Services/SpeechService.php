@@ -12,6 +12,7 @@ use App\Models\Voice;
 use App\Services\Asr\AsrClient;
 use App\Services\Asr\ChunkRemediator;
 use App\Services\Audio\AudioConverter;
+use App\Services\Credit\CreditService;
 use App\Services\Tts\ModelCatalog;
 use App\Services\Tts\ParalinguisticTags;
 use App\Services\Tts\TtsProvider;
@@ -31,6 +32,7 @@ class SpeechService
         private AsrClient $asr,
         private ChunkRemediator $remediator,
         private ProjectService $projects,
+        private CreditService $credit,
     ) {}
 
     /**
@@ -161,6 +163,23 @@ class SpeechService
             foreach ($segments as $i => $segment) {
                 $failingIndex = $i; // attribute a provider/QA throw to this segment
                 $part = $this->provider->synthesize($segment['text'], $referencePath, $providerSettings);
+
+                // The render is paid the moment the provider returns, so debit
+                // the key owner NOW — even if a later QA/concat/store step
+                // fails, that money is spent. If this Speech is later imported
+                // into a Studio project, the import books spend counters only
+                // (recordTake chargeCredit: false) so credit is never charged
+                // twice. Hidden ASR remediation re-rolls inside qualityCheck()
+                // are deliberately uncharged — same blind spot as the Studio
+                // spend counters; the markup absorbs it.
+                $this->credit->charge(
+                    $speech->apiKey?->user_id,
+                    mb_strlen($segment['text']),
+                    $providerSettings['model'] ?? ModelCatalog::DEFAULT,
+                    'api',
+                    'speech',
+                    (string) $speech->id,
+                );
 
                 if ($this->asr->enabled()) {
                     $part = $this->qualityCheck($speech, $i, $segment['text'], $part, $referencePath, $providerSettings);
