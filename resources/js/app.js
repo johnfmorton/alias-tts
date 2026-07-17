@@ -1804,12 +1804,42 @@ function initStudioProject() {
     const setRunLock = (locked) => {
         runActive = locked;
         root.querySelectorAll('.studio-chunk').forEach((card) => {
+            // Generate stays usable during a run — it queues the chunk into the
+            // run instead of generating directly (see queueChunkRegen).
             const gen = card.querySelector('.chunk-generate');
-            if (gen) gen.disabled = locked || isDirty(card);
+            if (gen) {
+                gen.disabled = isDirty(card);
+                gen.title = locked
+                    ? 'Adds this clip to the active background run — it regenerates after the clips already in line.'
+                    : "Render this chunk's audio from its current text and tuning.";
+            }
             const reroll = card.querySelector('.chunk-reroll');
             if (reroll) reroll.disabled = locked;
         });
     };
+
+    // "Regenerate" while a background run is active: the direct endpoint would
+    // 409 (the worker owns generation), so append the chunk to the run instead.
+    // The server marks a generated chunk stale as it adopts it; the poll then
+    // reports it like any other clip in the run.
+    async function queueChunkRegen(card) {
+        const btn = card.querySelector('.chunk-generate');
+        startBusy(btn, 'Queueing…');
+        try {
+            const res = await fetch(card.dataset.queueUrl, {
+                method: 'POST',
+                headers: { 'X-CSRF-TOKEN': csrfToken(), 'Accept': 'application/json' },
+            });
+            if (!res.ok) throw new Error(await errorMessage(res));
+            const data = await res.json();
+            setChunkStatus(card, data.status);
+            setStatus(finalStatus, data.message || data.job?.message);
+        } catch (err) {
+            setStatus(finalStatus, `✗ ${err.message}`, 'error');
+        } finally {
+            endBusy(btn);
+        }
+    }
 
     // One chunk entry from the poll. Light entries ({id, status}) are chunks the
     // run hasn't finished with; full ones carry the same payload generateChunk()
@@ -2217,7 +2247,9 @@ function initStudioProject() {
                 endBusy(btn);
             }
         });
-        card.querySelector('.chunk-generate').addEventListener('click', () => generateChunk(card).catch(() => {}));
+        card.querySelector('.chunk-generate').addEventListener('click', () => (
+            runActive ? queueChunkRegen(card) : generateChunk(card).catch(() => {})
+        ));
 
         // Per-chunk voice override: PATCH the chosen voice. A generated chunk goes
         // stale (its audio used the previous voice), and the chunk stops mirroring

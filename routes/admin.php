@@ -154,6 +154,8 @@ Route::prefix('studio')->name('studio.')->group(function () {
             Route::post('/{project}/chunks/{chunk}/preview-tuning', [StudioProjectController::class, 'previewChunkTuning'])->name('chunks.preview-tuning');
             Route::post('/{project}/chunks/{chunk}/use-preview', [StudioProjectController::class, 'useChunkPreview'])->name('chunks.use-preview');
             Route::post('/{project}/chunks/{chunk}/generate', [StudioProjectController::class, 'generateChunk'])->name('chunks.generate');
+            // Regenerate while a background run is active: joins the run instead.
+            Route::post('/{project}/chunks/{chunk}/queue-generate', [StudioProjectController::class, 'queueChunk'])->name('chunks.queue');
             Route::post('/{project}/chunks/{chunk}/reroll', [StudioProjectController::class, 'rerollChunk'])->name('chunks.reroll');
             Route::get('/{project}/chunks/{chunk}/audio', [StudioProjectController::class, 'chunkAudio'])->name('chunks.audio');
             // Take history: every render is kept; the user can audition, re-select, or delete a take.

@@ -545,7 +545,9 @@ class StudioProjectTest extends TestCase
             ->assertSee('data-generate-remaining-url="'.route('admin.studio.projects.generate-remaining', $project).'"', false)
             ->assertSee('data-generation-status-url="'.route('admin.studio.projects.generation-status', $project).'"', false)
             ->assertSee('data-active-run="0"', false)
-            ->assertSee('id="project-generate-stop"', false);
+            ->assertSee('id="project-generate-stop"', false)
+            // Per-chunk Regenerate joins an active run through this endpoint.
+            ->assertSee('data-queue-url="'.route('admin.studio.projects.chunks.queue', [$project, $project->chunks()->first()]).'"', false);
     }
 
     public function test_show_page_flags_an_active_background_run(): void

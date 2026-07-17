@@ -205,6 +205,162 @@ class ProjectJobsTest extends TestCase
             ->assertStatus(409);
     }
 
+    // --- Queueing a chunk into an active run ---------------------------------
+
+    public function test_regenerate_queues_a_completed_chunk_into_the_active_run(): void
+    {
+        $project = $this->project();
+        [$first, $second] = $project->chunks()->get();
+        $first->update(['status' => ChunkStatus::Completed]);
+        $run = TtsProjectJob::create([
+            'tts_project_id' => $project->id,
+            'user_id' => $project->user_id,
+            'created_by_id' => $project->user_id,
+            'chunk_ids' => [$second->id],
+            'chunks_total' => 1,
+        ]);
+
+        $this->actingAs($this->admin())
+            ->postJson(route('admin.studio.projects.chunks.queue', [$project, $first]))
+            ->assertOk()
+            ->assertJsonPath('status', 'stale')
+            ->assertJsonPath('message', 'Clip 1 added to this run.')
+            ->assertJsonPath('job.chunks_total', 2);
+
+        // Stale (not completed) so the worker can't skip it, and last in line.
+        $this->assertSame(ChunkStatus::Stale, $first->fresh()->status);
+        $this->assertSame([$second->id, $first->id], $run->fresh()->chunk_ids);
+
+        $this->runJob($run);
+
+        $run->refresh();
+        $this->assertSame(ProjectJobStatus::Completed, $run->status);
+        $this->assertSame(2, $run->chunks_done);
+        $this->assertSame(ChunkStatus::Completed, $first->fresh()->status);
+        $this->assertGreaterThan(0, $first->takes()->count());
+    }
+
+    public function test_a_chunk_the_run_already_passed_can_be_requeued(): void
+    {
+        $project = $this->project();
+        [$first, $second] = $project->chunks()->get();
+        $run = $this->queuedRun($project);
+        // The worker has moved past chunk one (it rendered fine)…
+        $run->update(['status' => ProjectJobStatus::Running, 'chunks_done' => 1]);
+        $first->update(['status' => ChunkStatus::Completed]);
+
+        // …and the user, listening along, finds that clip bad and re-queues it.
+        $this->actingAs($this->admin())
+            ->postJson(route('admin.studio.projects.chunks.queue', [$project, $first]))
+            ->assertOk()
+            ->assertJsonPath('job.chunks_total', 3);
+
+        $this->assertSame([$first->id, $second->id, $first->id], $run->fresh()->chunk_ids);
+        $this->assertSame(ChunkStatus::Stale, $first->fresh()->status);
+    }
+
+    public function test_queueing_a_chunk_already_waiting_in_the_run_is_a_no_op(): void
+    {
+        $project = $this->project();
+        [, $second] = $project->chunks()->get();
+        $run = $this->queuedRun($project);
+
+        $this->actingAs($this->admin())
+            ->postJson(route('admin.studio.projects.chunks.queue', [$project, $second]))
+            ->assertOk()
+            ->assertJsonPath('job.chunks_total', 2);
+
+        $this->assertCount(2, $run->fresh()->chunk_ids);
+        $this->assertSame(ChunkStatus::Pending, $second->fresh()->status);
+    }
+
+    public function test_a_chunk_appended_mid_run_is_picked_up_by_the_worker(): void
+    {
+        $project = $this->project();
+        [$first, $second] = $project->chunks()->get();
+        $run = TtsProjectJob::create([
+            'tts_project_id' => $project->id,
+            'user_id' => $project->user_id,
+            'created_by_id' => $project->user_id,
+            'chunk_ids' => [$first->id],
+            'chunks_total' => 1,
+        ]);
+
+        // While the worker renders chunk one, "the user" queues chunk two —
+        // the loop must pick it up even though it started with a 1-chunk list.
+        $provider = new class($run->id, $second->id) extends FakeTtsProvider
+        {
+            public function __construct(private string $runId, private string $appendId) {}
+
+            public function synthesize(string $text, ?string $referenceAudio, array $settings): string
+            {
+                $run = TtsProjectJob::find($this->runId);
+                $ids = array_values((array) $run->chunk_ids);
+                if (! in_array($this->appendId, $ids, true)) {
+                    $run->update(['chunk_ids' => [...$ids, $this->appendId], 'chunks_total' => $run->chunks_total + 1]);
+                }
+
+                return parent::synthesize($text, $referenceAudio, $settings);
+            }
+        };
+        $this->app->instance(TtsProvider::class, $provider);
+
+        $this->runJob($run);
+
+        $run->refresh();
+        $this->assertSame(ProjectJobStatus::Completed, $run->status);
+        $this->assertSame(2, $run->chunks_done);
+        $this->assertSame(ChunkStatus::Completed, $second->fresh()->status);
+    }
+
+    public function test_queueing_is_refused_without_an_active_run_or_while_stopping(): void
+    {
+        $project = $this->project();
+        $chunk = $project->chunks()->first();
+        $admin = $this->admin();
+
+        // No run at all — use the direct endpoint instead.
+        $this->actingAs($admin)
+            ->postJson(route('admin.studio.projects.chunks.queue', [$project, $chunk]))
+            ->assertStatus(409);
+
+        // A stopping run winds down without reaching new work — refuse too.
+        $this->queuedRun($project)->update(['cancel_requested' => true]);
+        $this->actingAs($admin)
+            ->postJson(route('admin.studio.projects.chunks.queue', [$project, $chunk]))
+            ->assertStatus(409);
+    }
+
+    public function test_queueing_a_skipped_or_empty_chunk_is_refused(): void
+    {
+        $project = $this->project();
+        [$first, $second] = $project->chunks()->get();
+        $this->queuedRun($project);
+        $first->update(['skipped' => true]);
+        $second->update(['text' => '  ']);
+        $admin = $this->admin();
+
+        $this->actingAs($admin)
+            ->postJson(route('admin.studio.projects.chunks.queue', [$project, $first]))
+            ->assertStatus(422);
+        $this->actingAs($admin)
+            ->postJson(route('admin.studio.projects.chunks.queue', [$project, $second]))
+            ->assertStatus(422);
+    }
+
+    public function test_queueing_402s_when_the_owner_is_out_of_credit(): void
+    {
+        $owner = User::factory()->create(['credit_balance_micro' => 0]);
+        $project = $this->project($owner->id);
+        $run = $this->queuedRun($project);
+
+        $this->actingAs($owner)
+            ->postJson(route('admin.studio.projects.chunks.queue', [$project, $project->chunks()->first()]))
+            ->assertStatus(402);
+
+        $this->assertCount(2, $run->fresh()->chunk_ids);
+    }
+
     // --- The queue job -------------------------------------------------------
 
     public function test_a_chunk_failure_is_counted_and_the_run_carries_on(): void

@@ -31,6 +31,7 @@ use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Collection;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Facades\Validator;
 use Illuminate\Support\Str;
@@ -882,6 +883,80 @@ class StudioProjectController extends Controller
         $job->refresh();
 
         return response()->json(['ok' => true, 'job' => $job->statusPayload()], $job->isActive() ? 202 : 200);
+    }
+
+    /**
+     * "Regenerate" while a background run is active: append this chunk to the
+     * run instead of racing the worker (the manual endpoints 409 then — see
+     * {@see activeRunError()}). A generated chunk goes Stale in the same
+     * transaction the run adopts it, so the worker can't skip it as
+     * already-completed; queueing a chunk that's still waiting in the run is a
+     * no-op, so double-clicks can't book a clip twice. The one unwinnable race
+     * — the worker finishing the run in the same instant — leaves the chunk
+     * Stale but unprocessed; the page has settled by then and plain Regenerate
+     * covers it.
+     */
+    public function queueChunk(Request $request, TtsProject $project, TtsChunk $chunk): JsonResponse
+    {
+        $this->assertChunkBelongs($project, $chunk);
+
+        if ($chunk->skipped) {
+            return response()->json(['message' => 'This chunk is skipped — include it (🔊) before regenerating.'], 422);
+        }
+
+        if (trim((string) $chunk->text) === '') {
+            return response()->json(['message' => 'This chunk is empty — add text before generating.'], 422);
+        }
+
+        if ($error = $this->creditError($project->user)) {
+            return $error;
+        }
+
+        $active = TtsProjectJob::activeFor($project->id);
+        if (! $active) {
+            return response()->json(['message' => 'The background run just finished — use Regenerate directly.'], 409);
+        }
+        if ($active->cancel_requested) {
+            return response()->json(['message' => 'This run is stopping — wait for it to settle, then regenerate the clip.'], 409);
+        }
+
+        $run = DB::transaction(function () use ($project, $chunk) {
+            $run = TtsProjectJob::query()
+                ->where('tts_project_id', $project->id)
+                ->active()
+                ->latest('created_at')
+                ->lockForUpdate()
+                ->first();
+
+            if (! $run || $run->cancel_requested) {
+                return null;
+            }
+
+            $ids = array_values((array) $run->chunk_ids);
+            // done+failed = how many list entries the worker has moved past, so
+            // the slice is what it hasn't reached (including the one in flight).
+            $waiting = array_slice($ids, $run->chunks_done + $run->chunks_failed);
+
+            if (! in_array($chunk->id, $waiting, true)) {
+                if ($chunk->status === ChunkStatus::Completed) {
+                    $chunk->update(['status' => ChunkStatus::Stale]);
+                }
+                $run->update(['chunk_ids' => [...$ids, $chunk->id], 'chunks_total' => $run->chunks_total + 1]);
+            }
+
+            return $run;
+        });
+
+        if (! $run) {
+            return response()->json(['message' => 'The background run just finished — use Regenerate directly.'], 409);
+        }
+
+        return response()->json([
+            'ok' => true,
+            'status' => $chunk->refresh()->status->value,
+            'message' => sprintf('Clip %d added to this run.', $chunk->position + 1),
+            'job' => $run->refresh()->statusPayload(),
+        ]);
     }
 
     /**

@@ -232,6 +232,7 @@
                 <div class="studio-chunk rounded-xl border border-zinc-800 bg-zinc-900/50 p-4"
                      data-chunk-id="{{ $chunk->id }}"
                      data-generate-url="{{ route('admin.studio.projects.chunks.generate', [$project, $chunk]) }}"
+                     data-queue-url="{{ route('admin.studio.projects.chunks.queue', [$project, $chunk]) }}"
                      data-patch-url="{{ route('admin.studio.projects.chunks.update', [$project, $chunk]) }}"
                      data-tuning-url="{{ route('admin.studio.projects.chunks.tuning', [$project, $chunk]) }}"
                      data-reroll-url="{{ route('admin.studio.projects.chunks.reroll', [$project, $chunk]) }}"
