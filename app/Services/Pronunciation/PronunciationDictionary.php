@@ -66,6 +66,43 @@ class PronunciationDictionary
     }
 
     /**
+     * Terms the writer has explicitly declined — rows kept with
+     * `approved = false` — lowercased for case-insensitive matching. The review
+     * screen consults this so a declined term is never pre-checked again, and
+     * auto-apply paths (Genblaze runs) skip these outright.
+     *
+     * @return list<string>
+     */
+    public function rejectedTerms(?int $userId): array
+    {
+        return PronunciationEntry::query()
+            ->ownedBy($userId)
+            ->where('approved', false)
+            ->pluck('term')
+            ->map(fn (string $t) => mb_strtolower($t))
+            ->unique()
+            ->values()
+            ->all();
+    }
+
+    /**
+     * Remember suggestions the writer left unchecked on the review screen as
+     * declined entries (`approved = false`), so later runs stop pre-checking
+     * them. Never downgrades: a term that is already approved (e.g. a stale
+     * form re-submitted after approval elsewhere) is left untouched.
+     *
+     * @param  list<array<string, mixed>>  $suggestions
+     */
+    public function rejectSuggestions(?int $userId, array $suggestions): void
+    {
+        $approved = array_map(fn ($t) => mb_strtolower($t), $this->knownTerms($userId));
+
+        collect($suggestions)
+            ->reject(fn (array $s) => in_array(mb_strtolower(trim((string) ($s['term'] ?? ''))), $approved, true))
+            ->each(fn (array $s) => $this->upsert($userId, $s, approved: false));
+    }
+
+    /**
      * Add or correct an entry by hand (the editable-lexicon UI). Always recorded
      * as `source = user` and approved.
      *

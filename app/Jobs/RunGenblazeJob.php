@@ -8,6 +8,7 @@ use App\Services\Credit\CreditService;
 use App\Services\Genblaze\GenblazeRunnerClient;
 use App\Services\Genblaze\GenblazeRunStore;
 use App\Services\Pronunciation\PronunciationDetector;
+use App\Services\Pronunciation\PronunciationDictionary;
 use App\Services\Pronunciation\PronunciationSubstituter;
 use App\Services\Settings\SettingsManager;
 use App\Services\SpokenQuotes;
@@ -49,6 +50,7 @@ class RunGenblazeJob implements ShouldQueue
         GenblazeRunnerClient $runner,
         GenblazeRunStore $store,
         PronunciationDetector $detector,
+        PronunciationDictionary $dictionary,
         PronunciationSubstituter $substituter,
         SpokenQuotes $quotes,
     ): void {
@@ -73,13 +75,21 @@ class RunGenblazeJob implements ShouldQueue
             // visible part of the demo. Degrade-safe: any runner/LLM failure yields
             // no substitutions and the original text goes through unchanged.
             $detection = $detector->detect($this->text, $this->userId, force: true);
-            $applied = $substituter->apply($this->text, $detection['substitutions'] ?? []);
+
+            // This path auto-applies with no review screen, so a remembered
+            // "no" (a term the writer declined during review) must be honored
+            // here — never respell it behind their back.
+            $rejected = $dictionary->rejectedTerms($this->userId);
+            $subs = array_values(array_filter(
+                $detection['substitutions'] ?? [],
+                fn ($s) => ! in_array(mb_strtolower((string) ($s['term'] ?? '')), $rejected, true),
+            ));
+            $applied = $substituter->apply($this->text, $subs);
 
             // Record the pronunciation pass as the first LIVE pipeline step (the
             // runner reports the rest — chunk/generate/stitch/seal/upload — as it
             // works). A coarse detail here; the final panel fills the exact
             // respellings from the result's pronunciation block.
-            $subs = $detection['substitutions'] ?? [];
             $store->appendProgress($this->runId, [
                 'step' => 'pronounce',
                 'detail' => ($detection['available'] ?? false)
@@ -134,7 +144,9 @@ class RunGenblazeJob implements ShouldQueue
                 'available' => (bool) ($detection['available'] ?? false),
                 'provider' => (string) config('tts.pronunciation.llm_provider', 'replicate'),
                 'model' => config('tts.pronunciation.model'),
-                'substitutions' => $detection['substitutions'] ?? [],
+                // The post-rejection list — the panel shows what was actually
+                // eligible to apply, not what the LLM merely suggested.
+                'substitutions' => $subs,
                 'applied' => $applied['applied'],
                 'error' => $detection['error'] ?? null,
             ];

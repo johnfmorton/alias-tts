@@ -16,7 +16,7 @@
             @foreach($suggestions as $i => $s)
                 <div class="flex flex-wrap items-center gap-3 rounded-lg border border-zinc-800 bg-zinc-950/50 p-3">
                     <label class="flex items-center gap-2" title="Apply this respelling and save it to your dictionary">
-                        <input type="checkbox" name="approve[]" value="{{ $i }}" @checked(($s['confidence'] ?? '') === 'high')
+                        <input type="checkbox" name="approve[]" value="{{ $i }}" @checked(!empty($s['checked']))
                                class="h-4 w-4 rounded border-zinc-600 bg-zinc-900 text-cyan-500 focus:ring-cyan-500/30">
                         <span class="font-mono text-sm text-zinc-200">{{ $s['term'] }}</span>
                     </label>
@@ -44,6 +44,9 @@
                         @php($c = $s['confidence'])
                         <span class="rounded px-2 py-0.5 text-xs {{ $c === 'high' ? 'bg-emerald-500/15 text-emerald-300' : ($c === 'low' ? 'bg-zinc-700/40 text-zinc-400' : 'bg-amber-500/15 text-amber-300') }}">{{ $c }}</span>
                     @endif
+                    @if(!empty($s['previously_rejected']))
+                        <span class="rounded bg-zinc-800 px-2 py-0.5 text-xs text-zinc-500" title="You skipped this term before, so it stays unchecked — check it to approve it after all.">skipped before</span>
+                    @endif
                     @if(!empty($s['note']))
                         <span class="w-full text-xs text-zinc-500 sm:w-auto sm:flex-1">{{ $s['note'] }}</span>
                     @endif
@@ -51,7 +54,7 @@
             @endforeach
         </div>
 
-        <p class="text-xs text-zinc-500">Unchecked terms are skipped — your text is created as-is for those. Edit a respelling before applying if it reads wrong, and use <span class="text-zinc-400">▶ Test</span> to hear it before you decide.</p>
+        <p class="text-xs text-zinc-500">Unchecked terms are skipped — your text is created as-is for those, and the skip is remembered so they won't be pre-checked next time. Edit a respelling before applying if it reads wrong, and use <span class="text-zinc-400">▶ Test</span> to hear it before you decide.</p>
         <p id="pron-test-status" role="status" aria-live="polite" class="text-sm text-zinc-400"></p>
 
         <div class="flex items-center gap-3">

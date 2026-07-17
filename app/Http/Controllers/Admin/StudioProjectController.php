@@ -219,6 +219,16 @@ class StudioProjectController extends Controller
             fn ($s) => isset($s['term']) && ! in_array(mb_strtolower((string) $s['term']), $known, true),
         ));
 
+        // Previously declined terms stay visible (the writer can change their
+        // mind per project) but must never come back pre-checked.
+        $rejected = $this->dictionary->rejectedTerms($userId);
+        $suggestions = array_map(function (array $s) use ($rejected) {
+            $s['previously_rejected'] = in_array(mb_strtolower((string) $s['term']), $rejected, true);
+            $s['checked'] = ! $s['previously_rejected'] && ($s['confidence'] ?? '') === 'high';
+
+            return $s;
+        }, $suggestions);
+
         // Nothing to review → apply the existing dictionary and create now.
         if ($suggestions === []) {
             return redirect()
@@ -267,11 +277,16 @@ class StudioProjectController extends Controller
 
         $userId = $request->user()?->id;
 
-        // Keep only the rows the writer checked.
+        // Checked rows join the dictionary; unchecked rows are remembered as
+        // declined so the review screen stops pre-checking them next time.
         $approvedIdx = array_flip(array_map('intval', (array) $request->input('approve', [])));
         $approved = array_values(array_intersect_key($data['substitutions'] ?? [], $approvedIdx));
+        $declined = array_values(array_diff_key($data['substitutions'] ?? [], $approvedIdx));
         if ($approved !== []) {
             $this->dictionary->approveSuggestions($userId, $approved);
+        }
+        if ($declined !== []) {
+            $this->dictionary->rejectSuggestions($userId, $declined);
         }
 
         return redirect()

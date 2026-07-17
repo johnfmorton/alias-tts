@@ -148,6 +148,7 @@ commentary. Use these exact field names:
 - "category" is one of: initialism, acronym, tech_name, proper_noun, symbol_version, jargon.
 - "confidence" is one of: high, medium, low.
 - "note" is optional.
+- List each term at most ONCE, even if it appears many times in the text.
 If nothing needs changing, return {"substitutions": []}."""
 
 
@@ -227,7 +228,7 @@ def detect_substitutions(
 
     return {
         "available": True,
-        "substitutions": [s.model_dump() for s in parsed.substitutions],
+        "substitutions": _dedupe([s.model_dump() for s in parsed.substitutions]),
         "provenance": {
             "provider": provider,
             "model": getattr(response, "model", resolved_model),
@@ -237,6 +238,26 @@ def detect_substitutions(
             "prompt_sha256": _prompt_hash(messages),
         },
     }
+
+
+def _dedupe(substitutions: list[dict]) -> list[dict]:
+    """Collapse case-insensitive duplicate terms (the prompt forbids them, but
+    models still list a term once per occurrence). Keeps the highest-confidence
+    row, in the position where the term first appeared.
+    """
+    rank = {"high": 3, "medium": 2, "low": 1}
+    first_seen: dict[str, int] = {}
+    kept: list[dict] = []
+    for sub in substitutions:
+        key = (sub.get("term") or "").strip().lower()
+        if not key:
+            continue
+        if key not in first_seen:
+            first_seen[key] = len(kept)
+            kept.append(sub)
+        elif rank.get(sub.get("confidence") or "", 0) > rank.get(kept[first_seen[key]].get("confidence") or "", 0):
+            kept[first_seen[key]] = sub
+    return kept
 
 
 def _prompt_hash(messages: list[ChatMessage]) -> str:

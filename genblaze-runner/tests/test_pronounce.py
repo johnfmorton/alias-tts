@@ -45,6 +45,30 @@ def test_detect_parses_and_reports_provenance(monkeypatch):
     assert len(out["provenance"]["prompt_sha256"]) == 64
 
 
+def test_duplicate_terms_are_collapsed_keeping_highest_confidence(monkeypatch):
+    payload = json.dumps(
+        {
+            "substitutions": [
+                {"term": "Llama", "phonetic": "lama", "category": "tech_name", "confidence": "low"},
+                {"term": "DDEV", "phonetic": "dee dev", "category": "initialism", "confidence": "high"},
+                {"term": "Llama", "phonetic": "lama", "category": "tech_name", "confidence": "high"},
+                {"term": "LLAMA", "phonetic": "lama", "category": "tech_name", "confidence": "medium"},
+            ]
+        }
+    )
+    monkeypatch.setattr(pronounce, "_call_chat", lambda *a, **k: _stub_response(payload))
+
+    out = detect_substitutions(
+        text="Llama, Llama, LLAMA, DDEV", known_terms=[], provider="replicate", model=None, temperature=0.2
+    )
+
+    # One row per term, highest confidence wins, first-seen order preserved.
+    assert [(s["term"], s["confidence"]) for s in out["substitutions"]] == [
+        ("Llama", "high"),
+        ("DDEV", "high"),
+    ]
+
+
 def test_bad_json_degrades_safely(monkeypatch):
     monkeypatch.setattr(pronounce, "_call_chat", lambda *a, **k: _stub_response("not json"))
 
