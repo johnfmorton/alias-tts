@@ -4,6 +4,34 @@ All notable changes to this project are documented in this file. The format is
 based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this
 project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.58.0] - 2026-07-17
+
+### Added
+- **Fix a bad clip without stopping the run.** While a background "Generate
+  remaining" run is working, each chunk's **Regenerate** button now adds that
+  clip to the run instead of being locked out — it regenerates after the clips
+  already in line, and the run's clip count grows to match. Queueing the same
+  clip twice is a no-op, and a run that's stopping won't take new work.
+
+### Fixed
+- **Re-rolls on the local Chatterbox sidecar are genuinely random.** An
+  unpinned request used to continue the sidecar's random state from wherever
+  the previous seed-pinned render left it, so a QA re-roll after a pinned take
+  drew the same "alternative take" every time. Unpinned requests now re-seed
+  from fresh entropy. (Replicate renders always rolled fresh; restart the
+  sidecar to pick this up.)
+- **QA re-rolls that don't beat the flagged take no longer save a duplicate.**
+  When every automatic re-roll scored at or below the flagged take, the
+  original audio was re-recorded as a new "remediate" take — a byte-identical
+  copy in the take history. The flagged take now simply stays in place with
+  its QA badge, inviting a manual re-roll.
+- **Pasted headings now end with a period.** A block with no terminal
+  punctuation (a heading like "About 7× cheaper") could be merged straight
+  into the next paragraph and read as one run-on sentence. Every block now
+  ends in terminal punctuation before chunking — a bare block gets a period,
+  and a trailing colon or semicolon is swapped for one. Text from the
+  Bespoken plugin is unaffected (its blocks already arrive terminated).
+
 ## [0.57.0] - 2026-07-17
 
 ### Added
