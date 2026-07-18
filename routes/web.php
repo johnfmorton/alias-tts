@@ -11,7 +11,9 @@ Route::view('/', 'landing')->name('landing');
 
 // Public feature tour. Screenshots dropped at public/images/about/ replace the
 // on-page placeholders automatically (see resources/views/components/about/shot.blade.php).
-Route::view('/about', 'about')->name('about');
+Route::view('/about', 'about.studio')->name('about');
+Route::view('/about/developers', 'about.developers')->name('about.developers');
+Route::redirect('/about/studio', '/about')->name('about.studio');
 
 // Public, server-side "is this the approved final?" verifier. The server hashes
 // the uploaded bytes and matches a sealed project's final_sha256; a `?sha=` link
