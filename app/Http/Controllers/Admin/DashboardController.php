@@ -8,13 +8,16 @@ use App\Models\PronunciationEntry;
 use App\Models\Speech;
 use App\Models\TtsProject;
 use App\Models\Voice;
+use App\Services\Settings\SettingsManager;
+use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Validator;
 use Illuminate\View\View;
 
 class DashboardController extends Controller
 {
-    public function index(Request $request): View
+    public function index(Request $request, SettingsManager $settings): View
     {
         $user = $request->user();
         $voices = Voice::orderedFor($request->user()->id)->get();
@@ -40,7 +43,49 @@ class DashboardController extends Controller
             'voiceIds' => $voices->pluck('slug')->all(),
         ];
 
-        return view('admin.dashboard', compact('stats', 'connect', 'voices'));
+        // ApplyUserSettings has already overlaid this user's overrides onto
+        // config, so this is the per-user value, not the instance default.
+        $gettingStarted = [
+            'show' => (bool) config('tts.show_getting_started'),
+            'locked' => $settings->isLocked('tts.show_getting_started'),
+        ];
+
+        return view('admin.dashboard', compact('stats', 'connect', 'voices', 'gettingStarted'));
+    }
+
+    /**
+     * Show/hide the Dashboard's getting-started guide for the signed-in user.
+     * JSON for the panel's fetch dismiss; redirect for the plain form posts
+     * (no-JS dismiss, Dashboard restore link, Account page). When
+     * TTS_SHOW_GETTING_STARTED is pinned in .env, saveFor() skips the write and
+     * the controls that reach here are hidden anyway — a stale page degrades to
+     * a no-op instead of an error.
+     */
+    public function setGettingStarted(Request $request, SettingsManager $settings): JsonResponse|RedirectResponse
+    {
+        // Explicit JSON 422 — admin paths don't auto-render validation as JSON.
+        $validator = Validator::make($request->all(), ['show' => ['required', 'boolean']]);
+        if ($validator->fails()) {
+            if ($request->expectsJson()) {
+                return response()->json(['message' => $validator->errors()->first()], 422);
+            }
+
+            return redirect()->route('admin.dashboard')->withErrors($validator);
+        }
+
+        $show = $request->boolean('show');
+
+        $settings->saveFor($request->user()->id, ['tts.show_getting_started' => $show]);
+
+        if ($request->expectsJson()) {
+            return response()->json(['ok' => true]);
+        }
+
+        return redirect()->route('admin.dashboard')->with(
+            'success',
+            $show ? 'Getting-started guide restored.'
+                  : 'Guide hidden — bring it back anytime from Settings or your Account page.'
+        );
     }
 
     /**

@@ -67,6 +67,31 @@ class SettingsPageTest extends TestCase
         return UserSetting::where('user_id', $user->id)->where('key', $key)->first();
     }
 
+    public function test_the_interface_group_renders_the_getting_started_toggle(): void
+    {
+        $this->actingAs($this->user())->get(route('admin.settings.index'))
+            ->assertOk()
+            ->assertSee('Interface')
+            ->assertSee('Getting-started guide');
+    }
+
+    public function test_saving_the_form_persists_the_getting_started_flag(): void
+    {
+        $user = $this->user();
+
+        $this->actingAs($user)
+            ->put(route('admin.settings.update'), $this->validPayload(['tts_show_getting_started' => '1']))
+            ->assertRedirect();
+        $this->assertTrue($this->row($user, 'tts.show_getting_started')->value);
+
+        // Checkbox absent from the payload = unchecked = off (the bool contract
+        // in SettingsController::update()).
+        $this->actingAs($user)
+            ->put(route('admin.settings.update'), $this->validPayload())
+            ->assertRedirect();
+        $this->assertFalse($this->row($user, 'tts.show_getting_started')->value);
+    }
+
     public function test_a_users_override_is_layered_onto_config_for_an_unlocked_key(): void
     {
         $user = $this->user();

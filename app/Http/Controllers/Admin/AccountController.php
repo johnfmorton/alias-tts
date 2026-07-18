@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Admin;
 
 use App\Http\Controllers\Controller;
 use App\Models\User;
+use App\Services\Settings\SettingsManager;
 use App\Services\TwoFactorService;
 use Illuminate\Contracts\Filesystem\Filesystem;
 use Illuminate\Http\RedirectResponse;
@@ -23,7 +24,7 @@ use Illuminate\View\View;
  */
 class AccountController extends Controller
 {
-    public function index(Request $request, TwoFactorService $twoFactor): View
+    public function index(Request $request, TwoFactorService $twoFactor, SettingsManager $settings): View
     {
         $user = $request->user();
 
@@ -36,6 +37,8 @@ class AccountController extends Controller
                 'secret' => $user->hasTwoFactorPending() ? $user->two_factor_secret : null,
             ],
             'providers' => $this->providerStatus($user),
+            // Env-pinned guide = nothing to restore; the Interface card hides.
+            'gettingStartedLocked' => $settings->isLocked('tts.show_getting_started'),
         ]);
     }
 

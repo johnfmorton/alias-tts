@@ -6,6 +6,24 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Added
+- **A "Get started" guide now welcomes you on the Dashboard.** New users landed
+  on a page of zero-count cards with no hint of what to do first. The Dashboard
+  now opens with a hard-to-miss welcome panel offering the two starting paths:
+  **Clone your voice** (record ~30 seconds and get a voice that sounds like
+  you) or **Start with a built-in voice** (paste a script into a Studio
+  project), plus a pointer to the connection details for anyone hooking up an
+  app or the Bespoken plugin. The guide stays on every visit until you hide it,
+  and you can bring it back any time — from the small "Show getting started"
+  link on the Dashboard, your Account page's new **Interface** section, or the
+  Settings page. Hosts can pin it on or off instance-wide with
+  `TTS_SHOW_GETTING_STARTED`.
+- **The voice pages now coach you toward a great recording.** The reference-clip
+  section on **Add a voice** and the voice edit page opens with recording tips —
+  starting with the most common mistake, speaking too softly — covering volume,
+  mic distance, room echo, pacing, and clip length. Your clone can only ever
+  sound as good as the clip it learns from.
+
 ### Changed
 - **Redesigned the Studio project header.** The toolbar for a project is now a
   cleaner three-row card: the identity row (← Projects, title, Rename) carries

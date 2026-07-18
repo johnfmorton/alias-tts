@@ -978,6 +978,33 @@ function initStudioAdvancedToggle() {
 }
 initStudioAdvancedToggle();
 
+// Dashboard "Get started" guide: intercept the dismiss form, hide the panel in
+// place, reveal the header's restore control, persist via fetch. Without JS the
+// form still works as a plain POST. Both toggled roots are block-level, so
+// `hidden` alone is safe (no static flex/grid to pair — see the app.css note).
+function initGettingStarted() {
+    const panel = document.getElementById('getting-started');
+    const form = panel?.querySelector('[data-getting-started-dismiss]');
+    if (!panel || !form) return;
+
+    form.addEventListener('submit', (e) => {
+        e.preventDefault();
+        panel.classList.add('hidden');
+        const restore = document.getElementById('getting-started-restore');
+        if (restore) {
+            restore.classList.remove('hidden');
+            restore.querySelector('button')?.focus();
+        }
+        // Persist the preference; a failure just means it reappears next load.
+        fetch(panel.dataset.dismissUrl, {
+            method: 'POST',
+            headers: { 'X-CSRF-TOKEN': csrfToken(), 'Accept': 'application/json' },
+            body: new URLSearchParams({ show: '0' }),
+        }).catch(() => {});
+    });
+}
+initGettingStarted();
+
 // ---------------------------------------------------------------------------
 // A/B tuning bench (voice edit page): audition ONE voice at several settings,
 // pick the winner, save it as that voice's defaults. The bench root carries the

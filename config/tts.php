@@ -236,6 +236,12 @@ return [
     // Genblaze demo; the /v1 API is never affected.
     'spoken_quotes' => env('TTS_SPOKEN_QUOTES', 'off'),
 
+    // The "Get started" welcome panel at the top of the Dashboard. Per-user
+    // editable on the Settings page; hiding the panel on the Dashboard saves the
+    // same per-user override. Pinning TTS_SHOW_GETTING_STARTED in .env forces
+    // the value instance-wide and hides the hide/restore controls.
+    'show_getting_started' => (bool) env('TTS_SHOW_GETTING_STARTED', true),
+
     // Chunks shorter than this are merged into a neighbor so they are never sent
     // to the backend alone. Chatterbox is unreliable on very short inputs (a bare
     // "Why?" or a "The to-do list." heading) — it tends to return silence/garbage

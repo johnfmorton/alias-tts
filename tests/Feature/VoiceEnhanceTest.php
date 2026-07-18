@@ -124,6 +124,28 @@ class VoiceEnhanceTest extends TestCase
             ->assertSee('Clean up the replacement clip before saving');
     }
 
+    public function test_the_create_and_edit_pages_render_the_recording_tips(): void
+    {
+        $admin = $this->admin();
+
+        // Always visible — good mic technique is the #1 factor in clone quality,
+        // so the tips are not dismissible and not tied to the enhance feature.
+        $this->actingAs($admin)->get(route('admin.voices.create'))
+            ->assertOk()
+            ->assertSee('Get a great recording')
+            ->assertSee('full conversational volume');
+
+        $voice = Voice::create(['user_id' => $admin->id, 'slug' => 'tips-voice', 'name' => 'Tips Voice']);
+        $this->actingAs($admin)->get(route('admin.voices.edit', $voice))
+            ->assertOk()
+            ->assertSee('Get a great recording');
+
+        config(['tts.enhance.enabled' => false]);
+        $this->actingAs($admin)->get(route('admin.voices.create'))
+            ->assertOk()
+            ->assertSee('Get a great recording');
+    }
+
     public function test_the_create_page_ships_the_recorder_markup_and_scripts(): void
     {
         $html = $this->actingAs($this->admin())->get(route('admin.voices.create'))->assertOk()->getContent();

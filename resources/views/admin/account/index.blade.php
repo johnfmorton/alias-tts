@@ -240,6 +240,23 @@
         </div>
     </div>
 
+    {{-- ============ Interface ============ --}}
+    @unless($gettingStartedLocked)
+        <div class="{{ $card }} mb-5">
+            <h2 class="text-[17px] font-semibold text-zinc-100">Interface</h2>
+            <div class="mt-4 flex flex-wrap items-center justify-between gap-5">
+                <p class="max-w-[440px] text-[13px] leading-relaxed text-zinc-400">
+                    The Dashboard's getting-started guide walks you through cloning a voice or creating your first project.
+                </p>
+                <form method="POST" action="{{ route('admin.dashboard.getting-started') }}">
+                    @csrf
+                    <input type="hidden" name="show" value="1">
+                    <button type="submit" class="{{ $btnSecondary }} shrink-0">Show the guide again</button>
+                </form>
+            </div>
+        </div>
+    @endunless
+
     {{-- ============ Danger zone ============ --}}
     <div class="rounded-[14px] border border-bad/28 bg-bad/[0.04] p-6">
         <h2 class="text-[17px] font-semibold text-bad">Danger zone</h2>

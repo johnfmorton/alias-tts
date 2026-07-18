@@ -14,6 +14,20 @@
         <span class="text-xs text-zinc-500">{{ $hint }}</span>
     </div>
 
+    {{-- Recording-quality guidance — always shown: the clone can only ever sound
+         as good as this clip, and the most common failure is speaking too softly. --}}
+    <div class="mb-4 rounded-[12px] border border-accent/30 bg-accent/5 px-5 py-4">
+        <div class="text-[13px] font-bold text-zinc-100">Get a great recording</div>
+        <p class="mt-1 max-w-[760px] text-[12.5px] leading-relaxed text-zinc-400">Your voice will only ever sound as good as this clip. The most common mistake: speaking too softly.</p>
+        <ul class="mt-2.5 grid max-w-[760px] grid-cols-1 gap-x-6 gap-y-1.5 text-[12.5px] leading-relaxed text-zinc-400 sm:grid-cols-2">
+            <li class="flex gap-2"><span class="text-accent" aria-hidden="true">•</span>Speak at full conversational volume — as if the listener is across the room.</li>
+            <li class="flex gap-2"><span class="text-accent" aria-hidden="true">•</span>Stay 6–12 inches from the microphone.</li>
+            <li class="flex gap-2"><span class="text-accent" aria-hidden="true">•</span>Quiet room, no echo — soft furnishings beat bare walls.</li>
+            <li class="flex gap-2"><span class="text-accent" aria-hidden="true">•</span>Steady, natural pacing — read, don't perform.</li>
+            <li class="flex gap-2 sm:col-span-2"><span class="text-accent" aria-hidden="true">•</span>Aim for 30+ seconds of clean speech (some voice models need at least 5).</li>
+        </ul>
+    </div>
+
     <div id="voice-clip-widget" data-prepare-url="{{ route('admin.voices.clips.store') }}"
          data-enhance-enabled="{{ $enhanceOn ? '1' : '' }}" data-normalize-enabled="{{ config('tts.normalize_reference') ? '1' : '' }}"
          data-target-min="15" data-target-max="30" data-max-seconds="60">

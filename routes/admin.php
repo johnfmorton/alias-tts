@@ -27,6 +27,7 @@ use Illuminate\Support\Facades\Route;
 
 Route::get('/', [DashboardController::class, 'index'])->name('dashboard');
 Route::post('/reset-api-key', [DashboardController::class, 'resetApiKey'])->name('dashboard.reset-key');
+Route::post('/getting-started', [DashboardController::class, 'setGettingStarted'])->name('dashboard.getting-started');
 
 // Account — self-service profile, security, and sign-in. Open to any signed-in user.
 Route::get('/account', [AccountController::class, 'index'])->name('account.index');
