@@ -116,6 +116,24 @@
         @endforeach
     </div>
 
+    {{-- Credit — metered accounts only; unlimited users see nothing (unchanged). --}}
+    @if($navUser->hasLimitedCredit())
+        <div class="mb-3 flex items-center gap-4 rounded-xl border border-white/8 bg-inset px-[22px] py-4">
+            <span class="flex h-[34px] w-[34px] shrink-0 items-center justify-center rounded-[9px] border border-accent/30 bg-accent/10 text-base font-bold text-accent">$</span>
+            <div>
+                <div class="text-sm font-semibold {{ $navUser->credit_balance_micro <= 0 ? 'text-warn' : 'text-zinc-100' }}">
+                    {{ \App\Services\Credit\CreditService::formatMicro($navUser->credit_balance_micro) }} available
+                </div>
+                <div class="mt-px text-[12.5px] text-zinc-500">Prepaid credit — spends as you generate, pauses at $0.</div>
+            </div>
+            @if(config('tts.support_email'))
+                <a href="mailto:{{ config('tts.support_email') }}" class="relative z-10 ml-auto text-sm text-accent hover:underline">Need more?</a>
+            @else
+                <span class="ml-auto text-sm text-zinc-500">Prepaid balance</span>
+            @endif
+        </div>
+    @endif
+
     {{-- Generations — a usage metric, not a destination. --}}
     <div class="mb-8 flex items-center gap-4 rounded-xl border border-white/8 bg-inset px-[22px] py-4">
         <span class="flex h-[34px] w-[34px] shrink-0 items-center justify-center rounded-[9px] border border-ok/[0.28] bg-ok/10 text-base text-ok">✦</span>

@@ -5,6 +5,7 @@ namespace Tests\Feature;
 use App\Models\ApiKey;
 use App\Models\User;
 use App\Models\Voice;
+use App\Services\Credit\CreditService;
 use App\Services\VoiceService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\UploadedFile;
@@ -307,6 +308,39 @@ class DashboardTest extends TestCase
         $this->actingAs($this->admin())->get(route('admin.dashboard'))
             ->assertOk()
             ->assertSee('YOUR_API_KEY');
+    }
+
+    public function test_dashboard_shows_credit_balance_for_a_metered_user(): void
+    {
+        // Granting to an unlimited user flips them to metered — mirrors the admin grant flow.
+        $user = User::factory()->create(['is_super_admin' => false]);
+        app(CreditService::class)->grant($user, 5_000_000, $this->admin());
+
+        $this->actingAs($user)->get(route('admin.dashboard'))
+            ->assertOk()
+            ->assertSee('Prepaid credit')
+            ->assertSee('$5.00 available');
+    }
+
+    public function test_dashboard_hides_credit_for_an_unlimited_user(): void
+    {
+        // The default account has a NULL balance (unlimited) — no credit readout at all.
+        $this->actingAs(User::factory()->create(['is_super_admin' => false]))
+            ->get(route('admin.dashboard'))
+            ->assertOk()
+            ->assertDontSee('Prepaid credit');
+    }
+
+    public function test_out_of_credit_balance_is_still_shown_and_flagged(): void
+    {
+        // A metered-but-empty user still sees the row — flagged amber via text-warn.
+        $user = User::factory()->create(['is_super_admin' => false]);
+        app(CreditService::class)->grant($user, 0, $this->admin());
+
+        $this->actingAs($user)->get(route('admin.dashboard'))
+            ->assertOk()
+            ->assertSee('$0.00 available')
+            ->assertSee('text-warn', escape: false);
     }
 
     public function test_footer_shows_the_app_version_for_authenticated_users(): void

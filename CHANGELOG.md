@@ -4,6 +4,23 @@ All notable changes to this project are documented in this file. The format is
 based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this
 project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+- **See your remaining credit on the Dashboard.** Accounts with a prepaid
+  balance now get a credit readout on their Dashboard — the amount available, a
+  note that it spends down as you generate and pauses at $0, and a "Need more?"
+  contact link when a support address is configured. Unlimited accounts see no
+  change.
+
+### Fixed
+- **The Studio Inspector's credit badge now updates as you spend.** Generating a
+  chunk — or the full **Preview final audio** — charges your balance right away,
+  but the "credit" badge only refreshed on Preview, so it looked like nothing had
+  happened. It now repaints from each render, tracking your spend live. (A single
+  render costing a fraction of a cent still rounds to the same dollars-and-cents
+  figure, so tiny chunks may not appear to move it.)
+
 ## [0.63.0] - 2026-07-18
 
 ### Added

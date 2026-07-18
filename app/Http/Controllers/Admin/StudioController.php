@@ -312,18 +312,34 @@ class StudioController extends Controller
             );
         }
 
-        // The signed-in user pays for Inspector renders, so show THEIR balance
-        // (server-formatted; null = unlimited and the readout stays hidden).
-        $balance = $user->credit_balance_micro;
-
         return [
             'label' => $label,
             'title' => $title,
             'chars' => $chars,
-            'balance' => $balance === null ? null : [
-                'label' => 'credit '.CreditService::formatMicro((int) $balance),
-                'low' => (int) $balance <= 0,
-            ],
+            // The signed-in user pays for Inspector renders, so show THEIR
+            // balance (null = unlimited and the readout stays hidden).
+            'balance' => $this->creditBadge($user),
+        ];
+    }
+
+    /**
+     * The "credit $X.XX" badge payload for a signed-in user — server-formatted,
+     * null for an unlimited account (the readout stays hidden). Shared by the
+     * preview estimate and the per-render response header so the badge tracks
+     * spend live instead of going stale until the next Preview. Pass a freshly
+     * re-read user after a charge, since {@see CreditService::charge()} debits
+     * via query and leaves the in-memory model's balance untouched.
+     */
+    private function creditBadge(?User $user): ?array
+    {
+        $balance = $user?->credit_balance_micro;
+        if ($balance === null) {
+            return null;
+        }
+
+        return [
+            'label' => 'credit '.CreditService::formatMicro((int) $balance),
+            'low' => (int) $balance <= 0,
         ];
     }
 
@@ -462,8 +478,16 @@ class StudioController extends Controller
         }
 
         $response = response($bytes, 200)->header('Content-Type', $mime);
+        if ($token !== null) {
+            $response->header('X-Inspector-Take', $token);
+        }
+        // The charge above already debited the balance; hand the fresh figure
+        // back so the "credit" badge updates live (omitted for unlimited).
+        if ($badge = $this->creditBadge($request->user()->fresh())) {
+            $response->header('X-Credit-Balance', (string) json_encode($badge));
+        }
 
-        return $token === null ? $response : $response->header('X-Inspector-Take', $token);
+        return $response;
     }
 
     /**
@@ -534,7 +558,14 @@ class StudioController extends Controller
             return response()->json(['message' => 'Stitch failed: '.$e->getMessage()], 502);
         }
 
-        return response($bytes, 200)->header('Content-Type', $mime);
+        $response = response($bytes, 200)->header('Content-Type', $mime);
+        // Same live-balance refresh as synthesize(): the per-segment charges
+        // above have already debited the owner (omitted for unlimited).
+        if ($badge = $this->creditBadge($request->user()->fresh())) {
+            $response->header('X-Credit-Balance', (string) json_encode($badge));
+        }
+
+        return $response;
     }
 
     /**

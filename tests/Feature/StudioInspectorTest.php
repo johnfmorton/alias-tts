@@ -211,6 +211,38 @@ class StudioInspectorTest extends TestCase
         $this->assertSame(Voice::first()->id, $meta['voice_id']);
     }
 
+    public function test_synthesize_returns_the_debited_balance_for_a_metered_user(): void
+    {
+        // A charged render hands the fresh balance back in a header so the
+        // "credit" badge tracks spend live. Markup 1× keeps the math simple.
+        config(['tts.credit.markup' => 1.0]);
+        $user = $this->user();
+        $user->forceFill(['credit_balance_micro' => 5_000_000])->save();
+
+        $res = $this->actingAs($user)
+            ->post(route('admin.studio.synthesize'), ['text' => 'Charge me for this render.']);
+
+        $res->assertOk();
+        $badge = json_decode((string) $res->headers->get('X-Credit-Balance'), true);
+        $this->assertIsArray($badge);
+        // The balance dropped by the render's cost — and it's the debited figure,
+        // not the pre-charge $5.00 (which would mean the badge went stale).
+        $fresh = $user->fresh()->credit_balance_micro;
+        $this->assertLessThan(5_000_000, $fresh);
+        $this->assertSame('credit '.\App\Services\Credit\CreditService::formatMicro($fresh), $badge['label']);
+        $this->assertFalse($badge['low']);
+    }
+
+    public function test_synthesize_omits_the_balance_header_for_an_unlimited_user(): void
+    {
+        // Unlimited accounts (NULL balance) get no readout — and no header.
+        $res = $this->actingAs($this->user())
+            ->post(route('admin.studio.synthesize'), ['text' => 'No metering here.']);
+
+        $res->assertOk();
+        $this->assertFalse($res->headers->has('X-Credit-Balance'));
+    }
+
     public function test_synthesize_without_stash_returns_no_token_and_stores_nothing(): void
     {
         $user = $this->user();

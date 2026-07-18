@@ -528,6 +528,11 @@ function initStudio() {
             body,
         });
         if (!res.ok) throw new Error(await errorMessage(res));
+        // Every charged render hands back the owner's fresh balance so the
+        // "credit" badge tracks spend live instead of going stale until the
+        // next Preview. Absent for unlimited accounts (the badge stays hidden).
+        const bal = res.headers.get('X-Credit-Balance');
+        if (bal) renderBalance(JSON.parse(bal));
         // The stash token (per-chunk renders only) that lets "Create project"
         // carry this exact render across as a take.
         return { blob: await res.blob(), token: res.headers.get('X-Inspector-Take') };
@@ -695,13 +700,19 @@ function initStudio() {
         if (!estimate) return;
         els.estimateLabel.textContent = estimate.label;
         els.estimateLabel.title = estimate.title;
-        const balance = estimate.balance;
+        renderBalance(estimate.balance);
+    }
+
+    // Paint the "credit $X.XX" badge from a server-formatted {label, low} (or
+    // hide it when absent/unlimited). Shared by the preview estimate and the
+    // live refresh fetchBlob() runs after each charged render.
+    function renderBalance(balance) {
+        if (!els.balance) return;
         els.balance.classList.toggle('hidden', !balance);
-        if (balance) {
-            els.balance.textContent = balance.label;
-            els.balance.classList.toggle('text-red-300', balance.low);
-            els.balance.classList.toggle('border-red-500/40', balance.low);
-        }
+        if (!balance) return;
+        els.balance.textContent = balance.label;
+        els.balance.classList.toggle('text-red-300', balance.low);
+        els.balance.classList.toggle('border-red-500/40', balance.low);
     }
 
     // ── Pronunciation panel ─────────────────────────────────────────────────
