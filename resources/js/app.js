@@ -2020,6 +2020,13 @@ function initStudioProject() {
     // drives the row's dimmed look via CSS.
     const isChunkSkipped = (card) => card?.dataset.skipped === '1';
 
+    // The id of the take currently selected as a chunk's audio — its select button
+    // is the only one left disabled (see takeRow). A stitched seam preview is built
+    // from a specific pair of these, so it goes stale the moment either changes.
+    const selectedTakeId = (card) =>
+        card?.querySelector('.chunk-take-select:disabled')?.closest('.chunk-take')?.dataset.takeId || null;
+    const seamTakePair = (prev, next) => `${selectedTakeId(prev)}|${selectedTakeId(next)}`;
+
     // Flip a card's skipped state in place: dataset (CSS dim), the "skipped"
     // pill, and the 🔊/🔇 button. Pill and button classNames are rewritten
     // wholesale (hidden must beat inline-flex — the hidden/display gotcha) and
@@ -2045,24 +2052,85 @@ function initStudioProject() {
         }
     }
 
-    // Show the inline "Preview stitch" connector only between two generated,
-    // included chunks — a seam next to a skipped chunk won't exist in the final.
+    // The inline "Preview stitch" connector stays visible between two chunks, but
+    // it can only actually stitch once BOTH sides have audio — so until then it's
+    // disabled (grayed) rather than vanishing, which used to confuse anyone who'd
+    // inserted an empty chunk between two generated ones (the button just
+    // disappeared). A skipped neighbor is the exception: that join won't exist in
+    // the final at all, so its seam is hidden outright.
     function refreshSeams() {
         root.querySelectorAll('.chunk-seam').forEach((seam) => {
             const prev = root.querySelector(`.studio-chunk[data-chunk-id="${seam.dataset.prev}"]`);
             const next = root.querySelector(`.studio-chunk[data-chunk-id="${seam.dataset.next}"]`);
-            seam.classList.toggle('hidden', !(isChunkCompleted(prev) && isChunkCompleted(next)
-                && !isChunkSkipped(prev) && !isChunkSkipped(next)));
+            const skipped = isChunkSkipped(prev) || isChunkSkipped(next);
+            const ready = isChunkCompleted(prev) && isChunkCompleted(next) && !skipped;
+            seam.classList.toggle('hidden', skipped);
+            const btn = seam.querySelector('.seam-preview');
+            if (btn) {
+                btn.disabled = !ready;
+                btn.title = ready ? '' : 'Generate both chunks to preview how they stitch together.';
+            }
+            // The caption under the line repeats the disabled reason (design state 1),
+            // shown and hidden in step with the button.
+            seam.querySelector('.seam-hint')?.classList.toggle('hidden', ready);
+            // Drop an open stitched preview once it no longer reflects the two chunks:
+            // a neighbor went un-generated or skipped (!ready), OR either neighbor's
+            // selected take changed since the stitch — the join was built from the old
+            // audio, so it's stale even though both sides are still "completed". The
+            // take-id pair stamped at stitch time (dataset.previewTakes) is the test.
+            const stale = seam.dataset.previewTakes && seam.dataset.previewTakes !== seamTakePair(prev, next);
+            if (!ready || stale) discardSeamPreview(seam);
         });
     }
 
-    // Stitch the two adjacent chunks this connector sits between, playing inline.
+    // Tear down a seam's stitched preview: hide the player, stop and forget its
+    // audio (so the next click re-stitches fresh), clear the status line, and reset
+    // the Preview-stitch button. Safe to call on a seam with no open preview.
+    function discardSeamPreview(seam) {
+        seam.querySelector('.seam-player')?.classList.add('hidden');
+        const audio = seam.querySelector('.seam-audio');
+        if (audio) { audio.pause(); audio.removeAttribute('src'); }
+        const status = seam.querySelector('[role="status"]');
+        if (status) status.textContent = '';
+        renderSeamPlaying(seam, false);
+        delete seam.dataset.previewTakes;
+    }
+
+    // Keep the Preview-stitch button in step with its seam player: fully cyan with
+    // a pause glyph while the stitched preview sounds, back to a muted play glyph
+    // when it stops (design 8A). `.is-active` turns the label cyan (see app.css).
+    function renderSeamPlaying(seam, playing) {
+        const btn = seam.querySelector('.seam-preview');
+        if (!btn) return;
+        btn.classList.toggle('is-active', playing);
+        const glyph = btn.querySelector('.seam-glyph');
+        if (glyph) glyph.textContent = playing ? '❚❚' : '▶';
+    }
+
+    // Stitch the two adjacent chunks this connector sits between and play the join
+    // in place. Once stitched and on screen, re-clicking just toggles that preview's
+    // playback rather than re-stitching; a seam hidden by an edit stitches fresh
+    // next time. The stitched clip is transient preview audio, never a saved take.
     async function previewSeam(seam) {
         const btn = seam.querySelector('.seam-preview');
+        const label = btn.querySelector('.seam-label');
         const player = seam.querySelector('.seam-player');
-        const status = seam.querySelector('.seam-status');
+        const audio = seam.querySelector('.seam-audio');
+        // setStatus() rewrites className, so find the status by its stable role
+        // attribute — its `seam-status` class doesn't survive the first update.
+        const status = seam.querySelector('[role="status"]');
+
+        // Already stitched and on screen? Toggle the existing preview's playback.
+        if (audio.src && !player.classList.contains('hidden')) {
+            audio.paused ? audio.play().catch(() => {}) : audio.pause();
+            return;
+        }
+        if (btn.dataset.busy) return;
+
         const t0 = performance.now();
-        startBusy(btn, 'Stitching…');
+        btn.dataset.busy = '1';
+        const restore = label.textContent;
+        label.textContent = 'Stitching…';
         player.classList.remove('hidden');
         try {
             const res = await fetch(previewUrl, {
@@ -2071,17 +2139,33 @@ function initStudioProject() {
                 body: JSON.stringify({ chunks: [seam.dataset.prev, seam.dataset.next] }),
             });
             if (!res.ok) throw new Error(await errorMessage(res));
-            playAudio(seam.querySelector('.seam-audio'), await res.blob());
+            playAudio(audio, await res.blob()); // the 'play' event drives renderSeamPlaying
+            // Stamp which pair of takes this join was built from, so refreshSeams()
+            // can drop it the moment either neighbor's selected take changes.
+            seam.dataset.previewTakes = seamTakePair(
+                root.querySelector(`.studio-chunk[data-chunk-id="${seam.dataset.prev}"]`),
+                root.querySelector(`.studio-chunk[data-chunk-id="${seam.dataset.next}"]`),
+            );
             setStatus(status, `✓ Stitched in ${elapsed(t0)}s.`, 'ok');
         } catch (err) {
+            player.classList.add('hidden');
             setStatus(status, `✗ ${err.message}`, 'error');
         } finally {
-            endBusy(btn);
+            delete btn.dataset.busy;
+            label.textContent = restore;
         }
     }
 
-    root.querySelectorAll('.chunk-seam .seam-preview').forEach((btn) => {
-        btn.addEventListener('click', () => previewSeam(btn.closest('.chunk-seam')));
+    root.querySelectorAll('.chunk-seam').forEach((seam) => {
+        seam.querySelector('.seam-preview')?.addEventListener('click', () => previewSeam(seam));
+        // Mirror the player's transport onto the button (play/pause/ended), so the
+        // seam control and the inline player never disagree about what's sounding.
+        const audio = seam.querySelector('.seam-audio');
+        if (audio) {
+            audio.addEventListener('play', () => renderSeamPlaying(seam, true));
+            audio.addEventListener('pause', () => renderSeamPlaying(seam, false));
+            audio.addEventListener('ended', () => renderSeamPlaying(seam, false));
+        }
     });
 
     // ---- Take history -------------------------------------------------------
@@ -2606,7 +2690,9 @@ function initStudioProject() {
     });
 
     // Insert an empty chunk at a gap, then reload to re-render the (renumbered) list.
-    root.querySelectorAll('.chunk-insert button').forEach((btn) => {
+    // The Insert action lives on each seam (and the top/tail connector lines); every
+    // one carries its own data-position (see the seam markup).
+    root.querySelectorAll('.seam-insert').forEach((btn) => {
         btn.addEventListener('click', async () => {
             // Inserting reloads the list, which would drop unsaved edits elsewhere.
             if ([...root.querySelectorAll('.studio-chunk')].some(isDirty)
@@ -2618,14 +2704,21 @@ function initStudioProject() {
                 }))) {
                 return;
             }
+            const pos = Number(btn.dataset.position);
             startBusy(btn, 'Inserting…');
             try {
                 const res = await fetch(insertUrl, {
                     method: 'POST',
                     headers: { 'X-CSRF-TOKEN': csrfToken(), 'Accept': 'application/json', 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ position: Number(btn.closest('.chunk-insert').dataset.position) }),
+                    body: JSON.stringify({ position: pos }),
                 });
                 if (!res.ok) throw new Error(await errorMessage(res));
+                // Breadcrumb for the reload: the new chunk lands at 0-based index
+                // `pos`, and highlightInsertedChunk() below reads this to open, ring,
+                // and focus it. Path-scoped so a later page can't consume a stale one.
+                try {
+                    sessionStorage.setItem('studioInsertedAt', JSON.stringify({ path: location.pathname, pos }));
+                } catch (_) { /* storage off (private mode): reload still works, just no highlight */ }
                 skipUnloadGuard = true; // reload is intentional
                 window.location.reload();
             } catch (err) {
@@ -2634,6 +2727,70 @@ function initStudioProject() {
             }
         });
     });
+
+    // The reload above re-renders the whole (renumbered) list and lands back at the
+    // top of the page, so a freshly inserted chunk is easy to lose. Pick it up from
+    // the breadcrumb the insert handler left, then draw the eye to it: animate its
+    // space open, flash an accent ring once, scroll it to center, and drop the cursor
+    // in its empty text field (its own cyan focus ring marks it). Runs synchronously
+    // from the deferred module — before the first paint — so the collapse-to-zero is
+    // never seen at full height first.
+    (function highlightInsertedChunk() {
+        let stash;
+        try {
+            stash = sessionStorage.getItem('studioInsertedAt');
+            sessionStorage.removeItem('studioInsertedAt'); // one-shot, whatever happens next
+        } catch (_) {
+            return; // storage off: nothing to do
+        }
+        if (!stash) return;
+        let path, pos;
+        try {
+            ({ path, pos } = JSON.parse(stash));
+        } catch (_) {
+            return;
+        }
+        // Only consume the breadcrumb on the page that dropped it.
+        if (path !== window.location.pathname) return;
+
+        const target = root.querySelectorAll('.studio-chunk')[pos];
+        if (!target) return;
+        const textarea = target.querySelector('.chunk-text');
+
+        // Reduced motion: skip the open/ring animation — just bring the new chunk on
+        // screen and hand it the cursor (the focus ring alone marks its place).
+        if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
+            target.scrollIntoView({ block: 'center' });
+            if (textarea) textarea.focus();
+            return;
+        }
+
+        // Collapse it now, before paint, so the card starts from nothing...
+        const full = target.getBoundingClientRect().height;
+        target.style.overflow = 'hidden';
+        target.style.height = '0px';
+        target.style.opacity = '0';
+
+        // ...then, next frame, release it to its natural height and cue it.
+        requestAnimationFrame(() => {
+            target.style.transition = 'height 320ms ease-out, opacity 320ms ease-out';
+            target.style.height = `${full}px`;
+            target.style.opacity = '1';
+            target.classList.add('chunk-inserted-flash');
+            target.scrollIntoView({ behavior: 'smooth', block: 'center' });
+            if (textarea) textarea.focus({ preventScroll: true });
+            target.addEventListener('transitionend', function done(e) {
+                if (e.propertyName !== 'height') return;
+                // Hand height/overflow back to the stylesheet so the card can keep
+                // growing as its content (takes, tags) fills in later.
+                target.style.height = '';
+                target.style.overflow = '';
+                target.style.opacity = '';
+                target.style.transition = '';
+                target.removeEventListener('transitionend', done);
+            });
+        });
+    })();
 
     // Inline rename: swap the page heading for a title input, PATCH on save, then
     // update the heading and tab title in place. The control lives next to the

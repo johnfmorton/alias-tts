@@ -112,6 +112,45 @@
 }
 
 /*
+ * A just-inserted chunk, cued on the reload that re-renders the list: a single
+ * accent ring that blooms and fades so the eye lands on the new, empty card.
+ * The open (height 0 → natural), the scroll, and the cursor are driven in JS
+ * (highlightInsertedChunk in app.js); this is only the one-shot ring, and —
+ * like act-pulse above — it's gated on prefers-reduced-motion.
+ */
+@media (prefers-reduced-motion: no-preference) {
+    .chunk-inserted-flash {
+        animation: chunk-inserted-flash 1.8s ease-out 1;
+    }
+}
+@keyframes chunk-inserted-flash {
+    0% {
+        box-shadow: 0 0 0 0 color-mix(in srgb, var(--color-accent) 55%, transparent);
+    }
+    60%,
+    100% {
+        box-shadow: 0 0 0 10px transparent;
+    }
+}
+
+/*
+ * Chunk seam — Preview stitch (design 8A). A borderless text action on the seam's
+ * connector line: a muted label with a cyan play glyph at rest (base colors are
+ * Tailwind utilities on the button). While its stitched preview plays it turns
+ * fully cyan — `.is-active` is synced to the seam player in app.js, which also
+ * swaps the glyph char to a pause mark. Disabled until both neighbor chunks have
+ * audio, where the cyan glyph greys down with the label. Un-layered so it beats
+ * Tailwind's layered text-color utilities on the same button (same trick as the
+ * .aplayer rules above).
+ */
+.seam-preview.is-active {
+    color: var(--color-accent);
+}
+.seam-preview:disabled .seam-glyph {
+    color: inherit;
+}
+
+/*
  * Studio audio players: only one plays at a time (see app.js), so dim every
  * idle/paused player to gray and keep the actively-playing one full white, so
  * it's obvious which clip is sounding. The `is-playing` class is toggled in JS.

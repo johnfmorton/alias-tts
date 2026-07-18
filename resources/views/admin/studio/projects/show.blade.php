@@ -222,11 +222,19 @@
             </p>
         @endif
 
-        {{-- Chunks, with an inline "Preview stitch" connector between any two adjacent GENERATED chunks --}}
+        {{-- Chunks, joined by a "seam" connector between each adjacent pair that pairs
+             Preview stitch (live once both sides have audio) with Insert chunk (design 8A). --}}
         <div class="space-y-3">
-            {{-- Insert a new (empty) chunk at this gap. Always available, unlike the seam. --}}
-            <div class="chunk-insert flex justify-center" data-position="0">
-                <button type="button" class="rounded-full border border-zinc-800 px-3 py-0.5 text-xs text-zinc-600 hover:border-zinc-600 hover:text-zinc-300">+ insert chunk</button>
+            {{-- Insert a new (empty) chunk at this gap. Always available, unlike the
+                 seam's Preview stitch. Rendered as a quiet connector line to match the
+                 seams that sit between chunks (design 8A). --}}
+            <div class="flex items-center gap-3.5">
+                <span class="h-px flex-1 bg-white/10"></span>
+                <button type="button" data-position="0"
+                        class="seam-insert inline-flex items-center gap-1.5 text-xs font-medium text-zinc-400 hover:text-zinc-200">
+                    <span class="text-sm leading-none">+</span> Insert chunk
+                </button>
+                <span class="h-px flex-1 bg-white/10"></span>
             </div>
 
             @php
@@ -462,27 +470,62 @@
                 </div>
 
                 @unless($loop->last)
-                    @php $next = $chunks->get($loop->index + 1); @endphp
-                    <div class="chunk-seam flex flex-col items-center {{ $chunk->isCompleted() && $next->isCompleted() ? '' : 'hidden' }}"
+                    @php
+                        $next = $chunks->get($loop->index + 1);
+                        // A skipped neighbor drops this join from the final, so the seam
+                        // hides entirely; otherwise the connector shows but Preview stitch
+                        // only goes live once both sides have audio (refreshSeams() mirrors
+                        // this live as chunks are generated, edited, or skipped).
+                        $seamSkipped = $chunk->skipped || $next->skipped;
+                        $seamReady = $chunk->isCompleted() && $next->isCompleted() && ! $seamSkipped;
+                    @endphp
+                    {{-- The seam between two adjacent chunks (design 8A): one quiet
+                         connector line pairing both actions — Preview stitch (live only
+                         when both neighbors have audio) and Insert chunk (always). The
+                         stitched preview drops in below, reusing the standard player. --}}
+                    <div class="chunk-seam py-1 {{ $seamSkipped ? 'hidden' : '' }}"
                          data-prev="{{ $chunk->id }}" data-next="{{ $next->id }}">
-                        <span class="h-3 w-px bg-zinc-700"></span>
-                        <button type="button" class="seam-preview rounded-full border border-zinc-700 bg-zinc-800 px-4 py-1.5 text-xs font-semibold uppercase tracking-wide text-zinc-300 hover:bg-zinc-700">▶ Preview stitch</button>
-                        <span class="h-3 w-px bg-zinc-700"></span>
-                        <div class="seam-player mt-1 hidden w-full max-w-2xl">
-                            <div class="aplayer aplayer--chunk rounded-[12px] border border-white/8 bg-inset px-3.5 py-2.5">
+                        <div class="flex items-center gap-3.5">
+                            <span class="h-px flex-1 bg-white/10"></span>
+                            <button type="button" @disabled(! $seamReady)
+                                    title="{{ $seamReady ? '' : 'Generate both chunks to preview how they stitch together.' }}"
+                                    class="seam-preview inline-flex items-center gap-1.5 text-xs font-semibold text-zinc-400 hover:text-zinc-200 disabled:text-zinc-600 disabled:cursor-not-allowed"><span class="seam-glyph text-[9px] leading-none text-accent">▶</span><span class="seam-label">Preview stitch</span></button>
+                            <span class="h-3.5 w-px bg-white/[0.14]"></span>
+                            <button type="button" data-position="{{ $loop->iteration }}"
+                                    class="seam-insert inline-flex items-center gap-1.5 text-xs font-medium text-zinc-400 hover:text-zinc-200">
+                                <span class="text-sm leading-none">+</span> Insert chunk
+                            </button>
+                            <span class="h-px flex-1 bg-white/10"></span>
+                        </div>
+                        {{-- The disabled reason, visible without hovering (design state 1);
+                             refreshSeams() toggles this in step with the button. --}}
+                        <p class="seam-hint mt-2 text-center text-[11.5px] leading-snug text-zinc-500 {{ $seamReady ? 'hidden' : '' }}">Generate both chunks to preview how they stitch together.</p>
+                        {{-- Transient stitched preview — the same player used per chunk,
+                             never a saved take. --}}
+                        <div class="seam-player mt-3 hidden">
+                            <div class="aplayer aplayer--chunk rounded-xl border border-white/8 bg-inset px-4 py-3.5">
                                 <button type="button" class="aplayer__btn" aria-label="Play stitched preview"><span class="aplayer__icon"></span></button>
                                 <div class="aplayer__track"><div class="aplayer__fill"></div><div class="aplayer__knob"></div></div>
                                 <span class="aplayer__time">0:00 / 0:00</span>
                                 <audio class="seam-audio aplayer__native"></audio>
                             </div>
-                            <div class="seam-status mt-1 text-center text-xs text-zinc-400" role="status" aria-live="polite"></div>
+                            <div class="mt-2"><span class="seam-status text-xs text-ok" role="status" aria-live="polite"></span></div>
                         </div>
                     </div>
                 @endunless
 
-                <div class="chunk-insert flex justify-center" data-position="{{ $loop->iteration }}">
-                    <button type="button" class="rounded-full border border-zinc-800 px-3 py-0.5 text-xs text-zinc-600 hover:border-zinc-600 hover:text-zinc-300">+ insert chunk</button>
-                </div>
+                @if($loop->last)
+                    {{-- After the last chunk: insert only — there's no following chunk to
+                         stitch, so this seam carries just the Insert action. --}}
+                    <div class="flex items-center gap-3.5">
+                        <span class="h-px flex-1 bg-white/10"></span>
+                        <button type="button" data-position="{{ $loop->iteration }}"
+                                class="seam-insert inline-flex items-center gap-1.5 text-xs font-medium text-zinc-400 hover:text-zinc-200">
+                            <span class="text-sm leading-none">+</span> Insert chunk
+                        </button>
+                        <span class="h-px flex-1 bg-white/10"></span>
+                    </div>
+                @endif
             @endforeach
         </div>
 

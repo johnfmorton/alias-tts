@@ -4,6 +4,26 @@ All notable changes to this project are documented in this file. The format is
 based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this
 project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Changed
+- **Cleaner chunk seam.** The zone between two chunks on a project page is now a
+  single quiet connector line that pairs **Preview stitch** with **Insert chunk**
+  as borderless text actions — replacing the bulky uppercase pill, the separate
+  insert row below it, and the heavy bordered box that used to drop in on preview.
+  Preview stitch stays in place but only lights up once both neighbors have
+  audio, with a short reason shown underneath until then; the stitched clip now
+  plays inline in the same audio player used everywhere else, and the button
+  turns cyan with a pause mark while it sounds.
+
+### Fixed
+- **Stale stitch previews are discarded when a neighbor's take changes.** A
+  Preview stitch clip is built from each neighbor's currently-selected take, so
+  selecting a different take for either chunk (or otherwise changing its audio)
+  now drops the preview instead of leaving the old, no-longer-accurate join on
+  screen. The seam stays ready, so you can re-stitch the new pairing in one
+  click; previews on unrelated seams are left untouched.
+
 ## [0.60.1] - 2026-07-17
 
 ### Fixed
