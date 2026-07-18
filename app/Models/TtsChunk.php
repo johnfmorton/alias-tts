@@ -98,17 +98,28 @@ class TtsChunk extends Model
     }
 
     /**
-     * Human labels for the scorer's problem codes. The raw codes stay in the
-     * persisted asr_report (and docs/ASR-SETUP.md); only presentation changes.
-     * An unknown code falls back to itself so a new signal is never hidden.
+     * Problem code → short headline for the badge popover, ordered worst-first so
+     * a chunk with several findings names its most serious one. Raw codes stay in
+     * the persisted asr_report (and docs/ASR-SETUP.md) with the exact measurements
+     * for threshold tuning; only the surface prose lives here.
      */
-    private const ASR_PROBLEM_LABELS = [
-        'TRUNC' => 'possible cut-off',
-        'NOSPEECH' => 'no speech heard',
-        'TAIL' => 'junk tail',
-        'TAILNOISE' => 'loud tail',
-        'PAUSE' => 'long pause',
-        'BNDNOISE' => 'boundary hum',
+    private const PROBLEM_HEADINGS = [
+        'NOSPEECH' => 'No speech detected',
+        'TRUNC' => 'Possible cut-off',
+        'PAUSE' => 'Mid-speech pause',
+        'BNDNOISE' => 'Boundary hum',
+        'TAILNOISE' => 'Loud tail',
+        'TAIL' => 'Junk tail',
+    ];
+
+    /** Problem code → the plain "what happened" sentence shown in the popover body. */
+    private const PROBLEM_LEADS = [
+        'NOSPEECH' => 'No speech was detected in this take.',
+        'TRUNC' => 'The take ended before the last words.',
+        'PAUSE' => 'A long gap opened up mid-sentence.',
+        'BNDNOISE' => 'A tonal hum filled a pause at a sentence boundary.',
+        'TAILNOISE' => 'A burst of noise landed after the speech ended.',
+        'TAIL' => 'Extra audio ran on after the last word.',
     ];
 
     /**
@@ -117,13 +128,15 @@ class TtsChunk extends Model
      * completed-status gate) and {@see TtsChunkTake::asrBadge()} (a take's audio
      * is always a completed render) so the two never drift.
      *
-     * The badge is short plain language ("QA: possible cut-off · boundary hum —
-     * re-rolled ×3, still flagged"); the title is one sentence per finding
-     * (newline-separated — a title attribute renders the line breaks), keeping
-     * the exact measurements inline for threshold tuning.
+     * Three tones carry what the standing QA paragraph used to say (design "QA
+     * Badge States"): a quiet green pass, an amber "fixed" when auto-remediation
+     * CHANGED the audio to resolve a flag, and a red "check" when a flag was left
+     * for a human. The popover fields (heading/body/fix/prompt/actions) drive the
+     * rich hover card; `text` + `title` stay as the short label + plain-text
+     * fallback the take pills and the receipt (asr_summary) read.
      *
      * @param  array<string, mixed>|null  $report
-     * @return array{tone: string, text: string, title: string}|null
+     * @return array{tone: string, text: string, heading: ?string, body: string, fix: array{label: string, text: string}|null, prompt: ?string, actions: list<array{act: string, label: string}>, title: string}|null
      */
     public static function asrBadgeFrom(?array $report): ?array
     {
@@ -134,74 +147,126 @@ class TtsChunk extends Model
         $ok = (bool) ($report['ok'] ?? false);
         $problems = is_array($report['problems'] ?? null) ? $report['problems'] : [];
         $action = $report['action'] ?? null;
-        $attempts = isset($report['reroll_attempts']) ? (int) $report['reroll_attempts'] : null;
-        $has = fn (string $code) => in_array($code, $problems, true);
+        $attempts = isset($report['reroll_attempts']) ? (int) $report['reroll_attempts'] : 0;
+        $dismissed = (bool) ($report['qa_dismissed'] ?? false);
 
-        $text = $ok
-            ? 'QA ✓'
-            : 'QA: '.implode(' · ', array_map(fn ($p) => self::ASR_PROBLEM_LABELS[$p] ?? $p, $problems));
-        // Note a take-changing action inline (e.g. a flagged chunk auto-recovered).
-        // "fixed by re-roll" is a success story; "still flagged" is a listen-to-it
-        // story — the raw enums read almost identically, so spell them apart.
-        $actionLabel = match ($action) {
-            'rerolled' => 'fixed by re-roll',
-            'rerolled_unrecovered' => 're-rolled'.($attempts ? " ×{$attempts}" : '').', still flagged',
-            'trimmed' => 'tail trimmed off',
-            'trim_failed' => 'tail trim failed',
-            default => null,
+        // A take-changing fix that resolved the flag: a re-roll that scored clean,
+        // or a lossless trim of a junk tail. "We changed the audio" (amber) reads
+        // apart from both "it passed" (green) and "you should check this" (red).
+        $fixed = in_array($action, ['rerolled', 'trimmed'], true);
+
+        $tone = match (true) {
+            $dismissed => 'reviewed', // flagged, but a human listened and waved it through
+            $fixed => 'fixed',
+            $ok => 'ok',
+            default => 'bad',         // flagged, not auto-fixed — needs a human
         };
-        if ($actionLabel !== null) {
-            $text .= ' — '.$actionLabel;
+
+        $text = match ($tone) {
+            'ok' => 'QA ✓',
+            'fixed' => 'QA · fixed',
+            'reviewed' => 'QA · reviewed',
+            default => 'QA · check',
+        };
+
+        // Which problems name the heading. A recovered re-roll persists the new
+        // clean take's report (no problems), so it carries the original set as
+        // `fixed_problems`; everything else names its current problems.
+        $named = $problems;
+        if ($fixed && is_array($report['fixed_problems'] ?? null) && $report['fixed_problems'] !== []) {
+            $named = $report['fixed_problems'];
+        }
+        $heading = null;
+        $lead = null;
+        foreach (self::PROBLEM_HEADINGS as $code => $label) {
+            if (in_array($code, $named, true)) {
+                $heading = $label;
+                $lead = self::PROBLEM_LEADS[$code];
+                break;
+            }
         }
 
-        $lines = [];
-        if (isset($report['score'])) {
-            $line = 'Speech recognition heard '.round((float) $report['score'] * 100).'% of the script';
-            if (isset($report['tail_cov'])) {
-                $line .= ' ('.round((float) $report['tail_cov'] * 100).'% of its ending)';
+        $fix = null;     // the bolded "Auto-fixed: …" / "Reviewed: …" clause
+        $prompt = null;  // footer lead-in ("Not right?")
+        $actions = [];   // footer buttons the popover wires to chunk actions
+
+        if ($tone === 'ok') {
+            $body = 'Passed the automatic quality check — the transcript matched the script, with a clean start and end.';
+        } else {
+            $body = $lead ?? 'The automatic quality check flagged this take.';
+
+            if ($tone === 'fixed') {
+                $fix = ['label' => 'Auto-fixed:', 'text' => self::asrFixText($report, $action, $attempts)];
+                if ($action === 'trimmed') {
+                    $prompt = 'Trimmed too much?';
+                    $actions = [['act' => 'restore', 'label' => 'Restore full take']];
+                } else {
+                    $prompt = 'Not right?';
+                    $actions = [
+                        ['act' => 'reroll', 'label' => 'Re-roll again'],
+                        ['act' => 'restore', 'label' => 'keep original'],
+                    ];
+                }
+            } elseif ($tone === 'reviewed') {
+                $fix = ['label' => 'Reviewed:', 'text' => "you marked this take fine, so it won't be flagged again."];
+                $actions = [
+                    ['act' => 'reroll', 'label' => 'Re-roll'],
+                    ['act' => 'play', 'label' => 'Play'],
+                ];
+            } else { // bad — flagged, needs a human
+                $fix = ['label' => '', 'text' => $action === 'rerolled_unrecovered'
+                    ? 'Re-rolled '.self::asrTimes($attempts).", but it's still flagged — the audio is unchanged, so give it a listen."
+                    : "Auto-fix can't safely change this one. The audio was left unchanged — give it a listen."];
+                $actions = [
+                    ['act' => 'reroll', 'label' => 'Re-roll'],
+                    ['act' => 'play', 'label' => 'Play'],
+                    ['act' => 'dismiss', 'label' => 'Dismiss'],
+                ];
             }
-            $lines[] = $line.($has('TRUNC') || $has('NOSPEECH') ? ' — words may be missing or garbled.' : '.');
         }
-        if (is_array($report['boundary_noise'] ?? null)) {
-            $bn = $report['boundary_noise'];
-            $lines[] = 'A '.number_format((float) $bn['zcr_hz'])." Hz hum ({$bn['dbfs']} dBFS) fills a {$bn['gap_s']} s pause at a sentence boundary.";
+
+        // Plain-text fallback: the take pills' native title + the receipt's
+        // asr_summary. Same words as the popover, minus the interactive footer.
+        $titleParts = [];
+        if ($heading !== null) {
+            $titleParts[] = rtrim($heading, '.').'.';
         }
-        $timings = [];
-        if (isset($report['max_gap_s'])) {
-            $timings[] = "longest mid-speech pause {$report['max_gap_s']} s";
-        }
-        if (isset($report['trail_s'])) {
-            $timings[] = "audio after the last word {$report['trail_s']} s";
-        }
-        if ($timings !== []) {
-            $lines[] = ucfirst(implode(' · ', $timings)).'.';
-        }
-        if (isset($report['tail_peak_dbfs'])) {
-            $peak = $report['tail_peak_dbfs'];
-            if (isset($report['speech_dbfs'])) {
-                $lines[] = $has('TAILNOISE')
-                    ? "The tail is louder than the speech ({$peak} dBFS vs {$report['speech_dbfs']} dBFS) — junk noise after the last word."
-                    : "Tail peaks at {$peak} dBFS vs {$report['speech_dbfs']} dBFS speech — the tail itself is clean.";
-            } else {
-                $lines[] = "Tail peak: {$peak} dBFS.";
-            }
-        }
-        if ($attempts) {
-            $times = $attempts === 1 ? 'once' : "{$attempts} times";
-            $lines[] = match ($action) {
-                'rerolled' => "Re-rolled {$times} until a take passed QA.",
-                'rerolled_unrecovered' => "Re-rolled {$times} and kept the best-scoring take; none passed QA — worth a listen.",
-                default => "Re-rolled {$times}.",
-            };
-        }
-        if (isset($report['trimmed_to_ms'])) {
-            $lines[] = 'Trimmed to '.number_format((int) $report['trimmed_to_ms'] / 1000, 2).' s to cut the junk tail.';
+        $titleParts[] = $body;
+        if ($fix !== null && $fix['text'] !== '') {
+            $titleParts[] = trim(($fix['label'] !== '' ? $fix['label'].' ' : '').$fix['text']);
         }
 
         return [
-            'tone' => $ok ? 'ok' : 'bad',
+            'tone' => $tone,
             'text' => $text,
-            'title' => implode("\n", $lines),
+            'heading' => $heading,
+            'body' => $body,
+            'fix' => $fix,
+            'prompt' => $prompt,
+            'actions' => $actions,
+            'title' => trim(implode(' ', $titleParts)),
         ];
+    }
+
+    /** "once" / "twice" / "N times" for the re-roll narrative. */
+    private static function asrTimes(int $n): string
+    {
+        return match (true) {
+            $n <= 1 => 'once',
+            $n === 2 => 'twice',
+            default => $n.' times',
+        };
+    }
+
+    /** The concrete fix sentence for an amber "fixed" badge (re-roll vs trim). */
+    private static function asrFixText(array $report, ?string $action, int $attempts): string
+    {
+        if ($action === 'trimmed') {
+            return isset($report['trail_s'])
+                ? 'trimmed '.number_format((float) $report['trail_s'], 1).'s of trailing audio.'
+                : 'trimmed the junk tail off the end.';
+        }
+
+        return 're-rolled '.self::asrTimes($attempts).' and the new take transcribed complete.';
     }
 }

@@ -179,6 +179,9 @@ class AsrChunkQaTest extends TestCase
         $this->assertTrue($chunk->asr_report['ok']);
         $this->assertSame('rerolled', $chunk->asr_report['action']);
         $this->assertSame(1, $chunk->asr_report['reroll_attempts']);
+        // The clean re-take's own report is problem-free, so the original defect
+        // is recorded separately for the badge to name ("fixed a possible cut-off").
+        $this->assertContains('TRUNC', $chunk->asr_report['fixed_problems']);
     }
 
     public function test_auto_reroll_keeps_best_take_when_never_clean(): void
@@ -367,29 +370,61 @@ class AsrChunkQaTest extends TestCase
         $chunk = $this->firstChunk();
         $this->assertNull($chunk->asrBadge());  // pending + unscored → nothing
 
+        // Flagged, not auto-fixed → red "check". The short label carries the
+        // tone; the worst problem names the popover heading + body.
         $chunk->update([
             'status' => ChunkStatus::Completed,
             'asr_report' => ['ok' => false, 'problems' => ['TRUNC', 'TAIL'], 'score' => 0.4, 'tail_cov' => 0.4],
         ]);
         $badge = $chunk->refresh()->asrBadge();
         $this->assertSame('bad', $badge['tone']);
-        $this->assertStringContainsString('possible cut-off', $badge['text']);
-        $this->assertStringContainsString('junk tail', $badge['text']);
-        // The title explains the coverage number as a sentence.
-        $this->assertStringContainsString('heard 40% of the script', $badge['title']);
+        $this->assertSame('QA · check', $badge['text']);
+        $this->assertSame('Possible cut-off', $badge['heading']);   // TRUNC wins over TAIL
+        $this->assertStringContainsString('ended before the last words', $badge['body']);
+        $this->assertStringContainsString('give it a listen', $badge['title']);
 
         // Once the chunk is edited (stale), its old verdict no longer applies.
         $chunk->update(['status' => ChunkStatus::Stale]);
         $this->assertNull($chunk->refresh()->asrBadge());
 
-        // A recovered take notes the action inline and reads as ok.
+        // A recovered re-roll changed the audio → amber "fixed"; it names the
+        // original defect (from fixed_problems) and states the fix.
         $chunk->update([
             'status' => ChunkStatus::Completed,
-            'asr_report' => ['ok' => true, 'problems' => [], 'score' => 1.0, 'action' => 'rerolled', 'reroll_attempts' => 1],
+            'asr_report' => ['ok' => true, 'problems' => [], 'score' => 1.0, 'action' => 'rerolled', 'reroll_attempts' => 1, 'fixed_problems' => ['TRUNC']],
         ]);
         $badge = $chunk->refresh()->asrBadge();
-        $this->assertSame('ok', $badge['tone']);
-        $this->assertStringContainsString('fixed by re-roll', $badge['text']);
+        $this->assertSame('fixed', $badge['tone']);
+        $this->assertSame('QA · fixed', $badge['text']);
+        $this->assertSame('Possible cut-off', $badge['heading']);
+        $this->assertSame('Auto-fixed:', $badge['fix']['label']);
+        $this->assertStringContainsString('re-rolled once', $badge['fix']['text']);
+        $this->assertSame([['act' => 'reroll', 'label' => 'Re-roll again'], ['act' => 'restore', 'label' => 'keep original']], $badge['actions']);
+    }
+
+    public function test_asr_badge_amber_for_a_trimmed_tail_and_muted_when_dismissed(): void
+    {
+        $chunk = $this->firstChunk();
+
+        // A lossless tail trim changed the audio → amber "fixed" (even though the
+        // persisted verdict still lists the tail problem).
+        $chunk->update([
+            'status' => ChunkStatus::Completed,
+            'asr_report' => ['ok' => false, 'problems' => ['TAILNOISE'], 'action' => 'trimmed', 'trimmed_to_ms' => 4200, 'trail_s' => 0.4],
+        ]);
+        $badge = $chunk->refresh()->asrBadge();
+        $this->assertSame('fixed', $badge['tone']);
+        $this->assertSame('Loud tail', $badge['heading']);
+        $this->assertStringContainsString('trimmed 0.4s', $badge['fix']['text']);
+        $this->assertSame([['act' => 'restore', 'label' => 'Restore full take']], $badge['actions']);
+
+        // A dismissed flag reads as a muted "reviewed" pill.
+        $chunk->update([
+            'asr_report' => ['ok' => false, 'problems' => ['PAUSE'], 'qa_dismissed' => true],
+        ]);
+        $badge = $chunk->refresh()->asrBadge();
+        $this->assertSame('reviewed', $badge['tone']);
+        $this->assertSame('QA · reviewed', $badge['text']);
     }
 
     public function test_project_page_renders_the_asr_badge(): void
@@ -406,7 +441,27 @@ class AsrChunkQaTest extends TestCase
             ->get(route('admin.studio.projects.show', $chunk->project))
             ->assertOk()
             ->assertSee('chunk-asr-badge', escape: false)
-            ->assertSee('QA: possible cut-off');
+            ->assertSee('QA · check')                 // the short pill label
+            ->assertSee('Possible cut-off');          // the popover heading
+    }
+
+    public function test_dismiss_endpoint_quiets_the_badge_to_reviewed(): void
+    {
+        $chunk = $this->firstChunk();
+        $chunk->update([
+            'status' => ChunkStatus::Completed,
+            'asr_report' => ['ok' => false, 'problems' => ['PAUSE'], 'max_gap_s' => 2.0],
+        ]);
+
+        $admin = User::factory()->create(['is_super_admin' => true]);
+
+        $this->actingAs($admin)
+            ->postJson(route('admin.studio.projects.chunks.qa-dismiss', [$chunk->project, $chunk]))
+            ->assertOk()
+            ->assertJsonPath('asr_badge.tone', 'reviewed')
+            ->assertJsonPath('asr_badge.text', 'QA · reviewed');
+
+        $this->assertTrue($chunk->refresh()->asr_report['qa_dismissed']);
     }
 
     public function test_generate_endpoint_returns_the_asr_badge(): void
@@ -423,7 +478,8 @@ class AsrChunkQaTest extends TestCase
             ->postJson(route('admin.studio.projects.chunks.generate', [$chunk->project, $chunk]))
             ->assertOk()
             ->assertJsonPath('asr_badge.tone', 'bad')
-            ->assertJsonPath('asr_badge.text', fn ($t) => str_contains((string) $t, 'possible cut-off'));
+            ->assertJsonPath('asr_badge.text', 'QA · check')
+            ->assertJsonPath('asr_badge.heading', 'Possible cut-off');
     }
 
     public function test_health_report_asr_failure_is_clean_and_links_the_setup_guide(): void

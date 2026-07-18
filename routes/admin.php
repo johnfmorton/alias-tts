@@ -168,6 +168,8 @@ Route::prefix('studio')->name('studio.')->group(function () {
             // Regenerate while a background run is active: joins the run instead.
             Route::post('/{project}/chunks/{chunk}/queue-generate', [StudioProjectController::class, 'queueChunk'])->name('chunks.queue');
             Route::post('/{project}/chunks/{chunk}/reroll', [StudioProjectController::class, 'rerollChunk'])->name('chunks.reroll');
+            // Acknowledge a flagged QA verdict ("Dismiss"): quiets the badge without touching audio.
+            Route::post('/{project}/chunks/{chunk}/qa-dismiss', [StudioProjectController::class, 'dismissChunkQa'])->name('chunks.qa-dismiss');
             Route::get('/{project}/chunks/{chunk}/audio', [StudioProjectController::class, 'chunkAudio'])->name('chunks.audio');
             // Take history: every render is kept; the user can audition, re-select, or delete a take.
             Route::get('/{project}/chunks/{chunk}/takes', [StudioProjectController::class, 'listTakes'])->name('chunks.takes.index');

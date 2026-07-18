@@ -10,12 +10,17 @@ namespace App\Services\Asr;
  */
 final class RemediationOutcome
 {
+    /**
+     * @param  list<string>  $fixedProblems  the problem code(s) on the flagged take that this
+     *                                       fix resolved (empty when nothing was applied)
+     */
     public function __construct(
         public readonly string $bytes,
         public readonly ?ChunkQualityVerdict $verdict,
         public readonly string $action,        // none|kept|rerolled|rerolled_unrecovered|trimmed|trim_failed|unscored
         public readonly int $rerollAttempts = 0,
         public readonly ?int $trimmedToMs = null,
+        public readonly array $fixedProblems = [],
     ) {}
 
     /**
@@ -32,6 +37,12 @@ final class RemediationOutcome
         }
         if ($this->trimmedToMs !== null) {
             $extra['trimmed_to_ms'] = $this->trimmedToMs;
+        }
+        // A recovered re-roll persists the NEW (clean) take's verdict, so its own
+        // `problems` are empty — record what the fix actually resolved so the QA
+        // badge can still name the original defect ("fixed a possible cut-off").
+        if ($this->fixedProblems !== []) {
+            $extra['fixed_problems'] = array_values($this->fixedProblems);
         }
 
         return $extra;

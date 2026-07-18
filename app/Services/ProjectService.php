@@ -1612,6 +1612,27 @@ class ProjectService
     }
 
     /**
+     * Acknowledge a flagged chunk's QA verdict: the reviewer listened and is
+     * keeping the audio as-is. Records `qa_dismissed` on the chunk's asr_report
+     * (JSON — no schema change) so the badge quiets to "reviewed"; the audio,
+     * the takes and their honest per-take verdicts are untouched. A later
+     * regenerate/re-select overwrites the report, so the acknowledgement is
+     * scoped to exactly this take.
+     */
+    public function dismissChunkQa(TtsChunk $chunk): TtsChunk
+    {
+        $report = is_array($chunk->asr_report) ? $chunk->asr_report : null;
+        if ($report === null) {
+            return $chunk; // nothing was scored — nothing to acknowledge
+        }
+
+        $report['qa_dismissed'] = true;
+        $chunk->update(['asr_report' => $report]);
+
+        return $chunk;
+    }
+
+    /**
      * Permanently delete a take (row + file). Refuses to delete the currently
      * selected take — the caller must select another first — and never removes a
      * file another take still references (the in-place legacy file).

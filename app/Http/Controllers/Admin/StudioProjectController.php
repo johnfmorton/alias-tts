@@ -875,6 +875,24 @@ class StudioProjectController extends Controller
         ]);
     }
 
+    /**
+     * Acknowledge a flagged chunk's QA verdict ("Dismiss" in the badge popover):
+     * the reviewer listened and is keeping this take. Quiets the red "check"
+     * badge to a muted "reviewed" without touching the audio; a later regenerate
+     * writes a fresh verdict and re-flags if the problem recurs.
+     */
+    public function dismissChunkQa(TtsProject $project, TtsChunk $chunk): JsonResponse
+    {
+        $this->assertChunkBelongs($project, $chunk);
+
+        $chunk = $this->projects->dismissChunkQa($chunk);
+
+        return response()->json([
+            'ok' => true,
+            'asr_badge' => $chunk->asrBadge(),
+        ]);
+    }
+
     public function generateChunk(TtsProject $project, TtsChunk $chunk): JsonResponse
     {
         $this->assertChunkBelongs($project, $chunk);

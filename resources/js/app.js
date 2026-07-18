@@ -1270,11 +1270,116 @@ const STATUS_STYLES = {
     draft: 'border-zinc-700 bg-zinc-800 text-zinc-400',
 };
 
-// ASR transcript-QA badge tones (server sends {tone, text, title} or null).
+// ASR transcript-QA badge tones — the same emerald/amber/red/zinc palette as the
+// sibling status pills. Green pass, amber "fixed" (auto-remediation changed the
+// audio), red "check" (flagged, needs a human), muted "reviewed" (dismissed).
+// Used by the take-list pills and by renderQaBadge below.
 const ASR_TONE = {
     ok: 'border-emerald-500/30 bg-emerald-500/10 text-emerald-300',
+    fixed: 'border-amber-500/30 bg-amber-500/10 text-amber-300',
     bad: 'border-red-500/30 bg-red-500/10 text-red-300',
+    reviewed: 'border-zinc-700 bg-zinc-800 text-zinc-400',
 };
+
+// Fill a .qa-badge-wrap element with the pill + hover/focus popover from the
+// server's badge payload, mirroring resources/views/admin/studio/projects/
+// _qa-badge.blade.php — keep the two in lockstep. Shared by the chunk header
+// badge (renderQaBadge) and the take-list pills (takeRow). Opts:
+//   compact     — smaller pill sizing for the take list
+//   withActions — render the undo footer. Only the chunk header gets it: those
+//                 actions operate on the chunk's CURRENT audio, so a historical
+//                 take's pill is informational (heading + body only).
+function fillQaBadge(wrap, info, { compact = false, withActions = false } = {}) {
+    const size = compact ? 'px-1.5 py-0.5 text-[11px]' : 'px-2 py-0.5 text-xs';
+
+    const pill = document.createElement('button');
+    pill.type = 'button';
+    pill.className = 'qa-badge cursor-help rounded-md border ' + size + ' ' + (ASR_TONE[info.tone] || ASR_TONE.bad);
+    pill.setAttribute('aria-haspopup', 'dialog');
+    pill.setAttribute('aria-expanded', 'false');
+    pill.textContent = info.text;
+
+    const pop = document.createElement('span');
+    pop.className = 'qa-popover qa-popover--' + info.tone + ' hidden';
+    pop.setAttribute('role', 'tooltip');
+
+    const arrow = document.createElement('span');
+    arrow.className = 'qa-popover__arrow';
+    arrow.setAttribute('aria-hidden', 'true');
+    pop.append(arrow);
+
+    if (info.heading) {
+        const head = document.createElement('span');
+        head.className = 'qa-popover__head';
+        const icon = document.createElement('span');
+        icon.className = 'qa-popover__icon';
+        icon.setAttribute('aria-hidden', 'true');
+        icon.textContent = (info.tone === 'fixed' || info.tone === 'bad') ? '⚠' : '✓';
+        const label = document.createElement('span');
+        label.textContent = info.heading;
+        head.append(icon, label);
+        pop.append(head);
+    }
+
+    const body = document.createElement('span');
+    body.className = 'qa-popover__body';
+    body.textContent = info.body;
+    if (info.fix) {
+        body.append(' ');
+        if (info.fix.label) {
+            const strong = document.createElement('strong');
+            strong.textContent = info.fix.label;
+            body.append(strong, ' ');
+        }
+        body.append(info.fix.text);
+    }
+    pop.append(body);
+
+    if (withActions && info.actions && info.actions.length) {
+        const foot = document.createElement('span');
+        foot.className = 'qa-popover__foot';
+        if (info.prompt) {
+            const prompt = document.createElement('span');
+            prompt.className = 'qa-popover__prompt';
+            prompt.textContent = info.prompt;
+            foot.append(prompt);
+        }
+        info.actions.forEach((act, i) => {
+            if (i > 0) {
+                const sep = document.createElement('span');
+                sep.className = 'qa-popover__sep';
+                sep.setAttribute('aria-hidden', 'true');
+                sep.textContent = '·';
+                foot.append(sep);
+            }
+            const btn = document.createElement('button');
+            btn.type = 'button';
+            btn.className = 'qa-act';
+            btn.dataset.qaAct = act.act;
+            btn.textContent = act.label;
+            foot.append(btn);
+        });
+        pop.append(foot);
+    }
+
+    wrap.replaceChildren(pill, pop);
+}
+
+// Rebuild the chunk header's .chunk-asr-badge wrapper. Toggling hidden vs
+// relative/inline-flex by full className rewrite, never leaving both set
+// (inline-flex would otherwise win over hidden in the compiled CSS). The header
+// badge carries the interactive footer; .qa-badge-wrap opts it into the shared
+// popover interaction (initQaPopovers).
+function renderQaBadge(wrap, info) {
+    if (!wrap) return;
+    if (!info) {
+        wrap.className = 'chunk-asr-badge qa-badge-wrap hidden';
+        wrap.replaceChildren();
+        return;
+    }
+    wrap.className = 'chunk-asr-badge qa-badge-wrap relative inline-flex';
+    fillQaBadge(wrap, info, { withActions: true });
+}
 
 // Human labels for a take's provenance (its stored `source` token — see
 // ProjectService::recordTake and the duplicate copier). Presentation only:
@@ -1294,6 +1399,25 @@ const TAKE_SOURCE_LABELS = {
 function initStudioProject() {
     const root = document.getElementById('studio-project');
     if (!root) return;
+
+    // First-run QA orientation (design 10E): reveal the one-liner once per browser
+    // and dismiss it for good. Starts hidden in the Blade so it never flashes for a
+    // returning user; localStorage mirrors the finetune-open persistence pattern.
+    const qaIntro = document.getElementById('qa-intro');
+    if (qaIntro) {
+        const QA_INTRO_KEY = 'alias.studio.qaIntroDismissed';
+        let qaIntroDismissed = false;
+        try { qaIntroDismissed = localStorage.getItem(QA_INTRO_KEY) === '1'; } catch { /* storage unavailable */ }
+        if (!qaIntroDismissed) {
+            qaIntro.classList.remove('hidden');
+            qaIntro.classList.add('flex');
+        }
+        document.getElementById('qa-intro-dismiss')?.addEventListener('click', () => {
+            qaIntro.classList.add('hidden');
+            qaIntro.classList.remove('flex');
+            try { localStorage.setItem(QA_INTRO_KEY, '1'); } catch { /* ignore */ }
+        });
+    }
 
     // Built-in Delivery archetypes per engine (native knob values), stashed on
     // the root as JSON by the Blade. Each chunk applies them on a chip click and
@@ -1351,7 +1475,8 @@ function initStudioProject() {
             t.closest('#project-overflow') ||       // menu toggle (its items are gated)
             t.closest('#project-seal-copy') ||      // clipboard only
             t.closest('#project-duplicate-form') || // copies; the original is untouched
-            t.closest('.seam-preview');             // renders a temporary preview only
+            t.closest('.seam-preview') ||           // renders a temporary preview only
+            t.closest('.qa-badge');                 // opens the QA popover (read-only; its .qa-act mutations stay gated)
 
         // Would this key press type, submit, or (on a select) change the value —
         // rather than navigate, copy, or select text?
@@ -1396,22 +1521,11 @@ function initStudioProject() {
         el.textContent = status;
         el.className = prefix + 'inline-flex rounded-md border px-2 py-0.5 text-xs ' + (STATUS_STYLES[status] || STATUS_STYLES.pending);
     };
-    // Show/hide the ASR verdict pill from the server's {tone, text, title} (or null).
-    // Toggle hidden vs inline-flex by rewriting the class entirely, never leaving
-    // both set (inline-flex would otherwise win over hidden in the compiled CSS).
-    const setChunkAsrBadge = (card, info) => {
-        const el = card.querySelector('.chunk-asr-badge');
-        if (!el) return;
-        if (!info) {
-            el.className = 'chunk-asr-badge hidden';
-            el.textContent = '';
-            el.removeAttribute('title');
-            return;
-        }
-        el.className = 'chunk-asr-badge inline-flex cursor-help rounded-md border px-2 py-0.5 text-xs ' + (ASR_TONE[info.tone] || ASR_TONE.bad);
-        el.textContent = info.text;
-        if (info.title) el.title = info.title; else el.removeAttribute('title');
-    };
+    // Rebuild the ASR verdict badge + its hover popover from the server's badge
+    // payload (or clear it when null). Structure lives in renderQaBadge (mirrors
+    // the Blade partial); the popover's open/close and its action buttons are
+    // wired by initQaPopovers and the per-card delegation below.
+    const setChunkAsrBadge = (card, info) => renderQaBadge(card.querySelector('.chunk-asr-badge'), info);
     const setChunkStatus = (card, status) => {
         badge(card.querySelector('.chunk-status'), status, 'chunk-status ');
         // The verdict is for the current audio; clear it once the chunk is no
@@ -2210,11 +2324,11 @@ function initStudioProject() {
         line2.textContent = take.tuning_label + ' · ' + seedText + (take.created_human ? ' · ' + take.created_human : '');
         meta.append(line1, line2);
         if (take.asr_badge) {
+            // Same popover as the chunk header, minus the undo footer (its actions
+            // act on the chunk's current audio, not this historical take).
             const b = document.createElement('span');
-            b.className = 'mt-0.5 inline-flex w-fit cursor-help rounded-md border px-1.5 py-0.5 text-[11px] '
-                + (ASR_TONE[take.asr_badge.tone] || ASR_TONE.bad);
-            b.textContent = take.asr_badge.text;
-            if (take.asr_badge.title) b.title = take.asr_badge.title;
+            b.className = 'qa-badge-wrap relative mt-0.5 inline-flex w-fit';
+            fillQaBadge(b, take.asr_badge, { compact: true, withActions: false });
             meta.append(b);
         }
 
@@ -2273,8 +2387,11 @@ function initStudioProject() {
         const mainPlayer = card.querySelector('.chunk-audio')?.closest('.aplayer');
         if (mainPlayer && selected?.duration_ms) mainPlayer.dataset.durationMs = selected.duration_ms;
         const list = card.querySelector('.chunk-takes');
-        if (!list) return;
         const takes = (data && data.takes) || [];
+        // Stash the latest take list so the QA popover's "Restore full take /
+        // keep original" can find the pre-fix take without a refetch.
+        card._qaTakes = takes;
+        if (!list) return;
         list.innerHTML = '';
         if (!takes.length) {
             const li = document.createElement('li');
@@ -2340,6 +2457,41 @@ function initStudioProject() {
         }
     }
 
+    // "Restore full take / keep original": revert an auto-fixed chunk to its
+    // pre-fix take. That's the newest take that isn't the current audio and isn't
+    // itself a QA auto-fix ('remediate'); selecting it re-points the chunk (and
+    // carries that take's own, honest verdict back onto the badge).
+    function restoreOriginalTake(card, btn) {
+        const takes = card._qaTakes || [];
+        const original = takes.find((t) => !t.selected && t.source !== 'remediate')
+            || takes.find((t) => !t.selected);
+        if (!original) {
+            setStatus(finalStatus, '✗ No earlier take to restore.', 'error');
+            return;
+        }
+        selectTake(card, original.id, btn);
+    }
+
+    // "Dismiss": acknowledge a flagged verdict without touching the audio. The
+    // server records it on the chunk's asr_report and returns the muted "reviewed"
+    // badge to swap in.
+    async function dismissChunkQa(card, btn) {
+        startBusy(btn, 'Dismissing…');
+        try {
+            const res = await fetch(card.dataset.qaDismissUrl, {
+                method: 'POST',
+                headers: { 'X-CSRF-TOKEN': csrfToken(), 'Accept': 'application/json' },
+            });
+            if (!res.ok) throw new Error(await errorMessage(res));
+            const data = await res.json();
+            setChunkAsrBadge(card, data.asr_badge ?? null);
+            setStatus(finalStatus, '✓ QA flag dismissed — kept as reviewed.', 'ok');
+        } catch (err) {
+            setStatus(finalStatus, `✗ ${err.message}`, 'error');
+            endBusy(btn);
+        }
+    }
+
     root.querySelectorAll('.studio-chunk').forEach((card) => {
         // The blob + settings from the last successful tuning preview, so
         // "Use this take" can persist the exact clip the user just heard. Any
@@ -2363,6 +2515,34 @@ function initStudioProject() {
             const delBtn = e.target.closest('.chunk-take-delete');
             if (selBtn && !selBtn.disabled) selectTake(card, row.dataset.takeId, selBtn);
             else if (delBtn && !delBtn.disabled) deleteTake(card, row.dataset.takeId, delBtn);
+        });
+
+        // QA popover footer actions (design "QA Badge States"). Delegated on the
+        // .chunk-asr-badge wrapper (its innerHTML is rebuilt on every verdict, but
+        // the wrapper element persists). Re-roll and Play reuse the existing chunk
+        // controls; Restore reverts to the pre-fix take; Dismiss acknowledges a
+        // flag. On a foreign project the guard intercepts these (they mutate) —
+        // only opening the popover (.qa-badge) is whitelisted.
+        card.querySelector('.chunk-asr-badge')?.addEventListener('click', (e) => {
+            const act = e.target.closest('.qa-act');
+            if (!act) return;
+            e.preventDefault();
+            const kind = act.dataset.qaAct;
+            if (kind === 'reroll') {
+                card.querySelector('.chunk-reroll')?.click();
+            } else if (kind === 'play') {
+                const audio = card.querySelector('.chunk-audio');
+                audio?.closest('.aplayer')?.classList.remove('hidden');
+                audio?.play?.().catch(() => {});
+            } else if (kind === 'restore') {
+                restoreOriginalTake(card, act);
+            } else if (kind === 'dismiss') {
+                dismissChunkQa(card, act);
+            }
+            // Fold the popover away; a resulting verdict change rebuilds it fresh.
+            const pop = card.querySelector('.qa-popover');
+            pop?.classList.add('hidden');
+            card.querySelector('.qa-badge')?.setAttribute('aria-expanded', 'false');
         });
 
         card.querySelector('.chunk-save').addEventListener('click', async () => {
@@ -4454,6 +4634,64 @@ function initKnobPopovers() {
     document.addEventListener('keydown', (e) => { if (e.key === 'Escape') closeAll(); });
 }
 initKnobPopovers();
+
+// QA badge popovers (design "QA Badge States"): open on hover or keyboard focus,
+// toggle on click (touch), close on leaving, outside-click, or Escape. One
+// document-level set covers every .qa-badge-wrap — the chunk header badge AND the
+// take-list pills, including cards inserted later — so it stays in step as
+// verdicts rebuild them. The chunk header's footer buttons are wired per-card in
+// initStudioProject; this only shows/hides.
+function initQaPopovers() {
+    let closeTimer = null;
+    const popIn = (badge) => badge?.querySelector('.qa-popover');
+    const setExpanded = (badge, on) => badge?.querySelector('.qa-badge')?.setAttribute('aria-expanded', on ? 'true' : 'false');
+    const hide = (pop) => {
+        pop.classList.add('hidden');
+        setExpanded(pop.closest('.qa-badge-wrap'), false);
+    };
+    const closeAll = (except) => document.querySelectorAll('.qa-popover:not(.hidden)').forEach((p) => { if (p !== except) hide(p); });
+    const open = (badge) => {
+        clearTimeout(closeTimer);
+        const pop = popIn(badge);
+        if (!pop) return;
+        closeAll(pop);
+        pop.classList.remove('hidden');
+        setExpanded(badge, true);
+    };
+
+    document.addEventListener('mouseover', (e) => {
+        const badge = e.target.closest?.('.qa-badge-wrap');
+        if (badge) open(badge);
+    });
+    document.addEventListener('mouseout', (e) => {
+        const badge = e.target.closest?.('.qa-badge-wrap');
+        if (!badge) return;
+        // Moving pill -> popover (or between popover children) stays inside the
+        // wrapper: only a move out of it schedules the close.
+        if (e.relatedTarget && badge.contains(e.relatedTarget)) return;
+        clearTimeout(closeTimer);
+        closeTimer = setTimeout(() => { const p = popIn(badge); if (p) hide(p); }, 140);
+    });
+    document.addEventListener('focusin', (e) => {
+        const badge = e.target.closest?.('.qa-badge-wrap');
+        if (badge) open(badge);
+        else closeAll();
+    });
+    document.addEventListener('click', (e) => {
+        if (e.target.closest?.('.qa-badge')) {
+            const badge = e.target.closest('.qa-badge-wrap');
+            const pop = popIn(badge);
+            if (pop?.classList.contains('hidden')) open(badge);
+            else if (pop) hide(pop);
+            return;
+        }
+        // A click inside the popover (an action) is handled per-card; anything
+        // else outside a QA badge dismisses the open card.
+        if (!e.target.closest?.('.qa-badge-wrap')) closeAll();
+    });
+    document.addEventListener('keydown', (e) => { if (e.key === 'Escape') closeAll(); });
+}
+initQaPopovers();
 
 // Pronunciation "▶ Test" buttons (review screen, dictionary form + table):
 // speak a respelling so the writer can judge it before approving. Buttons wired

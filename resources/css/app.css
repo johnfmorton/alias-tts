@@ -432,3 +432,111 @@
     line-height: 1.5;
     color: #d4d4d8; /* zinc-300 */
 }
+
+/*
+ * Per-chunk QA badge popover (design "QA Badge States"). The badge pill carries
+ * the tone via the same emerald/amber/red/zinc palette as its sibling status
+ * pills (green pass / amber fixed / red check / muted reviewed); this popover
+ * carries what the standing QA paragraph used to say — the problem, the auto-fix
+ * that changed the audio, and an undo path. Chrome matches .knob-popover so the
+ * two feel like one system. Opened on hover / focus / click by initQaPopovers()
+ * in app.js; renderQaBadge() there mirrors the Blade partial's structure.
+ */
+.qa-badge {
+    font: inherit;
+    line-height: 1.1;
+}
+.qa-popover {
+    position: absolute;
+    left: 0;
+    top: calc(100% + 9px);
+    z-index: 30;
+    width: 17rem;
+    max-width: min(20rem, 86vw);
+    padding: 0.75rem 0.875rem;
+    border-radius: 11px;
+    border: 1px solid rgba(255, 255, 255, 0.14);
+    background: var(--color-menu);
+    box-shadow: 0 14px 34px rgba(0, 0, 0, 0.5);
+    text-align: left;
+    white-space: normal;
+    cursor: default;
+    font-weight: 400;
+}
+/* A transparent bridge over the 9px gap so the pointer moving from the badge into
+   the popover never crosses a dead zone that would drop the hover. */
+.qa-popover::before {
+    content: '';
+    position: absolute;
+    top: -9px;
+    left: 0;
+    right: 0;
+    height: 9px;
+}
+.qa-popover__arrow {
+    position: absolute;
+    top: -6px;
+    left: 14px;
+    width: 11px;
+    height: 11px;
+    background: var(--color-menu);
+    border-left: 1px solid rgba(255, 255, 255, 0.14);
+    border-top: 1px solid rgba(255, 255, 255, 0.14);
+    transform: rotate(45deg);
+}
+.qa-popover__head {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    margin-bottom: 5px;
+    font-size: 12.5px;
+    font-weight: 600;
+}
+.qa-popover__icon {
+    font-size: 12px;
+}
+.qa-popover__body {
+    display: block;
+    font-size: 12.5px;
+    line-height: 1.5;
+    color: #d4d4d8; /* zinc-300 */
+}
+.qa-popover__body strong {
+    color: #f4f4f5; /* zinc-100 */
+    font-weight: 600;
+}
+.qa-popover__foot {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 7px;
+    margin-top: 9px;
+    padding-top: 8px;
+    border-top: 1px solid rgba(255, 255, 255, 0.1);
+    font-size: 11.5px;
+}
+.qa-popover__prompt,
+.qa-popover__sep {
+    color: var(--color-zinc-500);
+}
+.qa-act {
+    font: inherit;
+    color: var(--color-accent);
+    cursor: pointer;
+}
+.qa-act:hover {
+    text-decoration: underline;
+}
+/* Tone-colored heading — green pass is headless; these carry the problem name. */
+.qa-popover--ok .qa-popover__head {
+    color: var(--color-ok);
+}
+.qa-popover--fixed .qa-popover__head {
+    color: var(--color-warn);
+}
+.qa-popover--bad .qa-popover__head {
+    color: var(--color-bad);
+}
+.qa-popover--reviewed .qa-popover__head {
+    color: var(--color-zinc-500);
+}

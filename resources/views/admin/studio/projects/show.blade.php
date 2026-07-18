@@ -216,14 +216,16 @@
         </div>
 
         @if(config('tts.asr.enabled'))
-            {{-- Explain the per-chunk QA badges below (the acronym is otherwise unexplained on the page). --}}
-            <p class="mb-3 text-xs leading-relaxed text-zinc-500">
-                <span class="font-medium text-zinc-400">QA</span> (quality assurance) checks each generated chunk by
-                transcribing it with speech recognition and comparing it back to the script. A badge flags a possible
-                cut-off, a junk or loud tail, or a mid-speech pause or boundary hum, and notes what was auto-fixed
-                (re-rolled or trimmed) — hover a badge for the details behind the verdict.
-                <span class="text-emerald-400">QA&nbsp;✓</span> means it passed.
-            </p>
+            {{-- First-run QA orientation (design 10E): a dismissible one-liner that
+                 replaces the standing paragraph every returning user re-scrolled past.
+                 Starts hidden and initStudioProject reveals it only when the per-user
+                 localStorage flag is absent — so it never flashes for returning users
+                 and is gone for good once dismissed. --}}
+            <div id="qa-intro" class="mb-3 hidden items-center gap-3 rounded-xl border border-accent/30 bg-accent/5 px-4 py-2.5">
+                <span class="flex h-5 w-5 flex-shrink-0 items-center justify-center rounded-full border border-accent/50 text-[11px] font-medium text-accent" aria-hidden="true">i</span>
+                <span class="flex-1 text-sm leading-relaxed text-zinc-300">Every chunk is auto-checked for glitches, and small issues are fixed for you. Hover any <span class="font-semibold text-emerald-300">QA</span> badge for details.</span>
+                <button type="button" id="qa-intro-dismiss" class="flex-shrink-0 text-sm text-zinc-500 hover:text-zinc-300">Got it ✕</button>
+            </div>
         @endif
 
         {{-- Chunks, joined by a "seam" connector between each adjacent pair that pairs
@@ -271,6 +273,7 @@
                      data-patch-url="{{ route('admin.studio.projects.chunks.update', [$project, $chunk]) }}"
                      data-tuning-url="{{ route('admin.studio.projects.chunks.tuning', [$project, $chunk]) }}"
                      data-reroll-url="{{ route('admin.studio.projects.chunks.reroll', [$project, $chunk]) }}"
+                     data-qa-dismiss-url="{{ route('admin.studio.projects.chunks.qa-dismiss', [$project, $chunk]) }}"
                      data-preview-tuning-url="{{ route('admin.studio.projects.chunks.preview-tuning', [$project, $chunk]) }}"
                      data-use-preview-url="{{ route('admin.studio.projects.chunks.use-preview', [$project, $chunk]) }}"
                      data-delete-url="{{ route('admin.studio.projects.chunks.destroy', [$project, $chunk]) }}"
@@ -292,10 +295,10 @@
                                       title="{{ $chunkSpendReadouts[$chunk->id]['title'] }}">{{ $chunkSpendReadouts[$chunk->id]['label'] }}</span>
                             @endif
                             <span class="chunk-status inline-flex rounded-md border px-2 py-0.5 text-xs {{ $chunkStyles[$chunk->status->value] ?? $chunkStyles['pending'] }}">{{ $chunk->status->value }}</span>
-                            @php $asrBadge = $chunk->asrBadge(); @endphp
-                            {{-- ASR transcript-QA verdict; only when the chunk's current audio was scored. --}}
-                            <span class="chunk-asr-badge {{ $asrBadge ? 'inline-flex cursor-help rounded-md border px-2 py-0.5 text-xs '.($asrBadge['tone'] === 'ok' ? $chunkStyles['completed'] : $chunkStyles['failed']) : 'hidden' }}"
-                                  @if($asrBadge) title="{{ $asrBadge['title'] }}" @endif>{{ $asrBadge['text'] ?? '' }}</span>
+                            {{-- ASR transcript-QA verdict + hover/focus popover (design "QA Badge
+                                 States"); only when the chunk's current audio was scored. The
+                                 markup here is mirrored by renderQaBadge() in app.js. --}}
+                            @include('admin.studio.projects._qa-badge', ['badge' => $chunk->asrBadge()])
                             {{-- "Present but silent": shown while the chunk is skipped. Class strings
                                  must stay identical to setChunkSkipped() in app.js. --}}
                             <span class="chunk-skip-pill {{ $chunk->skipped ? 'inline-flex' : 'hidden' }} rounded-md border border-amber-500/30 bg-amber-500/10 px-2 py-0.5 text-xs text-amber-300">skipped</span>

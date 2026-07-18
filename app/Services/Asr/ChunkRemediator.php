@@ -106,6 +106,11 @@ class ChunkRemediator
      */
     public function remediate(string $sourceText, string $bytes, ChunkQualityVerdict $verdict, callable $resynthesize, string $label = 'chunk', bool $allowReroll = true): RemediationOutcome
     {
+        // The flagged take's problems — what remediation set out to fix. A
+        // successful re-roll re-scores clean, so this is the only record of the
+        // original defect the badge can name later.
+        $triggered = $verdict->problems;
+
         $needsReroll = array_intersect(self::REROLL_PROBLEMS, $verdict->problems) !== [];
 
         if (! $needsReroll) {
@@ -171,6 +176,7 @@ class ChunkRemediator
             $bestVerdict,
             $recovered ? 'rerolled' : 'rerolled_unrecovered',
             $attempts,
+            fixedProblems: $triggered,
         );
     }
 
@@ -179,9 +185,9 @@ class ChunkRemediator
         $trimmed = $this->converter->truncateToMs($bytes, (int) $verdict->trimAtMs);
 
         if ($trimmed === null) {
-            return new RemediationOutcome($bytes, $verdict, 'trim_failed', $attempts);
+            return new RemediationOutcome($bytes, $verdict, 'trim_failed', $attempts, fixedProblems: $verdict->problems);
         }
 
-        return new RemediationOutcome($trimmed, $verdict, 'trimmed', $attempts, $verdict->trimAtMs);
+        return new RemediationOutcome($trimmed, $verdict, 'trimmed', $attempts, $verdict->trimAtMs, fixedProblems: $verdict->problems);
     }
 }
