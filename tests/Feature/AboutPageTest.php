@@ -17,7 +17,11 @@ class AboutPageTest extends TestCase
             ->assertSee('Alias TTS')
             ->assertSee('/v1/text-to-speech/', false)
             ->assertSee('/v1/audio/speech', false)
-            ->assertSee('Fix the sentence, not the file.');
+            ->assertSee('https://aliastts.example.com', false)
+            ->assertSee('Fix the sentence, not the file.')
+            ->assertSee('Take control in Studio.')
+            ->assertDontSee('Self-hosted')
+            ->assertDontSee('Yours, all the way down.');
     }
 
     public function test_about_page_walks_the_signal_with_an_anchored_map(): void

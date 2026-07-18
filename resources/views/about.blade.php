@@ -6,7 +6,7 @@
     <title>About — Alias TTS</title>
     @include('partials.social-meta', [
         'metaTitle'       => 'Alias TTS — change the endpoint, keep the integration',
-        'metaDescription' => 'Self-hosted, ElevenLabs- and OpenAI-compatible text-to-speech: cloned voices, automatic QA, and sealed, verifiable finals.',
+        'metaDescription' => 'ElevenLabs- and OpenAI-compatible text-to-speech with cloned voices, automatic QA, a full production Studio, and verifiable finals.',
         'metaImage'       => 'images/social/alias-tts-about-og.png',
     ])
     <link rel="icon" href="{{ asset('favicon.ico') }}" sizes="32x32">
@@ -85,19 +85,18 @@
             </h1>
 
             <p class="rise mx-auto mt-6 max-w-2xl leading-relaxed text-zinc-400" style="animation-delay: 90ms">
-                Alias TTS is a self-hosted text-to-speech server that answers to two APIs — ElevenLabs and OpenAI.
-                Your client keeps its request shapes, auth headers, and error handling. Behind that compatible
-                interface, every request can become an editable Studio project with a sealed, verifiable final.
-                You host the API, voices, projects, and storage; generation runs on metered GPUs through Replicate.
+                Alias TTS answers to two APIs — ElevenLabs and OpenAI. Your client keeps its request shapes,
+                auth headers, and error handling. Every request can become an editable Studio project, ready
+                to refine and seal as a verifiable final.
             </p>
 
             <div class="rise mx-auto mt-10 max-w-2xl text-left" style="animation-delay: 180ms">
                 <div class="overflow-x-auto rounded-xl border border-zinc-800 bg-[#0d0d10] px-5 py-4 font-mono text-[13px] leading-[2]">
                     <div class="whitespace-pre text-zinc-400"><span class="text-zinc-600">  </span>curl -X POST \</div>
                     <div class="whitespace-pre rounded bg-rose-500/[0.07] text-zinc-500"><span class="text-rose-400/80">- </span>  https://api.elevenlabs.io<span class="text-zinc-600">/v1/text-to-speech/rachel \</span></div>
-                    <div class="whitespace-pre rounded bg-cyan-400/[0.09] text-cyan-100"><span class="text-cyan-300">+ </span>  https://tts.your-domain.com<span class="text-cyan-100/70">/v1/text-to-speech/rachel \</span></div>
+                    <div class="whitespace-pre rounded bg-cyan-400/[0.09] text-cyan-100"><span class="text-cyan-300">+ </span>  https://aliastts.example.com<span class="text-cyan-100/70">/v1/text-to-speech/rachel \</span></div>
                     <div class="whitespace-pre text-zinc-400"><span class="text-zinc-600">  </span>  -H "xi-api-key: sk_..." \</div>
-                    <div class="whitespace-pre text-zinc-400"><span class="text-zinc-600">  </span>  -d '{"text": "Hello from a server I own."}'</div>
+                    <div class="whitespace-pre text-zinc-400"><span class="text-zinc-600">  </span>  -d '{"text": "Hello from my cloned voice."}'</div>
                 </div>
                 <p class="mt-3 text-center text-xs leading-relaxed text-zinc-500">
                     That's the whole migration. OpenAI clients switch the same way — <span class="font-mono text-zinc-400">POST /v1/audio/speech</span> with a Bearer key.
@@ -224,7 +223,7 @@
             </div>
 
             <x-about.shot class="mt-12" file="dashboard.png"
-                          url="https://tts.your-domain.com/admin"
+                          url="https://aliastts.example.com/admin"
                           note="The dashboard home, signed in: the connection panel with base URL, API key, and voice IDs ready to copy into any client."/>
 
             {{-- The landing page's junction in miniature: both dialects converging
@@ -299,12 +298,12 @@
                         <h3 class="text-[15px] font-semibold text-zinc-100">Voices travel</h3>
                         <p class="mt-1.5 text-sm leading-relaxed text-zinc-400">
                             Export any voice as a portable <span class="k">.zip</span> — clip, settings, and all —
-                            and import it on another install.
+                            and import it wherever you use Alias.
                         </p>
                     </div>
                 </div>
                 <x-about.shot file="voices.png"
-                              url="https://tts.your-domain.com/admin/voices/your-voice/edit"
+                              url="https://aliastts.example.com/admin/voices/your-voice/edit"
                               note="A voice's edit page: the delivery dials and the Tune-by-ear A/B bench."/>
             </div>
         </section>
@@ -458,7 +457,7 @@
             </div>
 
             <x-about.shot class="mt-12" file="studio.png"
-                          url="https://tts.your-domain.com/admin/studio/projects/42"
+                          url="https://aliastts.example.com/admin/studio/projects/42"
                           note="A Studio project: the chunk list with per-chunk playback, edit state, and QA badges."/>
         </section>
 
@@ -501,66 +500,8 @@
                     </div>
                 </div>
                 <x-about.shot file="verify.png"
-                              url="https://tts.your-domain.com/verify"
+                              url="https://aliastts.example.com/verify"
                               note="The public verify page confirming a dropped file matches the sealed approval."/>
-            </div>
-        </section>
-
-        {{-- ===== Ownership — the full spectrum, because you run every band of it. ===== --}}
-        <section class="mt-28">
-            <div class="flex items-center gap-2.5">
-                <x-about.glyph gradient gid="g-own"/>
-                <span class="font-mono text-xs font-semibold uppercase tracking-[0.18em] text-zinc-400">Ownership</span>
-            </div>
-            <h2 class="mt-4 text-3xl font-semibold tracking-tight">Yours, all the way down.</h2>
-            <p class="mt-4 max-w-2xl leading-relaxed text-zinc-400">
-                Alias TTS is a stack you deploy, point at, and run — not an account you rent.
-            </p>
-
-            <div class="mt-10 grid gap-x-12 gap-y-8 sm:grid-cols-2 lg:grid-cols-3">
-                <div>
-                    <h3 class="text-[15px] font-semibold text-zinc-100">Your server</h3>
-                    <p class="mt-1.5 text-sm leading-relaxed text-zinc-400">
-                        A Laravel app you deploy anywhere PHP 8.3 runs — or as a single Docker
-                        container — on SQLite, MySQL, or Postgres.
-                    </p>
-                </div>
-                <div>
-                    <h3 class="text-[15px] font-semibold text-zinc-100">Your storage</h3>
-                    <p class="mt-1.5 text-sm leading-relaxed text-zinc-400">
-                        Audio and reference clips live on your disk or your own S3-compatible bucket.
-                    </p>
-                </div>
-                <div>
-                    <h3 class="text-[15px] font-semibold text-zinc-100">Your GPU bill</h3>
-                    <p class="mt-1.5 text-sm leading-relaxed text-zinc-400">
-                        Generation runs on a pay-per-second GPU via Replicate — no monthly subscription —
-                        and Studio shows estimated spend per chunk and per project, so you can see the likely
-                        cost before rendering. For development, an in-repo sidecar runs both engines on your
-                        own hardware, spending nothing.
-                    </p>
-                </div>
-                <div>
-                    <h3 class="text-[15px] font-semibold text-zinc-100">Your team</h3>
-                    <p class="mt-1.5 text-sm leading-relaxed text-zinc-400">
-                        A multi-user dashboard where every account gets its own keys, voices and voice
-                        order, dictionary, and settings — down to output format and chunking.
-                    </p>
-                </div>
-                <div>
-                    <h3 class="text-[15px] font-semibold text-zinc-100">Your health checks</h3>
-                    <p class="mt-1.5 text-sm leading-relaxed text-zinc-400">
-                        <span class="k">tts:doctor</span> and the dashboard's Health page verify the whole
-                        install, with one-click end-to-end test generations.
-                    </p>
-                </div>
-                <div>
-                    <h3 class="text-[15px] font-semibold text-zinc-100">Your portable voices</h3>
-                    <p class="mt-1.5 text-sm leading-relaxed text-zinc-400">
-                        Export a voice — reference clip, settings, and all — as a portable archive, then import
-                        it on another Alias install whenever you move between environments or hosts.
-                    </p>
-                </div>
             </div>
         </section>
 
