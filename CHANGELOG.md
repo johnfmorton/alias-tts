@@ -4,6 +4,28 @@ All notable changes to this project are documented in this file. The format is
 based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this
 project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+- **Restore a default with one click on the Advanced settings.** Every threshold
+  under **Settings › Advanced — detection thresholds** now has a **Reset to
+  default** button that puts the field back to its shipped value (a bad number
+  here can quietly wreck generation). Like any change on the page it's staged
+  until you click **Save settings**. Available to everyone, since anyone can
+  fat-finger a threshold.
+
+### Changed
+- **The Health page is now SuperAdmin-only.** It reports instance-wide
+  diagnostics — database, queue, scheduler, and provider readiness — that only an
+  administrator acts on, so it no longer appears in the nav or on the dashboard
+  for regular users, and visiting it directly returns 403.
+- **Two instance-wide switches are hidden from regular users' Settings.** The
+  **ASR transcript QA** master switch and the **Detection LLM provider** are
+  administrator concerns, so a regular user no longer sees (or can save) them.
+  Everyone still controls **Studio remediation**, **API remediation**, **Max
+  re-rolls**, the **Advanced** thresholds, and the **Pronunciation
+  pre-processor**.
+
 ## [0.62.0] - 2026-07-18
 
 ### Changed

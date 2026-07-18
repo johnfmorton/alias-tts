@@ -74,6 +74,7 @@ $keys = [
         'config' => 'tts.asr.enabled',
         'env' => 'TTS_ASR_ENABLED',
         'type' => 'bool',
+        'super_admin' => true, // instance-wide QA switch — SuperAdmin only
         'label' => 'ASR transcript QA',
         'help' => 'Master switch. When on, each generated chunk is transcribed by the local Whisper sidecar and scored for truncation, stray tails, long pauses, and boundary noise; flagged chunks are badged and can be auto-remediated. When off, audio is never transcribed or scored and no badges appear.',
     ],
@@ -256,6 +257,7 @@ $keys = [
         'env' => 'TTS_PRONUNCIATION_LLM_PROVIDER',
         'type' => 'enum',
         'options' => ['replicate', 'gemini', 'openai', 'anthropic', 'ollama'],
+        'super_admin' => true, // provider/keys are an instance concern — SuperAdmin only
         'label' => 'Detection LLM provider',
         'help' => 'Which Genblaze chat provider detects mispronounced terms. "replicate" reuses your existing Replicate token; "anthropic", "gemini", and "openai" call those APIs directly and need their own key (ANTHROPIC_API_KEY, GEMINI_API_KEY, OPENAI_API_KEY) in the runner\'s environment. "ollama" runs a local model instead — no key and no text leaves the machine; set OLLAMA_HOST to where Ollama listens as seen from the runner, and TTS_PRONUNCIATION_MODEL to a pulled model. The health page shows whether the chosen provider is ready.',
     ],

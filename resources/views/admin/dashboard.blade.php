@@ -208,8 +208,11 @@
     <div class="mb-3 text-xs font-bold uppercase tracking-[0.1em] text-zinc-500">System</div>
     <div class="flex flex-wrap gap-3">
         {{-- Health: a plain link only. No status indicator — status is only known
-             after the Health page runs its full test suite. --}}
-        <a href="{{ route('admin.health') }}" class="inline-flex items-center gap-2 rounded-[10px] border border-white/12 px-4 py-[11px] text-sm text-zinc-300 transition hover:bg-white/[0.04]">Health</a>
+             after the Health page runs its full test suite. SuperAdmin only,
+             matching the server-side route gate. --}}
+        @if($navUser?->isSuperAdmin())
+            <a href="{{ route('admin.health') }}" class="inline-flex items-center gap-2 rounded-[10px] border border-white/12 px-4 py-[11px] text-sm text-zinc-300 transition hover:bg-white/[0.04]">Health</a>
+        @endif
         <a href="{{ route('admin.settings.index') }}" class="inline-flex items-center gap-2 rounded-[10px] border border-white/12 px-4 py-[11px] text-sm text-zinc-300 transition hover:bg-white/[0.04]">Settings</a>
         {{-- Users: SuperAdmin only, and only once its routes exist (gated on the server too). --}}
         @if($navUser?->isSuperAdmin() && RouteFacade::has('admin.users.index'))

@@ -12,16 +12,16 @@ class SettingsController extends Controller
 {
     public function __construct(private SettingsManager $settings) {}
 
-    public function index(): View
+    public function index(Request $request): View
     {
         return view('admin.settings.index', [
-            'groups' => $this->settings->groupedForView(),
+            'groups' => $this->settings->groupedForView($request->user()->isSuperAdmin()),
         ]);
     }
 
     public function update(Request $request): RedirectResponse
     {
-        [$rules, $pathByField] = $this->rulesAndMap();
+        [$rules, $pathByField] = $this->rulesAndMap($request->user()->isSuperAdmin());
 
         $validated = $request->validate($rules);
 
@@ -46,11 +46,13 @@ class SettingsController extends Controller
     /**
      * Validation rules built from the registry (unlocked keys only) plus a
      * field-name → config-path map. Field names swap dots for underscores so
-     * they're valid HTML input names.
+     * they're valid HTML input names. SuperAdmin-only keys are excluded for a
+     * regular user, so they can neither be validated nor saved through a crafted
+     * POST — mirroring what {@see SettingsManager::groupedForView()} hides.
      *
      * @return array{0: array<string, array<int, string>>, 1: array<string, string>}
      */
-    private function rulesAndMap(): array
+    private function rulesAndMap(bool $isSuperAdmin): array
     {
         $rules = [];
         $map = [];
@@ -58,6 +60,10 @@ class SettingsController extends Controller
         foreach ($this->settings->managed() as $path => $entry) {
             if ($entry['locked'] ?? false) {
                 continue; // pinned in .env — never editable
+            }
+
+            if (($entry['super_admin'] ?? false) && ! $isSuperAdmin) {
+                continue; // SuperAdmin-only — a regular user can't see or set it
             }
 
             $field = str_replace('.', '_', $path);

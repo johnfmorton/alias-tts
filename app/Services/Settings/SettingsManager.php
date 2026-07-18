@@ -146,6 +146,24 @@ class SettingsManager
     }
 
     /**
+     * The pristine config default for a key — the .env fallback baked into
+     * config/tts.php, BEFORE any user override was layered on. This is what a
+     * "Restore default" control resets a field to. The baseline is snapshotted
+     * once per process by {@see applyForUser()} (which the admin middleware runs
+     * before the page renders); without it — console, or a manager built outside
+     * the request cycle — fall back to a live config read, which is still pristine
+     * because no overlay has happened.
+     */
+    public function defaultFor(string $configPath): mixed
+    {
+        if ($this->baseline !== null && array_key_exists($configPath, $this->baseline)) {
+            return $this->baseline[$configPath];
+        }
+
+        return config($configPath);
+    }
+
+    /**
      * Persist submitted values for the UNLOCKED managed keys only, scoped to one
      * user. Locked keys are silently skipped — defensive, since the form renders
      * them read-only anyway.
@@ -184,19 +202,28 @@ class SettingsManager
 
     /**
      * The registry grouped for the view, each field decorated with its HTML field
-     * name, current value and lock state. Values reflect the user applied by
-     * {@see applyForUser()}.
+     * name, current value, pristine default and lock state. Values reflect the
+     * user applied by {@see applyForUser()}.
+     *
+     * SuperAdmin-only keys (`super_admin => true`) are omitted unless the viewer
+     * is a SuperAdmin — a regular user never sees, and (mirrored in the
+     * controller's validation) never saves, an instance-wide switch.
      *
      * @return array<string, list<array<string, mixed>>>
      */
-    public function groupedForView(): array
+    public function groupedForView(bool $isSuperAdmin = true): array
     {
         $groups = [];
 
         foreach ($this->managed() as $configPath => $entry) {
+            if (($entry['super_admin'] ?? false) && ! $isSuperAdmin) {
+                continue;
+            }
+
             $entry['path'] = $configPath;
             $entry['field'] = str_replace('.', '_', $configPath);
             $entry['value'] = $this->displayValue($configPath);
+            $entry['default'] = $this->defaultFor($configPath);
             $groups[$entry['group']][] = $entry;
         }
 

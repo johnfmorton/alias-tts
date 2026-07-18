@@ -212,7 +212,11 @@ class CreditEnforcementTest extends TestCase
             ->postJson(route('admin.pronunciations.test'), ['phonetic' => 'lah-RAH-vel'])
             ->assertStatus(402);
 
-        $this->actingAs($user)
+        // The health live-test is SuperAdmin-only, so reach it as a drained
+        // SuperAdmin — credit gating is not role-exempt, so it still 402s.
+        $drainedAdmin = $this->userWithBalance(0);
+        $drainedAdmin->forceFill(['is_super_admin' => true])->save();
+        $this->actingAs($drainedAdmin)
             ->postJson(route('admin.health.test.short'))
             ->assertStatus(402);
 

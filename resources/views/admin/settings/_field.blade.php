@@ -11,6 +11,15 @@
         @if($locked)
             <span class="rounded-md border border-amber-500/30 bg-amber-500/10 px-2 py-0.5 text-xs text-amber-300"
                   title="Pinned by the {{ $f['env'] }} environment variable">Set in .env</span>
+        @elseif(! empty($f['advanced']) && array_key_exists('default', $f))
+            {{-- A bad Advanced value can wreck generation, so every threshold can be
+                 put back to its shipped default. Stages the change like any edit;
+                 the user still clicks Save to persist it. --}}
+            <button type="button" data-restore-default="{{ $name }}" data-default="{{ $f['default'] }}"
+                    title="Restore the shipped default ({{ $f['default'] }})"
+                    class="shrink-0 rounded-md border border-edge px-2 py-0.5 text-xs text-zinc-400 transition hover:border-zinc-500 hover:text-zinc-200">
+                Reset to default
+            </button>
         @endif
     </div>
 

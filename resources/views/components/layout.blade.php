@@ -39,11 +39,27 @@
         [
             'label' => 'System',
             'items' => [
-                ['route' => 'admin.health', 'pattern' => 'admin.health', 'label' => 'Health'],
+                ['route' => 'admin.health', 'pattern' => 'admin.health', 'label' => 'Health', 'super_admin' => true],
                 ['route' => 'admin.settings.index', 'pattern' => 'admin.settings.*', 'label' => 'Settings'],
             ],
         ],
     ];
+
+    // Drop SuperAdmin-only rows (e.g. Health) for regular users, then any section
+    // left empty. Both the desktop dropdown and the mobile sheet render from here.
+    $isSuperAdmin = (bool) ($navUser?->isSuperAdmin());
+    $menuSections = collect($menuSections)
+        ->map(function ($section) use ($isSuperAdmin) {
+            $section['items'] = array_values(array_filter(
+                $section['items'],
+                fn ($it) => $isSuperAdmin || empty($it['super_admin']),
+            ));
+
+            return $section;
+        })
+        ->reject(fn ($section) => empty($section['items']))
+        ->values()
+        ->all();
 @endphp
 <!DOCTYPE html>
 <html lang="en" class="h-full">

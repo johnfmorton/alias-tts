@@ -58,6 +58,23 @@ class DashboardTest extends TestCase
         $this->actingAs($user)->get('/admin')->assertOk();
     }
 
+    public function test_health_link_is_hidden_from_a_non_admin_but_shown_to_an_admin(): void
+    {
+        $healthUrl = route('admin.health');
+
+        // Nav (dropdown + mobile sheet) and the dashboard "System" tile both drop
+        // the Health link for a regular user, matching the SuperAdmin route gate.
+        $this->actingAs(User::factory()->create(['is_super_admin' => false]))
+            ->get('/admin')
+            ->assertOk()
+            ->assertDontSee($healthUrl);
+
+        $this->actingAs($this->admin())
+            ->get('/admin')
+            ->assertOk()
+            ->assertSee($healthUrl);
+    }
+
     public function test_admin_can_create_toggle_and_delete_api_key(): void
     {
         $admin = $this->admin();

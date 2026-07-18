@@ -75,15 +75,19 @@ Route::get('/settings', [SettingsController::class, 'index'])->name('settings.in
 Route::put('/settings', [SettingsController::class, 'update'])->name('settings.update');
 
 // Health — web view over the same checks as `php artisan tts:doctor`. The page
-// is a fast shell; the checks run in the async `results` fragment below.
-Route::get('/health', [HealthController::class, 'index'])->name('health');
-Route::get('/health/results', [HealthController::class, 'results'])->name('health.results');
+// is a fast shell; the checks run in the async `results` fragment below. It
+// surfaces instance diagnostics (DB, queue, provider readiness), so the whole
+// surface — page, results, and the live provider tests — is SuperAdmin only.
+Route::middleware(EnsureUserIsSuperAdmin::class)->group(function () {
+    Route::get('/health', [HealthController::class, 'index'])->name('health');
+    Route::get('/health/results', [HealthController::class, 'results'])->name('health.results');
 
-// Live provider tests (real, billable generation calls).
-Route::post('/health/test/short', [HealthTestController::class, 'short'])->name('health.test.short');
-Route::post('/health/test/long', [HealthTestController::class, 'long'])->name('health.test.long');
-Route::get('/health/test/{id}/status', [HealthTestController::class, 'status'])->name('health.test.status');
-Route::get('/health/test/{id}/audio', [HealthTestController::class, 'audio'])->name('health.test.audio');
+    // Live provider tests (real, billable generation calls).
+    Route::post('/health/test/short', [HealthTestController::class, 'short'])->name('health.test.short');
+    Route::post('/health/test/long', [HealthTestController::class, 'long'])->name('health.test.long');
+    Route::get('/health/test/{id}/status', [HealthTestController::class, 'status'])->name('health.test.status');
+    Route::get('/health/test/{id}/audio', [HealthTestController::class, 'audio'])->name('health.test.audio');
+});
 
 // Studio — inspect normalization/chunking and hear text whole, per-chunk, or stitched.
 Route::prefix('studio')->name('studio.')->group(function () {

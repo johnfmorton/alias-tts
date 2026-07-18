@@ -216,6 +216,23 @@ document.addEventListener('click', async (e) => {
         return;
     }
 
+    // Settings › Advanced: "Reset to default" puts a threshold field back to its
+    // shipped default (data-default). Staged like any edit — the user still clicks
+    // Save to persist it — so this only touches the input's value.
+    const resetBtn = e.target.closest('[data-restore-default]');
+    if (resetBtn) {
+        e.preventDefault();
+        const field = document.getElementById(resetBtn.getAttribute('data-restore-default'));
+        if (field) {
+            field.value = resetBtn.getAttribute('data-default') ?? '';
+            const original = resetBtn.dataset.label || resetBtn.textContent;
+            resetBtn.dataset.label = original;
+            resetBtn.textContent = 'Reset ✓';
+            setTimeout(() => { resetBtn.textContent = original; }, 1200);
+        }
+        return;
+    }
+
     // Test a voice: <button data-test-voice="URL" data-audio-target="#selector">
     const testBtn = e.target.closest('[data-test-voice]');
     if (testBtn) {

@@ -400,4 +400,60 @@ class SettingsPageTest extends TestCase
 
         $this->assertSame('ollama', $this->row($admin, 'tts.pronunciation.llm_provider')->value);
     }
+
+    public function test_a_non_admin_does_not_see_the_super_admin_only_settings(): void
+    {
+        $res = $this->actingAs($this->user())->get(route('admin.settings.index'));
+
+        $res->assertOk();
+        // Instance-wide switches — hidden from a regular user.
+        $res->assertDontSee('ASR transcript QA');
+        $res->assertDontSee('Detection LLM provider');
+        // But the per-user remediation controls and the Advanced thresholds stay.
+        $res->assertSee('Studio remediation');
+        $res->assertSee('API remediation');
+        $res->assertSee('Max re-rolls');
+        $res->assertSee('Advanced — detection thresholds');
+        $res->assertSee('Pronunciation pre-processor');
+    }
+
+    public function test_an_admin_sees_the_super_admin_only_settings(): void
+    {
+        $res = $this->actingAs($this->admin())->get(route('admin.settings.index'));
+
+        $res->assertOk();
+        $res->assertSee('ASR transcript QA');
+        $res->assertSee('Detection LLM provider');
+    }
+
+    public function test_a_non_admin_cannot_save_super_admin_only_keys_through_a_crafted_post(): void
+    {
+        // Prove the SuperAdmin gate (not the .env lock) is what blocks these.
+        $this->setLocked('tts.asr.enabled', false);
+        $this->setLocked('tts.pronunciation.llm_provider', false);
+
+        $user = $this->user();
+
+        $this->actingAs($user)
+            ->put(route('admin.settings.update'), $this->validPayload([
+                'tts_asr_enabled' => '1',                      // SuperAdmin-only master switch
+                'tts_pronunciation_llm_provider' => 'openai',  // SuperAdmin-only provider
+            ]))
+            ->assertRedirect(route('admin.settings.index'))
+            ->assertSessionHas('success');
+
+        $this->assertNull($this->row($user, 'tts.asr.enabled'));
+        $this->assertNull($this->row($user, 'tts.pronunciation.llm_provider'));
+    }
+
+    public function test_advanced_fields_render_a_reset_to_default_control(): void
+    {
+        // A bad Advanced threshold can wreck generation, so each one can be put
+        // back to its shipped default (both roles see the Advanced section).
+        $res = $this->actingAs($this->user())->get(route('admin.settings.index'));
+
+        $res->assertOk();
+        $res->assertSee('Reset to default');
+        $res->assertSee('data-restore-default="tts_asr_trail_s_max"', false);
+    }
 }
