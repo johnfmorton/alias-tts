@@ -4,6 +4,29 @@ All notable changes to this project are documented in this file. The format is
 based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this
 project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.62.0] - 2026-07-18
+
+### Changed
+- **QA badges now tell the whole story on hover.** Each generated chunk's QA
+  badge is now one of three states — a quiet green **✓** when it passed, an amber
+  **fixed** when the automatic check re-rolled or trimmed the audio to clear a
+  problem, and a red **check** when something was flagged that needs your ear.
+  Hovering (or keyboard-focusing) a badge opens a card that names the problem,
+  says what happened, states any auto-fix that changed the audio, and offers the
+  matching undo — **Re-roll again** / **keep original** on a re-rolled clip,
+  **Restore full take** after a trim, or **Re-roll · Play · Dismiss** on a flag
+  left for you. The pills in **Takes & tuning** use the same card. This replaces
+  the standing explanatory paragraph above the chunk list and the terse tooltip
+  that only repeated the problem code.
+
+### Added
+- **Dismiss a QA flag you've checked.** Once you've listened to a flagged clip and
+  it's fine, **Dismiss** quiets the badge to a muted **reviewed** without touching
+  the audio; regenerating the chunk re-checks it from scratch.
+- **First-run QA hint.** A one-line, dismiss-for-good banner introduces the QA
+  badges the first time you open a project — replacing the paragraph every
+  returning user scrolled past.
+
 ## [0.61.1] - 2026-07-18
 
 ### Fixed
