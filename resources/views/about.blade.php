@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>About — Alias TTS</title>
     @include('partials.social-meta', [
-        'metaTitle'       => 'Alias TTS — point your app here, nothing else changes',
+        'metaTitle'       => 'Alias TTS — change the endpoint, keep the integration',
         'metaDescription' => 'Self-hosted, ElevenLabs- and OpenAI-compatible text-to-speech: cloned voices, automatic QA, and sealed, verifiable finals.',
         'metaImage'       => 'images/social/alias-tts-about-og.png',
     ])
@@ -75,14 +75,15 @@
                  style="background: radial-gradient(48% 55% at 50% 50%, rgba(97,100,255,.18), rgba(34,211,238,.09) 46%, transparent 72%);"></div>
 
             <h1 class="rise mx-auto max-w-3xl text-4xl font-semibold leading-[1.05] tracking-tight sm:text-[3.3rem]" style="animation-delay: 0ms">
-                <span class="block">Point your app here.</span>
-                <span class="grad-voice block">Nothing else changes.</span>
+                <span class="block">Change the endpoint.</span>
+                <span class="grad-voice block">Keep the integration.</span>
             </h1>
 
             <p class="rise mx-auto mt-6 max-w-2xl leading-relaxed text-zinc-400" style="animation-delay: 90ms">
                 Alias TTS is a self-hosted text-to-speech server that answers to two APIs — ElevenLabs and OpenAI.
-                Your client keeps its request shapes, auth headers, and error handling. Behind them, it gets your
-                own cloned voices, your own storage, and a GPU you pay by the second.
+                Your client keeps its request shapes, auth headers, and error handling. Behind that compatible
+                interface, every request can become an editable Studio project with a sealed, verifiable final.
+                You host the API, voices, projects, and storage; generation runs on metered GPUs through Replicate.
             </p>
 
             <div class="rise mx-auto mt-10 max-w-2xl text-left" style="animation-delay: 180ms">
@@ -152,8 +153,7 @@
                 </nav>
 
                 <p class="mt-4 text-center text-xs leading-relaxed text-zinc-500">
-                    A call enters at the cyan end and leaves the magenta end as a sealed file.
-                    The rest of this page walks that signal.
+                    Start with a simple API call. Step into a full audio studio when you need verifiable output.
                 </p>
             </div>
         </section>
@@ -243,7 +243,7 @@
                 <p class="leading-relaxed text-zinc-400">
                     And a call doesn't have to end at audio. Any request can leave behind an editable
                     <a href="#studio" class="text-zinc-200 underline decoration-zinc-700 underline-offset-2 transition hover:decoration-zinc-400">Studio project</a>
-                    — the power-user move, below.
+                    — the hands-on workflow, below.
                 </p>
             </div>
         </section>
@@ -309,37 +309,14 @@
             <div class="flex items-center gap-2.5">
                 <x-about.glyph color="#246cff"/>
                 <span class="font-mono text-xs font-semibold uppercase tracking-[0.18em] text-[#5b8dff]">Quality</span>
-                <span class="text-xs text-zinc-600">— every take, listened to</span>
+                <span class="text-xs text-zinc-600">— before and after generation</span>
             </div>
-            <h2 class="mt-4 text-3xl font-semibold tracking-tight">QA that listens to every take.</h2>
+            <h2 class="mt-4 text-3xl font-semibold tracking-tight">Quality starts before generation.</h2>
             <p class="mt-4 max-w-2xl leading-relaxed text-zinc-400">
-                TTS models flub takes — they stop short, trail into noise, or hum through a pause. Alias can
-                transcribe every generated chunk with a local Whisper sidecar, compare it to the script, and
-                re-roll or trim a flawed take automatically — before you ever hear it.
+                Alias prepares the script for speech before it reaches the model, then listens to every take
+                after it renders. Pronunciation tools prevent predictable mistakes; automatic QA catches the
+                ones a TTS model makes anyway.
             </p>
-
-            <div class="mt-8 grid gap-3 sm:grid-cols-3 lg:grid-cols-5">
-                <div class="rounded-lg border border-zinc-800 bg-white/[0.02] px-4 py-3">
-                    <div class="font-mono text-[13px] font-semibold text-[#5b8dff]">TRUNC</div>
-                    <p class="mt-1 text-xs leading-relaxed text-zinc-500">Stopped before the end of the script.</p>
-                </div>
-                <div class="rounded-lg border border-zinc-800 bg-white/[0.02] px-4 py-3">
-                    <div class="font-mono text-[13px] font-semibold text-[#5b8dff]">TAIL</div>
-                    <p class="mt-1 text-xs leading-relaxed text-zinc-500">Long junk tail after the last word.</p>
-                </div>
-                <div class="rounded-lg border border-zinc-800 bg-white/[0.02] px-4 py-3">
-                    <div class="font-mono text-[13px] font-semibold text-[#5b8dff]">TAILNOISE</div>
-                    <p class="mt-1 text-xs leading-relaxed text-zinc-500">Short but loud artifact past the last word.</p>
-                </div>
-                <div class="rounded-lg border border-zinc-800 bg-white/[0.02] px-4 py-3">
-                    <div class="font-mono text-[13px] font-semibold text-[#5b8dff]">PAUSE</div>
-                    <p class="mt-1 text-xs leading-relaxed text-zinc-500">Dead air hanging mid-stream.</p>
-                </div>
-                <div class="rounded-lg border border-zinc-800 bg-white/[0.02] px-4 py-3">
-                    <div class="font-mono text-[13px] font-semibold text-[#5b8dff]">BNDNOISE</div>
-                    <p class="mt-1 text-xs leading-relaxed text-zinc-500">Tonal hum filling a sentence boundary.</p>
-                </div>
-            </div>
 
             <div class="mt-8 grid gap-3 lg:grid-cols-2">
                 <div class="rounded-xl border border-zinc-800 bg-white/[0.02] px-6 py-5">
@@ -361,6 +338,36 @@
                     </p>
                 </div>
             </div>
+
+            <h3 class="mt-10 text-[15px] font-semibold text-zinc-100">Then QA listens to every take</h3>
+            <p class="mt-1.5 max-w-2xl text-sm leading-relaxed text-zinc-400">
+                TTS models can stop short, trail into noise, or hum through a pause. Alias can transcribe every
+                generated chunk with a local Whisper sidecar, compare it to the script, and re-roll or trim a
+                flawed take automatically — before you ever hear it.
+            </p>
+
+            <div class="mt-6 grid gap-3 sm:grid-cols-3 lg:grid-cols-5">
+                <div class="rounded-lg border border-zinc-800 bg-white/[0.02] px-4 py-3">
+                    <div class="font-mono text-[13px] font-semibold text-[#5b8dff]">TRUNC</div>
+                    <p class="mt-1 text-xs leading-relaxed text-zinc-500">Stopped before the end of the script.</p>
+                </div>
+                <div class="rounded-lg border border-zinc-800 bg-white/[0.02] px-4 py-3">
+                    <div class="font-mono text-[13px] font-semibold text-[#5b8dff]">TAIL</div>
+                    <p class="mt-1 text-xs leading-relaxed text-zinc-500">Long junk tail after the last word.</p>
+                </div>
+                <div class="rounded-lg border border-zinc-800 bg-white/[0.02] px-4 py-3">
+                    <div class="font-mono text-[13px] font-semibold text-[#5b8dff]">TAILNOISE</div>
+                    <p class="mt-1 text-xs leading-relaxed text-zinc-500">Short but loud artifact past the last word.</p>
+                </div>
+                <div class="rounded-lg border border-zinc-800 bg-white/[0.02] px-4 py-3">
+                    <div class="font-mono text-[13px] font-semibold text-[#5b8dff]">PAUSE</div>
+                    <p class="mt-1 text-xs leading-relaxed text-zinc-500">Dead air hanging mid-stream.</p>
+                </div>
+                <div class="rounded-lg border border-zinc-800 bg-white/[0.02] px-4 py-3">
+                    <div class="font-mono text-[13px] font-semibold text-[#5b8dff]">BNDNOISE</div>
+                    <p class="mt-1 text-xs leading-relaxed text-zinc-500">Tonal hum filling a sentence boundary.</p>
+                </div>
+            </div>
         </section>
 
         {{-- ===== Studio (violet) — the control room. ===== --}}
@@ -372,8 +379,8 @@
             </div>
             <h2 class="mt-4 text-3xl font-semibold tracking-tight">Fix the sentence, not the file.</h2>
             <p class="mt-4 max-w-2xl leading-relaxed text-zinc-400">
-                The APIs are the entry point; Studio is the power move — and it needs no new integration.
-                By default, the same call your app already makes lands here as an editable project,
+                The APIs are the entry point; Studio adds hands-on control without a new integration.
+                By default, every API call also leaves behind an editable Studio project,
                 broken into chunks you can hear, edit, and regenerate one at a time. A forty-minute build
                 never gets thrown away over one flat line.
             </p>
@@ -459,7 +466,7 @@
             </div>
             <h2 class="mt-4 text-3xl font-semibold tracking-tight">Approve it. Seal it. Prove it.</h2>
             <p class="mt-4 max-w-2xl leading-relaxed text-zinc-400">
-                When a build is the final, seal it: the project records a SHA-256 fingerprint of the exact audio
+                When a build is final, seal it: the project records a SHA-256 fingerprint of the exact audio
                 bytes plus a frozen snapshot of how they were made — and exports a receipt anyone can check.
             </p>
 
@@ -483,8 +490,8 @@
                     <div>
                         <h3 class="text-[15px] font-semibold text-zinc-100">Private by design</h3>
                         <p class="mt-1.5 text-sm leading-relaxed text-zinc-400">
-                            The browser fingerprints the file locally — the audio never leaves the verifier's
-                            machine. Only the 64-character hash is sent and matched against the seal.
+                            The browser computes the file's SHA-256 hash locally — the audio never leaves the
+                            verifier's machine. Only the 64-character hash is sent and matched against the seal.
                         </p>
                     </div>
                 </div>
@@ -523,9 +530,9 @@
                     <h3 class="text-[15px] font-semibold text-zinc-100">Your GPU bill</h3>
                     <p class="mt-1.5 text-sm leading-relaxed text-zinc-400">
                         Generation runs on a pay-per-second GPU via Replicate — no monthly subscription —
-                        and Studio shows estimated spend per chunk and per project, so the meter is never
-                        a surprise. For development, an in-repo sidecar runs both engines on your own
-                        hardware, spending nothing.
+                        and Studio shows estimated spend per chunk and per project, so you can see the likely
+                        cost before rendering. For development, an in-repo sidecar runs both engines on your
+                        own hardware, spending nothing.
                     </p>
                 </div>
                 <div>
@@ -543,10 +550,10 @@
                     </p>
                 </div>
                 <div>
-                    <h3 class="text-[15px] font-semibold text-zinc-100">Your proof</h3>
+                    <h3 class="text-[15px] font-semibold text-zinc-100">Your portable voices</h3>
                     <p class="mt-1.5 text-sm leading-relaxed text-zinc-400">
-                        Seal a finished project and it ships with a receipt — anyone can verify,
-                        byte for byte, that a file is the audio you approved.
+                        Export a voice — reference clip, settings, and all — as a portable archive, then import
+                        it on another Alias install whenever you move between environments or hosts.
                     </p>
                 </div>
             </div>
