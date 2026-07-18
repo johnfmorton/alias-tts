@@ -196,8 +196,8 @@
         </div>
 
         <p class="rise mt-9 max-w-md text-xs leading-relaxed text-zinc-500" style="animation-delay: 360ms">
-            Start by pointing an app at it — the Bespoken plugin for Craft CMS, or anything that
-            speaks either API. Graduate to Studio when a take needs directing.
+            Start by pointing any app that speaks either API at Alias TTS. Step into Studio when
+            a take needs directing.
         </p>
     </main>
 </body>

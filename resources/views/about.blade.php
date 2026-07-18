@@ -81,6 +81,7 @@
             <h1 class="rise mx-auto max-w-3xl text-4xl font-semibold leading-[1.05] tracking-tight sm:text-[3.3rem]" style="animation-delay: 0ms">
                 <span class="block">Change the endpoint.</span>
                 <span class="grad-voice block">Keep the integration.</span>
+                <span class="block">Take control in Studio.</span>
             </h1>
 
             <p class="rise mx-auto mt-6 max-w-2xl leading-relaxed text-zinc-400" style="animation-delay: 90ms">
