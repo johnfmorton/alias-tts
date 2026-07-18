@@ -39,6 +39,7 @@ class AboutPageTest extends TestCase
             ->assertOk()
             ->assertSeeInOrder(['Two APIs.', 'One Studio.', 'Your voices.'])
             ->assertSee('Alias TTS — Two APIs. One Studio. Your voices.', false)
+            ->assertSee('Clone your voices, generate through familiar APIs, and shape every take in Studio.')
             ->assertSee(route('about'), false);
     }
 

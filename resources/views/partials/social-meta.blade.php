@@ -14,7 +14,7 @@
 --}}
 @php
     $metaTitle       = $metaTitle       ?? 'Alias TTS';
-    $metaDescription = $metaDescription ?? 'Self-hosted text-to-speech with voice cloning, compatible with the ElevenLabs and OpenAI APIs.';
+    $metaDescription = $metaDescription ?? 'Clone your voices, generate through familiar APIs, and shape every take in Studio.';
     $metaImage       = secure_asset($metaImage ?? 'images/social/alias-tts-og.png');
     $metaUrl         = $metaUrl ?? url()->current();
 @endphp
