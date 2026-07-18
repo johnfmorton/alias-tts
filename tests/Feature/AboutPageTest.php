@@ -37,6 +37,8 @@ class AboutPageTest extends TestCase
     {
         $this->get(route('landing'))
             ->assertOk()
+            ->assertSeeInOrder(['Two APIs.', 'One Studio.', 'Your voices.'])
+            ->assertSee('Alias TTS — Two APIs. One Studio. Your voices.', false)
             ->assertSee(route('about'), false);
     }
 

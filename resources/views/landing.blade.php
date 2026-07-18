@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>Alias TTS — self-hosted ElevenLabs &amp; OpenAI text-to-speech</title>
     @include('partials.social-meta', [
-        'metaTitle'       => 'Alias TTS — one server, two APIs, your voices',
+        'metaTitle'       => 'Alias TTS — Two APIs. One Studio. Your voices.',
         'metaDescription' => 'Self-hosted text-to-speech with voice cloning, compatible with the ElevenLabs and OpenAI APIs — on a server you own.',
         'metaImage'       => 'images/social/alias-tts-og.png',
     ])
@@ -80,11 +80,12 @@
             <span class="text-[26px] font-bold leading-none tracking-[0.2px] text-[#f4f4f5]">Alias<span class="font-semibold text-[#9aa0a6]"> TTS</span></span>
         </div>
 
-        {{-- Thesis: the three pillars as a tricolon — self-hosted, dual-API, cloning. --}}
+        {{-- Thesis: the two compatible entry points converge on the product's
+             differentiator, while the final line keeps ownership at the center. --}}
         <h1 class="rise mt-9 text-4xl font-semibold leading-[1.03] tracking-tight sm:text-5xl" style="animation-delay: 80ms">
-            <span class="block">One server,</span>
-            <span class="block">two APIs,</span>
-            <span class="grad-voice block">your voices.</span>
+            <span class="block">Two APIs.</span>
+            <span class="block">One Studio.</span>
+            <span class="grad-voice block">Your voices.</span>
         </h1>
 
         <p class="rise mt-6 max-w-md leading-relaxed text-zinc-400" style="animation-delay: 160ms">
