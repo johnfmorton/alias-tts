@@ -176,6 +176,29 @@ class UsersTest extends TestCase
         $this->assertAuthenticatedAs($invited->fresh());
     }
 
+    public function test_suspended_user_cannot_reactivate_via_a_set_password_link(): void
+    {
+        // A still-valid set-password link (issued at invite or force-reset) must not
+        // let a since-suspended account regain access. Otherwise suspension — the
+        // security control enforced everywhere else — is bypassed.
+        $suspended = User::factory()->create(['status' => 'suspended', 'password' => 'unusable']);
+
+        $signed = URL::temporarySignedRoute('invite.accept', now()->addDay(), ['user' => $suspended->id]);
+
+        // The signed GET still authorizes the session (link is genuinely valid)...
+        $this->get($signed)->assertOk();
+
+        // ...but completing it is refused: no password set, still suspended, no session.
+        $this->post(route('invite.store', $suspended), [
+            'password' => 'a-brand-new-password',
+            'password_confirmation' => 'a-brand-new-password',
+        ])->assertRedirect(route('login'));
+
+        $this->assertFalse(Hash::check('a-brand-new-password', $suspended->fresh()->password));
+        $this->assertSame('suspended', $suspended->fresh()->status);
+        $this->assertGuest();
+    }
+
     public function test_invite_post_is_rejected_without_a_signed_visit(): void
     {
         $invited = User::factory()->create(['status' => 'invited']);

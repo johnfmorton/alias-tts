@@ -32,6 +32,18 @@ class InvitationController extends Controller
     {
         abort_unless($request->session()->get(self::SESSION_KEY) === $user->id, 403);
 
+        // A suspended account must not be reactivated (or signed in) by completing a
+        // set-password link that was issued before — or still valid across — the
+        // suspension. Setting a password is harmless; regaining access is the control
+        // being enforced (see EnsureAccountIsActive and forceReset, which both
+        // deliberately preserve a suspended status).
+        if ($user->isSuspended()) {
+            $request->session()->forget(self::SESSION_KEY);
+
+            return redirect()->route('login')
+                ->withErrors(['email' => 'This account has been suspended.']);
+        }
+
         $request->validate([
             'password' => ['required', 'confirmed', Password::defaults()],
         ]);

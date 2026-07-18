@@ -4,6 +4,16 @@ All notable changes to this project are documented in this file. The format is
 based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this
 project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Security
+- **Suspended accounts can no longer regain access through a set-password link.**
+  Completing an invite or force-reset link (valid for up to seven days) no longer
+  reactivates or signs in an account that has since been suspended — the link now
+  bounces to the login screen with the standard "suspended" notice, matching how
+  suspension is enforced across login, 2FA, SSO, and every panel request. Setting
+  a password on an active or freshly-invited account is unchanged.
+
 ## [0.61.0] - 2026-07-18
 
 ### Changed
