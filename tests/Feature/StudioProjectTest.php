@@ -1700,9 +1700,9 @@ class StudioProjectTest extends TestCase
         // slug scoping, the preset-temperature column, the spent-characters
         // counters, the take-duration column, the turbo preset knobs, the
         // per-model spend counters, the per-chunk skip flag, the credit
-        // system, the project-jobs table, and the generation-timings table all
-        // sit on top of it).
-        Artisan::call('migrate:rollback', ['--step' => 25]);
+        // system, the project-jobs table, the generation-timings table, and the
+        // voice-clip status column all sit on top of it).
+        Artisan::call('migrate:rollback', ['--step' => 26]);
         Artisan::call('migrate', ['--force' => true]);
 
         $takes = $chunk->refresh()->takes()->get();

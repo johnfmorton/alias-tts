@@ -2,6 +2,7 @@
 
 namespace App\Services;
 
+use App\Jobs\PrepareVoiceClipJob;
 use App\Models\VoiceClip;
 use App\Services\Audio\AudioConverter;
 use App\Services\Enhance\EnhanceProvider;
@@ -24,14 +25,18 @@ class VoiceClipService
 
     /**
      * Stage a recorded/uploaded clip for preview: decode to WAV, cap its length,
-     * optionally clean it up, and store the original + (if enhanced) enhanced
-     * WAVs under a fresh token so the browser can A/B and pick one. The stored
-     * bytes are exactly what the preview URLs serve and what {@see claim()}
-     * returns, so the chosen take is byte-identical end to end.
+     * and store the original under a fresh token. Cleanup itself (denoise +
+     * enhance) is NOT run here — that Replicate call can take a minute or more
+     * and, run in-band, held the POST open until a gateway 504'd it (see
+     * {@see PrepareVoiceClipJob}). When enhancement will run the clip
+     * is staged as PROCESSING for the job to finish and the browser to poll;
+     * otherwise it's READY immediately. Either way the stored bytes are exactly
+     * what the preview URLs serve and what {@see claim()} returns, so the chosen
+     * take is byte-identical end to end.
      *
      * @throws RuntimeException on an undecodable or over-long clip (→ 422)
      */
-    public function prepare(string $rawBytes, bool $enhance, int $userId): VoiceClip
+    public function stage(string $rawBytes, bool $enhance, int $userId): VoiceClip
     {
         $wav = $this->converter->decodeToWav($rawBytes);
 
@@ -41,38 +46,62 @@ class VoiceClipService
             throw new RuntimeException('That clip is too long ('.round($duration).'s) — keep it under '.$max.'s.');
         }
 
-        $result = ($enhance && config('tts.enhance.enabled'))
-            ? $this->enhanceOrOriginal($wav)
-            : ['bytes' => $wav, 'enhanced' => false, 'error' => null];
-
         // Opportunistically clear this user's expired clips so a box without cron
         // doesn't accumulate staging files.
         $this->pruneExpired($userId);
 
+        $willEnhance = $enhance && config('tts.enhance.enabled');
+
         $token = Str::random(40);
         $disk = Storage::disk(config('tts.storage_disk'));
-        $base = config('tts.voice_clip_path').'/'.$token;
-
-        $originalPath = $base.'/original.wav';
+        $originalPath = config('tts.voice_clip_path').'/'.$token.'/original.wav';
         $disk->put($originalPath, $wav);
-
-        $enhancedPath = null;
-        $enhancedDuration = null;
-        if ($result['enhanced']) {
-            $enhancedPath = $base.'/enhanced.wav';
-            $disk->put($enhancedPath, $result['bytes']);
-            $enhancedDuration = $this->converter->wavDurationSeconds($result['bytes']);
-        }
 
         return VoiceClip::create([
             'user_id' => $userId,
             'token' => $token,
             'original_path' => $originalPath,
-            'enhanced_path' => $enhancedPath,
+            'enhanced_path' => null,
             'original_duration' => $duration,
+            'enhanced_duration' => null,
+            'enhance_error' => null,
+            'status' => $willEnhance ? VoiceClip::STATUS_PROCESSING : VoiceClip::STATUS_READY,
+            'expires_at' => now()->addHours((int) config('tts.enhance.clip_ttl_hours', 24)),
+        ]);
+    }
+
+    /**
+     * Run cleanup over a staged clip's original take and flip it to READY. Called
+     * from {@see PrepareVoiceClipJob} off the request cycle. Degrade-safe
+     * end to end: a failed (or timed-out) enhance leaves the original in place with
+     * a user-facing warning, and the clip still becomes READY so the poller stops.
+     */
+    public function runEnhancement(VoiceClip $clip): void
+    {
+        $wav = $this->bytes($clip, 'original');
+        if ($wav === null) {
+            // The original vanished (expired + pruned mid-flight) — nothing to
+            // enhance, but release the poller.
+            $clip->update(['status' => VoiceClip::STATUS_READY]);
+
+            return;
+        }
+
+        $result = $this->enhanceOrOriginal($wav);
+
+        $enhancedPath = null;
+        $enhancedDuration = null;
+        if ($result['enhanced']) {
+            $enhancedPath = config('tts.voice_clip_path').'/'.$clip->token.'/enhanced.wav';
+            Storage::disk(config('tts.storage_disk'))->put($enhancedPath, $result['bytes']);
+            $enhancedDuration = $this->converter->wavDurationSeconds($result['bytes']);
+        }
+
+        $clip->update([
+            'enhanced_path' => $enhancedPath,
             'enhanced_duration' => $enhancedDuration,
             'enhance_error' => $result['error'],
-            'expires_at' => now()->addHours((int) config('tts.enhance.clip_ttl_hours', 24)),
+            'status' => VoiceClip::STATUS_READY,
         ]);
     }
 

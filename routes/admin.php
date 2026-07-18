@@ -211,6 +211,9 @@ Route::post('/voices/order', [VoiceController::class, 'order'])->name('voices.or
 // Prepare a recorded/uploaded clip for preview (AJAX) + serve its A/B variants.
 // Registered BEFORE /voices/{voice} so "clips" isn't captured as a voice slug.
 Route::post('/voices/clips', [VoiceClipController::class, 'store'])->name('voices.clips.store');
+// Poll target while the queued cleanup job runs (constrained variant route below
+// won't capture "status"), then serve the A/B variants.
+Route::get('/voices/clips/{clip:token}/status', [VoiceClipController::class, 'status'])->name('voices.clips.status');
 Route::get('/voices/clips/{clip:token}/{variant}', [VoiceClipController::class, 'audio'])
     ->whereIn('variant', ['original', 'enhanced'])->name('voices.clips.audio');
 Route::get('/voices/{voice}/edit', [VoiceController::class, 'edit'])->name('voices.edit');

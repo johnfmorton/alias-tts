@@ -99,9 +99,10 @@ class SpendCountersTest extends TestCase
         app(ProjectService::class)->generateChunk($chunk);
 
         // Re-run the counters migration over existing spend, as a deploy would.
-        // Five steps: the per-chunk skip flag, the credit system, the
-        // project-jobs table, and the generation-timings table sit on top of it.
-        Artisan::call('migrate:rollback', ['--step' => 5]);
+        // Six steps: the per-chunk skip flag, the credit system, the project-jobs
+        // table, the generation-timings table, and the voice-clip status column
+        // sit on top of it.
+        Artisan::call('migrate:rollback', ['--step' => 6]);
         $this->assertFalse(DB::getSchemaBuilder()->hasTable('tts_spend_counters'));
         Artisan::call('migrate', ['--force' => true]);
 

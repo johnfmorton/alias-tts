@@ -14,6 +14,14 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   change.
 
 ### Fixed
+- **Cleaning up a voice reference clip no longer times out on a longer
+  recording.** "Use this recording" (and **Preview cleanup** on an upload) ran
+  the resemble-enhance cleanup while you waited on the request, so a longer clip
+  could sit past the server's limit and fail with a gateway error — with nothing
+  in the logs to explain it. The cleanup now runs in the background: the page
+  stages your clip immediately and waits for the result to appear, however long
+  the cleanup takes. A cleanup that can't finish still falls back to your
+  original take, as before.
 - **The Studio Inspector's credit badge now updates as you spend.** Generating a
   chunk — or the full **Preview final audio** — charges your balance right away,
   but the "credit" badge only refreshed on Preview, so it looked like nothing had

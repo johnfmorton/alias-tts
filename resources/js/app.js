@@ -4230,13 +4230,38 @@ function initVoiceRecorder() {
                 body: fd,
             });
             if (!res.ok) throw new Error(await errorMessage(res));
-            renderAB(await res.json());
+            let data = await res.json();
+            // Cleanup now runs off the request in a queued job — the upload returns
+            // right away as "processing" so a long clip can't hold the POST open
+            // until a gateway 504s it. Poll the status URL until the take is staged.
+            if (data.status === 'processing' && data.status_url) data = await pollClipReady(data.status_url);
+            renderAB(data);
             say('', 'muted');
         } catch (err) {
             say(`✗ ${err.message}`, 'error');
         } finally {
             endBusy(trigger);
             refreshPreviewBtn();
+        }
+    }
+
+    // Wait for the queued cleanup to finish. Degrade-safe server-side: a failed or
+    // timed-out enhance still resolves to a ready clip (the original take + a
+    // warning), so this only errors if the clip never becomes ready in time —
+    // e.g. no queue worker is running.
+    async function pollClipReady(statusUrl) {
+        const DEADLINE_MS = 240000; // comfortably past the enhancer's own ceiling
+        const INTERVAL_MS = 2500;
+        const startedAt = performance.now();
+        for (;;) {
+            await new Promise((resolve) => setTimeout(resolve, INTERVAL_MS));
+            const res = await fetch(statusUrl, { headers: { 'Accept': 'application/json' } });
+            if (!res.ok) throw new Error(await errorMessage(res));
+            const data = await res.json();
+            if (data.status === 'ready') return data;
+            if (performance.now() - startedAt > DEADLINE_MS) {
+                throw new Error('Cleanup is taking longer than expected — please try again.');
+            }
         }
     }
 

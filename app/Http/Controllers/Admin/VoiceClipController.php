@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Admin;
 
 use App\Http\Controllers\Concerns\ServesRangedAudio;
 use App\Http\Controllers\Controller;
+use App\Jobs\PrepareVoiceClipJob;
 use App\Models\VoiceClip;
 use App\Rules\AudioOnlyUpload;
 use App\Services\VoiceClipService;
@@ -33,6 +34,11 @@ class VoiceClipController extends Controller
      * alike — ffmpeg transcodes at decode. The mimetypes list includes
      * video/webm + video/mp4 because fileinfo sniffs audio-only webm/mp4 as video
      * containers; {@see AudioOnlyUpload} (ffprobe) is the real video-stream gate.
+     *
+     * Cleanup runs in a queued job so the upload returns fast: when it will run,
+     * the clip is staged PROCESSING and this returns a status URL the browser
+     * polls (see {@see status()}); the sync queue driver finishes it inline, so a
+     * refresh reflects the already-READY result there and in tests.
      */
     public function store(Request $request): JsonResponse
     {
@@ -50,7 +56,7 @@ class VoiceClipController extends Controller
         }
 
         try {
-            $clip = $this->clips->prepare(
+            $clip = $this->clips->stage(
                 (string) file_get_contents($request->file('audio')->getRealPath()),
                 $request->boolean('enhance'),
                 $request->user()->id,
@@ -64,20 +70,25 @@ class VoiceClipController extends Controller
             return response()->json(['message' => 'Could not prepare the clip. Please try again.'], 502);
         }
 
-        return response()->json([
-            'ok' => true,
-            'token' => $clip->token,
-            'expires_at' => $clip->expires_at->toIso8601String(),
-            'original' => [
-                'url' => route('admin.voices.clips.audio', ['clip' => $clip->token, 'variant' => 'original']),
-                'duration' => $clip->original_duration,
-            ],
-            'enhanced' => $clip->enhanced_path ? [
-                'url' => route('admin.voices.clips.audio', ['clip' => $clip->token, 'variant' => 'enhanced']),
-                'duration' => $clip->enhanced_duration,
-            ] : null,
-            'enhance_error' => $clip->enhance_error,
-        ]);
+        if ($clip->status === VoiceClip::STATUS_PROCESSING) {
+            PrepareVoiceClipJob::dispatch($clip->id);
+            // A real (database/redis) queue leaves it PROCESSING for the poll; the
+            // sync driver has already finished the job, so reflect the truth.
+            $clip->refresh();
+        }
+
+        return response()->json($this->payload($clip));
+    }
+
+    /**
+     * Poll target while cleanup runs. Returns the same shape as {@see store()}:
+     * a bare PROCESSING marker until the job finishes, then the full A/B payload.
+     */
+    public function status(Request $request, VoiceClip $clip): JsonResponse
+    {
+        abort_unless($clip->user_id === $request->user()->id && $clip->expires_at->isFuture(), 404);
+
+        return response()->json($this->payload($clip));
     }
 
     /** Range-aware audio for the A/B players (iOS Safari needs 206 — see ServesRangedAudio). */
@@ -91,5 +102,41 @@ class VoiceClipController extends Controller
         }
 
         return $this->rangedAudio($bytes, 'audio/wav', $request);
+    }
+
+    /**
+     * JSON describing a staged clip. While PROCESSING it carries only the token
+     * and a status URL to poll; once READY it carries the original + (if any)
+     * enhanced variant URLs and any degrade-safe cleanup warning.
+     *
+     * @return array<string, mixed>
+     */
+    private function payload(VoiceClip $clip): array
+    {
+        if ($clip->status === VoiceClip::STATUS_PROCESSING) {
+            return [
+                'ok' => true,
+                'token' => $clip->token,
+                'status' => VoiceClip::STATUS_PROCESSING,
+                'status_url' => route('admin.voices.clips.status', ['clip' => $clip->token]),
+                'expires_at' => $clip->expires_at->toIso8601String(),
+            ];
+        }
+
+        return [
+            'ok' => true,
+            'token' => $clip->token,
+            'status' => VoiceClip::STATUS_READY,
+            'expires_at' => $clip->expires_at->toIso8601String(),
+            'original' => [
+                'url' => route('admin.voices.clips.audio', ['clip' => $clip->token, 'variant' => 'original']),
+                'duration' => $clip->original_duration,
+            ],
+            'enhanced' => $clip->enhanced_path ? [
+                'url' => route('admin.voices.clips.audio', ['clip' => $clip->token, 'variant' => 'enhanced']),
+                'duration' => $clip->enhanced_duration,
+            ] : null,
+            'enhance_error' => $clip->enhance_error,
+        ];
     }
 }

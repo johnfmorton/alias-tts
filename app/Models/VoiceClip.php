@@ -17,13 +17,20 @@ use Illuminate\Support\Carbon;
  * @property string $original_path
  * @property string|null $enhanced_path
  * @property string|null $enhance_error
+ * @property string $status
  * @property Carbon $expires_at
  */
 class VoiceClip extends Model
 {
+    /** Cleanup is queued and still running; the browser polls until it flips to READY. */
+    public const STATUS_PROCESSING = 'processing';
+
+    /** The enhanced take (or the degrade-safe original) is staged and ready to A/B. */
+    public const STATUS_READY = 'ready';
+
     protected $fillable = [
         'user_id', 'token', 'original_path', 'enhanced_path',
-        'original_duration', 'enhanced_duration', 'enhance_error', 'expires_at',
+        'original_duration', 'enhanced_duration', 'enhance_error', 'status', 'expires_at',
     ];
 
     protected function casts(): array

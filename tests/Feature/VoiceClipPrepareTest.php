@@ -2,6 +2,7 @@
 
 namespace Tests\Feature;
 
+use App\Jobs\PrepareVoiceClipJob;
 use App\Models\User;
 use App\Models\Voice;
 use App\Models\VoiceClip;
@@ -10,7 +11,9 @@ use App\Services\Enhance\FakeEnhanceProvider;
 use App\Services\VoiceClipService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\UploadedFile;
+use Illuminate\Support\Facades\Queue;
 use Illuminate\Support\Facades\Storage;
+use RuntimeException;
 use Symfony\Component\Process\Process;
 use Tests\TestCase;
 
@@ -111,6 +114,110 @@ class VoiceClipPrepareTest extends TestCase
         $this->actingAs($this->admin())->post(route('admin.voices.clips.store'), [
             'audio' => $this->wavUpload(seconds: 2),
         ])->assertStatus(422)->assertJsonFragment(['message' => 'That clip is too long (2s) — keep it under 1s.']);
+    }
+
+    // ---- async cleanup (queued job + status poll) ---------------------------
+
+    public function test_prepare_defers_cleanup_to_a_queued_job(): void
+    {
+        Queue::fake();
+
+        $response = $this->actingAs($this->admin())->post(route('admin.voices.clips.store'), [
+            'audio' => $this->wavUpload(),
+            'enhance' => '1',
+        ]);
+
+        // The upload returns immediately as "processing" (no enhanced take yet) so
+        // a long clip can't hold the POST open until a gateway 504s it.
+        $response->assertOk()
+            ->assertJson(['ok' => true, 'status' => 'processing'])
+            ->assertJsonMissingPath('enhanced');
+        $this->assertNotNull($response->json('status_url'));
+
+        $clip = VoiceClip::where('token', $response->json('token'))->firstOrFail();
+        $this->assertSame(VoiceClip::STATUS_PROCESSING, $clip->status);
+        $this->assertNull($clip->enhanced_path);
+
+        Queue::assertPushed(PrepareVoiceClipJob::class, fn ($job) => $job->clipId === $clip->id);
+    }
+
+    public function test_prepare_without_cleanup_is_ready_immediately_and_queues_no_job(): void
+    {
+        Queue::fake();
+
+        $response = $this->actingAs($this->admin())->post(route('admin.voices.clips.store'), [
+            'audio' => $this->wavUpload(),
+        ]);
+
+        $response->assertOk()->assertJson(['status' => 'ready', 'enhanced' => null]);
+        Queue::assertNothingPushed();
+    }
+
+    public function test_the_status_endpoint_flips_to_ready_once_the_job_runs(): void
+    {
+        Queue::fake(); // hold the job so we can observe the processing → ready flip
+
+        $admin = $this->admin();
+        $token = $this->actingAs($admin)->post(route('admin.voices.clips.store'), [
+            'audio' => $this->wavUpload(),
+            'enhance' => '1',
+        ])->json('token');
+
+        $statusUrl = route('admin.voices.clips.status', ['clip' => $token]);
+
+        // Still cleaning up.
+        $this->actingAs($admin)->getJson($statusUrl)
+            ->assertOk()
+            ->assertJson(['status' => 'processing'])
+            ->assertJsonMissingPath('enhanced');
+
+        // Run the queued job as the worker would.
+        $clip = VoiceClip::where('token', $token)->firstOrFail();
+        (new PrepareVoiceClipJob($clip->id))->handle(app(VoiceClipService::class));
+
+        // Now the enhanced take is staged and pollable.
+        $this->actingAs($admin)->getJson($statusUrl)
+            ->assertOk()
+            ->assertJson(['status' => 'ready', 'enhance_error' => null])
+            ->assertJsonPath('enhanced.url', fn ($url) => str_contains((string) $url, 'enhanced'));
+
+        $this->assertSame(
+            (new FakeEnhanceProvider)->output(),
+            Storage::disk('local')->get($clip->refresh()->enhanced_path),
+        );
+    }
+
+    public function test_the_status_endpoint_is_owner_scoped(): void
+    {
+        Queue::fake();
+
+        $token = $this->actingAs($this->admin())->post(route('admin.voices.clips.store'), [
+            'audio' => $this->wavUpload(),
+            'enhance' => '1',
+        ])->json('token');
+
+        $this->actingAs($this->admin())
+            ->getJson(route('admin.voices.clips.status', ['clip' => $token]))
+            ->assertNotFound();
+    }
+
+    public function test_a_failed_job_releases_the_poller_with_the_original_and_a_warning(): void
+    {
+        Queue::fake();
+
+        $token = $this->actingAs($this->admin())->post(route('admin.voices.clips.store'), [
+            'audio' => $this->wavUpload(),
+            'enhance' => '1',
+        ])->json('token');
+
+        // A worker kill (timeout) or unexpected throw lands in failed().
+        $clip = VoiceClip::where('token', $token)->firstOrFail();
+        (new PrepareVoiceClipJob($clip->id))->failed(new RuntimeException('worker timed out'));
+
+        $clip->refresh();
+        $this->assertSame(VoiceClip::STATUS_READY, $clip->status);
+        $this->assertNull($clip->enhanced_path);
+        $this->assertNotNull($clip->enhance_error);
     }
 
     // ---- A/B audio route ----------------------------------------------------
