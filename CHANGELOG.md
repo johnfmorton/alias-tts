@@ -6,6 +6,13 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Fixed
+- **Clearer "declined" label on the Pronunciations page.** In the APPROVED
+  column, a respelling you turned down now reads as a neutral gray **No** instead
+  of an amber **Pending**. "Pending" wrongly implied the suggestion was still
+  awaiting a decision, when these are LLM suggestions you've already declined so
+  future runs stop re-proposing them.
+
 ### Security
 - **Suspended accounts can no longer regain access through a set-password link.**
   Completing an invite or force-reset link (valid for up to seven days) no longer

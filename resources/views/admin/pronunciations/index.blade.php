@@ -38,7 +38,7 @@
                             @if($entry->approved)
                                 <span class="rounded-md bg-emerald-500/10 px-2 py-1 text-xs text-emerald-400">Yes</span>
                             @else
-                                <span class="rounded-md bg-amber-500/10 px-2 py-1 text-xs text-amber-400">Pending</span>
+                                <span class="rounded-md bg-zinc-500/10 px-2 py-1 text-xs text-zinc-400">No</span>
                             @endif
                         </td>
                         <td class="px-4 py-3">
