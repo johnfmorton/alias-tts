@@ -1618,13 +1618,18 @@ class StudioProjectController extends Controller
             ],
             'project' => [
                 'spent' => $projectSpent,
-                'label' => 'est. spend '.$projectReadout['label'],
+                'label' => 'project spend '.$projectReadout['label'],
+                // Bare figure for the header stat chip's .stat-value — the
+                // "project spend" wording lives in the chip's static key, not
+                // the value. (label stays for any non-chip consumer/test.)
+                'value' => $projectReadout['label'],
                 'title' => $projectReadout['title'],
             ],
             // Server-formatted like the labels above (JS never does money
             // math); null = the owner is unlimited and the readout stays hidden.
             'balance' => $balance === null ? null : [
                 'label' => 'credit '.CreditService::formatMicro($balance),
+                'value' => CreditService::formatMicro($balance),
                 'low' => $balance <= 0,
             ],
         ];

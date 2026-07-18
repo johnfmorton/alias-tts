@@ -299,6 +299,41 @@
 }
 
 /*
+ * Project header (11C): the status pill carries a state-colored dot and a
+ * capitalized label. Driven as an id rule so it survives badge()'s className
+ * rewrites in app.js (which set the base + STATUS_STYLES color classes); the
+ * dot inherits the pill's text color via currentColor, so it tracks
+ * ready/stale/pending automatically.
+ */
+#project-status {
+    align-items: center;
+    gap: 6px;
+    text-transform: capitalize;
+}
+#project-status::before {
+    content: '';
+    flex-shrink: 0;
+    width: 6px;
+    height: 6px;
+    border-radius: 9999px;
+    background: currentColor;
+}
+
+/*
+ * The pre-run estimate and the live run/status line both sit under the row-3
+ * action cluster, so they're right-justified next to the buttons they describe
+ * (queue message, "Creating clip N of M", "All N chunks generated", "✓ Rebuilt",
+ * …). This is an id rule, not a utility class, because setStatus() in app.js
+ * rewrites #project-final-status's className on every message — a class would be
+ * wiped. margin-top is restored here for the same reason (setStatus drops mt-2).
+ */
+#project-generate-estimate,
+#project-final-status {
+    margin-top: 0.5rem;
+    text-align: right;
+}
+
+/*
  * Default-tuning dial slider (voice edit page): a thin track with a cyan fill to
  * the knob, paired with a number field (the two are synced in JS —
  * initVoiceTuningDials). The fill % is set inline via a --fill custom property.

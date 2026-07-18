@@ -4,6 +4,21 @@ All notable changes to this project are documented in this file. The format is
 based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this
 project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Changed
+- **Redesigned the Studio project header.** The toolbar for a project is now a
+  cleaner three-row card: the identity row (← Projects, title, Rename) carries
+  compact **chunks / spend / credit** stat chips, the status pill, and the
+  project menu (⋯) all grouped together; the final-audio player is the hero
+  underneath; and the voice/format pickers sit alongside the audio-output
+  buttons on their own row. Buttons that can't do anything in the current state
+  are now **hidden rather than greyed** — while chunks still need generating,
+  "Generate remaining" leads alone and Build final / Download / Approve stay out
+  of the way until there's a final to act on. The time estimate and progress
+  messages now sit right under the action buttons, and **"Download draft
+  version" is now "Download preview."**
+
 ## [0.64.0] - 2026-07-18
 
 ### Added

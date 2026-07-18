@@ -8,6 +8,7 @@ use App\Models\TtsProject;
 use App\Models\User;
 use App\Models\UserSetting;
 use App\Models\Voice;
+use App\Services\Credit\CreditService;
 use App\Support\GenerationCost;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Http;
@@ -229,7 +230,7 @@ class StudioInspectorTest extends TestCase
         // not the pre-charge $5.00 (which would mean the badge went stale).
         $fresh = $user->fresh()->credit_balance_micro;
         $this->assertLessThan(5_000_000, $fresh);
-        $this->assertSame('credit '.\App\Services\Credit\CreditService::formatMicro($fresh), $badge['label']);
+        $this->assertSame('credit '.CreditService::formatMicro($fresh), $badge['label']);
         $this->assertFalse($badge['low']);
     }
 

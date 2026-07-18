@@ -1662,14 +1662,15 @@ function initStudioProject() {
         const allCompleted = cards.length > 0 && ! anyPending;
         const ready = hasFinal && status === 'ready';
 
-        // Generate-all shows while chunks remain outstanding — and since Build
-        // final is off in exactly those states (below), it's the single next step,
-        // so it always leads. It pulses when existing work (generated audio or a
-        // built final) has fallen out of sync with the text; a brand-new project
-        // gets the lit primary without the nudge. look() rewrites className with
-        // ACT_BASE (which carries `inline-flex`), so hiding must clear inline-flex
-        // too — a lone `hidden` loses to it. showEl toggles both, so re-adding a
-        // chunk (→ anyPending) brings the button back.
+        // Generate-all shows while chunks remain outstanding — and since the
+        // final-audio actions below all HIDE in exactly those states, it's the
+        // single next step, so it always leads. It pulses when existing work
+        // (generated audio or a built final) has fallen out of sync with the
+        // text; a brand-new project gets the lit primary without the nudge.
+        // look() rewrites className with ACT_BASE (which carries `inline-flex`),
+        // so hiding must clear inline-flex too — a lone `hidden` loses to it.
+        // showEl toggles both, so re-adding a chunk (→ anyPending) brings the
+        // button back.
         if (generateAllBtn) {
             look(generateAllBtn, 'primary');
             setPulse(generateAllBtn, anyPending && (anyCompleted || hasFinal));
@@ -1677,27 +1678,32 @@ function initStudioProject() {
         }
         // Stop lives next to Generate remaining, only while a run is in flight.
         showEl(stopBtn, runActive, 'inline-flex');
-        // Build final stays off while any chunk needs generating: a stale chunk
-        // still holds its OLD audio, so stitching now would put outdated audio
-        // under the edited text (the server only rejects chunks with NO audio).
-        // Once every chunk is current it lights and pulses until the final is
-        // (re)built; a ready final steps it down to a quiet secondary. During a
-        // background run it's always off — the run isn't done stitching-worthy
-        // work yet, and the server 409s a rebuild mid-run.
-        look(rebuildBtn, runActive ? 'off' : (ready ? 'outline' : (allCompleted ? 'primary' : 'off')));
-        setPulse(rebuildBtn, ! runActive && allCompleted && ! ready);
 
-        // The draft download (bare final audio) is offered until the project is
-        // approved; then the approved-version package supersedes it, so it hides.
-        look(downloadLink, ready ? 'primary' : 'off');
-        showEl(downloadLink, ! isSealed, 'inline-flex');
+        // Space-saving: a button with no purpose in the current state is HIDDEN,
+        // not greyed. While any chunk is outstanding (Generate remaining leads) or
+        // a background run is going, none of these final-audio actions can do
+        // anything — building would stitch stale/absent audio, and the server 409s
+        // a mid-run rebuild — so they disappear until the work is done.
+        const canBuild = ! runActive && allCompleted;   // every chunk current, no run
+        const finalReady = ready && ! anyPending;        // a built, in-sync final exists
 
-        // Approve ⇆ approved-download share one slot. "Approve as final" stays visible
-        // (lit when a clean final exists, greyed otherwise) until the project is
-        // approved; then it's replaced in place by the approved-version download,
-        // which becomes the primary action.
-        look(sealBtn, (ready && ! isSealed) ? 'seal' : 'off');
-        showEl(sealBtn, ! isSealed, 'inline-flex');
+        // Build final: lit primary (pulsing) while a final is due; a quiet outline
+        // once one is ready, as a rebuild after edits. Hidden while chunks are
+        // outstanding or a run is active.
+        look(rebuildBtn, ready ? 'outline' : 'primary');
+        setPulse(rebuildBtn, canBuild && ! ready);
+        showEl(rebuildBtn, canBuild, 'inline-flex');
+
+        // Draft download (bare final audio): only meaningful once a current final
+        // exists and before approval — then the approved-version package below
+        // supersedes it. Hidden otherwise (no file, or a stale one).
+        look(downloadLink, 'primary');
+        showEl(downloadLink, finalReady && ! isSealed, 'inline-flex');
+
+        // Approve as final: same gate as the draft download; once approved it's
+        // replaced in place by the approved-version (receipt) download.
+        look(sealBtn, 'seal');
+        showEl(sealBtn, finalReady && ! isSealed, 'inline-flex');
         if (receiptLink) {
             look(receiptLink, 'primary');
             showEl(receiptLink, isSealed, 'inline-flex');
@@ -2390,19 +2396,24 @@ function initStudioProject() {
             chip.title = spend.chunk.title;
             chip.classList.toggle('hidden', !(spend.chunk.spent > 0));
         }
+        // Header/credit are stat chips (value over a static key), so write only
+        // the bare figure into .stat-value — never the chip's whole textContent,
+        // which would wipe the key span. `value` is the bare figure; `label`
+        // (with its "project spend"/"credit" wording) is the pre-chip fallback.
         const header = document.getElementById('project-spend');
         if (header && spend.project) {
-            header.textContent = spend.project.label;
+            const v = header.querySelector('.stat-value') || header;
+            v.textContent = spend.project.value ?? spend.project.label;
             header.title = spend.project.title;
         }
-        // Remaining prepaid credit for the project owner; the span only exists
-        // for limited owners, and the label arrives server-formatted like the
-        // rest. `low` flips it to the warning color at/below $0.
+        // Remaining prepaid credit for the project owner; the chip only exists
+        // for limited owners. `low` flips the value to the warning color at/below $0.
         const balance = document.getElementById('credit-balance');
         if (balance && spend.balance) {
-            balance.textContent = spend.balance.label;
-            balance.classList.toggle('text-amber-400', !!spend.balance.low);
-            balance.classList.toggle('text-zinc-500', !spend.balance.low);
+            const v = balance.querySelector('.stat-value') || balance;
+            v.textContent = spend.balance.value ?? spend.balance.label;
+            v.classList.toggle('text-amber-400', !!spend.balance.low);
+            v.classList.toggle('text-ok', !spend.balance.low);
         }
     }
 

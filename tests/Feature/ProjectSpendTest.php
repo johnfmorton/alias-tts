@@ -188,7 +188,7 @@ class ProjectSpendTest extends TestCase
         $response->assertOk()
             ->assertJsonPath('spend.chunk.spent', mb_strlen($chunk->text))
             ->assertJsonPath('spend.chunk.label', GenerationCost::label(mb_strlen($chunk->text)))
-            ->assertJsonPath('spend.project.label', 'est. spend '.GenerationCost::label(mb_strlen($chunk->text)));
+            ->assertJsonPath('spend.project.label', 'project spend '.GenerationCost::label(mb_strlen($chunk->text)));
     }
 
     public function test_readouts_hidden_when_no_rate_is_configured(): void
@@ -204,7 +204,8 @@ class ProjectSpendTest extends TestCase
         $page = $this->actingAs($this->admin())
             ->get(route('admin.studio.projects.show', $project));
 
-        $page->assertOk()->assertDontSee('project-spend')->assertDontSee('est. spend');
+        // No rate → the header spend chip (#project-spend) isn't rendered at all.
+        $page->assertOk()->assertDontSee('project-spend');
 
         // And the JSON side goes quiet too, rather than reporting $0.00.
         $chunk = $project->chunks()->orderBy('position')->first();
@@ -220,9 +221,12 @@ class ProjectSpendTest extends TestCase
         $chunk = $project->chunks()->orderBy('position')->first();
         app(ProjectService::class)->generateChunk($chunk);
 
+        // The header spend chip shows the bare figure in .stat-value over a
+        // static "spend" key (no longer one "project spend X" string).
         $this->actingAs($this->admin())
             ->get(route('admin.studio.projects.show', $project))
             ->assertOk()
-            ->assertSee('est. spend '.GenerationCost::label($project->fresh()->spent_characters));
+            ->assertSee('id="project-spend"', false)
+            ->assertSee(GenerationCost::label($project->fresh()->spent_characters));
     }
 }

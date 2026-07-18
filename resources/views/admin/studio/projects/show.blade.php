@@ -54,12 +54,18 @@
             </div>
         @endif
 
-        {{-- Sticky command bar — merges the old toolbar and the "Final audio" card into
-             one pinned, two-row header so the final audio is always one tap away. --}}
-        <div class="sticky top-0 z-30 -mx-4 mb-6 border-b border-white/[0.09] bg-sticky px-4 py-3.5 shadow-[0_12px_26px_-14px_rgba(0,0,0,0.85)]">
-            {{-- Row 1: back · title (own line so it can wrap) · rename · voice · chunks · status --}}
-            <div class="mb-3.5 flex flex-wrap items-center gap-3">
-                <a href="{{ route('admin.studio.index') }}" class="text-sm text-zinc-400 hover:text-zinc-200">← Projects</a>
+        {{-- Project header — 11C "player-forward": one sticky card, three rows.
+             Row 1 (identity): ← Projects · title · Rename · economics chips · status
+             · project-scope ⋯ menu. Row 2: the final-audio hero player. Row 3
+             (controls): Voice/Format config on the left, the audio-output action
+             cluster on the right. Every element id and data hook is unchanged —
+             initStudioProject()/reflectActionState()/renderSpend() drive looks,
+             text, and visibility exactly as before; this is a layout + skin pass. --}}
+        <div class="sticky top-0 z-30 mb-6 rounded-2xl border border-white/[0.09] bg-sticky px-5 py-4 shadow-[0_16px_40px_-10px_rgba(0,0,0,0.7)] sm:px-6 sm:py-5">
+            {{-- Row 1: identity + economics chips + project-scope menu --}}
+            <div class="flex flex-wrap items-center gap-x-3 gap-y-2">
+                <a href="{{ route('admin.studio.index') }}" class="inline-flex items-center gap-1.5 text-sm text-zinc-400 hover:text-zinc-200">← Projects</a>
+                <span class="hidden h-[18px] w-px bg-white/10 sm:block" aria-hidden="true"></span>
                 <span id="project-title-label" class="text-lg font-bold tracking-[-0.2px] text-zinc-100">{{ $project->title }}</span>
                 @if($foreignOwner)
                     {{-- Always-visible ownership flag for SuperAdmin support visits;
@@ -77,81 +83,43 @@
                     <button type="button" id="project-rename-cancel"
                             class="shrink-0 rounded-lg border border-white/12 px-3 py-1.5 text-sm text-zinc-400 hover:bg-white/[0.04]">Cancel</button>
                 </div>
-                <div class="ml-auto flex items-center gap-3">
-                    <label class="flex items-center gap-2 text-xs text-zinc-500" title="Changing the voice marks generated chunks for regeneration.">
-                        <span class="text-zinc-400">Voice</span>
-                        <select id="project-voice"
-                                class="rounded-[8px] border border-edge bg-inset px-2.5 py-1.5 text-sm text-zinc-200 focus:border-accent/50 focus:outline-none">
-                            @foreach($voices as $v)
-                                <option value="{{ $v->slug }}" data-model="{{ \App\Services\Tts\ModelCatalog::forVoice($v) }}" @selected($project->voice && $project->voice->id === $v->id)>{{ $v->name }}</option>
-                            @endforeach
-                        </select>
-                    </label>
-                    <label class="flex items-center gap-2 text-xs text-zinc-500" title="Final audio format. MP3 is compressed; WAV is uncompressed (~10× larger). Changing it rebuilds the final in the new format.">
-                        <span class="text-zinc-400">Format</span>
-                        <select id="project-format"
-                                class="rounded-[8px] border border-edge bg-inset px-2.5 py-1.5 text-sm text-zinc-200 focus:border-accent/50 focus:outline-none">
-                            @foreach($outputFormats as $token => $optLabel)
-                                <option value="{{ $token }}" @selected($project->output_format === $token)>{{ $optLabel }}</option>
-                            @endforeach
-                        </select>
-                    </label>
-                    <span class="text-sm text-zinc-400">{{ $chunks->count() }} chunks</span>
+
+                {{-- Economics as compact stat chips (value over key), then status +
+                     the project-scope ⋯ menu — lifecycle actions kept apart from the
+                     audio-output buttons in row 3. --}}
+                <div class="ml-auto flex items-center gap-2">
+                    <div class="flex min-w-[62px] flex-col items-center rounded-[9px] border border-white/[0.08] bg-inset px-3 py-1.5">
+                        <span class="font-mono text-[13px] font-semibold text-zinc-200">{{ $chunks->count() }}</span>
+                        <span class="text-[10px] uppercase tracking-wide text-zinc-500">chunks</span>
+                    </div>
                     @if(\App\Support\GenerationCost::enabled())
-                        {{-- Lifetime estimate — counts every render ever, so deleting
+                        {{-- Lifetime spend — counts every render ever, so deleting
                              takes/chunks never lowers it (see GenerationCost). Priced
-                             per engine (each model has its own rate); the tooltip
-                             spells out the per-model breakdown. Labels are viewer-aware
-                             (marked-up for limited users, actual for SuperAdmins). --}}
-                        <span id="project-spend" class="cursor-help text-sm text-zinc-500"
-                              title="{{ $projectSpendReadout['title'] }}">est. spend {{ $projectSpendReadout['label'] }}</span>
+                             per engine; the tooltip spells out the per-model breakdown.
+                             The value is viewer-aware (marked-up for limited users,
+                             actual for SuperAdmins) and refreshed live by renderSpend()
+                             into .stat-value. --}}
+                        <div id="project-spend" class="flex min-w-[62px] cursor-help flex-col items-center rounded-[9px] border border-white/[0.08] bg-inset px-3 py-1.5"
+                             title="{{ $projectSpendReadout['title'] }}">
+                            <span class="stat-value font-mono text-[13px] font-semibold text-zinc-200">{{ $projectSpendReadout['label'] }}</span>
+                            <span class="text-[10px] uppercase tracking-wide text-zinc-500">spend</span>
+                        </div>
                     @endif
                     {{-- The OWNER's remaining prepaid credit; absent = unlimited. JS
-                         refreshes the text from spend.balance after every render. --}}
+                         refreshes .stat-value + its low-balance color from spend.balance
+                         after every render. --}}
                     @if($creditBalance !== null)
-                        <span id="credit-balance" class="cursor-help text-sm {{ $creditBalance <= 0 ? 'text-amber-400' : 'text-zinc-500' }}"
-                              title="Prepaid credit remaining for this project's owner. New generation pauses when it reaches $0 — existing audio stays available.">credit {{ \App\Services\Credit\CreditService::formatMicro($creditBalance) }}</span>
+                        <div id="credit-balance" class="flex min-w-[62px] cursor-help flex-col items-center rounded-[9px] border border-white/[0.08] bg-inset px-3 py-1.5"
+                             title="Prepaid credit remaining for this project's owner. New generation pauses when it reaches $0 — existing audio stays available.">
+                            <span class="stat-value font-mono text-[13px] font-semibold {{ $creditBalance <= 0 ? 'text-amber-400' : 'text-ok' }}">{{ \App\Services\Credit\CreditService::formatMicro($creditBalance) }}</span>
+                            <span class="text-[10px] uppercase tracking-wide text-zinc-500">credit</span>
+                        </div>
                     @endif
                     <span id="project-status" class="inline-flex rounded-md border px-2 py-0.5 text-xs {{ $statusBadgeClass }}">{{ $statusVal }}</span>
-                </div>
-            </div>
-
-            {{-- Row 2: hero transport (the final audio artifact) + state-aware actions (4B) --}}
-            <div class="flex flex-wrap items-center gap-4">
-                <div id="project-final-player" class="aplayer aplayer--hero min-w-[300px] flex-1 {{ $hasFinal ? '' : 'hidden' }}">
-                    <button type="button" class="aplayer__btn" aria-label="Play or pause the final audio"><span class="aplayer__icon"></span></button>
-                    <div class="aplayer__track"><div class="aplayer__fill"></div><div class="aplayer__knob"></div></div>
-                    <span class="aplayer__time">0:00 / 0:00</span>
-                    <audio id="project-final-audio" class="aplayer__native" preload="metadata" @if($hasFinal) src="{{ route('admin.studio.projects.audio', $project) }}" @endif></audio>
-                </div>
-                @unless($hasFinal)
-                    <div id="project-final-placeholder" class="min-w-[300px] flex-1 text-sm text-zinc-600">No final audio yet — generate the chunks, then build the final.</div>
-                @endunless
-
-                {{-- Action cluster. Looks (primary / outline / disabled) are set by
-                     reflectActionState() in app.js from the current project state. --}}
-                <div class="flex flex-wrap items-center gap-2">
-                    <button type="button" id="project-generate-all" class="inline-flex items-center gap-1.5 rounded-[9px] px-4 py-[9px] text-sm transition">▶ Generate remaining</button>
-                    {{-- Stop the background run (shown only while one is in flight;
-                         see reflectActionState). The clip being rendered still lands. --}}
-                    <button type="button" id="project-generate-stop"
-                            title="Stop the background run — the clip being rendered finishes and is kept."
-                            class="hidden items-center gap-1.5 rounded-[9px] border border-red-500/30 px-4 py-[9px] text-sm text-red-400 transition hover:bg-red-500/10">■ Stop</button>
-                    <button type="button" id="project-rebuild" class="inline-flex items-center gap-1.5 rounded-[9px] px-4 py-[9px] text-sm transition">↻ Build final</button>
-                    {{-- Draft download (bare final audio) — hidden once approved; the
-                         approved-version package below supersedes it. --}}
-                    <a id="project-download" href="{{ route('admin.studio.projects.audio', $project) }}" download class="inline-flex items-center gap-1.5 rounded-[9px] px-4 py-[9px] text-sm transition">↓ Download draft version</a>
-                    {{-- Approve ⇆ approved-download share one slot: "Approve as final" shows
-                         until approved, then the approved-version download replaces it in
-                         place as the primary action (toggled by reflectActionState). --}}
-                    <button type="button" id="project-seal"
-                            title="Approve this cut as the final deliverable and record who approved it. Editing the project afterward clears the approval."
-                            class="inline-flex items-center gap-1.5 rounded-[9px] px-4 py-[9px] text-sm transition">🔒 Approve as final</button>
-                    <a id="project-receipt" href="{{ route('admin.studio.projects.receipt', $project) }}" download
-                       title="Download the approved version (.zip): the final audio and a provenance report, with a link to verify the file online."
-                       class="inline-flex items-center gap-1.5 rounded-[9px] px-4 py-[9px] text-sm transition {{ $project->isSealed() ? '' : 'hidden' }}">⤓ Download approved version</a>
-
-                    {{-- Overflow: rare + destructive actions (design turn 3) --}}
+                    <span class="h-[22px] w-px bg-white/10" aria-hidden="true"></span>
+                    {{-- Project-scope menu (Start over, Duplicate, Clean up, Download
+                         archive, Delete) — rare + lifecycle actions, kept with identity
+                         and away from the export buttons (design turn 3). --}}
                     <div class="relative">
                         <button type="button" id="project-overflow" aria-label="More actions"
                                 class="grid h-[38px] w-[38px] place-items-center rounded-[9px] border border-white/14 text-lg text-zinc-300 hover:bg-white/[0.04]">⋯</button>
@@ -197,6 +165,64 @@
                 </div>
             </div>
 
+            {{-- Row 2: the final-audio hero player (the artifact this whole page builds) --}}
+            <div class="mt-4 flex flex-wrap items-center gap-4">
+                <div id="project-final-player" class="aplayer aplayer--hero min-w-[300px] flex-1 {{ $hasFinal ? '' : 'hidden' }}">
+                    <button type="button" class="aplayer__btn" aria-label="Play or pause the final audio"><span class="aplayer__icon"></span></button>
+                    <div class="aplayer__track"><div class="aplayer__fill"></div><div class="aplayer__knob"></div></div>
+                    <span class="aplayer__time">0:00 / 0:00</span>
+                    <audio id="project-final-audio" class="aplayer__native" preload="metadata" @if($hasFinal) src="{{ route('admin.studio.projects.audio', $project) }}" @endif></audio>
+                </div>
+                @unless($hasFinal)
+                    <div id="project-final-placeholder" class="min-w-[300px] flex-1 text-sm text-zinc-600">No final audio yet — generate the chunks, then build the final.</div>
+                @endunless
+            </div>
+
+            {{-- Row 3: Voice/Format config (left) + the audio-output action cluster
+                 (right). Action looks (primary / outline / seal / disabled) and
+                 visibility are set by reflectActionState() from the current state. --}}
+            <div class="mt-4 flex flex-wrap items-center gap-3">
+                <label class="flex items-center gap-2 text-xs text-zinc-500" title="Changing the voice marks generated chunks for regeneration.">
+                    <span class="text-zinc-400">Voice</span>
+                    <select id="project-voice"
+                            class="rounded-[8px] border border-edge bg-inset px-2.5 py-1.5 text-sm text-zinc-200 focus:border-accent/50 focus:outline-none">
+                        @foreach($voices as $v)
+                            <option value="{{ $v->slug }}" data-model="{{ \App\Services\Tts\ModelCatalog::forVoice($v) }}" @selected($project->voice && $project->voice->id === $v->id)>{{ $v->name }}</option>
+                        @endforeach
+                    </select>
+                </label>
+                <label class="flex items-center gap-2 text-xs text-zinc-500" title="Final audio format. MP3 is compressed; WAV is uncompressed (~10× larger). Changing it rebuilds the final in the new format.">
+                    <span class="text-zinc-400">Format</span>
+                    <select id="project-format"
+                            class="rounded-[8px] border border-edge bg-inset px-2.5 py-1.5 text-sm text-zinc-200 focus:border-accent/50 focus:outline-none">
+                        @foreach($outputFormats as $token => $optLabel)
+                            <option value="{{ $token }}" @selected($project->output_format === $token)>{{ $optLabel }}</option>
+                        @endforeach
+                    </select>
+                </label>
+                <div class="ml-auto flex flex-wrap items-center gap-2">
+                    <button type="button" id="project-generate-all" class="inline-flex items-center gap-1.5 rounded-[9px] px-4 py-[9px] text-sm transition">▶ Generate remaining</button>
+                    {{-- Stop the background run (shown only while one is in flight;
+                         see reflectActionState). The clip being rendered still lands. --}}
+                    <button type="button" id="project-generate-stop"
+                            title="Stop the background run — the clip being rendered finishes and is kept."
+                            class="hidden items-center gap-1.5 rounded-[9px] border border-red-500/30 px-4 py-[9px] text-sm text-red-400 transition hover:bg-red-500/10">■ Stop</button>
+                    <button type="button" id="project-rebuild" class="inline-flex items-center gap-1.5 rounded-[9px] px-4 py-[9px] text-sm transition">↻ Build final</button>
+                    {{-- Preview download (bare final audio) — hidden once approved; the
+                         approved-version package below supersedes it. --}}
+                    <a id="project-download" href="{{ route('admin.studio.projects.audio', $project) }}" download class="inline-flex items-center gap-1.5 rounded-[9px] px-4 py-[9px] text-sm transition">↓ Download preview</a>
+                    {{-- Approve ⇆ approved-download share one slot: "Approve as final" shows
+                         until approved, then the approved-version download replaces it in
+                         place as the primary action (toggled by reflectActionState). --}}
+                    <button type="button" id="project-seal"
+                            title="Approve this cut as the final deliverable and record who approved it. Editing the project afterward clears the approval."
+                            class="inline-flex items-center gap-1.5 rounded-[9px] px-4 py-[9px] text-sm transition">🔒 Approve as final</button>
+                    <a id="project-receipt" href="{{ route('admin.studio.projects.receipt', $project) }}" download
+                       title="Download the approved version (.zip): the final audio and a provenance report, with a link to verify the file online."
+                       class="inline-flex items-center gap-1.5 rounded-[9px] px-4 py-[9px] text-sm transition {{ $project->isSealed() ? '' : 'hidden' }}">⤓ Download approved version</a>
+                </div>
+            </div>
+
             {{-- Approved-final badge + status line (toggled in JS; see initStudioProject) --}}
             <div id="project-seal-badge" data-sha256="{{ $project->final_sha256 }}"
                  class="mt-3 flex flex-wrap items-center gap-x-3 gap-y-1 rounded-lg border border-ok/30 bg-ok/10 px-3 py-2 text-sm text-ok {{ $project->isSealed() ? '' : 'hidden' }}">
@@ -211,8 +237,13 @@
                  changes (edits, generate, skip, voice switch). Its own element so
                  transient status messages below never clobber it; hidden during a
                  run (the live ETA shows in #project-final-status instead). --}}
-            <div id="project-generate-estimate" class="mt-2 text-sm text-zinc-500 {{ $preRunEstimate ? '' : 'hidden' }}" role="status">{{ $preRunEstimate ?? '' }}</div>
-            <div id="project-final-status" class="mt-2 text-sm text-zinc-400" role="status" aria-live="polite"></div>
+            {{-- Both lines sit under the row-3 action cluster (Generate remaining /
+                 Stop / Build final), so they're right-justified next to the buttons
+                 they describe. Alignment + top margin come from the #project-*
+                 CSS id rules in app.css — NOT utility classes — because setStatus()
+                 rewrites #project-final-status's className on every run message. --}}
+            <div id="project-generate-estimate" class="text-sm text-zinc-500 {{ $preRunEstimate ? '' : 'hidden' }}" role="status">{{ $preRunEstimate ?? '' }}</div>
+            <div id="project-final-status" class="text-sm text-zinc-400" role="status" aria-live="polite"></div>
         </div>
 
         @if(config('tts.asr.enabled'))
