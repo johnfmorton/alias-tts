@@ -4,6 +4,28 @@ All notable changes to this project are documented in this file. The format is
 based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this
 project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Changed
+- **The About tour now speaks to two audiences — and arrives like the home
+  page.** The About page is split into a creator tour (clone, prepare, direct,
+  seal) and a developer tour (compatible APIs, API→Studio handoff,
+  verification), linked by a toggle at the top of each. Both pages now open
+  with the home page's staggered entrance — header, audience toggle, headline,
+  and intro rise in sequence — and visitors who prefer reduced motion see
+  everything instantly.
+
+### Fixed
+- **"Open Studio" on the creator About page now opens Studio.** Both buttons —
+  the header and the closing call-to-action — sent signed-in users to the
+  Dashboard instead of the Studio projects list they were promised.
+- **Reference-clip guidance now says 15–20 seconds everywhere.** Chatterbox
+  only ever hears the head of a reference clip — about the first 15 seconds on
+  turbo, less on classic — so the old "15–30 seconds" advice had you recording
+  audio the engines never use, and longer clips only slow the cleanup step.
+  All copy, docs, the recorder's length meter, and the sample script now aim
+  for 15–20 seconds.
+
 ## [0.65.0] - 2026-07-18
 
 ### Added

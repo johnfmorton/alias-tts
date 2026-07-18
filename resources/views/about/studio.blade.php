@@ -21,29 +21,32 @@
         .journey-steps::before{content:'';position:absolute;left:12.5%;right:12.5%;top:14px;height:1px;background:linear-gradient(90deg,rgba(0,159,245,.45),rgba(97,100,255,.55),rgba(177,41,255,.45))}
         .journey-step{position:relative;text-align:center}
         .journey-step-number{position:relative;z-index:1;margin:0 auto;display:grid;height:28px;width:28px;place-items:center;border:1px solid rgba(139,142,255,.45);border-radius:9999px;background:#0a0a0a;font:600 12px/1 ui-monospace,SFMono-Regular,Menlo,monospace;color:#b8baff;box-shadow:0 0 18px rgba(97,100,255,.12)}
+        .rise{opacity:0;animation:fadeUp .7s cubic-bezier(.2,.75,.25,1) forwards}
+        @keyframes fadeUp{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:none}}
+        @media (prefers-reduced-motion:reduce){.rise{animation:none!important;opacity:1!important;transform:none!important}}
     </style>
 </head>
 <body class="min-h-full bg-[#0a0a0a] text-zinc-100 antialiased">
-    <header class="mx-auto flex w-full max-w-5xl items-center justify-between px-6 py-6">
+    <header class="rise mx-auto flex w-full max-w-5xl items-center justify-between px-6 py-6" style="animation-delay: 0ms">
         <a href="{{ route('landing') }}" class="flex items-center gap-2.5"><img src="{{ asset('alias-icon-on-dark.svg') }}" alt="" class="h-7 w-7"><span class="text-[17px] font-bold">Alias<span class="font-semibold text-zinc-400"> TTS</span></span></a>
-        <a href="{{ auth()->check() ? route('admin.dashboard') : route('login') }}" class="rounded-lg bg-violet-500 px-3.5 py-2 text-[13px] font-semibold text-white">{{ auth()->check() ? 'Open Studio' : 'Log in' }}</a>
+        <a href="{{ auth()->check() ? route('admin.studio.index') : route('login') }}" class="rounded-lg bg-violet-500 px-3.5 py-2 text-[13px] font-semibold text-white">{{ auth()->check() ? 'Open Studio' : 'Log in' }}</a>
     </header>
 
     <main class="mx-auto w-full max-w-5xl px-6 pb-10">
-        <nav class="mx-auto mt-10 flex w-fit rounded-full border border-zinc-800 bg-white/[0.025] p-1 text-sm" aria-label="About Alias TTS">
+        <nav class="rise mx-auto mt-10 flex w-fit rounded-full border border-zinc-800 bg-white/[0.025] p-1 text-sm" style="animation-delay: 60ms" aria-label="About Alias TTS">
             <span class="rounded-full bg-zinc-100 px-4 py-2 font-medium text-zinc-950">For audio creators</span>
             <a href="{{ route('about.developers') }}" class="rounded-full px-4 py-2 text-zinc-400 transition hover:text-zinc-100">For developers</a>
         </nav>
 
         <section class="relative pt-16 text-center sm:pt-20">
             <div class="pointer-events-none absolute left-1/2 top-1/2 -z-10 h-80 w-[46rem] max-w-[120vw] -translate-x-1/2 -translate-y-1/2 blur-3xl" style="background:radial-gradient(48% 55% at 50% 50%,rgba(97,100,255,.18),rgba(177,41,255,.08) 50%,transparent 72%)"></div>
-            <p class="font-mono text-xs font-semibold uppercase tracking-[.2em] text-violet-400">Alias TTS for audio creators</p>
-            <h1 class="mx-auto mt-5 max-w-3xl text-4xl font-semibold leading-[1.05] tracking-tight sm:text-[3.3rem]">
+            <p class="rise font-mono text-xs font-semibold uppercase tracking-[.2em] text-violet-400" style="animation-delay: 120ms">Alias TTS for audio creators</p>
+            <h1 class="rise mx-auto mt-5 max-w-3xl text-4xl font-semibold leading-[1.05] tracking-tight sm:text-[3.3rem]" style="animation-delay: 180ms">
                 <span class="block">Make the voice yours.</span>
                 <span class="grad-voice block">Shape every take.</span>
             </h1>
-            <p class="mx-auto mt-6 max-w-2xl leading-relaxed text-zinc-400">Start with a voice and a script. Alias prepares the words for speech, lets you direct the performance chunk by chunk, and preserves the exact final you approved.</p>
-            <div class="journey-steps mx-auto mt-10 max-w-2xl text-xs text-zinc-400" aria-label="Studio workflow">
+            <p class="rise mx-auto mt-6 max-w-2xl leading-relaxed text-zinc-400" style="animation-delay: 240ms">Start with a voice and a script. Alias prepares the words for speech, lets you direct the performance chunk by chunk, and preserves the exact final you approved.</p>
+            <div class="rise journey-steps mx-auto mt-10 max-w-2xl text-xs text-zinc-400" style="animation-delay: 300ms" aria-label="Studio workflow">
                 @foreach ([['1','Clone'],['2','Prepare'],['3','Direct'],['4','Seal']] as [$number,$label])
                     <div class="journey-step">
                         <span class="journey-step-number">{{ $number }}</span>
@@ -105,7 +108,7 @@
         <section class="mt-32 text-center">
             <h2 class="text-3xl font-semibold">Bring the script. Direct the performance.</h2>
             <p class="mx-auto mt-4 max-w-xl text-zinc-400">Alias handles the repetitive production work while you decide what the final should sound like.</p>
-            <a href="{{ auth()->check() ? route('admin.dashboard') : route('login') }}" class="mt-8 inline-block rounded-lg bg-violet-500 px-5 py-2.5 text-sm font-semibold text-white">{{ auth()->check() ? 'Open Studio' : 'Log in' }}</a>
+            <a href="{{ auth()->check() ? route('admin.studio.index') : route('login') }}" class="mt-8 inline-block rounded-lg bg-violet-500 px-5 py-2.5 text-sm font-semibold text-white">{{ auth()->check() ? 'Open Studio' : 'Log in' }}</a>
         </section>
     </main>
     <footer class="mt-24 border-t border-zinc-900 py-10 text-center text-xs text-zinc-600">Alias TTS · <a href="{{ route('landing') }}" class="hover:text-zinc-400">Home</a> · <a href="{{ route('about.developers') }}" class="hover:text-zinc-400">For developers</a></footer>

@@ -17,10 +17,13 @@
         @supports not ((-webkit-background-clip:text) or (background-clip:text)){.grad-voice{color:#7c83ff}}
         a:focus-visible{outline:2px solid #22d3ee;outline-offset:3px;border-radius:.65rem}
         .k{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:.85em;color:#d4d4d8;background:rgba(255,255,255,.05);padding:.1em .4em;border-radius:.35em}
+        .rise{opacity:0;animation:fadeUp .7s cubic-bezier(.2,.75,.25,1) forwards}
+        @keyframes fadeUp{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:none}}
+        @media (prefers-reduced-motion:reduce){.rise{animation:none!important;opacity:1!important;transform:none!important}}
     </style>
 </head>
 <body class="min-h-full bg-[#0a0a0a] text-zinc-100 antialiased">
-    <header class="mx-auto flex w-full max-w-5xl items-center justify-between px-6 py-6">
+    <header class="rise mx-auto flex w-full max-w-5xl items-center justify-between px-6 py-6" style="animation-delay: 0ms">
         <a href="{{ route('landing') }}" class="flex items-center gap-2.5">
             <img src="{{ asset('alias-icon-on-dark.svg') }}" alt="" class="h-7 w-7">
             <span class="text-[17px] font-bold">Alias<span class="font-semibold text-zinc-400"> TTS</span></span>
@@ -31,24 +34,24 @@
     </header>
 
     <main class="mx-auto w-full max-w-5xl px-6 pb-10">
-        <nav class="mx-auto mt-10 flex w-fit rounded-full border border-zinc-800 bg-white/[0.025] p-1 text-sm" aria-label="About Alias TTS">
+        <nav class="rise mx-auto mt-10 flex w-fit rounded-full border border-zinc-800 bg-white/[0.025] p-1 text-sm" style="animation-delay: 60ms" aria-label="About Alias TTS">
             <a href="{{ route('about') }}" class="rounded-full px-4 py-2 text-zinc-400 transition hover:text-zinc-100">For audio creators</a>
             <span class="rounded-full bg-zinc-100 px-4 py-2 font-medium text-zinc-950">For developers</span>
         </nav>
 
         <section class="relative pt-16 text-center sm:pt-20">
             <div class="pointer-events-none absolute left-1/2 top-1/2 -z-10 h-80 w-[46rem] max-w-[120vw] -translate-x-1/2 -translate-y-1/2 blur-3xl" style="background:radial-gradient(48% 55% at 50% 50%,rgba(34,211,238,.14),rgba(97,100,255,.1) 48%,transparent 72%)"></div>
-            <p class="font-mono text-xs font-semibold uppercase tracking-[.2em] text-cyan-400">Alias TTS for developers</p>
-            <h1 class="mx-auto mt-5 max-w-3xl text-4xl font-semibold leading-[1.05] tracking-tight sm:text-[3.3rem]">
+            <p class="rise font-mono text-xs font-semibold uppercase tracking-[.2em] text-cyan-400" style="animation-delay: 120ms">Alias TTS for developers</p>
+            <h1 class="rise mx-auto mt-5 max-w-3xl text-4xl font-semibold leading-[1.05] tracking-tight sm:text-[3.3rem]" style="animation-delay: 180ms">
                 <span class="block">Keep the client.</span>
                 <span class="grad-voice block">Upgrade the workflow.</span>
             </h1>
-            <p class="mx-auto mt-6 max-w-2xl leading-relaxed text-zinc-400">
+            <p class="rise mx-auto mt-6 max-w-2xl leading-relaxed text-zinc-400" style="animation-delay: 240ms">
                 Point an ElevenLabs- or OpenAI-compatible client at Alias TTS. Keep the request shapes,
                 authentication, and errors your application already understands—then let any call become an
                 editable Studio project with automatic QA and a verifiable final.
             </p>
-            <div class="mx-auto mt-10 max-w-2xl overflow-x-auto rounded-xl border border-zinc-800 bg-[#0d0d10] px-5 py-4 text-left font-mono text-[13px] leading-[2]">
+            <div class="rise mx-auto mt-10 max-w-2xl overflow-x-auto rounded-xl border border-zinc-800 bg-[#0d0d10] px-5 py-4 text-left font-mono text-[13px] leading-[2]" style="animation-delay: 300ms">
                 <div class="whitespace-pre text-zinc-400">  curl -X POST \</div>
                 <div class="whitespace-pre rounded bg-rose-500/[.07] text-zinc-500"><span class="text-rose-400">- </span>  https://api.elevenlabs.io<span class="text-zinc-600">/v1/text-to-speech/rachel \</span></div>
                 <div class="whitespace-pre rounded bg-cyan-400/[.09] text-cyan-100"><span class="text-cyan-300">+ </span>  https://aliastts.example.com<span class="text-cyan-100/70">/v1/text-to-speech/rachel \</span></div>
