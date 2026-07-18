@@ -25,7 +25,7 @@ class AboutPageTest extends TestCase
         // The waveform map after the hero anchors to every section of the tour.
         $this->get(route('about'))
             ->assertOk()
-            ->assertSee('The rest of this page walks that signal.')
+            ->assertSee('Step into a full audio studio when you need verifiable output.')
             ->assertSee('id="api"', false)
             ->assertSee('id="voices"', false)
             ->assertSee('id="quality"', false)
