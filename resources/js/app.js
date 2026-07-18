@@ -1295,6 +1295,12 @@ function initStudioProject() {
     const root = document.getElementById('studio-project');
     if (!root) return;
 
+    // Built-in Delivery archetypes per engine (native knob values), stashed on
+    // the root as JSON by the Blade. Each chunk applies them on a chip click and
+    // matches its sliders against them to light the active chip (see below).
+    let deliveryPresets = {};
+    try { deliveryPresets = JSON.parse(root.dataset.deliveryPresets || '{}'); } catch { /* ignore */ }
+
     const finalUrl = root.dataset.finalUrl;
     const rebuildUrl = root.dataset.rebuildUrl;
     const finalAudio = document.getElementById('project-final-audio');
@@ -2396,8 +2402,10 @@ function initStudioProject() {
                     const data = await res.json();
                     chunkVoice.dataset.current = voice;
                     chunkVoice.dataset.inherits = data.inherits ? '1' : '0';
-                    // The new voice may run a different engine — swap the knob set.
+                    // The new voice may run a different engine — swap the knob set,
+                    // then re-point the Delivery chips + Fine-tune count to it.
                     syncKnobEngines(card, modelOfSelect(chunkVoice));
+                    card.dispatchEvent(new Event('engine-change'));
                     setChunkStatus(card, data.status);
                     setProjectStatus(data.project_status);
                     refreshSeams();
@@ -2576,6 +2584,116 @@ function initStudioProject() {
             });
             e.target.value = ''; // rest back on "Apply…" so it reads as an action
         });
+
+        // ---- Delivery archetypes (Steady / Balanced / Expressive) --------------
+        // The everyday control: each chip fills the (collapsed) sliders with a
+        // full native knob set for the active engine. Dragging any slider off an
+        // archetype's values un-lights the chips (implicit "Custom"). The values
+        // and the matching both come from deliveryPresets, keyed by engine.
+        const deliveryChips = card.querySelectorAll('.delivery-chip');
+        const activeDeliveryTable = () => deliveryPresets[modelOfSelect(card.querySelector('.chunk-voice'))] || [];
+
+        // A knob's EFFECTIVE value: the explicit override, else the inherited
+        // placeholder (what would actually render). null when the knob is absent.
+        const effectiveKnob = (sel) => {
+            const input = card.querySelector(sel);
+            if (!input) return null;
+            const raw = input.value !== '' ? input.value : (input.placeholder || '');
+            return raw === '' ? null : Number(raw);
+        };
+
+        // top_k is the only integer knob (compare rounded); the rest are floats
+        // aligned to their step, so a tight epsilon is safe.
+        const knobMatches = (key, a, b) => (key === 'top_k' ? Math.round(a) === Math.round(b) : Math.abs(a - b) < 0.005);
+
+        // Which archetype the sliders currently match — every one of the active
+        // engine's knobs equals that archetype's value — or null for Custom.
+        const matchedDelivery = () => {
+            for (const preset of activeDeliveryTable()) {
+                const hit = KNOB_INPUTS.every(([key, sel]) => {
+                    if (!(key in preset.values)) return true; // other engine's knob — ignore
+                    const eff = effectiveKnob(sel);
+                    return eff !== null && knobMatches(key, eff, Number(preset.values[key]));
+                });
+                if (hit) return preset.key;
+            }
+            return null;
+        };
+
+        const markDelivery = (key) => deliveryChips.forEach((chip) =>
+            chip.classList.toggle('is-active', chip.dataset.delivery === key));
+        const refreshDelivery = () => markDelivery(matchedDelivery());
+
+        const applyDelivery = (key) => {
+            const preset = activeDeliveryTable().find((p) => p.key === key);
+            if (!preset) return;
+            KNOB_INPUTS.forEach(([nativeKey, sel]) => {
+                if (!(nativeKey in preset.values)) return;
+                const input = card.querySelector(sel);
+                if (!input) return;
+                input.value = preset.values[nativeKey];
+                input.dispatchEvent(new Event('input', { bubbles: true })); // syncs slider + invalidates preview
+            });
+            markDelivery(key);
+        };
+        deliveryChips.forEach((chip) => chip.addEventListener('click', () => applyDelivery(chip.dataset.delivery)));
+        // Any slider drag re-evaluates which archetype (if any) is now matched.
+        card.querySelector('.finetune-body')?.addEventListener('input', refreshDelivery);
+
+        // ---- Fine-tune disclosure ---------------------------------------------
+        // The raw sliders collapse behind a toggle whose (N) reflects the active
+        // engine's knob count; open/closed is remembered across chunks and visits.
+        const FINE_KEY = 'alias.studio.finetuneOpen';
+        const fineToggle = card.querySelector('.finetune-toggle');
+        const fineBody = card.querySelector('.finetune-body');
+        const fineCaret = card.querySelector('.finetune-caret');
+        const fineCount = card.querySelector('.finetune-count');
+        const resetAllBtn = card.querySelector('.chunk-tune-reset-all');
+
+        const updateFineCount = () => {
+            if (fineCount) fineCount.textContent = `(${card.querySelectorAll('.finetune-body .tuning-knob:not(.hidden)').length})`;
+        };
+        // Toggle hidden AND flex together — a lingering flex would beat hidden in
+        // the compiled CSS (the app's hidden-vs-flex gotcha).
+        const setFineOpen = (open) => {
+            fineBody?.classList.toggle('hidden', !open);
+            fineBody?.classList.toggle('flex', open);
+            if (fineCaret) fineCaret.textContent = open ? '▾' : '▸';
+            fineToggle?.setAttribute('aria-expanded', open ? 'true' : 'false');
+            resetAllBtn?.classList.toggle('hidden', !open);
+        };
+        fineToggle?.addEventListener('click', () => {
+            const open = fineBody?.classList.contains('hidden'); // hidden now => we're opening
+            setFineOpen(open);
+            try { localStorage.setItem(FINE_KEY, open ? '1' : '0'); } catch { /* ignore */ }
+        });
+
+        // Reset all: drop every knob override + seed back to the project's
+        // inherited tuning (which re-lights Balanced on a default project).
+        resetAllBtn?.addEventListener('click', () => {
+            KNOB_INPUTS.forEach(([, sel]) => {
+                const input = card.querySelector(sel);
+                if (!input) return;
+                input.value = '';
+                input.dispatchEvent(new Event('input', { bubbles: true })); // rests slider at inherited + invalidates
+            });
+            const seedInput = card.querySelector('.chunk-seed');
+            if (seedInput) { seedInput.value = ''; seedInput.dispatchEvent(new Event('input', { bubbles: true })); }
+            refreshDelivery();
+        });
+
+        // Following a voice change may switch engines — re-point the chips to the
+        // new engine's archetypes and re-count the sliders. (Dispatched by both
+        // voice-change handlers after syncKnobEngines.)
+        card.addEventListener('engine-change', () => { refreshDelivery(); updateFineCount(); });
+
+        // Initial state: restore the remembered open/closed, count the sliders,
+        // and light the matching archetype (Balanced for an untouched chunk).
+        let fineOpenPref = false;
+        try { fineOpenPref = localStorage.getItem(FINE_KEY) === '1'; } catch { /* ignore */ }
+        setFineOpen(fineOpenPref);
+        updateFineCount();
+        refreshDelivery();
 
         // Sound-tag chips (turbo only — the row swaps with the engine): insert
         // the tag at the textarea's cursor with sensible spacing, replacing any
@@ -2909,6 +3027,7 @@ function initStudioProject() {
                     cv.dataset.current = voice;
                     // Following the project voice may change the engine too.
                     syncKnobEngines(card, modelOfSelect(cv));
+                    card.dispatchEvent(new Event('engine-change'));
                     if (card.querySelector('.chunk-status').textContent.trim() === 'completed') {
                         setChunkStatus(card, 'stale');
                     }
@@ -4303,6 +4422,38 @@ function initCreateProjectPresets() {
     sync();
 }
 initCreateProjectPresets();
+
+// Per-knob ⓘ popovers (tuning-knob component): click the ⓘ to reveal its deeper
+// explanation, click elsewhere or press Escape to dismiss. One document-level
+// handler covers every knob on any page (Studio editor + inspector). The ⓘ and
+// its .knob-popover are adjacent siblings in the component markup.
+function initKnobPopovers() {
+    const closeAll = (except) => {
+        document.querySelectorAll('.knob-popover:not(.hidden)').forEach((pop) => {
+            if (pop === except) return;
+            pop.classList.add('hidden');
+            const info = pop.previousElementSibling;
+            if (info?.classList.contains('knob-info')) info.setAttribute('aria-expanded', 'false');
+        });
+    };
+    document.addEventListener('click', (e) => {
+        const info = e.target.closest?.('.knob-info');
+        if (info) {
+            e.preventDefault();
+            const pop = info.nextElementSibling;
+            const willOpen = pop?.classList.contains('hidden');
+            closeAll(pop);
+            if (pop) {
+                pop.classList.toggle('hidden', !willOpen);
+                info.setAttribute('aria-expanded', willOpen ? 'true' : 'false');
+            }
+            return;
+        }
+        if (!e.target.closest?.('.knob-popover')) closeAll();
+    });
+    document.addEventListener('keydown', (e) => { if (e.key === 'Escape') closeAll(); });
+}
+initKnobPopovers();
 
 // Pronunciation "▶ Test" buttons (review screen, dictionary form + table):
 // speak a respelling so the writer can judge it before approving. Buttons wired

@@ -15,6 +15,17 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   audio, with a short reason shown underneath until then; the stitched clip now
   plays inline in the same audio player used everywhere else, and the button
   turns cyan with a pause mark while it sounds.
+- **Takes & tuning, presets first.** The per-chunk tuning panel now leads with a
+  **Delivery** row — **Steady / Balanced / Expressive** chips that set the whole
+  knob group in one click — and collapses the raw sliders behind a **Fine-tune**
+  toggle that remembers whether you keep it open. The wall of help text is gone:
+  each control carries a one-line hint plus an ⓘ that opens a short explanation on
+  demand. Dragging any slider off a preset quietly switches to "Custom", **Reset
+  all** returns everything to the project's inherited tuning, and the seed pin
+  stays in view. Nothing is lost — the same knobs, seed, Preview / Save tuning /
+  Re-roll, and full take history are all still there, just calmer. The chip values
+  are engine-aware (classic vs Turbo) and re-point live when a chunk's voice
+  changes.
 
 ### Fixed
 - **Stale stitch previews are discarded when a neighbor's take changes.** A

@@ -140,15 +140,14 @@ class StudioTurboKnobsTest extends TestCase
         $this->assertStringContainsString('data-knob="top_p"', $html);
         $this->assertStringContainsString('data-knob="repetition_penalty"', $html);
         $this->assertStringContainsString('data-model="chatterbox-turbo"', $html);
-        $this->assertStringContainsString('hidden w-44" data-knob="exaggeration"', $html);
-        $this->assertStringContainsString('flex w-44" data-knob="top_p"', $html);
+        $this->assertStringContainsString('hidden w-full" data-knob="exaggeration"', $html);
+        $this->assertStringContainsString('flex w-full" data-knob="top_p"', $html);
 
-        // The help text explains THIS engine's knobs; the other engine's
-        // explainer renders hidden (swapped live by syncKnobEngines). An
-        // empty class="" is @class's no-conditions-matched output.
-        $this->assertStringContainsString('data-engine-help="chatterbox-turbo" class=""', $html);
-        $this->assertStringContainsString('data-engine-help="chatterbox" class="hidden"', $html);
-        $this->assertStringContainsString('Rep. penalty</span> discourages repeated sounds', $html);
+        // Each knob now carries its own explanation — a one-line hint plus an ⓘ
+        // popover — in place of the old shared help paragraph. Turbo's knobs
+        // render visible (the flex check above); the classic pair renders hidden.
+        $this->assertStringContainsString('nudge up if syllables stutter', $html);  // Rep. penalty hint
+        $this->assertStringContainsString('Discourages repeated sounds', $html);     // Rep. penalty ⓘ popover
 
         // The sound-tag chips render visible on a turbo chunk, one per
         // supported tag, sourced from ParalinguisticTags::TAGS. A single
@@ -178,13 +177,24 @@ class StudioTurboKnobsTest extends TestCase
             ->assertOk()
             ->getContent();
 
-        $this->assertStringContainsString('data-engine-help="chatterbox" class=""', $html);
-        $this->assertStringContainsString('data-engine-help="chatterbox-turbo" class="hidden"', $html);
-        $this->assertStringContainsString('CFG / Pace</span> is pacing steadiness', $html);
+        // Classic knobs render visible; the turbo trio renders hidden. The
+        // per-knob hint + ⓘ popover replace the old shared help paragraph.
+        $this->assertStringContainsString('flex w-full" data-knob="exaggeration"', $html);
+        $this->assertStringContainsString('hidden w-full" data-knob="top_p"', $html);
+        $this->assertStringContainsString('higher = measured read, lower = quicker', $html); // CFG / Pace hint
 
         // The sound-tag chips row renders hidden for a classic chunk (classic
         // payloads strip the tags — they'd be read aloud).
         $this->assertStringContainsString('data-engine-help="chatterbox-turbo" class="chunk-sound-tags hidden"', $html);
+
+        // The Delivery archetypes (the everyday control) render as chips, and the
+        // per-engine value table is stashed for the JS to apply/match against.
+        $this->assertStringContainsString('data-delivery="steady"', $html);
+        $this->assertStringContainsString('data-delivery="balanced"', $html);
+        $this->assertStringContainsString('data-delivery="expressive"', $html);
+        $this->assertStringContainsString('data-delivery-presets=', $html);
+        // Raw sliders sit behind the Fine-tune disclosure.
+        $this->assertStringContainsString('finetune-toggle', $html);
     }
 
     public function test_a_new_project_delivery_preset_applies_turbo_knobs(): void

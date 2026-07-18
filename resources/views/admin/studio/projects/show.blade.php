@@ -29,6 +29,10 @@
          data-generate-remaining-url="{{ route('admin.studio.projects.generate-remaining', $project) }}"
          data-generation-status-url="{{ route('admin.studio.projects.generation-status', $project) }}"
          data-estimate-url="{{ route('admin.studio.projects.estimate', $project) }}"
+         {{-- Built-in Delivery archetypes (Steady/Balanced/Expressive) per engine,
+              in native knob values — the JS applies them on a chip click and matches
+              the sliders against them to light the active chip (or none = Custom). --}}
+         data-delivery-presets='@json(\App\Services\Tts\DeliveryPresets::all())'
          data-active-run="{{ $hasActiveRun ? '1' : '0' }}">
 
         @if($project->origin === 'api_failure')
@@ -380,21 +384,26 @@
                              data-takes (and refreshed after each render). --}}
                         <ul class="chunk-takes mt-2 space-y-1.5"></ul>
 
-                        {{-- Row 1: the tuning controls — the effective voice's engine decides
-                             which knobs show (classic: exaggeration/cfg · turbo: top-p/top-k/
-                             repetition penalty · temperature + seed for both; JS re-syncs on a
-                             voice change via syncKnobEngines — toggling flex AND hidden together).
-                             Row 2 (below) carries the actions, so the controls never fight
-                             the buttons for one line. ($chunkModel is set above, by the
-                             sound-tags row.) --}}
-                        <div class="chunk-knobs mt-3 flex flex-wrap items-end gap-3">
+                        {{-- Delivery: the everyday control. Three archetypes fill the (hidden)
+                             sliders below; dragging a slider off an archetype flips this to an
+                             implicit Custom (no chip lit). JS applies + matches against
+                             data-delivery-presets on #studio-project, per the active engine. --}}
+                        <div class="mt-3">
+                            <span class="text-[11px] font-semibold uppercase tracking-wide text-zinc-400">Delivery</span>
+                            <div class="chunk-delivery mt-1.5 flex flex-wrap gap-2">
+                                @foreach(['steady' => ['Steady', 'focused, consistent'], 'balanced' => ['Balanced', 'neutral default'], 'expressive' => ['Expressive', 'varied, lively']] as $key => $meta)
+                                    <button type="button" class="delivery-chip" data-delivery="{{ $key }}">
+                                        <span class="delivery-chip__name">{{ $meta[0] }}</span>
+                                        <span class="delivery-chip__desc">{{ $meta[1] }}</span>
+                                    </button>
+                                @endforeach
+                            </div>
                             @if($presets->isNotEmpty())
-                                {{-- Fills the knobs below with a named preset's values;
-                                     nothing is saved until "Save tuning" / a preview is kept.
-                                     Presets belong to an engine — JS hides foreign ones. --}}
-                                <label class="flex flex-col gap-1 text-xs text-zinc-500">Preset
-                                    <select class="chunk-preset rounded-lg border border-edge bg-zinc-950 px-2 py-1.5 text-sm text-zinc-300">
-                                        <option value="" selected>Apply…</option>
+                                {{-- User-saved named combos ("Calm narration"): a secondary way to
+                                     fill the sliders. Belongs to an engine — JS hides foreign ones. --}}
+                                <label class="mt-2 flex items-center gap-2 text-xs text-zinc-500">Saved
+                                    <select class="chunk-preset rounded-lg border border-edge bg-zinc-950 px-2 py-1 text-sm text-zinc-300">
+                                        <option value="" selected>Apply a saved preset…</option>
                                         @foreach($presets as $preset)
                                             <option value="{{ $preset->id }}" data-model="{{ $preset->engineModel() }}"
                                                     data-exaggeration="{{ $preset->exaggeration }}" data-cfg="{{ $preset->cfg_weight }}" data-temperature="{{ $preset->temperature }}"
@@ -404,50 +413,83 @@
                                     </select>
                                 </label>
                             @endif
-                            <x-tuning-knob knob="exaggeration" label="Exaggeration" hint="neutral 0.5"
-                                           :min="0.25" :max="2" :step="0.05"
-                                           :value="$chunk->settings['exaggeration'] ?? ''" :placeholder="$inheritExaggeration"
-                                           inputClass="chunk-exaggeration" class="w-44" :hidden="$chunkModel !== 'chatterbox'" />
-                            <x-tuning-knob knob="cfg_weight" label="CFG / Pace"
-                                           :min="0.2" :max="1" :step="0.05"
-                                           :value="$chunk->settings['cfg_weight'] ?? ''" :placeholder="$inheritCfg"
-                                           inputClass="chunk-cfg" class="w-44" :hidden="$chunkModel !== 'chatterbox'" />
-                            <x-tuning-knob knob="top_p" label="Top-p" hint="neutral 0.95"
-                                           :min="0.5" :max="1" :step="0.01"
-                                           :value="$chunk->settings['top_p'] ?? ''" :placeholder="$inheritTopP"
-                                           inputClass="chunk-top-p" class="w-44" :hidden="$chunkModel !== 'chatterbox-turbo'" />
-                            <x-tuning-knob knob="top_k" label="Top-k" hint="neutral 1000"
-                                           :min="1" :max="2000" :step="1"
-                                           :value="$chunk->settings['top_k'] ?? ''" :placeholder="$inheritTopK"
-                                           inputClass="chunk-top-k" class="w-44" :hidden="$chunkModel !== 'chatterbox-turbo'" />
-                            <x-tuning-knob knob="repetition_penalty" label="Rep. penalty" hint="neutral 1.2"
-                                           :min="1" :max="2" :step="0.05"
-                                           :value="$chunk->settings['repetition_penalty'] ?? ''" :placeholder="$inheritRepPenalty"
-                                           inputClass="chunk-repetition-penalty" class="w-44" :hidden="$chunkModel !== 'chatterbox-turbo'" />
-                            <x-tuning-knob knob="temperature" label="Temperature" hint="neutral 0.8"
-                                           :min="0.5" :max="1.5" :step="0.05"
-                                           :value="$chunk->settings['temperature'] ?? ''" :placeholder="$inheritTemperature"
-                                           inputClass="chunk-temperature" class="w-44" />
-                            {{-- Seed pin — not a knob (integer, no slider, no neutral value).
-                                 Blank inherits the project seed (or rolls random). A pin only
-                                 biases the draw; Chatterbox is not bit-reproducible even so. --}}
-                            <div class="flex min-w-[9rem] flex-col gap-1">
-                                <div class="flex items-center justify-between gap-2">
-                                    <span class="text-xs text-zinc-500">Seed <span class="text-zinc-600">blank = random</span></span>
-                                </div>
-                                <span class="flex items-center gap-1.5">
-                                    <input type="number" min="0" step="1"
-                                           value="{{ $chunk->settings['seed'] ?? '' }}" placeholder="{{ $inheritSeedText }}"
-                                           class="chunk-seed w-full rounded-lg border border-zinc-700 bg-zinc-950 px-2 py-1 text-right text-sm tabular-nums">
-                                    <button type="button" class="chunk-seed-random rounded-lg border border-zinc-700 px-1.5 py-1 text-xs text-zinc-400 hover:bg-zinc-800"
-                                            title="Roll a random seed" aria-label="Roll a random seed">🎲</button>
-                                </span>
-                                <div class="text-[11px] text-zinc-600">pins the draw, not the result</div>
+                        </div>
+
+                        {{-- Seed pin — always visible (the re-roll knob people reach for). Not a
+                             knob (integer, no slider, no neutral). Blank inherits the project seed
+                             (or rolls random). A pin only biases the draw; Chatterbox is not
+                             bit-reproducible even so. --}}
+                        <div class="mt-4 flex flex-wrap items-center gap-x-3 gap-y-1.5">
+                            <span class="text-sm text-zinc-300">Seed</span>
+                            <input type="number" min="0" step="1"
+                                   value="{{ $chunk->settings['seed'] ?? '' }}" placeholder="{{ $inheritSeedText }}"
+                                   class="chunk-seed w-28 rounded-lg border border-edge bg-zinc-950 px-2 py-1 text-right text-sm tabular-nums">
+                            <button type="button" class="chunk-seed-random rounded-lg border border-edge px-1.5 py-1 text-sm text-zinc-400 hover:bg-zinc-800"
+                                    title="Roll a random seed" aria-label="Roll a random seed">🎲</button>
+                            <span class="text-[11px] text-zinc-500">blank = random · pins the draw, not the result</span>
+                        </div>
+
+                        {{-- Fine-tune: the raw sliders, collapsed by default. The effective
+                             voice's engine decides which knobs show (classic: exaggeration/cfg ·
+                             turbo: top-p/top-k/repetition penalty · temperature both); JS re-syncs
+                             on a voice change via syncKnobEngines (toggling flex AND hidden
+                             together), keeps the (N) count in step, and remembers open/closed per
+                             user (localStorage). ($chunkModel is set above, by the sound-tags row.) --}}
+                        <div class="finetune mt-4 border-t border-white/8 pt-3">
+                            <div class="flex items-center justify-between gap-2">
+                                <button type="button" class="finetune-toggle inline-flex items-center gap-2 text-sm font-semibold text-accent" aria-expanded="false">
+                                    <span class="finetune-caret text-[10px] leading-none">▸</span> Fine-tune <span class="finetune-count font-normal text-zinc-500">(3)</span>
+                                </button>
+                                {{-- Reset all: clear every override + seed back to the project's
+                                     inherited tuning (which lights Balanced on a default project).
+                                     Only meaningful with the sliders open, so shown with them. --}}
+                                <button type="button" class="chunk-tune-reset-all hidden text-xs text-zinc-500 hover:text-zinc-300">Reset all</button>
+                            </div>
+                            <div class="finetune-body mt-3 hidden flex-col gap-4">
+                                <x-tuning-knob knob="exaggeration" label="Exaggeration"
+                                               hint="how animated the delivery is · neutral 0.5"
+                                               help="How animated the delivery is — higher is more expressive and intense, lower is flatter. 0.5 is neutral."
+                                               :min="0.25" :max="2" :step="0.05"
+                                               :value="$chunk->settings['exaggeration'] ?? ''" :placeholder="$inheritExaggeration"
+                                               inputClass="chunk-exaggeration" :reset="false" :rail="false" class="w-full" :hidden="$chunkModel !== 'chatterbox'" />
+                                <x-tuning-knob knob="cfg_weight" label="CFG / Pace"
+                                               hint="higher = measured read, lower = quicker · neutral 0.5"
+                                               help="Pacing steadiness — higher sticks closer to a measured read, lower is quicker and looser."
+                                               :min="0.2" :max="1" :step="0.05"
+                                               :value="$chunk->settings['cfg_weight'] ?? ''" :placeholder="$inheritCfg"
+                                               inputClass="chunk-cfg" :reset="false" :rail="false" class="w-full" :hidden="$chunkModel !== 'chatterbox'" />
+                                <x-tuning-knob knob="top_p" label="Top-p"
+                                               hint="how adventurous each step can be · neutral 0.95"
+                                               help="Limits the pool of likely next sounds. Lower is focused and consistent, higher allows more varied phrasing."
+                                               :min="0.5" :max="1" :step="0.01"
+                                               :value="$chunk->settings['top_p'] ?? ''" :placeholder="$inheritTopP"
+                                               inputClass="chunk-top-p" :reset="false" :rail="false" class="w-full" :hidden="$chunkModel !== 'chatterbox-turbo'" />
+                                <x-tuning-knob knob="top_k" label="Top-k"
+                                               hint="size of that pool · neutral 1000"
+                                               help="How many candidate sounds Top-p draws from. Smaller is tighter and more predictable, larger is more varied."
+                                               :min="1" :max="2000" :step="1"
+                                               :value="$chunk->settings['top_k'] ?? ''" :placeholder="$inheritTopK"
+                                               inputClass="chunk-top-k" :reset="false" :rail="false" class="w-full" :hidden="$chunkModel !== 'chatterbox-turbo'" />
+                                <x-tuning-knob knob="repetition_penalty" label="Rep. penalty"
+                                               hint="nudge up if syllables stutter · neutral 1.2"
+                                               help="Discourages repeated sounds — nudge it up if syllables or words stutter."
+                                               :min="1" :max="2" :step="0.05"
+                                               :value="$chunk->settings['repetition_penalty'] ?? ''" :placeholder="$inheritRepPenalty"
+                                               inputClass="chunk-repetition-penalty" :reset="false" :rail="false" class="w-full" :hidden="$chunkModel !== 'chatterbox-turbo'" />
+                                <x-tuning-knob knob="temperature" label="Temperature"
+                                               hint="lower = steadier, higher = livelier · neutral 0.8"
+                                               help="Sampling randomness — lower is flatter and steadier, higher is livelier but less predictable."
+                                               :min="0.5" :max="1.5" :step="0.05"
+                                               :value="$chunk->settings['temperature'] ?? ''" :placeholder="$inheritTemperature"
+                                               inputClass="chunk-temperature" :reset="false" :rail="false" class="w-full" />
                             </div>
                         </div>
 
-                        {{-- Row 2: actions on their own line. --}}
-                        <div class="mt-3 flex flex-wrap items-center gap-3">
+                        {{-- Actions. Preview auditions the typed settings (a non-selected take);
+                             Use this take keeps that exact clip; Save tuning stores the numbers and
+                             stales the chunk so top-of-card Generate renders fresh; Re-roll is
+                             another take of the same text + tuning. --}}
+                        <div class="mt-4 flex flex-wrap items-center gap-2 border-t border-white/8 pt-3">
                             <button type="button" class="chunk-tune-preview rounded-lg border border-zinc-700 px-3 py-1.5 text-sm hover:bg-zinc-800">▶ Preview</button>
                             <button type="button" class="chunk-tune-keep hidden rounded-lg border border-emerald-600/50 bg-emerald-500/10 px-3 py-1.5 text-sm text-emerald-300 hover:bg-emerald-500/20"
                                     title="Save the exact clip you just previewed as this chunk's audio, with these settings. No re-generation, so it sounds identical to the preview.">✓ Use this take</button>
@@ -461,11 +503,6 @@
                             <span class="aplayer__time">0:00 / 0:00</span>
                             <audio class="chunk-tune-audio aplayer__native"></audio>
                         </div>
-                        {{-- Knob explainers are engine-specific: the spans tagged
-                             data-engine-help swap with the chunk's effective voice,
-                             alongside the knobs themselves (syncKnobEngines). Plain
-                             inline spans, so `hidden` alone is safe to toggle. --}}
-                        <p class="mt-1.5 text-xs text-zinc-500">Every render is kept in the list above — play any take, <span class="text-zinc-400">Select</span> the one that sounded best, or <span class="text-zinc-400">Delete</span> the duds (older takes are pruned automatically). Blank inherits the project's setting (the value shown in each field). <span data-engine-help="chatterbox" @class(['hidden' => $chunkModel !== 'chatterbox'])><span class="text-zinc-400">Exaggeration</span> is how animated the delivery is — higher is more expressive and intense, lower is flatter; 0.5 is neutral. <span class="text-zinc-400">CFG / Pace</span> is pacing steadiness — higher sticks closer to a measured read, lower is quicker and looser.</span><span data-engine-help="chatterbox-turbo" @class(['hidden' => $chunkModel !== 'chatterbox-turbo'])><span class="text-zinc-400">Top-p</span> and <span class="text-zinc-400">Top-k</span> limit how adventurous each step of the delivery can be — lower values are more focused and consistent, higher allow more varied phrasing. <span class="text-zinc-400">Rep. penalty</span> discourages repeated sounds — nudge it up if syllables or words stutter.</span> <span class="text-zinc-400">Temperature</span> is sampling randomness — lower is flatter and steadier, higher is livelier but less predictable. <span class="text-zinc-400">Seed</span> pins the random draw so a take can be re-tried, but Chatterbox isn't bit-for-bit reproducible even with a seed, so a pin only gets you close — each take shows the seed it used. <span class="text-zinc-400">Preview</span> auditions the typed settings (saved as a take, but not selected). Like what you hear? <span class="text-zinc-400">Use this take</span> keeps that exact clip as the chunk's audio. <span class="text-zinc-400">Save tuning</span> only stores the numbers and marks the chunk stale, so <span class="text-zinc-400">Generate</span> (top) renders a fresh take. <span class="text-zinc-400">Re-roll</span> gives you another take of the same text and tuning.</p>
                     </details>
                 </div>
 
