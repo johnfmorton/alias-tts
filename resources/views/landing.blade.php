@@ -21,6 +21,10 @@
             -webkit-background-clip: text;
             background-clip: text;
             color: transparent;
+            /* Tight leading clips descenders out of the clip box; pad the box down to
+               cover them and cancel the added height so layout is unchanged. */
+            padding-bottom: 0.12em;
+            margin-bottom: -0.12em;
         }
         @supports not ((-webkit-background-clip: text) or (background-clip: text)) {
             .grad-voice { color: #7c83ff; }
