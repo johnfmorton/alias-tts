@@ -348,9 +348,8 @@
                                  AND the tuning panel below, then renders — what's on screen
                                  is always exactly what renders. There is deliberately no
                                  save-text-without-render (saved words with stale audio would
-                                 lie); while the text is dirty the label says so
-                                 ("Save changes and Regenerate" — setGenerateLabel), and
-                                 data-base carries the bare verb it returns to. --}}
+                                 lie). data-base carries the verb setGenerateLabel renders
+                                 (Generate until the chunk has audio, then Regenerate). --}}
                             <button type="button" class="chunk-generate rounded-lg border border-zinc-700 px-3 py-1.5 text-sm hover:bg-zinc-800 disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-transparent"
                                     data-base="{{ $chunk->isCompleted() ? 'Regenerate' : 'Generate' }}"
                                     title="Render this chunk with the text and Delivery settings shown — they're saved as part of the click.">▶ {{ $chunk->isCompleted() ? 'Regenerate' : 'Generate' }}</button>

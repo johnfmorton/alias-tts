@@ -12,10 +12,9 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   tuning unless you remembered to press Save tuning first — the settings on
   screen could silently disagree with what rendered. Now the Regenerate click
   saves the whole panel (Delivery, fine-tune knobs, seed) *and* any pending
-  text edit, then renders: what you see is always exactly what renders. While
-  a text edit is unsaved, the button says so — **"Save changes and
-  Regenerate."** Want another take of the same settings? Leave the seed blank
-  and Regenerate again.
+  text edit, then renders: what you see is always exactly what renders. Want
+  another take of the same settings? Leave the seed blank and Regenerate
+  again.
 - **Selecting a take now restores everything it was made from.** Choosing an
   older take used to swap only the audio, leaving the text box and tuning
   panel describing something else. Select now brings back the take's text,

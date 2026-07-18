@@ -1970,15 +1970,14 @@ function initStudioProject() {
         return t.value !== t.dataset.original;
     };
 
-    // The render button's label: the bare verb (data-base: Generate/Regenerate),
-    // prefixed with "Save changes and" while the text edit is unsaved — the only
-    // way to persist an edit IS to render it, so the label says both. Skipped
-    // mid-render (startBusy owns the label until endBusy restores it).
+    // The render button's label: the bare verb from data-base, which flips from
+    // Generate to Regenerate once the chunk has rendered audio. A dirty text
+    // edit doesn't change it — the click saves the edit as part of the render.
+    // Skipped mid-render (startBusy owns the label until endBusy restores it).
     const setGenerateLabel = (card) => {
         const btn = card.querySelector('.chunk-generate');
         if (!btn || btn.dataset.busy) return;
-        const base = btn.dataset.base || 'Generate';
-        btn.textContent = isDirty(card) ? `▶ Save changes and ${base}` : `▶ ${base}`;
+        btn.textContent = `▶ ${btn.dataset.base || 'Generate'}`;
     };
 
     const setDirty = (card, dirty) => {
@@ -1992,8 +1991,7 @@ function initStudioProject() {
         textarea.classList.toggle('border-amber-500/50', dirty);
         textarea.classList.toggle('border-edge', !dirty);
         // There is no save-text-without-render — the render button absorbs the
-        // save (patchChunk runs first in runGeneration/queueChunkRegen), and its
-        // label announces it while the edit is pending.
+        // save (patchChunk runs first in runGeneration/queueChunkRegen).
         setGenerateLabel(card);
     };
 
@@ -2058,9 +2056,7 @@ function initStudioProject() {
             setChunkStatus(card, 'failed');
             reflectActionState(); // a failed chunk is outstanding again — Build final goes off
             endBusy(btn);
-            // endBusy restored the pre-click label, but the text patch may have
-            // landed before the render failed — recompute from the real state.
-            setGenerateLabel(card);
+            setGenerateLabel(card); // endBusy restores a possibly stale label — re-derive from data-base
             throw err;
         }
     }
@@ -2130,7 +2126,7 @@ function initStudioProject() {
             setStatus(finalStatus, `✗ ${err.message}`, 'error');
         } finally {
             endBusy(btn);
-            setGenerateLabel(card); // the queued text patch may have cleaned the edit
+            setGenerateLabel(card); // endBusy restores a possibly stale label — re-derive from data-base
         }
     }
 
