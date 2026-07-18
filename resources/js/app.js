@@ -410,6 +410,56 @@ const KNOB_ENGINES = {
 // (stamped server-side from voices.model; absent = classic chatterbox).
 const modelOfSelect = (select) => select?.selectedOptions[0]?.dataset.model || 'chatterbox';
 
+// Every chunk-card tuning input, read via chunkKnobVal so only the active
+// engine's set is ever sent; temperature is shared by both engines.
+const KNOB_INPUTS = [
+    ['exaggeration', '.chunk-exaggeration'],
+    ['cfg_weight', '.chunk-cfg'],
+    ['temperature', '.chunk-temperature'],
+    ['top_p', '.chunk-top-p'],
+    ['top_k', '.chunk-top-k'],
+    ['repetition_penalty', '.chunk-repetition-penalty'],
+];
+
+// The value of one chunk knob input, or '' while its knob is hidden (the
+// OTHER engine's knob — a leftover value there must not ride along).
+const chunkKnobVal = (card, sel) => {
+    const input = card.querySelector(sel);
+    if (!input || input.closest('.tuning-knob')?.classList.contains('hidden')) return '';
+    return input.value;
+};
+
+// The whole tuning panel of one chunk card as a request payload: every knob
+// (null = inherit/clear) + the seed pin. Rides on Generate/queue so the server
+// persists exactly what's on screen before rendering.
+const chunkTuningPayload = (card) => {
+    const seed = card.querySelector('.chunk-seed')?.value ?? '';
+    const payload = { seed: seed === '' ? null : Number(seed) };
+    KNOB_INPUTS.forEach(([key, sel]) => {
+        const value = chunkKnobVal(card, sel);
+        payload[key] = value === '' ? null : Number(value);
+    });
+    return payload;
+};
+
+// Restore a take's tuning snapshot into a card's panel (on take select): fill
+// each knob from the server's knob => value|null map, and the seed field.
+// Dispatching `input` re-syncs the paired sliders and re-lights the matching
+// Delivery chip via the card's own listeners.
+const applyTuningSnapshot = (card, tuning, seed) => {
+    KNOB_INPUTS.forEach(([key, sel]) => {
+        const input = card.querySelector(sel);
+        if (!input) return;
+        input.value = tuning && tuning[key] != null ? String(tuning[key]) : '';
+        input.dispatchEvent(new Event('input', { bubbles: true }));
+    });
+    const seedInput = card.querySelector('.chunk-seed');
+    if (seedInput) {
+        seedInput.value = seed ?? '';
+        seedInput.dispatchEvent(new Event('input', { bubbles: true }));
+    }
+};
+
 // Show exactly the given engine's knobs inside `scope` (a chunk card or a
 // knobs row) and hide the other engine's, plus filter preset options and the
 // engine-specific help sentences to match. Tuning-knob roots are flex
@@ -1438,11 +1488,14 @@ function renderQaBadge(wrap, info) {
 
 // Human labels for a take's provenance (its stored `source` token — see
 // ProjectService::recordTake and the duplicate copier). Presentation only:
-// the payload keeps the raw token, and an unknown token shows itself.
+// the payload keeps the raw token, and an unknown token shows itself. A plain
+// 'generate' take deliberately has NO label ('') — with Regenerate as the one
+// render action it's the unmarked default; only the exceptions get named
+// (QA auto-fix, Inspector, copies, and rows from retired legacy flows).
 // "QA auto-fix" is deliberately outcome-neutral — the adjacent QA badge says
 // whether the fix actually recovered ("fixed by re-roll" vs "still flagged").
 const TAKE_SOURCE_LABELS = {
-    generate: 'rendered with Generate',
+    generate: '',
     reroll: 'rendered with Re-roll',
     preview: 'tuning preview',
     use: 'kept from a preview',
@@ -1649,9 +1702,9 @@ function initStudioProject() {
     const setPulse = (el, on) => el?.classList.toggle('act-pulse', Boolean(on) && ! el.dataset.busy);
 
     // A background "Generate remaining" run is in flight (this page is only
-    // following it — the queue worker does the generating). While true, the
-    // per-chunk generate/reroll buttons and Build final are locked: the server
-    // 409s them anyway, since they'd race the worker over the same chunks.
+    // following it — the queue worker does the generating). While true, Build
+    // final is locked and per-chunk Regenerate queues into the run instead: the
+    // direct endpoint 409s, since it would race the worker over the same chunks.
     let runActive = false;
     const stopBtn = document.getElementById('project-generate-stop');
 
@@ -1916,6 +1969,18 @@ function initStudioProject() {
         const t = card.querySelector('.chunk-text');
         return t.value !== t.dataset.original;
     };
+
+    // The render button's label: the bare verb (data-base: Generate/Regenerate),
+    // prefixed with "Save changes and" while the text edit is unsaved — the only
+    // way to persist an edit IS to render it, so the label says both. Skipped
+    // mid-render (startBusy owns the label until endBusy restores it).
+    const setGenerateLabel = (card) => {
+        const btn = card.querySelector('.chunk-generate');
+        if (!btn || btn.dataset.busy) return;
+        const base = btn.dataset.base || 'Generate';
+        btn.textContent = isDirty(card) ? `▶ Save changes and ${base}` : `▶ ${base}`;
+    };
+
     const setDirty = (card, dirty) => {
         const textarea = card.querySelector('.chunk-text');
         const dirtyBadge = card.querySelector('.chunk-dirty');
@@ -1926,13 +1991,10 @@ function initStudioProject() {
         card.querySelector('.chunk-revert').classList.toggle('hidden', !dirty);
         textarea.classList.toggle('border-amber-500/50', dirty);
         textarea.classList.toggle('border-edge', !dirty);
-        // Save applies only to an unsaved edit; Regenerate renders the SAVED text,
-        // so only one is actionable at a time (the Blade markup starts a clean
-        // chunk with Save disabled). The `disabled:` classes handle the dimming.
-        const saveBtn = card.querySelector('.chunk-save');
-        const genBtn = card.querySelector('.chunk-generate');
-        if (saveBtn) saveBtn.disabled = !dirty;
-        if (genBtn) genBtn.disabled = dirty;
+        // There is no save-text-without-render — the render button absorbs the
+        // save (patchChunk runs first in runGeneration/queueChunkRegen), and its
+        // label announces it while the edit is pending.
+        setGenerateLabel(card);
     };
 
     async function patchChunk(card) {
@@ -1960,9 +2022,9 @@ function initStudioProject() {
         return false;
     }
 
-    // Generate (or re-roll) one chunk: optionally persist a pending text edit
-    // first, POST to `url`, then refresh status + audio. Re-roll uses the same
-    // flow against the reroll endpoint (which drops the pinned seed).
+    // Generate one chunk: persist a pending text edit first, then POST with the
+    // whole tuning panel riding along (the server saves it before rendering) —
+    // so a Regenerate always renders exactly the text + settings on screen.
     async function runGeneration(card, url, btn, label) {
         const textarea = card.querySelector('.chunk-text');
         startBusy(btn, label);
@@ -1974,7 +2036,8 @@ function initStudioProject() {
             }
             const res = await fetch(url, {
                 method: 'POST',
-                headers: { 'X-CSRF-TOKEN': csrfToken(), 'Accept': 'application/json' },
+                headers: { 'X-CSRF-TOKEN': csrfToken(), 'Accept': 'application/json', 'Content-Type': 'application/json' },
+                body: JSON.stringify(chunkTuningPayload(card)),
             });
             if (!res.ok) throw new Error(await errorMessage(res));
             const data = await res.json();
@@ -1987,14 +2050,17 @@ function initStudioProject() {
             audio.closest('.aplayer')?.classList.remove('hidden');
             audio.play().catch(() => {});
             endBusy(btn);
-            card.querySelector('.chunk-generate').textContent = '▶ Regenerate';
-            card.querySelector('.chunk-tune-keep')?.classList.add('hidden'); // this take replaces any pending preview
+            card.querySelector('.chunk-generate').dataset.base = 'Regenerate';
+            setGenerateLabel(card);
             renderTakes(card, data); // the new take joins the history (and becomes selected)
             refreshSeams(); // may reveal an inline seam preview next to a generated neighbor
         } catch (err) {
             setChunkStatus(card, 'failed');
             reflectActionState(); // a failed chunk is outstanding again — Build final goes off
             endBusy(btn);
+            // endBusy restored the pre-click label, but the text patch may have
+            // landed before the render failed — recompute from the real state.
+            setGenerateLabel(card);
             throw err;
         }
     }
@@ -2029,27 +2095,32 @@ function initStudioProject() {
             // run instead of generating directly (see queueChunkRegen).
             const gen = card.querySelector('.chunk-generate');
             if (gen) {
-                gen.disabled = isDirty(card);
                 gen.title = locked
                     ? 'Adds this clip to the active background run — it regenerates after the clips already in line.'
-                    : "Render this chunk's audio from its current text and tuning.";
+                    : "Render this chunk with the text and Delivery settings shown — they're saved as part of the click.";
             }
-            const reroll = card.querySelector('.chunk-reroll');
-            if (reroll) reroll.disabled = locked;
         });
     };
 
     // "Regenerate" while a background run is active: the direct endpoint would
     // 409 (the worker owns generation), so append the chunk to the run instead.
-    // The server marks a generated chunk stale as it adopts it; the poll then
-    // reports it like any other clip in the run.
+    // A pending text edit and the tuning panel are persisted with the click —
+    // same contract as a direct Regenerate — so the worker renders what's on
+    // screen. The server marks a generated chunk stale as it adopts it; the
+    // poll then reports it like any other clip in the run.
     async function queueChunkRegen(card) {
         const btn = card.querySelector('.chunk-generate');
         startBusy(btn, 'Queueing…');
         try {
+            const textarea = card.querySelector('.chunk-text');
+            if (textarea.value !== textarea.dataset.original) {
+                // A re-chunking edit reloads the page — don't queue the orphan.
+                if (await patchChunk(card)) return;
+            }
             const res = await fetch(card.dataset.queueUrl, {
                 method: 'POST',
-                headers: { 'X-CSRF-TOKEN': csrfToken(), 'Accept': 'application/json' },
+                headers: { 'X-CSRF-TOKEN': csrfToken(), 'Accept': 'application/json', 'Content-Type': 'application/json' },
+                body: JSON.stringify(chunkTuningPayload(card)),
             });
             if (!res.ok) throw new Error(await errorMessage(res));
             const data = await res.json();
@@ -2059,6 +2130,7 @@ function initStudioProject() {
             setStatus(finalStatus, `✗ ${err.message}`, 'error');
         } finally {
             endBusy(btn);
+            setGenerateLabel(card); // the queued text patch may have cleaned the edit
         }
     }
 
@@ -2082,8 +2154,8 @@ function initStudioProject() {
             audio.src = bust(card.dataset.audioUrl);
             audio.closest('.aplayer')?.classList.remove('hidden');
         }
-        card.querySelector('.chunk-generate').textContent = '▶ Regenerate';
-        card.querySelector('.chunk-tune-keep')?.classList.add('hidden'); // this take replaces any pending preview
+        card.querySelector('.chunk-generate').dataset.base = 'Regenerate';
+        setGenerateLabel(card);
         renderTakes(card, data);
         return true;
     };
@@ -2374,16 +2446,21 @@ function initStudioProject() {
 
         const meta = document.createElement('div');
         meta.className = 'flex min-w-0 flex-col text-xs text-zinc-500';
+        // Provenance + selection state. A plain generate take has no source
+        // label (the unmarked default), so its top line is just "selected" —
+        // or nothing at all, in which case the line is left out entirely.
         const line1 = document.createElement('span');
         line1.className = take.selected ? 'text-emerald-300' : 'text-zinc-400';
-        line1.textContent = (TAKE_SOURCE_LABELS[take.source] || take.source) + (take.selected ? ' · selected' : '');
+        line1.textContent = [TAKE_SOURCE_LABELS[take.source] ?? take.source, take.selected ? 'selected' : '']
+            .filter(Boolean).join(' · ');
         const line2 = document.createElement('span');
         // Show the seed this take rendered at: the pinned number, or "random" when
         // it rolled unpinned (Replicate doesn't report the seed it chose). Lets a
         // good pinned take be spotted and re-pinned in the field above.
         const seedText = take.seed ? `seed ${take.seed}` : 'seed random';
         line2.textContent = take.tuning_label + ' · ' + seedText + (take.created_human ? ' · ' + take.created_human : '');
-        meta.append(line1, line2);
+        if (line1.textContent) meta.append(line1);
+        meta.append(line2);
         if (take.asr_badge) {
             // Same popover as the chunk header, minus the undo footer (its actions
             // act on the chunk's current audio, not this historical take).
@@ -2462,7 +2539,7 @@ function initStudioProject() {
         if (!takes.length) {
             const li = document.createElement('li');
             li.className = 'text-xs text-zinc-600';
-            li.textContent = 'No takes yet — Generate or Preview to create one.';
+            li.textContent = 'No takes yet — Generate to create one.';
             list.append(li);
             return;
         }
@@ -2470,14 +2547,15 @@ function initStudioProject() {
         enhanceStudioPlayers(list); // skin the freshly-built take players
     }
 
-    async function refreshTakes(card) {
-        try {
-            const res = await fetch(card.dataset.takesUrl, { headers: { 'Accept': 'application/json' } });
-            if (res.ok) renderTakes(card, await res.json());
-        } catch { /* a missing list is non-fatal */ }
-    }
-
     async function selectTake(card, takeId, btn) {
+        // Selecting restores the take's text — warn before it replaces an edit
+        // the user typed but never saved (saved text is still in the history:
+        // the take that rendered it can bring it back).
+        if (isDirty(card) && !(await confirmDialog({
+            title: 'Replace the unsaved edit?',
+            message: 'Selecting a take restores the text it was rendered from, replacing the unsaved edit in this chunk.',
+            label: 'Select take',
+        }))) return;
         startBusy(btn, 'Selecting…');
         try {
             const res = await fetch(card.dataset.takesUrl + '/' + takeId + '/select', {
@@ -2489,13 +2567,25 @@ function initStudioProject() {
             setChunkStatus(card, data.status);
             setChunkAsrBadge(card, data.asr_badge ?? null);
             setProjectStatus(data.project_status);
+            // The select restored the take's snapshot server-side — mirror it
+            // into the panel so text, knobs, and seed tell the truth about the
+            // audio now selected. (A legacy take may carry no text snapshot.)
+            if (data.text != null) {
+                const textarea = card.querySelector('.chunk-text');
+                textarea.value = data.text;
+                textarea.dataset.original = data.text;
+                setDirty(card, false);
+                card.querySelector('.chunk-chars').textContent = `${data.characters} chars`;
+            }
+            applyTuningSnapshot(card, data.tuning, data.seed);
             const audio = card.querySelector('.chunk-audio');
             audio.src = bust(card.dataset.audioUrl);
             audio.closest('.aplayer')?.classList.remove('hidden');
-            card.querySelector('.chunk-generate').textContent = '▶ Regenerate';
+            card.querySelector('.chunk-generate').dataset.base = 'Regenerate';
+            setGenerateLabel(card);
             renderTakes(card, data); // rebuilds the list (and detaches btn)
             refreshSeams();
-            setStatus(finalStatus, '✓ Selected this take as the chunk audio.', 'ok');
+            setStatus(finalStatus, '✓ Selected this take — its text and settings are restored below.', 'ok');
         } catch (err) {
             setStatus(finalStatus, `✗ ${err.message}`, 'error');
             endBusy(btn);
@@ -2559,18 +2649,6 @@ function initStudioProject() {
     }
 
     root.querySelectorAll('.studio-chunk').forEach((card) => {
-        // The blob + settings from the last successful tuning preview, so
-        // "Use this take" can persist the exact clip the user just heard. Any
-        // edit that would change how a fresh preview sounds clears it (below).
-        let previewBlob = null;
-        let previewKnobs = {}; // knob key -> string value, only the ones that were set
-        let previewSeed = '';
-        const keepBtn = card.querySelector('.chunk-tune-keep');
-        const invalidatePreview = () => {
-            previewBlob = null;
-            keepBtn?.classList.add('hidden');
-        };
-
         // Render the take history embedded on the card, and wire Select/Delete via
         // one delegated listener (the list is rebuilt wholesale on every change).
         try { renderTakes(card, JSON.parse(card.dataset.takes || '{}')); } catch { /* ignore */ }
@@ -2585,17 +2663,17 @@ function initStudioProject() {
 
         // QA popover footer actions (design "QA Badge States"). Delegated on the
         // .chunk-asr-badge wrapper (its innerHTML is rebuilt on every verdict, but
-        // the wrapper element persists). Re-roll and Play reuse the existing chunk
-        // controls; Restore reverts to the pre-fix take; Dismiss acknowledges a
-        // flag. On a foreign project the guard intercepts these (they mutate) —
-        // only opening the popover (.qa-badge) is whitelisted.
+        // the wrapper element persists). Regenerate and Play reuse the existing
+        // chunk controls; Restore reverts to the pre-fix take; Dismiss
+        // acknowledges a flag. On a foreign project the guard intercepts these
+        // (they mutate) — only opening the popover (.qa-badge) is whitelisted.
         card.querySelector('.chunk-asr-badge')?.addEventListener('click', (e) => {
             const act = e.target.closest('.qa-act');
             if (!act) return;
             e.preventDefault();
             const kind = act.dataset.qaAct;
             if (kind === 'reroll') {
-                card.querySelector('.chunk-reroll')?.click();
+                card.querySelector('.chunk-generate')?.click();
             } else if (kind === 'play') {
                 const audio = card.querySelector('.chunk-audio');
                 audio?.closest('.aplayer')?.classList.remove('hidden');
@@ -2611,18 +2689,6 @@ function initStudioProject() {
             card.querySelector('.qa-badge')?.setAttribute('aria-expanded', 'false');
         });
 
-        card.querySelector('.chunk-save').addEventListener('click', async () => {
-            const btn = card.querySelector('.chunk-save');
-            startBusy(btn, 'Saving…');
-            try {
-                await patchChunk(card);
-                setStatus(finalStatus, '');
-            } catch (err) {
-                setStatus(finalStatus, `✗ ${err.message}`, 'error');
-            } finally {
-                endBusy(btn);
-            }
-        });
         card.querySelector('.chunk-generate').addEventListener('click', () => (
             runActive ? queueChunkRegen(card) : generateChunk(card).catch(() => {})
         ));
@@ -2665,144 +2731,6 @@ function initStudioProject() {
             });
         }
 
-        // Re-roll: regenerate this chunk with a fresh random seed (a new take).
-        card.querySelector('.chunk-reroll')?.addEventListener('click', () =>
-            runGeneration(card, card.dataset.rerollUrl, card.querySelector('.chunk-reroll'), 'Re-rolling…').catch(() => {}));
-
-        // The value of one knob input, or '' while its knob is hidden (the
-        // OTHER engine's knob — a leftover value there must not ride along).
-        const knobVal = (sel) => {
-            const input = card.querySelector(sel);
-            if (!input || input.closest('.tuning-knob')?.classList.contains('hidden')) return '';
-            return input.value;
-        };
-
-        // Every engine-specific knob, read via knobVal so only the active
-        // engine's set is ever sent; temperature is shared.
-        const KNOB_INPUTS = [
-            ['exaggeration', '.chunk-exaggeration'],
-            ['cfg_weight', '.chunk-cfg'],
-            ['temperature', '.chunk-temperature'],
-            ['top_p', '.chunk-top-p'],
-            ['top_k', '.chunk-top-k'],
-            ['repetition_penalty', '.chunk-repetition-penalty'],
-        ];
-
-        // A/B preview: audition the typed native knobs (saved as a non-selected take).
-        card.querySelector('.chunk-tune-preview')?.addEventListener('click', async () => {
-            const btn = card.querySelector('.chunk-tune-preview');
-            const seed = card.querySelector('.chunk-seed').value;
-            const body = new URLSearchParams();
-            KNOB_INPUTS.forEach(([key, sel]) => {
-                const value = knobVal(sel);
-                if (value !== '') body.set(key, value);
-            });
-            if (seed !== '') body.set('seed', seed);
-            startBusy(btn, 'Previewing…');
-            try {
-                const res = await fetch(card.dataset.previewTuningUrl, {
-                    method: 'POST',
-                    headers: { 'X-CSRF-TOKEN': csrfToken(), 'Accept': 'audio/*' },
-                    body,
-                });
-                if (!res.ok) throw new Error(await errorMessage(res));
-                const blob = await res.blob();
-                playAudio(card.querySelector('.chunk-tune-audio'), blob);
-                // Remember this exact clip so "Use this take" can keep it verbatim.
-                previewBlob = blob;
-                previewKnobs = {};
-                KNOB_INPUTS.forEach(([key, sel]) => {
-                    const value = knobVal(sel);
-                    if (value !== '') previewKnobs[key] = value;
-                });
-                previewSeed = seed;
-                keepBtn?.classList.remove('hidden');
-                refreshTakes(card); // the preview was saved as a (non-selected) take
-                setStatus(finalStatus, '✓ Preview ready — "Use this take" keeps it, or play it from the list.', 'ok');
-            } catch (err) {
-                setStatus(finalStatus, `✗ ${err.message}`, 'error');
-            } finally {
-                endBusy(btn);
-            }
-        });
-
-        // Use this take: upload the exact previewed clip back and store it as the
-        // chunk's audio (with the settings it was previewed at). No regeneration,
-        // so what's saved is byte-for-byte what the user just auditioned — the only
-        // reliable way to keep a good take given the provider's non-determinism.
-        keepBtn?.addEventListener('click', async () => {
-            if (!previewBlob) return;
-            startBusy(keepBtn, 'Saving…');
-            try {
-                const ext = previewBlob.type === 'audio/mpeg' ? 'mp3' : 'wav';
-                const fd = new FormData();
-                fd.append('audio', previewBlob, `take.${ext}`);
-                Object.entries(previewKnobs).forEach(([key, value]) => fd.append(key, value));
-                if (previewSeed !== '') fd.append('seed', previewSeed);
-                const res = await fetch(card.dataset.usePreviewUrl, {
-                    method: 'POST',
-                    headers: { 'X-CSRF-TOKEN': csrfToken(), 'Accept': 'application/json' },
-                    body: fd,
-                });
-                if (!res.ok) throw new Error(await errorMessage(res));
-                const data = await res.json();
-                setChunkStatus(card, data.status);
-                setChunkAsrBadge(card, data.asr_badge ?? null);
-                setProjectStatus(data.project_status);
-                const audio = card.querySelector('.chunk-audio');
-                audio.src = bust(card.dataset.audioUrl);
-                audio.closest('.aplayer')?.classList.remove('hidden');
-                audio.play().catch(() => {});
-                card.querySelector('.chunk-generate').textContent = '▶ Regenerate';
-                invalidatePreview();
-                renderTakes(card, data); // the kept clip is now a selected take
-                refreshSeams();
-                setStatus(finalStatus, '✓ Saved this take as the chunk audio.', 'ok');
-            } catch (err) {
-                setStatus(finalStatus, `✗ ${err.message}`, 'error');
-            } finally {
-                endBusy(keepBtn);
-            }
-        });
-
-        // Save this chunk's native tuning override; the server marks it stale.
-        // Hidden knobs (the other engine's) post null, so switching a chunk's
-        // engine then saving clears any leftover foreign-engine override.
-        card.querySelector('.chunk-tune-save')?.addEventListener('click', async () => {
-            const btn = card.querySelector('.chunk-tune-save');
-            const seed = card.querySelector('.chunk-seed').value;
-            const payload = { seed: seed === '' ? null : Number(seed) };
-            KNOB_INPUTS.forEach(([key, sel]) => {
-                const value = knobVal(sel);
-                payload[key] = value === '' ? null : Number(value);
-            });
-            startBusy(btn, 'Saving…');
-            try {
-                const res = await fetch(card.dataset.tuningUrl, {
-                    method: 'PATCH',
-                    headers: { 'X-CSRF-TOKEN': csrfToken(), 'Accept': 'application/json', 'Content-Type': 'application/json' },
-                    body: JSON.stringify(payload),
-                });
-                if (!res.ok) throw new Error(await errorMessage(res));
-                const data = await res.json();
-                setChunkStatus(card, data.status);
-                setProjectStatus(data.project_status);
-                refreshSeams();
-                setStatus(finalStatus, '✓ Tuning saved — regenerate to hear it.', 'ok');
-            } catch (err) {
-                setStatus(finalStatus, `✗ ${err.message}`, 'error');
-            } finally {
-                endBusy(btn);
-            }
-        });
-
-        // A preview reflects the inputs at preview time; once any of them change,
-        // the kept clip would no longer match, so retire the "Use this take" offer.
-        KNOB_INPUTS.forEach(([, sel]) => card.querySelector(sel)?.addEventListener('input', invalidatePreview));
-        card.querySelector('.chunk-seed').addEventListener('input', invalidatePreview);
-        card.querySelector('.chunk-text').addEventListener('input', invalidatePreview);
-        card.querySelector('.chunk-voice').addEventListener('change', invalidatePreview);
-
         // 🎲 rolls a fresh random seed into the field so the pin is visible and
         // re-usable (clearing the field by hand still means inherit/random).
         card.querySelector('.chunk-seed-random')?.addEventListener('click', () => {
@@ -2812,9 +2740,8 @@ function initStudioProject() {
         });
 
         // "Apply preset" fills the native knobs (dispatching input so the sliders
-        // sync and the preview invalidates); nothing persists until Save tuning.
-        // Seed is deliberately not part of a preset — it's a per-take pin, not a
-        // reusable delivery.
+        // sync); the next Regenerate saves and renders them. Seed is deliberately
+        // not part of a preset — it's a per-take pin, not a reusable delivery.
         card.querySelector('.chunk-preset')?.addEventListener('change', (e) => {
             const opt = e.target.selectedOptions[0];
             if (!opt || !opt.value) return;
@@ -2878,7 +2805,7 @@ function initStudioProject() {
                 const input = card.querySelector(sel);
                 if (!input) return;
                 input.value = preset.values[nativeKey];
-                input.dispatchEvent(new Event('input', { bubbles: true })); // syncs slider + invalidates preview
+                input.dispatchEvent(new Event('input', { bubbles: true })); // syncs slider + re-lights chips
             });
             markDelivery(key);
         };
@@ -2921,7 +2848,7 @@ function initStudioProject() {
                 const input = card.querySelector(sel);
                 if (!input) return;
                 input.value = '';
-                input.dispatchEvent(new Event('input', { bubbles: true })); // rests slider at inherited + invalidates
+                input.dispatchEvent(new Event('input', { bubbles: true })); // rests slider at inherited
             });
             const seedInput = card.querySelector('.chunk-seed');
             if (seedInput) { seedInput.value = ''; seedInput.dispatchEvent(new Event('input', { bubbles: true })); }

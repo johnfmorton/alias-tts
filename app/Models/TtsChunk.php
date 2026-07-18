@@ -203,14 +203,14 @@ class TtsChunk extends Model
                 } else {
                     $prompt = 'Not right?';
                     $actions = [
-                        ['act' => 'reroll', 'label' => 'Re-roll again'],
+                        ['act' => 'reroll', 'label' => 'Regenerate again'],
                         ['act' => 'restore', 'label' => 'keep original'],
                     ];
                 }
             } elseif ($tone === 'reviewed') {
                 $fix = ['label' => 'Reviewed:', 'text' => "you marked this take fine, so it won't be flagged again."];
                 $actions = [
-                    ['act' => 'reroll', 'label' => 'Re-roll'],
+                    ['act' => 'reroll', 'label' => 'Regenerate'],
                     ['act' => 'play', 'label' => 'Play'],
                 ];
             } else { // bad — flagged, needs a human
@@ -218,7 +218,7 @@ class TtsChunk extends Model
                     ? 'Re-rolled '.self::asrTimes($attempts).", but it's still flagged — the audio is unchanged, so give it a listen."
                     : "Auto-fix can't safely change this one. The audio was left unchanged — give it a listen."];
                 $actions = [
-                    ['act' => 'reroll', 'label' => 'Re-roll'],
+                    ['act' => 'reroll', 'label' => 'Regenerate'],
                     ['act' => 'play', 'label' => 'Play'],
                     ['act' => 'dismiss', 'label' => 'Dismiss'],
                 ];

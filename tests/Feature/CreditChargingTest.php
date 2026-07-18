@@ -65,7 +65,7 @@ class CreditChargingTest extends TestCase
         );
     }
 
-    public function test_studio_generate_and_reroll_charge_the_project_owner(): void
+    public function test_studio_renders_charge_the_project_owner_per_take(): void
     {
         $owner = $this->fundedUser();
         $project = $this->project($owner);
@@ -73,32 +73,14 @@ class CreditChargingTest extends TestCase
         $service = app(ProjectService::class);
 
         $service->generateChunk($chunk);
-        $service->generateChunk($chunk, reroll: true);
+        $service->generateChunk($chunk); // a regenerate is another billable render
 
         $this->assertSame(
-            ['studio_generate', 'studio_reroll'],
+            ['studio_generate', 'studio_generate'],
             CreditTransaction::orderBy('id')->pluck('source')->all(),
         );
         $this->assertSame(
             10_000_000 - 2 * mb_strlen($chunk->text) * self::MICRO_PER_CHAR,
-            $owner->fresh()->credit_balance_micro,
-        );
-    }
-
-    public function test_previews_charge_but_keeping_one_is_free(): void
-    {
-        $owner = $this->fundedUser();
-        $project = $this->project($owner);
-        $chunk = $project->chunks()->orderBy('position')->first();
-        $service = app(ProjectService::class);
-
-        $bytes = $service->previewChunkTuning($chunk, ['exaggeration' => 0.7]);
-        $service->useChunkPreview($chunk, $bytes, ['exaggeration' => 0.7]);
-
-        // One 'studio_preview' charge; the 'use' re-records paid bytes free.
-        $this->assertSame(['studio_preview'], CreditTransaction::pluck('source')->all());
-        $this->assertSame(
-            10_000_000 - mb_strlen($chunk->text) * self::MICRO_PER_CHAR,
             $owner->fresh()->credit_balance_micro,
         );
     }

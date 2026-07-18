@@ -893,7 +893,15 @@ class StudioProjectController extends Controller
         ]);
     }
 
-    public function generateChunk(TtsProject $project, TtsChunk $chunk): JsonResponse
+    /**
+     * Render one chunk. The Studio's Regenerate submits the whole tuning panel
+     * (Delivery/fine-tune knobs + seed) with the click, and it's persisted BEFORE
+     * synthesis — so the render always uses exactly what's on screen, and the
+     * stored tuning always matches the latest render. A request without any
+     * panel keys (older callers, tests) renders at the stored tuning unchanged.
+     * A fresh take of the same settings is just a regenerate with a blank seed.
+     */
+    public function generateChunk(Request $request, TtsProject $project, TtsChunk $chunk): JsonResponse
     {
         $this->assertChunkBelongs($project, $chunk);
 
@@ -908,6 +916,10 @@ class StudioProjectController extends Controller
         // Renders spend the PROJECT OWNER's credit (recordTake charges them),
         // so the gate checks the owner too — even for a SuperAdmin editing here.
         if ($error = $this->creditError($project->user)) {
+            return $error;
+        }
+
+        if ($error = $this->persistTuning($request, $chunk)) {
             return $error;
         }
 
@@ -929,62 +941,26 @@ class StudioProjectController extends Controller
     }
 
     /**
-     * Set a chunk's per-chunk stability/style override. A generated chunk goes
-     * Stale so the editor prompts a regenerate. See docs/STUDIO-TUNING.md Phase 2.
+     * Persist the tuning panel riding on a generate/queue request: validate the
+     * knobs and store them as the chunk's override (absent/blank keys clear back
+     * to inherit). Returns the 422 to send on invalid input, null when the panel
+     * was stored — or when the request carried no panel keys at all, which
+     * leaves the stored tuning untouched.
      */
-    public function tuneChunk(Request $request, TtsProject $project, TtsChunk $chunk): JsonResponse
+    private function persistTuning(Request $request, TtsChunk $chunk): ?JsonResponse
     {
-        $this->assertChunkBelongs($project, $chunk);
+        if (! $request->hasAny(array_keys($this->knobRules()))) {
+            return null;
+        }
 
         $validator = Validator::make($request->all(), $this->knobRules());
         if ($validator->fails()) {
             return response()->json(['message' => $validator->errors()->first()], 422);
         }
 
-        $chunk = $this->projects->updateChunkTuning($chunk, $this->knobInput($request));
+        $this->projects->updateChunkTuning($chunk, $this->knobInput($request));
 
-        return response()->json([
-            'ok' => true,
-            'status' => $chunk->status->value,
-            'project_status' => $project->refresh()->status->value,
-        ]);
-    }
-
-    /**
-     * Re-roll: regenerate one chunk with a fresh random seed (ignoring the
-     * project's pinned seed) to get a different "take" without editing the text.
-     */
-    public function rerollChunk(TtsProject $project, TtsChunk $chunk): JsonResponse
-    {
-        $this->assertChunkBelongs($project, $chunk);
-
-        if ($error = $this->activeRunError($project)) {
-            return $error;
-        }
-
-        if (trim((string) $chunk->text) === '') {
-            return response()->json(['message' => 'This chunk is empty — add text before generating.'], 422);
-        }
-
-        if ($error = $this->creditError($project->user)) {
-            return $error;
-        }
-
-        try {
-            $chunk = $this->projects->generateChunk($chunk, reroll: true);
-        } catch (Throwable $e) {
-            report($e);
-
-            return response()->json(['message' => 'Generation failed: '.$e->getMessage()], 502);
-        }
-
-        return response()->json(array_merge([
-            'ok' => true,
-            'status' => $chunk->status->value,
-            'asr_badge' => $chunk->asrBadge(),
-            'project_status' => $project->refresh()->status->value,
-            'spend' => $this->spendPayload($project, $chunk),
-        ], $this->takesPayload($project, $chunk)));
+        return null;
     }
 
     /**
@@ -1102,6 +1078,13 @@ class StudioProjectController extends Controller
         }
 
         if ($error = $this->creditError($project->user)) {
+            return $error;
+        }
+
+        // The queued render happens on the worker from the chunk's stored
+        // tuning, so the panel riding on this click is persisted the same way
+        // a direct Regenerate persists it.
+        if ($error = $this->persistTuning($request, $chunk)) {
             return $error;
         }
 
@@ -1229,80 +1212,6 @@ class StudioProjectController extends Controller
         return null;
     }
 
-    /**
-     * A/B preview (3c): synthesize this chunk at a transient stability/style and
-     * return the raw audio WITHOUT persisting, so the user can audition a
-     * candidate tuning against the chunk's current audio before committing.
-     */
-    public function previewChunkTuning(Request $request, TtsProject $project, TtsChunk $chunk): Response
-    {
-        $this->assertChunkBelongs($project, $chunk);
-
-        if (trim((string) $chunk->text) === '') {
-            return response()->json(['message' => 'This chunk is empty — add text before previewing.'], 422);
-        }
-
-        $validator = Validator::make($request->all(), $this->knobRules());
-        if ($validator->fails()) {
-            return response()->json(['message' => $validator->errors()->first()], 422);
-        }
-
-        if ($error = $this->creditError($project->user)) {
-            return $error;
-        }
-
-        try {
-            $bytes = $this->projects->previewChunkTuning($chunk, $this->knobInput($request));
-        } catch (Throwable $e) {
-            report($e);
-
-            return response()->json(['message' => 'Preview failed: '.$e->getMessage()], 502);
-        }
-
-        $mime = $this->projects->providerContainer() === 'wav' ? 'audio/wav' : 'audio/mpeg';
-
-        return response($bytes, 200)->header('Content-Type', $mime);
-    }
-
-    /**
-     * "Use this take": persist the exact clip the user just previewed (uploaded
-     * back from the browser) as this chunk's audio, with the stability/style it
-     * was auditioned at. The provider is non-deterministic even with a pinned
-     * seed, so regenerating can't reproduce a good preview — keeping the actual
-     * bytes is the only reliable way. See docs/STUDIO-TUNING.md.
-     */
-    public function useChunkPreview(Request $request, TtsProject $project, TtsChunk $chunk): JsonResponse
-    {
-        $this->assertChunkBelongs($project, $chunk);
-
-        $validator = Validator::make($request->all(), array_merge([
-            'audio' => ['required', 'file', 'mimetypes:audio/wav,audio/x-wav,audio/wave,audio/vnd.wave,audio/mpeg', 'max:20480'],
-        ], $this->knobRules()));
-        if ($validator->fails()) {
-            return response()->json(['message' => $validator->errors()->first()], 422);
-        }
-
-        try {
-            $chunk = $this->projects->useChunkPreview(
-                $chunk,
-                (string) file_get_contents($request->file('audio')->getRealPath()),
-                $this->knobInput($request),
-            );
-        } catch (Throwable $e) {
-            report($e);
-
-            return response()->json(['message' => 'Could not save this take: '.$e->getMessage()], 502);
-        }
-
-        return response()->json(array_merge([
-            'ok' => true,
-            'status' => $chunk->status->value,
-            'asr_badge' => $chunk->asrBadge(),
-            'project_status' => $project->refresh()->status->value,
-            'spend' => $this->spendPayload($project, $chunk),
-        ], $this->takesPayload($project, $chunk)));
-    }
-
     public function chunkAudio(Request $request, TtsProject $project, TtsChunk $chunk): Response
     {
         $this->assertChunkBelongs($project, $chunk);
@@ -1340,7 +1249,12 @@ class StudioProjectController extends Controller
         return $this->rangedAudio($bytes, 'audio/wav', $request);
     }
 
-    /** Make a saved take the chunk's current audio (audition a prior take, pick a better one). */
+    /**
+     * Make a saved take the chunk's current audio. The service restores the
+     * take's whole snapshot (text + tuning + seed, not just the sound), and the
+     * response carries that restored state so the page can set the textarea,
+     * knobs, and seed field to match what's now selected.
+     */
     public function selectTake(TtsProject $project, TtsChunk $chunk, TtsChunkTake $take): JsonResponse
     {
         $this->assertTakeBelongs($project, $chunk, $take);
@@ -1354,7 +1268,39 @@ class StudioProjectController extends Controller
             'project_status' => $project->refresh()->status->value,
             'audio_url' => route('admin.studio.projects.chunks.audio', [$project, $chunk]),
             'spend' => $this->spendPayload($project, $chunk),
+            'text' => $chunk->text,
+            'characters' => $chunk->characters,
+            'tuning' => $this->tuningValues($chunk),
+            'seed' => is_array($chunk->settings) ? ($chunk->settings['seed'] ?? null) : null,
         ], $this->takesPayload($project, $chunk)));
+    }
+
+    /**
+     * The chunk's stored override as a knob => value|null map matching the
+     * panel's inputs (null = inherited). Legacy ElevenLabs-form overrides
+     * (stability/style) are resolved to the native knobs the panel shows, so
+     * restoring an old take still fills honest numbers.
+     *
+     * @return array<string, float|int|null>
+     */
+    private function tuningValues(TtsChunk $chunk): array
+    {
+        $settings = is_array($chunk->settings) ? $chunk->settings : [];
+
+        $values = [];
+        foreach (array_keys($this->knobRules()) as $knob) {
+            if ($knob !== 'seed') {
+                $values[$knob] = $settings[$knob] ?? null;
+            }
+        }
+
+        if (isset($settings['stability']) || isset($settings['style'])) {
+            $native = ChatterboxTuning::resolveNative($settings);
+            $values['exaggeration'] ??= $native['exaggeration'];
+            $values['cfg_weight'] ??= $native['cfg_weight'];
+        }
+
+        return $values;
     }
 
     /** Permanently delete a take (refused while it's the selected one). */
@@ -1759,7 +1705,8 @@ class StudioProjectController extends Controller
 
     /**
      * Validation rules for the per-chunk tuning knobs. Single place the Studio
-     * panel's knob names + ranges are declared, shared by tune/preview/use.
+     * panel's knob names + ranges are declared, shared by generate/queue
+     * (via {@see persistTuning}).
      *
      * @return array<string, list<string>>
      */
@@ -1780,7 +1727,7 @@ class StudioProjectController extends Controller
      * The per-chunk tuning override from the request as a name => value|null map
      * (null = inherit/clear). Single place the panel's control names are read. The
      * float knobs cast to float; `seed` casts to int (blank/absent => inherit,
-     * which ultimately rolls random). Shared by tune/preview/use.
+     * which ultimately rolls random). Shared by generate/queue.
      *
      * @return array<string, float|int|null>
      */

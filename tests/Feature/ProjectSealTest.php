@@ -480,7 +480,7 @@ class ProjectSealTest extends TestCase
         // A second take on the first chunk — the archive must ship BOTH, with
         // the selected one (the newest; re-roll selects its render) marked.
         $chunk = $project->chunks()->orderBy('position')->first();
-        $this->actingAs($admin)->postJson(route('admin.studio.projects.chunks.reroll', [$project, $chunk]))->assertOk();
+        $this->actingAs($admin)->postJson(route('admin.studio.projects.chunks.generate', [$project, $chunk]))->assertOk();
         $this->actingAs($admin)->postJson(route('admin.studio.projects.rebuild', $project))->assertOk();
         $this->actingAs($admin)->postJson(route('admin.studio.projects.seal', $project))->assertOk();
         $project->refresh();
@@ -534,7 +534,7 @@ class ProjectSealTest extends TestCase
         $admin = $this->admin();
         $project = $this->readyProject();
         $chunk = $project->chunks()->orderBy('position')->first();
-        $this->actingAs($admin)->postJson(route('admin.studio.projects.chunks.reroll', [$project, $chunk]))->assertOk();
+        $this->actingAs($admin)->postJson(route('admin.studio.projects.chunks.generate', [$project, $chunk]))->assertOk();
         $this->actingAs($admin)->postJson(route('admin.studio.projects.rebuild', $project))->assertOk();
         $this->actingAs($admin)->postJson(route('admin.studio.projects.seal', $project))->assertOk();
 
@@ -566,7 +566,7 @@ class ProjectSealTest extends TestCase
         $admin = $this->admin();
         $project = $this->readyProject();
         $chunk = $project->chunks()->orderBy('position')->first();
-        $this->actingAs($admin)->postJson(route('admin.studio.projects.chunks.reroll', [$project, $chunk]))->assertOk();
+        $this->actingAs($admin)->postJson(route('admin.studio.projects.chunks.generate', [$project, $chunk]))->assertOk();
         $this->actingAs($admin)->postJson(route('admin.studio.projects.rebuild', $project))->assertOk();
         $this->actingAs($admin)->postJson(route('admin.studio.projects.seal', $project))->assertOk();
 

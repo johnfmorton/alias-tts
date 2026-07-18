@@ -433,10 +433,10 @@
                 <div>
                     <h3 class="text-[15px] font-semibold text-zinc-100">Keep the take you approved</h3>
                     <p class="mt-1.5 text-sm leading-relaxed text-zinc-400">
-                        Re-roll a chunk until it reads right, A/B the takes, and keep the winner — the exact
-                        audio you heard, byte for byte. Every take records the seed and settings it rendered
-                        at, and you can pin a seed for the next roll — a recorded reference point, not a
-                        replay guarantee.
+                        Regenerate a chunk until it reads right, A/B the takes, and keep the winner — the exact
+                        audio you heard, byte for byte. Every take records the text, seed, and settings it
+                        rendered at, and selecting a take restores them — so what you see is always what
+                        you're hearing.
                     </p>
                 </div>
                 <div>

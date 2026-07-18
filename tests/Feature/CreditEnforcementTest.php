@@ -127,10 +127,6 @@ class CreditEnforcementTest extends TestCase
             ->postJson(route('admin.studio.projects.chunks.generate', [$project, $chunk]))
             ->assertStatus(402)
             ->assertJsonPath('message', fn ($m) => str_contains((string) $m, 'out of credit'));
-
-        $this->actingAs($admin)
-            ->postJson(route('admin.studio.projects.chunks.reroll', [$project, $chunk]))
-            ->assertStatus(402);
     }
 
     public function test_existing_audio_survives_a_drained_balance(): void

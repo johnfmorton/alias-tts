@@ -94,20 +94,21 @@ class StudioTurboKnobsTest extends TestCase
         ])->assertStatus(422);
     }
 
-    public function test_per_chunk_turbo_knobs_persist_and_mark_the_chunk_stale(): void
+    public function test_per_chunk_turbo_knobs_persist_via_regenerate(): void
     {
         $project = $this->turboProject();
         $chunk = $project->chunks()->first();
         app(ProjectService::class)->generateChunk($chunk);
 
+        // Regenerate carries the panel; the knobs are persisted before the render.
         $this->actingAs($this->admin())
-            ->patchJson(route('admin.studio.projects.chunks.tuning', [$project, $chunk]), [
+            ->postJson(route('admin.studio.projects.chunks.generate', [$project, $chunk]), [
                 'top_p' => 0.9,
                 'top_k' => 500,
                 'repetition_penalty' => 1.5,
             ])
             ->assertOk()
-            ->assertJsonPath('status', 'stale');
+            ->assertJsonPath('status', 'completed');
 
         $chunk->refresh();
         $this->assertSame(0.9, $chunk->settings['top_p']);
@@ -121,7 +122,7 @@ class StudioTurboKnobsTest extends TestCase
         $chunk = $project->chunks()->first();
 
         $this->actingAs($this->admin())
-            ->patchJson(route('admin.studio.projects.chunks.tuning', [$project, $chunk]), ['top_k' => 0])
+            ->postJson(route('admin.studio.projects.chunks.generate', [$project, $chunk]), ['top_k' => 0])
             ->assertStatus(422);
     }
 

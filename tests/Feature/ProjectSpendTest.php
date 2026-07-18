@@ -10,6 +10,7 @@ use App\Support\GenerationCost;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\Storage;
+use Illuminate\Support\Str;
 use Tests\TestCase;
 
 /**
@@ -69,34 +70,17 @@ class ProjectSpendTest extends TestCase
         $this->assertSame($spent, $project->fresh()->spent_characters);
     }
 
-    public function test_rerolling_adds_to_spend(): void
+    public function test_regenerating_adds_to_spend(): void
     {
         $project = $this->project();
         $chunk = $project->chunks()->orderBy('position')->first();
         $service = app(ProjectService::class);
 
         $service->generateChunk($chunk);
-        $service->generateChunk($chunk, reroll: true);
+        $service->generateChunk($chunk);
 
         $this->assertSame(2 * mb_strlen($chunk->text), $chunk->fresh()->spent_characters);
         $this->assertSame(2 * mb_strlen($chunk->text), $project->fresh()->spent_characters);
-    }
-
-    public function test_previews_count_but_keeping_one_does_not_double_count(): void
-    {
-        $project = $this->project();
-        $chunk = $project->chunks()->orderBy('position')->first();
-        $service = app(ProjectService::class);
-
-        // The preview is a real render, so it costs one pass…
-        $bytes = $service->previewChunkTuning($chunk, ['exaggeration' => 0.7]);
-        $this->assertSame(mb_strlen($chunk->text), $chunk->fresh()->spent_characters);
-
-        // …but "Use this take" re-records those already-paid bytes without a
-        // provider call, so the counters must not move again.
-        $service->useChunkPreview($chunk, $bytes, ['exaggeration' => 0.7]);
-        $this->assertSame(mb_strlen($chunk->text), $chunk->fresh()->spent_characters);
-        $this->assertSame(mb_strlen($chunk->text), $project->fresh()->spent_characters);
     }
 
     public function test_deleting_a_take_never_lowers_spend(): void
@@ -106,10 +90,10 @@ class ProjectSpendTest extends TestCase
         $service = app(ProjectService::class);
 
         $service->generateChunk($chunk);
-        $service->generateChunk($chunk, reroll: true);
+        $service->generateChunk($chunk);
         $spent = $chunk->fresh()->spent_characters;
 
-        // The re-roll is selected, so the older take is deletable.
+        // The newest render is selected, so the older take is deletable.
         $unselected = $chunk->takes()->get()->first(
             fn ($take) => $take->audio_path !== $chunk->fresh()->audio_path,
         );
@@ -159,8 +143,18 @@ class ProjectSpendTest extends TestCase
         $service = app(ProjectService::class);
 
         $service->generateChunk($chunk);
-        $bytes = $service->previewChunkTuning($chunk, ['exaggeration' => 0.7]);
-        $service->useChunkPreview($chunk, $bytes, ['exaggeration' => 0.7]); // a 'use' take — not billable
+        // Legacy rows from the retired Preview/Use-this-take flow: a 'preview'
+        // was a real render (billable), the 'use' re-recorded its bytes (not).
+        $chunk->refresh();
+        foreach (['preview', 'use'] as $i => $source) {
+            $chunk->takes()->create([
+                'id' => (string) Str::orderedUuid(),
+                'audio_path' => dirname($chunk->audio_path)."/legacy-{$i}.wav",
+                'text' => $chunk->text,
+                'source' => $source,
+                'characters' => mb_strlen($chunk->text),
+            ]);
+        }
 
         // Re-run the spent-characters migration: its backfill must sum the takes
         // that exist, skipping the 'use' copy (generate + preview = 2 renders).

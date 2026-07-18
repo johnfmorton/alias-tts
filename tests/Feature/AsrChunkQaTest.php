@@ -275,56 +275,6 @@ class AsrChunkQaTest extends TestCase
         $this->assertLessThan($fullLen, $stored);
     }
 
-    public function test_manual_reroll_does_not_auto_remediate(): void
-    {
-        config(['tts.asr.action' => 'auto', 'tts.asr.max_rerolls' => 2]);
-        $provider = $this->countingProvider();
-        $chunk = $this->firstChunk();
-
-        // Even though the take is truncated, a MANUAL reroll must not re-roll again.
-        $partial = implode(' ', array_slice(preg_split('/\s+/', $chunk->text), 0, 3));
-        Http::fake(['asr.test/transcribe' => Http::response($this->fakeTranscript($partial, 8.0))]);
-
-        app(ProjectService::class)->generateChunk($chunk, reroll: true);
-        $chunk->refresh();
-
-        $this->assertSame(1, $provider->calls);                 // exactly one take
-        $this->assertFalse($chunk->asr_report['ok']);
-        $this->assertArrayNotHasKey('action', $chunk->asr_report); // scored + logged, not remediated
-    }
-
-    public function test_manual_reroll_still_trims_a_junk_tail(): void
-    {
-        // A manual re-roll must never auto-re-roll again — but a junk TAIL is a
-        // lossless post-speech trim, so it IS still applied on a manual re-roll.
-        config(['tts.asr.action' => 'auto', 'tts.asr.max_rerolls' => 2]);
-        $provider = $this->countingProvider();
-        $chunk = $this->firstChunk();
-
-        // Full coverage but the last word ends at 0.1s with 5s of audio after — a
-        // junk tail. trimAtMs = (0.1 + 0.08s guard) * 1000 = 180ms (< the fake's 0.2s).
-        $tokens = preg_split('/\s+/', trim($chunk->text));
-        $words = [];
-        $step = 0.1 / max(1, count($tokens));
-        foreach ($tokens as $i => $tok) {
-            $words[] = ['word' => $tok, 'start' => $i * $step, 'end' => ($i + 1) * $step];
-        }
-        $transcript = ['duration' => 5.0, 'text' => $chunk->text, 'words' => $words, 'transcribe_ms' => 7];
-        Http::fake(['asr.test/transcribe' => Http::response($transcript)]);
-
-        $fullLen = strlen((new FakeTtsProvider)->synthesize('', null, []));
-
-        app(ProjectService::class)->generateChunk($chunk, reroll: true);
-        $chunk->refresh();
-
-        $this->assertSame(1, $provider->calls);                 // trimmed, never re-rolled
-        $this->assertSame('trimmed', $chunk->asr_report['action']);
-        $this->assertSame(180, $chunk->asr_report['trimmed_to_ms']);
-        $stored = strlen(Storage::disk('local')->get($chunk->audio_path));
-        $this->assertGreaterThan(0, $stored);
-        $this->assertLessThan($fullLen, $stored);
-    }
-
     public function test_studio_action_log_does_not_remediate_even_when_api_action_is_auto(): void
     {
         // The split: the interactive Studio stays manual (badge only) while the API self-heals.
@@ -399,7 +349,7 @@ class AsrChunkQaTest extends TestCase
         $this->assertSame('Possible cut-off', $badge['heading']);
         $this->assertSame('Auto-fixed:', $badge['fix']['label']);
         $this->assertStringContainsString('re-rolled once', $badge['fix']['text']);
-        $this->assertSame([['act' => 'reroll', 'label' => 'Re-roll again'], ['act' => 'restore', 'label' => 'keep original']], $badge['actions']);
+        $this->assertSame([['act' => 'reroll', 'label' => 'Regenerate again'], ['act' => 'restore', 'label' => 'keep original']], $badge['actions']);
     }
 
     public function test_asr_badge_amber_for_a_trimmed_tail_and_muted_when_dismissed(): void

@@ -94,8 +94,8 @@ engine they were authored on — pickers only offer them where their knobs
 apply. They surface in three places: bench chips (apply = a pre-filled row,
 ✕ = delete), the **Delivery** pick on the New Project form (resolved
 server-side into the project's settings snapshot), and the **Apply preset**
-pick in each chunk's Takes & tuning panel (fills the knobs client-side;
-nothing persists until *Save tuning*).
+pick in each chunk's Takes & tuning panel (fills the knobs client-side; the
+next **Regenerate** saves and renders them).
 
 Tuning a SHARED voice (the built-ins) is SuperAdmin-only everywhere, including
 the bench's save-to-defaults; regular users get a **Duplicate** action on the
@@ -114,18 +114,24 @@ always runs.
 Each chunk card's **Takes & tuning** panel carries the knobs for that chunk's
 effective voice, the seed pin, and the take history:
 
-- **Every render is kept as a take** — Generate, Re-roll, previews, and QA
-  auto-fixes all land in the list (`tts_chunk_takes`), each recording the text
-  it read, its settings, its seed, and its duration. Play any take, **Select**
-  the one that sounded best, or **Delete** the duds; older takes are pruned
-  automatically (`tts.takes.keep` / `keep_preview`), the selected take never.
-- **Preview** auditions the typed knobs transiently (saved as a non-selected
-  take); **Use this take** keeps that exact previewed clip as the chunk's
-  audio — byte-for-byte what you heard, the only reliable way to keep a good
-  take given the provider's non-determinism.
-- **Save tuning** stores the numbers on the chunk (`chunk.settings`, null =
-  inherit) and marks it stale so **Generate** renders fresh; **Re-roll** is
-  another take of the same text and tuning at a fresh random seed.
+- **Regenerate is the one render action.** The click submits the whole panel
+  (Delivery/fine-tune knobs + seed) and a pending text edit, persists them
+  (`chunk.settings`, null = inherit), then renders — what's on screen is
+  always exactly what renders, and the stored tuning always matches the
+  latest take. Want another take of the same settings? Leave the seed blank
+  and Regenerate again.
+- **Every render is kept as a take** — Generate and QA auto-fixes all land in
+  the list (`tts_chunk_takes`), each recording the text it read, its settings,
+  its seed, and its duration. Play any take or **Delete** the duds; older
+  takes are pruned automatically (`tts.takes.keep` / `keep_preview` for
+  legacy preview rows), the selected take never. The kept audio is
+  byte-for-byte the take you heard — selecting never re-renders, the only
+  reliable contract given the provider's non-determinism.
+- **Select restores the whole snapshot.** Picking an older take repoints the
+  chunk's audio AND brings back the text, knobs, and seed it was rendered
+  from — the panel (and a sealed receipt) always tells the truth about the
+  audio you're hearing. Selecting warns first if it would replace an unsaved
+  text edit.
 - Blank knobs inherit the project's resolved value — shown as each field's
   placeholder.
 - On a turbo chunk, a **Sound tags** chip row inserts `[laugh]`-style tags at
@@ -153,7 +159,9 @@ reproducibility.
   random. In projects: chunk pin (`chunk.settings['seed']`) › the project seed
   (`tts_projects.seed`, filled at creation from the form or the voice's
   default) › random.
-- **Re-roll** drops every pin for a genuinely fresh take.
+- The 🎲 button rolls a visible random seed into the field; on a project with
+  no pinned seed, a blank-seed Regenerate is the fresh-take "re-roll". (QA
+  auto-fix re-rolls always draw fresh seeds internally.)
 - Every take records the seed it rendered at (`tts_chunk_takes.seed`; null =
   rolled random — Replicate doesn't report the seed it chose), shown in the
   take list as `seed 4242` / `seed random` so a good pinned render can be

@@ -4,6 +4,37 @@ All notable changes to this project are documented in this file. The format is
 based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this
 project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Changed
+- **Regenerate is now the one button that does it all.** Picking a Delivery
+  preset and clicking Regenerate used to render with the *previously saved*
+  tuning unless you remembered to press Save tuning first — the settings on
+  screen could silently disagree with what rendered. Now the Regenerate click
+  saves the whole panel (Delivery, fine-tune knobs, seed) *and* any pending
+  text edit, then renders: what you see is always exactly what renders. While
+  a text edit is unsaved, the button says so — **"Save changes and
+  Regenerate."** Want another take of the same settings? Leave the seed blank
+  and Regenerate again.
+- **Selecting a take now restores everything it was made from.** Choosing an
+  older take used to swap only the audio, leaving the text box and tuning
+  panel describing something else. Select now brings back the take's text,
+  knobs, and seed along with its sound, so the panel — and a sealed receipt —
+  always tell the truth about the audio you're hearing. If you have an
+  unsaved text edit, selecting warns before replacing it.
+- Take rows no longer repeat "rendered with Generate" on every line — only
+  the exceptions are labeled (QA auto-fix, Inspector carry-overs, copies, and
+  takes from the retired flows below).
+
+### Removed
+- **The Preview, Use this take, Save tuning, Re-roll, and Save text buttons
+  are gone**, along with their endpoints. Every render is already kept as a
+  selectable take (byte-for-byte what you heard), so the takes list *is* the
+  preview; a blank-seed Regenerate *is* the re-roll; and text or tuning can
+  no longer be saved without rendering — which is how saved words could sit
+  next to stale audio. Old preview/re-roll takes still show and prune
+  normally.
+
 ## [0.66.0] - 2026-07-18
 
 ### Changed

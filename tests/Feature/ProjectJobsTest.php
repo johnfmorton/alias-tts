@@ -234,9 +234,6 @@ class ProjectJobsTest extends TestCase
             ->postJson(route('admin.studio.projects.chunks.generate', [$project, $chunk]))
             ->assertStatus(409);
         $this->actingAs($admin)
-            ->postJson(route('admin.studio.projects.chunks.reroll', [$project, $chunk]))
-            ->assertStatus(409);
-        $this->actingAs($admin)
             ->postJson(route('admin.studio.projects.rebuild', $project))
             ->assertStatus(409);
     }

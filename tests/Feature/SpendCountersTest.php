@@ -77,14 +77,14 @@ class SpendCountersTest extends TestCase
         $this->assertSame(['chatterbox-turbo' => mb_strlen($second->text)], SpendCounters::forOwner('chunk', $second->id));
     }
 
-    public function test_rerolls_accumulate_into_the_same_model_counter(): void
+    public function test_regenerates_accumulate_into_the_same_model_counter(): void
     {
         $project = $this->project();
         $chunk = $project->chunks()->orderBy('position')->first();
 
         $service = app(ProjectService::class);
         $service->generateChunk($chunk);
-        $service->generateChunk($chunk->refresh(), reroll: true);
+        $service->generateChunk($chunk->refresh());
 
         $this->assertSame(
             ['chatterbox' => 2 * mb_strlen($chunk->text)],

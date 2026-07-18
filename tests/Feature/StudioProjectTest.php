@@ -18,9 +18,9 @@ use App\Services\ProjectService;
 use App\Services\Tts\FakeTtsProvider;
 use App\Services\Tts\TtsProvider;
 use Illuminate\Foundation\Testing\RefreshDatabase;
-use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\Storage;
+use Illuminate\Support\Str;
 use Tests\TestCase;
 
 class StudioProjectTest extends TestCase
@@ -1289,35 +1289,78 @@ class StudioProjectTest extends TestCase
         return $provider;
     }
 
-    public function test_tune_chunk_saves_override_and_marks_completed_chunk_stale(): void
+    public function test_generate_persists_the_tuning_panel_before_rendering(): void
     {
+        $provider = $this->capturingProvider();
         $project = $this->project();
         $chunk = $project->chunks()->orderBy('position')->first();
-        app(ProjectService::class)->generateChunk($chunk);
-        $this->assertSame(ChunkStatus::Completed, $chunk->refresh()->status);
 
+        // The Studio's Regenerate submits the whole panel with the click; the
+        // server persists it BEFORE synthesis so the render uses these values.
         $this->actingAs($this->admin())
-            ->patch(route('admin.studio.projects.chunks.tuning', [$project, $chunk]), [
+            ->postJson(route('admin.studio.projects.chunks.generate', [$project, $chunk]), [
                 'exaggeration' => 1.2,
                 'cfg_weight' => 0.9,
+                'temperature' => null,
+                'seed' => 777,
             ])
             ->assertOk()
-            ->assertJsonPath('status', 'stale');
+            ->assertJsonPath('status', 'completed');
 
         $chunk->refresh();
         $this->assertSame(1.2, $chunk->settings['exaggeration']);
         $this->assertSame(0.9, $chunk->settings['cfg_weight']);
-        $this->assertSame(ChunkStatus::Stale, $chunk->status);
+        $this->assertSame(777, $chunk->settings['seed']);
+        $this->assertSame(1.2, $provider->lastSettings['exaggeration']);
+        $this->assertSame(0.9, $provider->lastSettings['cfg_weight']);
+        $this->assertSame(777, $provider->lastSettings['seed']);
     }
 
-    public function test_tune_chunk_rejects_out_of_range(): void
+    public function test_generate_rejects_out_of_range_tuning_without_rendering(): void
     {
         $project = $this->project();
         $chunk = $project->chunks()->first();
 
         $this->actingAs($this->admin())
-            ->patchJson(route('admin.studio.projects.chunks.tuning', [$project, $chunk]), ['exaggeration' => 3])
+            ->postJson(route('admin.studio.projects.chunks.generate', [$project, $chunk]), ['exaggeration' => 3])
             ->assertStatus(422);
+
+        // Validation failed before synthesis — no take, no tuning written.
+        $this->assertSame(0, $chunk->refresh()->takes()->count());
+        $this->assertNull($chunk->settings);
+    }
+
+    public function test_generate_without_panel_keys_leaves_stored_tuning_untouched(): void
+    {
+        $project = $this->project();
+        $chunk = $project->chunks()->orderBy('position')->first();
+        $chunk->update(['settings' => ['exaggeration' => 1.4]]);
+
+        // A bare POST (older callers, tests) must not wipe the stored override —
+        // only a request carrying panel keys rewrites it.
+        $this->actingAs($this->admin())
+            ->post(route('admin.studio.projects.chunks.generate', [$project, $chunk]))
+            ->assertOk();
+
+        $this->assertSame(1.4, $chunk->refresh()->settings['exaggeration']);
+    }
+
+    public function test_generate_with_blank_panel_clears_the_stored_override(): void
+    {
+        $project = $this->project();
+        $chunk = $project->chunks()->orderBy('position')->first();
+        $chunk->update(['settings' => ['exaggeration' => 1.4, 'seed' => 42]]);
+
+        // The panel always submits every knob; blank ones ride as null = inherit.
+        $this->actingAs($this->admin())
+            ->postJson(route('admin.studio.projects.chunks.generate', [$project, $chunk]), [
+                'exaggeration' => null,
+                'cfg_weight' => null,
+                'seed' => null,
+            ])
+            ->assertOk();
+
+        $this->assertNull($chunk->refresh()->settings);
     }
 
     public function test_chunk_override_overlays_project_settings_at_generation(): void
@@ -1333,7 +1376,7 @@ class StudioProjectTest extends TestCase
         $this->assertSame(0.75, $provider->lastSettings['similarity_boost']); // project/config kept
     }
 
-    public function test_reroll_drops_the_pinned_project_seed(): void
+    public function test_panel_seed_overrides_the_project_pin_and_blank_restores_it(): void
     {
         $provider = $this->capturingProvider();
         $voice = Voice::create(['slug' => 'v', 'name' => 'V']);
@@ -1351,123 +1394,17 @@ class StudioProjectTest extends TestCase
         app(ProjectService::class)->generateChunk($chunk);
         $this->assertSame(123, $provider->lastSettings['seed']);
 
-        app(ProjectService::class)->generateChunk($chunk->refresh(), reroll: true);
-        $this->assertArrayNotHasKey('seed', $provider->lastSettings);
-    }
-
-    public function test_reroll_endpoint_regenerates_a_chunk(): void
-    {
-        $project = $this->project();
-        $chunk = $project->chunks()->orderBy('position')->first();
-        app(ProjectService::class)->generateChunk($chunk);
-
+        // A seed typed into the panel outranks the project pin…
         $this->actingAs($this->admin())
-            ->post(route('admin.studio.projects.chunks.reroll', [$project, $chunk]))
-            ->assertOk()
-            ->assertJsonPath('status', 'completed');
-    }
-
-    public function test_preview_chunk_tuning_saves_a_preview_take_without_selecting_it(): void
-    {
-        $project = $this->project();
-        $chunk = $project->chunks()->orderBy('position')->first();
-        $originalStatus = $chunk->status;
-
-        $res = $this->actingAs($this->admin())
-            ->post(route('admin.studio.projects.chunks.preview-tuning', [$project, $chunk]), ['stability' => 0.9]);
-
-        $res->assertOk();
-        $this->assertStringStartsWith('audio/', (string) $res->headers->get('content-type'));
-        $this->assertNotEmpty($res->getContent());
-
-        // A preview leaves the chunk's own override, audio, and status untouched —
-        // it is non-committal — but is saved as a (non-selected) take in history.
-        $chunk->refresh();
-        $this->assertNull($chunk->settings);
-        $this->assertNull($chunk->audio_path);
-        $this->assertSame($originalStatus, $chunk->status);
-
-        $take = $chunk->takes()->first();
-        $this->assertNotNull($take);
-        $this->assertSame('preview', $take->source);
-        $this->assertNotSame($chunk->audio_path, $take->audio_path); // not selected
-        $this->assertTrue(Storage::disk('local')->exists($take->audio_path));
-    }
-
-    public function test_preview_chunk_tuning_uses_the_candidate_override(): void
-    {
-        $provider = $this->capturingProvider();
-        $project = $this->project();
-        $chunk = $project->chunks()->orderBy('position')->first();
-
-        app(ProjectService::class)->previewChunkTuning($chunk, ['stability' => 0.9, 'style' => null]);
-
-        $this->assertSame(0.9, $provider->lastSettings['stability']);        // candidate wins
-        $this->assertSame(0.75, $provider->lastSettings['similarity_boost']); // project base kept
-    }
-
-    public function test_preview_chunk_tuning_validates_range(): void
-    {
-        $project = $this->project();
-        $chunk = $project->chunks()->first();
-
-        $this->actingAs($this->admin())
-            ->postJson(route('admin.studio.projects.chunks.preview-tuning', [$project, $chunk]), ['exaggeration' => 3])
-            ->assertStatus(422);
-    }
-
-    public function test_use_preview_saves_the_exact_clip_as_chunk_audio(): void
-    {
-        $project = $this->project();
-        $chunk = $project->chunks()->orderBy('position')->first();
-
-        // The bytes the user "previewed" — reuse the provider's own WAV output.
-        $bytes = app(ProjectService::class)->previewChunkTuning($chunk, ['exaggeration' => 1.2, 'cfg_weight' => 0.8]);
-        $upload = UploadedFile::fake()->createWithContent('take.wav', $bytes);
-
-        $this->actingAs($this->admin())
-            ->post(route('admin.studio.projects.chunks.use-preview', [$project, $chunk]), [
-                'audio' => $upload,
-                'exaggeration' => 1.2,
-                'cfg_weight' => 0.8,
-            ])
-            ->assertOk()
-            ->assertJsonPath('status', 'completed');
-
-        $chunk->refresh();
-        $this->assertSame(ChunkStatus::Completed, $chunk->status);
-        $this->assertNotNull($chunk->audio_path);
-        // Stored audio is byte-for-byte the previewed clip — no regeneration.
-        $this->assertSame($bytes, Storage::disk('local')->get($chunk->audio_path));
-        // And the native tuning it was previewed at is recorded on the chunk.
-        $this->assertSame(1.2, $chunk->settings['exaggeration']);
-        $this->assertSame(0.8, $chunk->settings['cfg_weight']);
-    }
-
-    public function test_use_preview_with_blank_tuning_inherits_project_settings(): void
-    {
-        $project = $this->project();
-        $chunk = $project->chunks()->orderBy('position')->first();
-        $bytes = app(ProjectService::class)->previewChunkTuning($chunk, ['stability' => null, 'style' => null]);
-
-        $this->actingAs($this->admin())
-            ->post(route('admin.studio.projects.chunks.use-preview', [$project, $chunk]), [
-                'audio' => UploadedFile::fake()->createWithContent('take.wav', $bytes),
-            ])
+            ->postJson(route('admin.studio.projects.chunks.generate', [$project, $chunk]), ['seed' => 999])
             ->assertOk();
+        $this->assertSame(999, $provider->lastSettings['seed']);
 
-        // No per-chunk override stored → the chunk keeps inheriting the project.
-        $this->assertNull($chunk->refresh()->settings);
-    }
-
-    public function test_use_preview_requires_an_audio_file(): void
-    {
-        $project = $this->project();
-        $chunk = $project->chunks()->first();
-
+        // …and blanking the field falls back to the project pin again.
         $this->actingAs($this->admin())
-            ->postJson(route('admin.studio.projects.chunks.use-preview', [$project, $chunk]), ['stability' => 0.5])
-            ->assertStatus(422);
+            ->postJson(route('admin.studio.projects.chunks.generate', [$project, $chunk->refresh()]), ['seed' => null])
+            ->assertOk();
+        $this->assertSame(123, $provider->lastSettings['seed']);
     }
 
     // ---- Take history -------------------------------------------------------
@@ -1494,41 +1431,21 @@ class StudioProjectTest extends TestCase
         $this->assertTrue(Storage::disk('local')->exists($take->audio_path));
     }
 
-    public function test_reroll_appends_a_new_take_keeping_history(): void
+    public function test_regenerate_appends_a_new_take_keeping_history(): void
     {
         $project = $this->project();
         $chunk = $project->chunks()->orderBy('position')->first();
         app(ProjectService::class)->generateChunk($chunk);
 
         $this->actingAs($this->admin())
-            ->post(route('admin.studio.projects.chunks.reroll', [$project, $chunk]))
+            ->post(route('admin.studio.projects.chunks.generate', [$project, $chunk]))
             ->assertOk();
 
         $chunk->refresh();
         $this->assertSame(2, $chunk->takes()->count()); // the losing take is kept
         $newest = $chunk->takes()->first();
-        $this->assertSame('reroll', $newest->source);
+        $this->assertSame('generate', $newest->source);
         $this->assertSame($chunk->audio_path, $newest->audio_path); // newest take is selected
-    }
-
-    public function test_use_preview_records_a_use_take(): void
-    {
-        $project = $this->project();
-        $chunk = $project->chunks()->orderBy('position')->first();
-        $bytes = app(ProjectService::class)->previewChunkTuning($chunk, ['exaggeration' => 1.2, 'cfg_weight' => 0.8]);
-
-        $this->actingAs($this->admin())
-            ->post(route('admin.studio.projects.chunks.use-preview', [$project, $chunk]), [
-                'audio' => UploadedFile::fake()->createWithContent('take.wav', $bytes),
-                'exaggeration' => 1.2,
-                'cfg_weight' => 0.8,
-            ])
-            ->assertOk();
-
-        $chunk->refresh();
-        $use = $chunk->takes()->where('source', 'use')->first();
-        $this->assertNotNull($use);
-        $this->assertSame($chunk->audio_path, $use->audio_path); // the kept take is selected
     }
 
     public function test_selecting_a_take_makes_it_the_chunk_audio(): void
@@ -1536,8 +1453,8 @@ class StudioProjectTest extends TestCase
         $project = $this->project();
         $chunk = $project->chunks()->orderBy('position')->first();
         $svc = app(ProjectService::class);
-        $svc->generateChunk($chunk);                          // take A (selected)
-        $svc->generateChunk($chunk->refresh(), reroll: true); // take B (now selected)
+        $svc->generateChunk($chunk);            // take A (selected)
+        $svc->generateChunk($chunk->refresh()); // take B (now selected)
         $chunk->refresh();
 
         $takeA = $chunk->takes()->where('audio_path', '!=', $chunk->audio_path)->first(); // the non-selected take
@@ -1549,6 +1466,77 @@ class StudioProjectTest extends TestCase
             ->assertJsonPath('selected_take_id', $takeA->id);
 
         $this->assertSame($takeA->audio_path, $chunk->refresh()->audio_path);
+    }
+
+    public function test_selecting_a_take_restores_its_text_and_tuning_snapshot(): void
+    {
+        $project = $this->project();
+        $chunk = $project->chunks()->orderBy('position')->first();
+        $svc = app(ProjectService::class);
+
+        // Take A: rendered with an explicit override + pinned seed.
+        $svc->updateChunkTuning($chunk, ['exaggeration' => 1.3, 'seed' => 42]);
+        $svc->generateChunk($chunk->refresh());
+        $chunk->refresh();
+        $takeA = $chunk->takes()->first();
+        $textA = $chunk->text;
+
+        // Take B: different text, override cleared back to inherited.
+        $svc->updateChunkText($chunk, 'Completely different words now.');
+        $svc->updateChunkTuning($chunk->refresh(), ['exaggeration' => null, 'seed' => null]);
+        $svc->generateChunk($chunk->refresh());
+        $chunk->refresh();
+        $this->assertNull($chunk->settings);
+
+        // Selecting take A brings back its whole snapshot — text, knobs, seed —
+        // and the response mirrors it so the panel can update in place.
+        $this->actingAs($this->admin())
+            ->post(route('admin.studio.projects.chunks.takes.select', [$project, $chunk, $takeA]))
+            ->assertOk()
+            ->assertJsonPath('text', $textA)
+            ->assertJsonPath('tuning.exaggeration', 1.3)
+            ->assertJsonPath('seed', 42);
+
+        $chunk->refresh();
+        $this->assertSame($textA, $chunk->text);
+        $this->assertSame(mb_strlen($textA), $chunk->characters);
+        $this->assertSame(1.3, $chunk->settings['exaggeration']);
+        $this->assertSame(42, $chunk->settings['seed']);
+
+        // And selecting take B restores the inherited state (no override at all).
+        $takeB = $chunk->takes()->where('id', '!=', $takeA->id)->first();
+        $this->actingAs($this->admin())
+            ->post(route('admin.studio.projects.chunks.takes.select', [$project, $chunk, $takeB]))
+            ->assertOk()
+            ->assertJsonPath('tuning.exaggeration', null)
+            ->assertJsonPath('seed', null);
+        $chunk->refresh();
+        $this->assertSame('Completely different words now.', $chunk->text);
+        $this->assertNull($chunk->settings);
+    }
+
+    public function test_selecting_a_legacy_take_without_text_keeps_the_chunk_text(): void
+    {
+        $project = $this->project();
+        $chunk = $project->chunks()->orderBy('position')->first();
+        $svc = app(ProjectService::class);
+        $svc->generateChunk($chunk);
+        $svc->generateChunk($chunk->refresh());
+        $chunk->refresh();
+
+        // A pre-snapshot take (before the text column existed) carries no text.
+        $legacy = $chunk->takes()->where('audio_path', '!=', $chunk->audio_path)->first();
+        $legacy->update(['text' => null]);
+        $before = $chunk->text;
+
+        $this->actingAs($this->admin())
+            ->post(route('admin.studio.projects.chunks.takes.select', [$project, $chunk, $legacy]))
+            ->assertOk();
+
+        // The audio switched, the words were left alone.
+        $chunk->refresh();
+        $this->assertSame($legacy->audio_path, $chunk->audio_path);
+        $this->assertSame($before, $chunk->text);
     }
 
     public function test_cannot_delete_the_selected_take(): void
@@ -1571,7 +1559,7 @@ class StudioProjectTest extends TestCase
         $chunk = $project->chunks()->orderBy('position')->first();
         $svc = app(ProjectService::class);
         $svc->generateChunk($chunk);
-        $svc->generateChunk($chunk->refresh(), reroll: true);
+        $svc->generateChunk($chunk->refresh());
         $chunk->refresh();
 
         $old = $chunk->takes()->where('audio_path', '!=', $chunk->audio_path)->first(); // not the selected take
@@ -1595,7 +1583,7 @@ class StudioProjectTest extends TestCase
 
         $svc->generateChunk($chunk);
         for ($i = 0; $i < 5; $i++) {
-            $svc->generateChunk($chunk->refresh(), reroll: true); // 6 committed takes total
+            $svc->generateChunk($chunk->refresh()); // 6 committed takes total
         }
         $chunk->refresh();
 
@@ -1612,23 +1600,37 @@ class StudioProjectTest extends TestCase
         $this->assertCount(3, Storage::disk('local')->files($dir));
     }
 
-    public function test_previews_are_pruned_more_aggressively_than_committed(): void
+    public function test_legacy_preview_takes_are_pruned_more_aggressively_than_committed(): void
     {
         config(['tts.takes.keep' => 5, 'tts.takes.keep_preview' => 1]);
         $project = $this->project();
         $chunk = $project->chunks()->orderBy('position')->first();
         $svc = app(ProjectService::class);
         $svc->generateChunk($chunk); // one committed take, selected
-
-        for ($i = 0; $i < 4; $i++) {
-            $svc->previewChunkTuning($chunk->refresh(), ['stability' => 0.5, 'style' => null]);
-        }
         $chunk->refresh();
 
-        // keep_preview=1 → only the newest preview survives; the committed take is
-        // untouched (keep=5) and still selected.
+        // Rows left behind by the retired Preview button: still pruned on their
+        // own, harsher lane so old databases drain them without evicting real takes.
+        for ($i = 0; $i < 4; $i++) {
+            $path = dirname($chunk->audio_path)."/legacy-preview-{$i}.wav";
+            Storage::disk('local')->put($path, 'RIFFxxxx');
+            $chunk->takes()->create([
+                'id' => (string) Str::orderedUuid(),
+                'audio_path' => $path,
+                'text' => $chunk->text,
+                'settings' => ['stability' => 0.5],
+                'source' => 'preview',
+                'characters' => mb_strlen($chunk->text),
+            ]);
+        }
+
+        $svc->generateChunk($chunk->refresh()); // recording a take runs the prune
+        $chunk->refresh();
+
+        // keep_preview=1 → only the newest legacy preview survives; the committed
+        // takes are untouched (keep=5).
         $this->assertSame(1, $chunk->takes()->where('source', 'preview')->count());
-        $this->assertSame(1, $chunk->takes()->where('source', 'generate')->count());
+        $this->assertSame(2, $chunk->takes()->where('source', 'generate')->count());
     }
 
     public function test_take_audio_endpoint_honors_range_requests(): void
@@ -1774,8 +1776,8 @@ class StudioProjectTest extends TestCase
         $project = $this->project();
         $chunk = $project->chunks()->orderBy('position')->first();
         $this->actingAs($admin)->post(route('admin.studio.projects.chunks.generate', [$project, $chunk]));
-        $this->actingAs($admin)->postJson(route('admin.studio.projects.chunks.reroll', [$project, $chunk]))->assertOk();
-        $this->actingAs($admin)->postJson(route('admin.studio.projects.chunks.reroll', [$project, $chunk]))->assertOk();
+        $this->actingAs($admin)->postJson(route('admin.studio.projects.chunks.generate', [$project, $chunk]))->assertOk();
+        $this->actingAs($admin)->postJson(route('admin.studio.projects.chunks.generate', [$project, $chunk]))->assertOk();
         $this->assertCount(3, $chunk->refresh()->takes()->get());
 
         $this->actingAs($admin)->post(route('admin.studio.projects.duplicate', $project));
@@ -2055,8 +2057,8 @@ class StudioProjectTest extends TestCase
         $project = $this->project();
         $chunk = $project->chunks()->orderBy('position')->first();
         $this->actingAs($admin)->post(route('admin.studio.projects.chunks.generate', [$project, $chunk]));
-        $this->actingAs($admin)->postJson(route('admin.studio.projects.chunks.reroll', [$project, $chunk]))->assertOk();
-        $this->actingAs($admin)->postJson(route('admin.studio.projects.chunks.reroll', [$project, $chunk]))->assertOk();
+        $this->actingAs($admin)->postJson(route('admin.studio.projects.chunks.generate', [$project, $chunk]))->assertOk();
+        $this->actingAs($admin)->postJson(route('admin.studio.projects.chunks.generate', [$project, $chunk]))->assertOk();
 
         $chunk->refresh();
         $paths = $chunk->takes()->pluck('audio_path');
@@ -2088,7 +2090,7 @@ class StudioProjectTest extends TestCase
         foreach ($project->chunks()->get() as $c) {
             $this->actingAs($admin)->post(route('admin.studio.projects.chunks.generate', [$project, $c]));
         }
-        $this->actingAs($admin)->postJson(route('admin.studio.projects.chunks.reroll', [$project, $chunk]))->assertOk();
+        $this->actingAs($admin)->postJson(route('admin.studio.projects.chunks.generate', [$project, $chunk]))->assertOk();
         $this->actingAs($admin)->postJson(route('admin.studio.projects.rebuild', $project))->assertOk();
         $this->actingAs($admin)->postJson(route('admin.studio.projects.seal', $project))->assertOk();
 
@@ -2165,7 +2167,7 @@ class StudioProjectTest extends TestCase
         $project->update(['user_id' => $owner->id]);
         $chunk = $project->chunks()->orderBy('position')->first();
         $this->actingAs($owner)->post(route('admin.studio.projects.chunks.generate', [$project, $chunk]));
-        $this->actingAs($owner)->postJson(route('admin.studio.projects.chunks.reroll', [$project, $chunk]))->assertOk();
+        $this->actingAs($owner)->postJson(route('admin.studio.projects.chunks.generate', [$project, $chunk]))->assertOk();
 
         $this->actingAs(User::factory()->create(['is_super_admin' => false]))
             ->post(route('admin.studio.projects.cleanup', $project))
@@ -2180,7 +2182,7 @@ class StudioProjectTest extends TestCase
         $project = $this->project();
         $chunk = $project->chunks()->orderBy('position')->first();
         $this->actingAs($admin)->post(route('admin.studio.projects.chunks.generate', [$project, $chunk]));
-        $this->actingAs($admin)->postJson(route('admin.studio.projects.chunks.reroll', [$project, $chunk]))->assertOk();
+        $this->actingAs($admin)->postJson(route('admin.studio.projects.chunks.generate', [$project, $chunk]))->assertOk();
         TtsProjectJob::create([
             'tts_project_id' => $project->id,
             'chunk_ids' => $project->chunks()->pluck('id')->all(),

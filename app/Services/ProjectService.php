@@ -431,8 +431,12 @@ class ProjectService
      * Synthesize one chunk and store its raw audio. Used for both first
      * generation and regeneration after an edit. Marks the project's final file
      * out of date. Throws on provider failure (after recording it on the chunk).
+     * Renders at the chunk's persisted tuning — the Studio's Regenerate persists
+     * the panel first (see StudioProjectController::generateChunk), so what's on
+     * screen is always what renders. A fresh take of the same settings is just a
+     * regenerate with a blank seed (blank = inherit the project pin, or random).
      */
-    public function generateChunk(TtsChunk $chunk, bool $reroll = false): TtsChunk
+    public function generateChunk(TtsChunk $chunk): TtsChunk
     {
         $project = $chunk->project;
 
@@ -444,7 +448,7 @@ class ProjectService
             // a good one does).
             $start = microtime(true);
 
-            $settings = $this->providerSettings($project, $chunk, pinSeed: ! $reroll);
+            $settings = $this->providerSettings($project, $chunk);
             $bytes = $this->provider->synthesize(
                 $chunk->text,
                 $this->referencePath($chunk->voice ?? $project->voice),
@@ -459,7 +463,7 @@ class ProjectService
             $this->recordTake(
                 $chunk,
                 $bytes,
-                $reroll ? 'reroll' : 'generate',
+                'generate',
                 $this->tuningOnly(is_array($chunk->settings) ? $chunk->settings : []),
                 $verdict,
                 seed: $this->seedUsed($settings),
@@ -474,11 +478,10 @@ class ProjectService
                     'tail_cov' => $verdict->tailCov,
                 ]);
 
-                // studio_action=auto remediates. On a MANUAL reroll the user asked
-                // for exactly one new take, so never auto-reroll again — but a junk
-                // TAIL is a lossless post-speech trim, so still apply that.
+                // studio_action=auto remediates (re-roll missing content, trim a
+                // junk tail) before the user hears a flagged render.
                 if ($this->asr->studioAction() === 'auto') {
-                    $this->autoRemediate($chunk, $bytes, $verdict, allowReroll: ! $reroll);
+                    $this->autoRemediate($chunk, $bytes, $verdict);
                 }
             }
 
@@ -528,7 +531,8 @@ class ProjectService
      * chunk inherited the project setting). It's snapshotted so the take list can
      * show what produced it and a later "select" can restore the same knobs.
      *
-     * @param  'generate'|'reroll'|'preview'|'use'|'remediate'|'inspector'  $source
+     * @param  'generate'|'remediate'|'inspector'|'legacy'  $source  (older rows may
+     *                                                               also carry the retired 'reroll'/'preview'/'use')
      * @param  array<string, mixed>  $override
      * @param  array<string, mixed>  $reportExtra  merged into asr_report (e.g. action=rerolled)
      * @param  bool  $chargeCredit  false for renders already billed elsewhere: the
@@ -640,9 +644,10 @@ class ProjectService
 
     /**
      * Retention: keep the newest `tts.takes.keep` committed takes and the newest
-     * `tts.takes.keep_preview` previews per chunk (previews are cheap auditions, so
-     * pruned harder), always preserving the currently-selected take. Older takes'
-     * rows and files are deleted; anything pruned is logged.
+     * `tts.takes.keep_preview` legacy preview takes per chunk (the retired Preview
+     * button's cheap auditions, pruned harder), always preserving the currently-
+     * selected take. Older takes' rows and files are deleted; anything pruned is
+     * logged.
      */
     private function pruneTakes(TtsChunk $chunk): void
     {
@@ -687,7 +692,7 @@ class ProjectService
      * missing content keeping the best take, or precise-trim a junk tail), then
      * record the winning take + what was done as the chunk's selected audio.
      */
-    private function autoRemediate(TtsChunk $chunk, string $bytes, ChunkQualityVerdict $verdict, bool $allowReroll = true): void
+    private function autoRemediate(TtsChunk $chunk, string $bytes, ChunkQualityVerdict $verdict): void
     {
         $project = $chunk->project;
 
@@ -701,11 +706,9 @@ class ProjectService
                 $this->providerSettings($project, $chunk, pinSeed: false),
             ),
             "chunk-{$chunk->id}",
-            $allowReroll,
         );
 
-        // Nothing was applied (a manual re-roll whose defect needs a fresh take,
-        // which we won't force): leave the take the user asked for in place.
+        // Nothing was applied: leave the take the user asked for in place.
         if ($outcome->action === 'none') {
             return;
         }
@@ -748,7 +751,9 @@ class ProjectService
      * Set a chunk's per-chunk tuning override; a null value clears that key so it
      * falls back to the project's setting. A generated chunk goes Stale (its audio
      * no longer matches the tuning) and the final file is flagged out of date; an
-     * ungenerated chunk is left as-is.
+     * ungenerated chunk is left as-is. The Studio calls this as the first half of
+     * every Regenerate/queue (persist the panel, then render), so a chunk's stored
+     * tuning always matches its latest render.
      *
      * @param  array<string, float|null>  $override  the typed knobs (null = clear)
      */
@@ -767,72 +772,6 @@ class ProjectService
         }
 
         return $chunk;
-    }
-
-    /**
-     * Synthesize one chunk at a transient stability/style override (A/B preview)
-     * and return the raw audio bytes. The chunk's stored override, current audio,
-     * and status are NOT touched — but the preview is saved as a NON-selected take
-     * (capture-every-take) so it appears in the chunk's history and can be selected
-     * later. Lets the user audition a candidate tuning before committing it.
-     *
-     * @param  array<string, float|null>  $override  the typed knobs (null = inherit)
-     */
-    public function previewChunkTuning(TtsChunk $chunk, array $override): string
-    {
-        $project = $chunk->project;
-        $settings = is_array($project->settings) ? $project->settings : [];
-        $typed = array_filter($override, fn ($v) => $v !== null);
-        foreach ($typed as $key => $value) {
-            $settings[$key] = $value;
-        }
-        // Seed precedence mirrors providerSettings(): a typed seed wins, else the
-        // project's pinned seed, else random. A typed seed rode in via $typed above.
-        if (! array_key_exists('seed', $typed) && $project->seed !== null) {
-            $settings['seed'] = $project->seed;
-        }
-
-        $settings = ModelCatalog::stamp($settings, $chunk->voice ?? $project->voice);
-
-        $bytes = $this->provider->synthesize($chunk->text, $this->referencePath($chunk->voice ?? $project->voice), $settings);
-
-        $this->recordTake($chunk, $bytes, 'preview', $this->tuningOnly($typed), select: false, seed: $this->seedUsed($settings));
-
-        return $bytes;
-    }
-
-    /**
-     * "Use this take": store the exact preview bytes the user auditioned (uploaded
-     * back from the browser) as the chunk's selected audio, recording the override
-     * it was previewed at and marking the chunk Completed. Re-scores ASR for the
-     * new audio (score only — never auto-remediate; the admin chose this take
-     * deliberately). Because the provider is non-deterministic even with a fixed
-     * seed, promoting the actual bytes is the only way to keep a good preview.
-     *
-     * @param  array<string, float|null>  $override  the typed knobs (null = clear)
-     */
-    public function useChunkPreview(TtsChunk $chunk, string $bytes, array $override): TtsChunk
-    {
-        $settings = $this->applyOverride(is_array($chunk->settings) ? $chunk->settings : [], $override);
-        $chunk->update(['settings' => $settings ?: null]);
-
-        $verdict = $this->asr->enabled()
-            ? $this->remediator->score($chunk->text, $bytes, "chunk-{$chunk->id}")
-            : null;
-
-        // The take was auditioned at the same seed the preview used; keep it on the
-        // take so the promoted clip names the seed it rendered at (null = random).
-        $this->recordTake($chunk, $bytes, 'use', $this->tuningOnly($settings), $verdict, seed: $this->seedUsed($settings));
-
-        $this->markFinalOutdated($chunk->project);
-
-        return $chunk;
-    }
-
-    /** The container/format of raw provider audio (e.g. "wav"). */
-    public function providerContainer(): string
-    {
-        return $this->provider->outputContainer();
     }
 
     /**
@@ -1480,10 +1419,11 @@ class ProjectService
      * plus the effective seed.
      *
      * Seed precedence when $pinSeed is true: a chunk-pinned seed (chunk.settings
-     * ['seed'], rides in via the merge below) wins over the project's seed. A
-     * re-roll passes $pinSeed = false, which drops any pinned seed so the provider
-     * draws a fresh random one — a new "take" without editing the text. An absent
-     * seed => the provider chooses randomly (and the take is recorded as "random").
+     * ['seed'], rides in via the merge below) wins over the project's seed. The
+     * ASR auto-remediator passes $pinSeed = false so its re-rolls draw fresh
+     * random seeds (re-rendering the same pin would reproduce the same defect).
+     * An absent seed => the provider chooses randomly (and the take is recorded
+     * as "random").
      *
      * @return array<string, mixed>
      */
@@ -1588,23 +1528,40 @@ class ProjectService
     }
 
     /**
-     * Make a saved take the chunk's current audio: point audio_path at its file
-     * and carry its ASR verdict (so the badge describes the audio you'll now hear).
-     * The chunk's tuning override is left untouched — selecting a take chooses its
-     * SOUND, not its settings; each take shows the tuning it was rendered at in the
-     * list. Marks the final file out of date.
+     * Make a saved take the chunk's current audio, restoring the take's whole
+     * snapshot — audio + ASR verdict + the text/tuning/seed it rendered from —
+     * so the panel (and a follow-up Regenerate) always tells the truth about
+     * the audio you're hearing. Marks the final file out of date.
      */
     public function selectTake(TtsChunkTake $take): TtsChunk
     {
         $chunk = $take->chunk;
 
-        $chunk->update([
+        // Rebuild the chunk override from the take's snapshot: its tuning knobs
+        // (null = it inherited the project settings) plus the seed it was pinned
+        // to (a random draw stores none — Replicate doesn't report its choice).
+        $settings = is_array($take->settings) ? $take->settings : [];
+        if ($take->seed !== null) {
+            $settings['seed'] = $take->seed;
+        }
+
+        $attributes = [
             'audio_path' => $take->audio_path,
             'status' => ChunkStatus::Completed,
             'error_message' => null,
             'asr_score' => $take->asr_score,
             'asr_report' => $take->asr_report,
-        ]);
+            'settings' => $settings ?: null,
+        ];
+
+        // Takes from before the text-snapshot migration have no text — leave the
+        // chunk's words alone rather than blanking them.
+        if ($take->text !== null) {
+            $attributes['text'] = $take->text;
+            $attributes['characters'] = mb_strlen($take->text);
+        }
+
+        $chunk->update($attributes);
 
         $this->markFinalOutdated($chunk->project);
 

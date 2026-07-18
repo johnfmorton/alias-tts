@@ -302,11 +302,7 @@
                      data-generate-url="{{ route('admin.studio.projects.chunks.generate', [$project, $chunk]) }}"
                      data-queue-url="{{ route('admin.studio.projects.chunks.queue', [$project, $chunk]) }}"
                      data-patch-url="{{ route('admin.studio.projects.chunks.update', [$project, $chunk]) }}"
-                     data-tuning-url="{{ route('admin.studio.projects.chunks.tuning', [$project, $chunk]) }}"
-                     data-reroll-url="{{ route('admin.studio.projects.chunks.reroll', [$project, $chunk]) }}"
                      data-qa-dismiss-url="{{ route('admin.studio.projects.chunks.qa-dismiss', [$project, $chunk]) }}"
-                     data-preview-tuning-url="{{ route('admin.studio.projects.chunks.preview-tuning', [$project, $chunk]) }}"
-                     data-use-preview-url="{{ route('admin.studio.projects.chunks.use-preview', [$project, $chunk]) }}"
                      data-delete-url="{{ route('admin.studio.projects.chunks.destroy', [$project, $chunk]) }}"
                      data-audio-url="{{ route('admin.studio.projects.chunks.audio', [$project, $chunk]) }}"
                      data-takes-url="{{ route('admin.studio.projects.chunks.takes.index', [$project, $chunk]) }}"
@@ -348,12 +344,16 @@
                                 </select>
                             </label>
                             <button type="button" class="chunk-revert hidden rounded-lg border border-zinc-700 px-3 py-1.5 text-sm text-zinc-400 hover:bg-zinc-800">Revert</button>
-                            {{-- Save applies only to unsaved edits (disabled when clean); Regenerate
-                                 renders the SAVED text, so it's disabled while the text is dirty.
-                                 initStudioProject keeps both in sync as the user types. --}}
-                            <button type="button" class="chunk-save rounded-lg border border-zinc-700 px-3 py-1.5 text-sm hover:bg-zinc-800 disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-transparent" disabled>Save text</button>
+                            {{-- Regenerate is the ONE action: it saves a pending text edit
+                                 AND the tuning panel below, then renders — what's on screen
+                                 is always exactly what renders. There is deliberately no
+                                 save-text-without-render (saved words with stale audio would
+                                 lie); while the text is dirty the label says so
+                                 ("Save changes and Regenerate" — setGenerateLabel), and
+                                 data-base carries the bare verb it returns to. --}}
                             <button type="button" class="chunk-generate rounded-lg border border-zinc-700 px-3 py-1.5 text-sm hover:bg-zinc-800 disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-transparent"
-                                    title="Render this chunk's audio from its current text and tuning.">▶ {{ $chunk->isCompleted() ? 'Regenerate' : 'Generate' }}</button>
+                                    data-base="{{ $chunk->isCompleted() ? 'Regenerate' : 'Generate' }}"
+                                    title="Render this chunk with the text and Delivery settings shown — they're saved as part of the click.">▶ {{ $chunk->isCompleted() ? 'Regenerate' : 'Generate' }}</button>
                             {{-- Skip toggle: leave this chunk out of the stitched final without deleting
                                  it. Reversible, so no confirm step. Class strings must stay identical to
                                  setChunkSkipped() in app.js. --}}
@@ -409,12 +409,13 @@
                                @if($chunk->isCompleted()) src="{{ route('admin.studio.projects.chunks.audio', [$project, $chunk]) }}" @endif></audio>
                     </div>
 
-                    {{-- Take history + per-chunk tuning override + re-roll (a fresh random take). --}}
+                    {{-- Take history + per-chunk tuning override. --}}
                     <details class="chunk-tune mt-3 text-sm text-zinc-400" @if(!empty($chunk->settings) || $chunk->takes->count() > 1) open @endif>
                         <summary class="cursor-pointer select-none text-xs hover:text-zinc-200">Takes &amp; tuning</summary>
 
-                        {{-- Every render is kept here — audition a prior take, re-select the
-                             one that sounded best, or delete the duds. Populated by the JS from
+                        {{-- Every render is kept here — audition a prior take, Select the one
+                             that sounded best (which also restores the text + tuning it was
+                             rendered from), or delete the duds. Populated by the JS from
                              data-takes (and refreshed after each render). --}}
                         <ul class="chunk-takes mt-2 space-y-1.5"></ul>
 
@@ -449,10 +450,10 @@
                             @endif
                         </div>
 
-                        {{-- Seed pin — always visible (the re-roll knob people reach for). Not a
-                             knob (integer, no slider, no neutral). Blank inherits the project seed
-                             (or rolls random). A pin only biases the draw; Chatterbox is not
-                             bit-reproducible even so. --}}
+                        {{-- Seed pin — always visible. Not a knob (integer, no slider, no
+                             neutral). Blank inherits the project seed (or rolls random), so a
+                             blank-seed Regenerate IS the fresh-take re-roll. A pin only biases
+                             the draw; Chatterbox is not bit-reproducible even so. --}}
                         <div class="mt-4 flex flex-wrap items-center gap-x-3 gap-y-1.5">
                             <span class="text-sm text-zinc-300">Seed</span>
                             <input type="number" min="0" step="1"
@@ -519,24 +520,10 @@
                             </div>
                         </div>
 
-                        {{-- Actions. Preview auditions the typed settings (a non-selected take);
-                             Use this take keeps that exact clip; Save tuning stores the numbers and
-                             stales the chunk so top-of-card Generate renders fresh; Re-roll is
-                             another take of the same text + tuning. --}}
-                        <div class="mt-4 flex flex-wrap items-center gap-2 border-t border-white/8 pt-3">
-                            <button type="button" class="chunk-tune-preview rounded-lg border border-zinc-700 px-3 py-1.5 text-sm hover:bg-zinc-800">▶ Preview</button>
-                            <button type="button" class="chunk-tune-keep hidden rounded-lg border border-emerald-600/50 bg-emerald-500/10 px-3 py-1.5 text-sm text-emerald-300 hover:bg-emerald-500/20"
-                                    title="Save the exact clip you just previewed as this chunk's audio, with these settings. No re-generation, so it sounds identical to the preview.">✓ Use this take</button>
-                            <button type="button" class="chunk-tune-save rounded-lg border border-zinc-700 px-3 py-1.5 text-sm hover:bg-zinc-800">Save tuning</button>
-                            <button type="button" class="chunk-reroll rounded-lg border border-zinc-700 px-3 py-1.5 text-sm hover:bg-zinc-800"
-                                    title="Another take of the same text and tuning — use it when the words and settings are right but you want a different delivery.">⟳ Re-roll</button>
-                        </div>
-                        <div class="aplayer aplayer--chunk chunk-tune-player mt-2 hidden rounded-[12px] border border-white/8 bg-inset px-3.5 py-2.5">
-                            <button type="button" class="aplayer__btn" aria-label="Play tuning preview"><span class="aplayer__icon"></span></button>
-                            <div class="aplayer__track"><div class="aplayer__fill"></div><div class="aplayer__knob"></div></div>
-                            <span class="aplayer__time">0:00 / 0:00</span>
-                            <audio class="chunk-tune-audio aplayer__native"></audio>
-                        </div>
+                        {{-- No buttons down here on purpose: Regenerate (top of the card) is
+                             the one render action, and it saves this panel as part of the
+                             click. This line is the panel's only reminder of that contract. --}}
+                        <p class="mt-4 border-t border-white/8 pt-3 text-xs text-zinc-500">Regenerate renders with these settings and saves them · selecting an older take restores its text &amp; settings.</p>
                     </details>
                 </div>
 

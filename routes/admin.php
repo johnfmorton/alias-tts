@@ -166,13 +166,10 @@ Route::prefix('studio')->name('studio.')->group(function () {
             // Reversible "leave this chunk out of the final" toggle — non-destructive sibling of destroy.
             Route::patch('/{project}/chunks/{chunk}/skip', [StudioProjectController::class, 'skipChunk'])->name('chunks.skip');
             Route::patch('/{project}/chunks/{chunk}/voice', [StudioProjectController::class, 'updateChunkVoice'])->name('chunks.voice');
-            Route::patch('/{project}/chunks/{chunk}/tuning', [StudioProjectController::class, 'tuneChunk'])->name('chunks.tuning');
-            Route::post('/{project}/chunks/{chunk}/preview-tuning', [StudioProjectController::class, 'previewChunkTuning'])->name('chunks.preview-tuning');
-            Route::post('/{project}/chunks/{chunk}/use-preview', [StudioProjectController::class, 'useChunkPreview'])->name('chunks.use-preview');
+            // Generate persists the tuning panel riding on the request, then renders.
             Route::post('/{project}/chunks/{chunk}/generate', [StudioProjectController::class, 'generateChunk'])->name('chunks.generate');
             // Regenerate while a background run is active: joins the run instead.
             Route::post('/{project}/chunks/{chunk}/queue-generate', [StudioProjectController::class, 'queueChunk'])->name('chunks.queue');
-            Route::post('/{project}/chunks/{chunk}/reroll', [StudioProjectController::class, 'rerollChunk'])->name('chunks.reroll');
             // Acknowledge a flagged QA verdict ("Dismiss"): quiets the badge without touching audio.
             Route::post('/{project}/chunks/{chunk}/qa-dismiss', [StudioProjectController::class, 'dismissChunkQa'])->name('chunks.qa-dismiss');
             Route::get('/{project}/chunks/{chunk}/audio', [StudioProjectController::class, 'chunkAudio'])->name('chunks.audio');
