@@ -2,7 +2,7 @@
 @php($enhanceOn = config('tts.enhance.enabled'))
 @php($hint = $hint ?? 'optional')
 @php($scripts = [
-    ['title' => 'The Harbor', 'tagline' => 'calm narration · ~30s', 'text' => "The old harbor wakes slowly on a gray Thursday morning. Gulls wheel over the fishing boats while the tide pushes little waves against the wooden pier. By nine o'clock the market stalls are busy: bright oranges, fresh bread, and silver mackerel on beds of ice. A church bell rings twice, and somewhere behind the warehouses a dog barks at the passing train. It's an ordinary day, and that's exactly why I love it."],
+    ['title' => 'The Harbor', 'tagline' => 'calm narration · ~20s', 'text' => "The old harbor wakes slowly on a gray Thursday morning. Gulls wheel over the fishing boats while the tide pushes little waves against the wooden pier. By nine o'clock the market stalls are busy: bright oranges, fresh bread, and silver mackerel on beds of ice. It's an ordinary day, and that's exactly why I love it."],
     ['title' => 'The Plan', 'tagline' => 'conversational · ~20s', 'text' => "Would you believe it finally stopped raining? After six soggy days, the sky turned a brilliant, cloudless blue this afternoon. So here's the plan: we'll drive up the coast road, grab sandwiches at that little bakery in Rockport, and reach the lighthouse before sunset. Bring a jacket, though — the wind off the water gets sharp around seven. Oh, and don't forget your camera; last time the photos were spectacular!"],
     ['title' => 'Small Machines', 'tagline' => 'explanatory · ~25s', 'text' => "Here's a quick thought about everyday machines. A simple zipper has more than twenty tiny teeth per inch, each one shaped to catch its neighbor at exactly the right angle. Elevators, meanwhile, hang from six or eight steel cables, and any single one could hold the entire car. We walk past these small miracles daily — zipping a jacket, pressing a button — without ever asking how they actually work."],
 ])
@@ -24,13 +24,13 @@
             <li class="flex gap-2"><span class="text-accent" aria-hidden="true">•</span>Stay 6–12 inches from the microphone.</li>
             <li class="flex gap-2"><span class="text-accent" aria-hidden="true">•</span>Quiet room, no echo — soft furnishings beat bare walls.</li>
             <li class="flex gap-2"><span class="text-accent" aria-hidden="true">•</span>Steady, natural pacing — read, don't perform.</li>
-            <li class="flex gap-2 sm:col-span-2"><span class="text-accent" aria-hidden="true">•</span>Aim for 30+ seconds of clean speech (some voice models need at least 5).</li>
+            <li class="flex gap-2 sm:col-span-2"><span class="text-accent" aria-hidden="true">•</span>Aim for 15–20 seconds of clean speech.</li>
         </ul>
     </div>
 
     <div id="voice-clip-widget" data-prepare-url="{{ route('admin.voices.clips.store') }}"
          data-enhance-enabled="{{ $enhanceOn ? '1' : '' }}" data-normalize-enabled="{{ config('tts.normalize_reference') ? '1' : '' }}"
-         data-target-min="15" data-target-max="30" data-max-seconds="60">
+         data-target-min="15" data-target-max="25" data-max-seconds="60">
         @if($enhanceOn)
             <div class="rounded-[14px] border border-white/8 bg-panel p-2">
                 {{-- Segmented control + Upload/Record bodies. Hidden once the A/B chooser is up. --}}

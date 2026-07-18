@@ -90,7 +90,7 @@
                         </svg>
                     </span>
                     <span class="mt-3.5 block text-[15px] font-semibold text-zinc-100">Clone your voice</span>
-                    <span class="mt-1 block text-[12.5px] leading-relaxed text-zinc-500">Record or upload about 30 seconds of clean speech and get a voice that sounds like you.</span>
+                    <span class="mt-1 block text-[12.5px] leading-relaxed text-zinc-500">Record or upload 15–20 seconds of clean speech and get a voice that sounds like you.</span>
                     <span class="mt-3 block text-sm font-semibold text-accent">Add a voice →</span>
                 </a>
                 <a href="{{ route('admin.studio.projects.create') }}"

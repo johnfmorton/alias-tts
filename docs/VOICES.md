@@ -3,7 +3,7 @@
 A voice is a cloned speaker: a display name, a public **`voice_id`** (its
 `slug` — the identifier API clients put in `/v1/text-to-speech/{voice_id}`),
 an **engine**, an optional **reference clip** for zero-shot cloning, and
-optional **tuning defaults**. Cloning is instant — a clean 15–30 second clip
+optional **tuning defaults**. Cloning is instant — a clean 15–20 second clip
 is the entire setup, no training job.
 
 > Tip: set a voice's `voice_id` to your existing ElevenLabs voice ID for a
@@ -122,9 +122,9 @@ tags are stripped from their payloads.
 the engine, and the reference clip from one of three sources:
 
 1. **Record with mic** — read one of the built-in teleprompter scripts
-   (~20–30 s each) right in the browser; review the take before using it.
+   (~20–25 s each) right in the browser; review the take before using it.
 2. **Upload a file** — WAV/MP3/M4A/AAC/OGG/FLAC up to 20 MB. A clean, quiet
-   ~15–30 s sample works best.
+   ~15–20 s sample works best.
 3. **Built-in voice** (turbo only) — pick one of the 20 presets instead of
    providing a clip.
 

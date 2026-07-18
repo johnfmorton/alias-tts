@@ -390,7 +390,7 @@ php artisan tts:doctor [--deep]                            # verify the install 
 By default `voice:create` auto-cleans the reference clip on registration —
 **downmix to mono, trim leading/trailing silence, loudness-normalize, and cap the
 true peak so it can never clip** — for consistent clone quality. The ideal source
-is a clean ~15–30s sample of natural speech in a quiet room.
+is a clean ~15–20s sample of natural speech in a quiet room.
 
 - Pass **`--raw`** to skip normalization and store the clip exactly as provided.
 - Disable globally with `TTS_NORMALIZE_REFERENCE=false`; tune with

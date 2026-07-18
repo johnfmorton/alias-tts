@@ -13,7 +13,7 @@
             <div class="flex flex-wrap items-end justify-between gap-5">
                 <div>
                     <h1 class="text-[27px] font-bold tracking-[-0.015em] text-zinc-100">Add a voice</h1>
-                    <p class="mt-1.5 text-sm text-zinc-500">Record or upload a clean ~15–30s reference clip. It's normalized and registered instantly (zero-shot — no training job).</p>
+                    <p class="mt-1.5 text-sm text-zinc-500">Record or upload a clean ~15–20s reference clip. It's normalized and registered instantly (zero-shot — no training job).</p>
                 </div>
                 <div class="flex flex-shrink-0 items-center gap-2">
                     <a href="{{ route('admin.voices.index') }}" class="px-3.5 py-2.5 text-sm text-zinc-400 transition hover:text-zinc-200">Cancel</a>
@@ -41,7 +41,7 @@
         @include('admin.voices._clip_source', [
             'replace' => false,
             'hint' => 'optional, but recommended',
-            'fileHelp' => "WAV/MP3/M4A/OGG/FLAC, up to 20 MB. A clean, quiet ~15–30s sample works best. Leave blank to use Chatterbox's built-in voice (no cloning).",
+            'fileHelp' => "WAV/MP3/M4A/OGG/FLAC, up to 20 MB. A clean, quiet ~15–20s sample works best. Leave blank to use Chatterbox's built-in voice (no cloning).",
         ])
     </form>
 </x-layout>

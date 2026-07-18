@@ -259,11 +259,11 @@
                 <span class="font-mono text-xs font-semibold uppercase tracking-[0.18em] text-[#2eb4ff]">Voices</span>
                 <span class="text-xs text-zinc-600">— it sounds like you</span>
             </div>
-            <h2 class="mt-4 text-3xl font-semibold tracking-tight">Clone a voice from thirty seconds of audio.</h2>
+            <h2 class="mt-4 text-3xl font-semibold tracking-tight">Clone a voice from fifteen seconds of audio.</h2>
             <p class="mt-4 max-w-2xl leading-relaxed text-zinc-400">
                 The engines (<a href="https://replicate.com/resemble-ai/chatterbox" class="text-zinc-300 underline decoration-zinc-700 underline-offset-2 transition hover:decoration-zinc-400">Chatterbox</a>
                 and <a href="https://replicate.com/resemble-ai/chatterbox-turbo" class="text-zinc-300 underline decoration-zinc-700 underline-offset-2 transition hover:decoration-zinc-400">Chatterbox&nbsp;Turbo</a>, MIT-licensed)
-                are zero-shot: a clean 15–30&nbsp;second reference clip is the entire setup. No training job, no waiting.
+                are zero-shot: a clean 15–20&nbsp;second reference clip is the entire setup. No training job, no waiting.
                 Each voice picks its engine: Chatterbox — the default — is the expressive original, with an exaggeration
                 dial for animated delivery when the read has to carry. Turbo is faster, ships built-in voices, and renders
                 sound tags like <span class="text-zinc-300">[laugh]</span>.

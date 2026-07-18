@@ -4548,7 +4548,7 @@ function initVoiceMicRecorder(widget) {
             show(reviewWrap, true);
             show(useBtn, true);
             if ((performance.now() - startedAt) / 1000 < 10) {
-                setStatus(recStatus, 'That was short — aim for 15–30s for a better clone. You can re-record.', 'muted');
+                setStatus(recStatus, 'That was short — aim for 15–20s for a better clone. You can re-record.', 'muted');
             }
         };
         mr.start();
