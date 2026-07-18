@@ -75,7 +75,7 @@
                                         <span data-recorder-timer class="hidden font-mono text-sm text-zinc-400">0:00</span>
                                         {{-- Input picker: populated + shown once the mic is granted (labels are blank before). --}}
                                         <select data-recorder-device aria-label="Microphone input device"
-                                                class="hidden max-w-[240px] rounded-[9px] border border-white/12 bg-inset px-2.5 py-2 text-[13px] text-zinc-300 focus:border-accent focus:outline-none focus:ring-2 focus:ring-accent/30 disabled:opacity-50"></select>
+                                                class="hidden max-w-[240px] rounded-[9px] border border-edge bg-inset px-2.5 py-2 text-[13px] text-zinc-300 focus:border-accent focus:outline-none focus:ring-2 focus:ring-accent/30 disabled:opacity-50"></select>
                                         <span data-recorder-hint class="text-[13px] text-zinc-500">Mic access is requested once, in your browser.</span>
                                     </div>
                                     <div data-recorder-meter-wrap class="mt-3 hidden h-2 overflow-hidden rounded bg-white/10"><div data-recorder-meter class="h-full w-0 rounded bg-emerald-500"></div></div>
@@ -145,7 +145,7 @@
                     </span>
                 </label>
                 <label class="flex items-start gap-3 text-sm text-zinc-300">
-                    <input type="checkbox" name="raw" value="1" data-clip-raw {{ old('raw') ? 'checked' : '' }} class="mt-0.5 rounded-[5px] border-white/25 bg-inset text-accent focus:ring-accent/30">
+                    <input type="checkbox" name="raw" value="1" data-clip-raw {{ old('raw') ? 'checked' : '' }} class="mt-0.5 rounded-[5px] border-edge bg-inset text-accent focus:ring-accent/30">
                     <span>Store raw <span class="text-zinc-500">(skip auto-normalization){{ $replace ? ' — only applies when replacing the clip' : '' }}</span></span>
                 </label>
             </div>
@@ -159,7 +159,7 @@
                 <p class="mt-2 text-[12.5px] leading-relaxed text-zinc-500">{{ $fileHelp }}</p>
             </div>
             <label class="mt-4 flex items-start gap-3 px-1 text-sm text-zinc-300">
-                <input type="checkbox" name="raw" value="1" {{ old('raw') ? 'checked' : '' }} class="mt-0.5 rounded-[5px] border-white/25 bg-inset text-accent focus:ring-accent/30">
+                <input type="checkbox" name="raw" value="1" {{ old('raw') ? 'checked' : '' }} class="mt-0.5 rounded-[5px] border-edge bg-inset text-accent focus:ring-accent/30">
                 <span>Store raw <span class="text-zinc-500">(skip auto-normalization){{ $replace ? ' — only applies when replacing the clip' : '' }}</span></span>
             </label>
         @endif

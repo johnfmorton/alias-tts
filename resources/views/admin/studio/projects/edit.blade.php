@@ -19,7 +19,7 @@
         <div>
             <label for="text" class="mb-1.5 block text-sm font-medium">Text</label>
             <textarea id="text" name="text" rows="14" required
-                      class="w-full rounded-lg border border-zinc-700 bg-zinc-950 px-3 py-2 text-sm focus:border-cyan-500 focus:outline-none focus:ring-2 focus:ring-cyan-500/30"
+                      class="w-full rounded-lg border border-edge bg-zinc-950 px-3 py-2 text-sm focus:border-cyan-500 focus:outline-none focus:ring-2 focus:ring-cyan-500/30"
                       placeholder="The text to re-split into editable audio…">{{ old('text', $project->source_text) }}</textarea>
         </div>
 

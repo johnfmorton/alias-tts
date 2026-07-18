@@ -36,7 +36,7 @@
             <div class="mb-2 text-[13px] text-zinc-400">{{ session('reveal_label', 'Share this once') }}</div>
             <div class="flex items-center gap-2">
                 <input type="text" readonly value="{{ session('reveal_value') }}" data-copy
-                       class="w-full rounded-[8px] border border-white/10 bg-inset px-3 py-2 font-mono text-[13px] text-zinc-200 focus:outline-none">
+                       class="w-full rounded-[8px] border border-edge bg-inset px-3 py-2 font-mono text-[13px] text-zinc-200 focus:outline-none">
                 <button type="button" data-copy-btn class="{{ $btnSecondary }} shrink-0">Copy</button>
             </div>
             <div class="mt-2 text-xs text-zinc-500">Shown once — copy it now.</div>

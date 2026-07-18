@@ -67,12 +67,12 @@
             <div class="w-24 shrink-0">
                 <label class="mb-1 block text-[11px] tracking-wide text-zinc-500 uppercase">Amount $</label>
                 <input name="amount" type="number" step="0.01" min="-10000" max="10000" required placeholder="5.00"
-                       class="w-full rounded-[8px] border border-white/10 bg-panel px-2.5 py-2 text-sm text-zinc-200 placeholder:text-zinc-600 focus:border-accent/50 focus:outline-none">
+                       class="w-full rounded-[8px] border border-edge bg-panel px-2.5 py-2 text-sm text-zinc-200 placeholder:text-zinc-600 focus:border-accent/50 focus:outline-none">
             </div>
             <div class="min-w-0 flex-1">
                 <label class="mb-1 block text-[11px] tracking-wide text-zinc-500 uppercase">Note</label>
                 <input name="note" type="text" maxlength="255" placeholder="optional"
-                       class="w-full rounded-[8px] border border-white/10 bg-panel px-2.5 py-2 text-sm text-zinc-200 placeholder:text-zinc-600 focus:border-accent/50 focus:outline-none">
+                       class="w-full rounded-[8px] border border-edge bg-panel px-2.5 py-2 text-sm text-zinc-200 placeholder:text-zinc-600 focus:border-accent/50 focus:outline-none">
             </div>
             <button class="shrink-0 rounded-[8px] bg-accent px-3 py-2 text-sm font-semibold text-accent-on transition hover:bg-accent/90">Add</button>
         </form>

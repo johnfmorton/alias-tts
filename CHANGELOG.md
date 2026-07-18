@@ -4,6 +4,22 @@ All notable changes to this project are documented in this file. The format is
 based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this
 project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Fixed
+- **Readable muted text and visible form fields (WCAG AA).** The dim gray used
+  for help text, empty states, table headers, timestamps, and footnotes
+  measured below the 4.5:1 accessibility contrast floor on the app's dark
+  surfaces — the dimmest tier as low as 2.4:1. Both gray tiers are brightened
+  at the design-token level so every page picks the fix up at once, and the
+  type hierarchy keeps its order (primary → secondary → muted → faint). Text
+  inputs, selects, textareas, and checkboxes also move to a shared border tone
+  so a resting field shows a visible boundary (≥3:1) instead of blending into
+  the panel behind it — focus styling is unchanged. The tiny min/max labels
+  under tuning sliders go from 10px to 11px. Verified with a full-interface
+  contrast audit (16 admin pages plus login): zero remaining AA text failures
+  and zero form-control boundaries under 3:1.
+
 ## [0.60.0] - 2026-07-17
 
 ### Added

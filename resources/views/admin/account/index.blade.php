@@ -1,6 +1,6 @@
 @php
     // Shared field/button class strings, kept here so the three cards read cleanly.
-    $well = 'w-full rounded-[9px] border border-white/10 bg-inset px-[13px] py-[11px] text-sm text-zinc-200 placeholder:text-zinc-600 focus:border-accent/50 focus:outline-none';
+    $well = 'w-full rounded-[9px] border border-edge bg-inset px-[13px] py-[11px] text-sm text-zinc-200 placeholder:text-zinc-600 focus:border-accent/50 focus:outline-none';
     $btnPrimary = 'inline-flex items-center justify-center rounded-[9px] bg-accent px-[18px] py-[9px] text-sm font-semibold text-accent-on transition hover:bg-accent/90';
     $btnSecondary = 'inline-flex items-center justify-center rounded-[9px] border border-white/14 px-[14px] py-2 text-sm text-zinc-300 transition hover:bg-white/[0.04]';
     $btnSecondaryDisabled = 'inline-flex items-center justify-center rounded-[9px] border border-white/8 px-[14px] py-2 text-sm text-zinc-600 cursor-not-allowed';

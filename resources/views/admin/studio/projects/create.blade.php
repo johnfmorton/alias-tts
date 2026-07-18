@@ -12,20 +12,20 @@
             <div>
                 <label for="title" class="mb-1.5 block text-sm font-medium">Title</label>
                 <input id="title" name="title" value="{{ old('title') }}" placeholder="Untitled project"
-                       class="w-full max-w-md rounded-lg border border-zinc-700 bg-zinc-950 px-3 py-2 text-sm focus:border-cyan-500 focus:outline-none focus:ring-2 focus:ring-cyan-500/30">
+                       class="w-full max-w-md rounded-lg border border-edge bg-zinc-950 px-3 py-2 text-sm focus:border-cyan-500 focus:outline-none focus:ring-2 focus:ring-cyan-500/30">
             </div>
 
             <div>
                 <label for="text" class="mb-1.5 block text-sm font-medium">Text</label>
                 <textarea id="text" name="text" rows="10" required
-                          class="w-full rounded-lg border border-zinc-700 bg-zinc-950 px-3 py-2 text-sm focus:border-cyan-500 focus:outline-none focus:ring-2 focus:ring-cyan-500/30"
+                          class="w-full rounded-lg border border-edge bg-zinc-950 px-3 py-2 text-sm focus:border-cyan-500 focus:outline-none focus:ring-2 focus:ring-cyan-500/30"
                           placeholder="Paste the text to turn into editable audio…">{{ old('text') }}</textarea>
             </div>
 
             <div class="flex flex-wrap items-end gap-4">
                 <div>
                     <label for="voice" class="mb-1.5 block text-sm text-zinc-400">Voice</label>
-                    <select id="voice" name="voice" class="rounded-lg border border-zinc-700 bg-zinc-950 px-3 py-2 text-sm">
+                    <select id="voice" name="voice" class="rounded-lg border border-edge bg-zinc-950 px-3 py-2 text-sm">
                         @foreach($voices as $v)
                             <option data-model="{{ \App\Services\Tts\ModelCatalog::forVoice($v) }}" value="{{ $v->slug }}" @selected(old('voice', $defaultVoiceSlug) === $v->slug)>{{ $v->name }}</option>
                         @endforeach
@@ -38,7 +38,7 @@
                         {{-- Presets belong to an engine; only the chosen voice's engine's
                              presets are offered (initCreateProjectPresets re-filters on
                              voice change and resets a now-foreign pick). --}}
-                        <select id="preset" name="preset" class="rounded-lg border border-zinc-700 bg-zinc-950 px-3 py-2 text-sm"
+                        <select id="preset" name="preset" class="rounded-lg border border-edge bg-zinc-950 px-3 py-2 text-sm"
                                 title="A preset saved from a voice's tuning bench — seeds this project's tuning; the voice's own defaults apply when left as-is">
                             <option value="" selected>Voice default</option>
                             @foreach($presets as $preset)

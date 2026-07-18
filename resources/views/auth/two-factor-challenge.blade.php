@@ -31,7 +31,7 @@
                 <div>
                     <label for="code" class="mb-1.5 block text-sm font-medium">Code</label>
                     <input id="code" name="code" inputmode="text" autocomplete="one-time-code" required autofocus
-                           class="w-full rounded-lg border border-white/12 bg-inset px-3 py-2 font-mono tracking-widest focus:border-accent/50 focus:ring-2 focus:ring-accent/30 focus:outline-none">
+                           class="w-full rounded-lg border border-edge bg-inset px-3 py-2 font-mono tracking-widest focus:border-accent/50 focus:ring-2 focus:ring-accent/30 focus:outline-none">
                 </div>
                 <button type="submit"
                         class="w-full rounded-lg bg-accent px-4 py-2.5 text-sm font-semibold text-accent-on transition hover:bg-accent/90">

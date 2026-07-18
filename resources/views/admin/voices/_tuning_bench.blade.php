@@ -57,7 +57,7 @@
         <label class="mt-5 block">
             <span class="mb-2 block text-[13px] font-semibold text-zinc-300">Sample line</span>
             <textarea rows="2"
-                      class="bench-text w-full rounded-[10px] border border-white/12 bg-inset px-4 py-3.5 text-[17px] leading-[1.55] text-zinc-100 focus:border-accent focus:outline-none focus:ring-2 focus:ring-accent/30">Welcome back to the show. Today we're trying something new — and honestly? I can't wait.</textarea>
+                      class="bench-text w-full rounded-[10px] border border-edge bg-inset px-4 py-3.5 text-[17px] leading-[1.55] text-zinc-100 focus:border-accent focus:outline-none focus:ring-2 focus:ring-accent/30">Welcome back to the show. Today we're trying something new — and honestly? I can't wait.</textarea>
         </label>
 
         {{-- Named presets: bookmarks of knob values, reusable on any voice's bench

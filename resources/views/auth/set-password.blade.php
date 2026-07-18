@@ -31,12 +31,12 @@
                 <div>
                     <label for="password" class="mb-1.5 block text-sm font-medium">New password</label>
                     <input id="password" name="password" type="password" autocomplete="new-password" required autofocus
-                           class="w-full rounded-lg border border-white/12 bg-inset px-3 py-2 text-sm focus:border-accent/50 focus:ring-2 focus:ring-accent/30 focus:outline-none">
+                           class="w-full rounded-lg border border-edge bg-inset px-3 py-2 text-sm focus:border-accent/50 focus:ring-2 focus:ring-accent/30 focus:outline-none">
                 </div>
                 <div>
                     <label for="password_confirmation" class="mb-1.5 block text-sm font-medium">Confirm password</label>
                     <input id="password_confirmation" name="password_confirmation" type="password" autocomplete="new-password" required
-                           class="w-full rounded-lg border border-white/12 bg-inset px-3 py-2 text-sm focus:border-accent/50 focus:ring-2 focus:ring-accent/30 focus:outline-none">
+                           class="w-full rounded-lg border border-edge bg-inset px-3 py-2 text-sm focus:border-accent/50 focus:ring-2 focus:ring-accent/30 focus:outline-none">
                 </div>
                 <button type="submit"
                         class="w-full rounded-lg bg-accent px-4 py-2.5 text-sm font-semibold text-accent-on transition hover:bg-accent/90">

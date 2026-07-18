@@ -27,6 +27,18 @@
     --color-ok: #34d399; /* ready / active / ASR ✓ / seal-enabled */
     --color-warn: #f5c451; /* suspended / stale / start-over */
     --color-bad: #ef7a72; /* log out / delete / danger zone */
+
+    /*
+     * WCAG AA contrast overrides (2026-07 audit). Stock zinc-500 (#71717b)
+     * measures 3.8–4.1:1 and zinc-600 (#52525c) 2.4–2.6:1 against --color-app /
+     * --color-panel — both under the 4.5:1 AA floor for normal text. Brightened
+     * here so every text-zinc-500/600 call site passes without per-file edits,
+     * preserving the ramp order: zinc-400 > zinc-500 > zinc-600.
+     * NOTE: these intentionally diverge from the Tailwind docs' zinc values.
+     */
+    --color-zinc-500: #8a8a94; /* ≥5.4:1 on all app surfaces */
+    --color-zinc-600: #7e7e88; /* ≥4.6:1 on all app surfaces */
+    --color-edge: #64646e; /* form-control resting borders — ≥3:1 boundary (WCAG 1.4.11) */
 }
 
 /*

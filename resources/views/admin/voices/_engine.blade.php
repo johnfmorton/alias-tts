@@ -5,7 +5,7 @@
 @php($currentModel = old('model', \App\Services\Tts\ModelCatalog::forVoice($voice)))
 @php($currentPreset = old('preset_voice', $voice->settings['preset_voice'] ?? ''))
 @php($turboPresets = \App\Services\Tts\ModelCatalog::presetVoices('chatterbox-turbo'))
-@php($selectClass = 'w-full rounded-[9px] border border-white/12 bg-inset px-3.5 py-3 text-[15px] text-zinc-100 focus:border-accent focus:outline-none focus:ring-2 focus:ring-accent/30')
+@php($selectClass = 'w-full rounded-[9px] border border-edge bg-inset px-3.5 py-3 text-[15px] text-zinc-100 focus:border-accent focus:outline-none focus:ring-2 focus:ring-accent/30')
 
 <x-voice.section label="Engine">
     <div class="grid grid-cols-1 gap-5 sm:grid-cols-2">

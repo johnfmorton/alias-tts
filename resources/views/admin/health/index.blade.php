@@ -29,7 +29,7 @@
             @else
                 <div class="flex flex-wrap items-center gap-3">
                     <label for="health-test-voice" class="text-sm text-zinc-400">Voice</label>
-                    <select id="health-test-voice" class="rounded-lg border border-zinc-700 bg-zinc-950 px-3 py-2 text-sm">
+                    <select id="health-test-voice" class="rounded-lg border border-edge bg-zinc-950 px-3 py-2 text-sm">
                         @foreach($voices as $v)
                             <option value="{{ $v->slug }}">{{ $v->name }}</option>
                         @endforeach

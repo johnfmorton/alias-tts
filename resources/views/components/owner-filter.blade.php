@@ -9,7 +9,7 @@
     {{ $slot }}
     <label for="owner-filter" class="text-xs text-zinc-400">Owner</label>
     <select id="owner-filter" name="owner" onchange="this.form.requestSubmit()"
-            class="rounded-[8px] border border-white/12 bg-inset px-2.5 py-1.5 text-sm text-zinc-200 focus:border-accent/50 focus:outline-none">
+            class="rounded-[8px] border border-edge bg-inset px-2.5 py-1.5 text-sm text-zinc-200 focus:border-accent/50 focus:outline-none">
         <option value="{{ auth()->id() }}" @selected($ownerId === auth()->id())>{{ auth()->user()->name }} (you)</option>
         <option value="all" @selected($ownerId === null)>All owners</option>
         @foreach($owners as $ownerOpt)

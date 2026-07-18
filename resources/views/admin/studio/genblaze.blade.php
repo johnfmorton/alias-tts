@@ -63,13 +63,13 @@
                 <div>
                     <label for="gb-text" class="text-sm font-medium text-zinc-200">Text</label>
                     <textarea id="gb-text" rows="6"
-                              class="mt-2 w-full rounded-lg border border-zinc-700 bg-zinc-950 px-3 py-2 text-sm text-zinc-100 focus:border-cyan-500 focus:outline-none focus:ring-2 focus:ring-cyan-500/30">Welcome to verifiable media generation. Every word in this audio was produced on Replicate and quality-checked before it shipped. When a take is truncated or trails off, the orchestrator re-rolls it automatically, and every attempt is written to Backblaze B2 with a verifiable manifest.</textarea>
+                              class="mt-2 w-full rounded-lg border border-edge bg-zinc-950 px-3 py-2 text-sm text-zinc-100 focus:border-cyan-500 focus:outline-none focus:ring-2 focus:ring-cyan-500/30">Welcome to verifiable media generation. Every word in this audio was produced on Replicate and quality-checked before it shipped. When a take is truncated or trails off, the orchestrator re-rolls it automatically, and every attempt is written to Backblaze B2 with a verifiable manifest.</textarea>
                 </div>
 
                 <div class="flex flex-wrap items-end gap-3">
                     <label class="flex flex-col gap-1 text-sm text-zinc-400">
                         <span class="font-medium text-zinc-200">Voice</span>
-                        <select id="gb-voice" class="rounded-lg border border-zinc-700 bg-zinc-950 px-2 py-1.5 text-sm text-zinc-200 focus:border-cyan-500 focus:outline-none focus:ring-2 focus:ring-cyan-500/30">
+                        <select id="gb-voice" class="rounded-lg border border-edge bg-zinc-950 px-2 py-1.5 text-sm text-zinc-200 focus:border-cyan-500 focus:outline-none focus:ring-2 focus:ring-cyan-500/30">
                             @foreach($voices as $v)
                                 <option value="{{ $v->slug }}" @selected($v->slug === $defaultVoiceSlug)>{{ $v->name }}</option>
                             @endforeach

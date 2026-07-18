@@ -3,7 +3,7 @@
     $name = $f['field'];
     $value = old($name, $f['value']);
     $disabled = $locked ? 'disabled' : '';
-    $input = 'w-full rounded-lg border border-zinc-700 bg-zinc-900 px-3 py-2 text-sm focus:border-cyan-500 focus:outline-none focus:ring-2 focus:ring-cyan-500/30 disabled:cursor-not-allowed disabled:opacity-60';
+    $input = 'w-full rounded-lg border border-edge bg-zinc-900 px-3 py-2 text-sm focus:border-cyan-500 focus:outline-none focus:ring-2 focus:ring-cyan-500/30 disabled:cursor-not-allowed disabled:opacity-60';
 @endphp
 <div>
     <div class="flex items-center justify-between gap-3">
@@ -23,7 +23,7 @@
             @case('bool')
                 <label class="flex items-center gap-2 text-sm text-zinc-400">
                     <input type="checkbox" id="{{ $name }}" name="{{ $name }}" value="1" @checked($value) {{ $disabled }}
-                           class="rounded border-zinc-700 bg-zinc-900 text-cyan-500 focus:ring-cyan-500/30 disabled:opacity-60">
+                           class="rounded border-edge bg-zinc-900 text-cyan-500 focus:ring-cyan-500/30 disabled:opacity-60">
                     On
                 </label>
                 @break

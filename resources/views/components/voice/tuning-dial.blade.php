@@ -11,7 +11,7 @@
     <div class="flex items-center gap-3.5">
         <input id="{{ $name }}" name="{{ $name }}" type="number" step="{{ $step }}" min="{{ $min }}" max="{{ $max }}"
                value="{{ $value }}" placeholder="{{ $neutral }}" data-tuning-number
-               class="w-[74px] rounded-[9px] border border-white/12 bg-inset px-2 py-2.5 text-center text-[15px] text-zinc-100 placeholder:text-zinc-600 focus:border-accent focus:outline-none focus:ring-2 focus:ring-accent/30">
+               class="w-[74px] rounded-[9px] border border-edge bg-inset px-2 py-2.5 text-center text-[15px] text-zinc-100 placeholder:text-zinc-600 focus:border-accent focus:outline-none focus:ring-2 focus:ring-accent/30">
         {{-- Visual affordance only (the number is the accessible control). --}}
         <input type="range" min="{{ $min }}" max="{{ $max }}" step="{{ $step }}" value="{{ $value !== '' ? $value : $neutral }}"
                data-tuning-slider aria-hidden="true" tabindex="-1" class="tuning-slider flex-1">

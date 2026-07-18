@@ -169,7 +169,7 @@
             <div class="mb-6 rounded-[14px] border border-white/8 bg-panel p-5">
                 <label for="studio-text" class="mb-1.5 block text-sm font-medium">Text</label>
                 <textarea id="studio-text" rows="8"
-                          class="w-full rounded-lg border border-white/12 bg-inset px-3 py-2 text-sm focus:border-accent focus:outline-none focus:ring-2 focus:ring-accent/30"
+                          class="w-full rounded-lg border border-edge bg-inset px-3 py-2 text-sm focus:border-accent focus:outline-none focus:ring-2 focus:ring-accent/30"
                           placeholder="Paste a block of text…"></textarea>
 
                 <div class="mt-4 flex flex-wrap items-end gap-3">
@@ -178,7 +178,7 @@
                         @if($voices->isEmpty())
                             <p class="text-sm text-zinc-500">No voices — <a class="text-cyan-400 hover:underline" href="{{ route('admin.voices.create') }}">add one</a> to generate audio.</p>
                         @else
-                            <select id="studio-voice" class="rounded-lg border border-white/12 bg-inset px-3 py-2 text-sm">
+                            <select id="studio-voice" class="rounded-lg border border-edge bg-inset px-3 py-2 text-sm">
                                 @foreach($voices as $v)
                                     <option value="{{ $v->slug }}" data-model="{{ \App\Services\Tts\ModelCatalog::forVoice($v) }}">{{ $v->name }}</option>
                                 @endforeach
@@ -318,7 +318,7 @@
                         <div class="max-w-md grow">
                             <label for="studio-project-title" class="mb-1.5 block text-sm text-zinc-400">Title <span class="text-xs text-zinc-500">— optional</span></label>
                             <input id="studio-project-title" type="text" maxlength="200"
-                                   class="w-full rounded-lg border border-white/12 bg-inset px-3 py-2 text-sm focus:border-accent focus:outline-none focus:ring-2 focus:ring-accent/30"
+                                   class="w-full rounded-lg border border-edge bg-inset px-3 py-2 text-sm focus:border-accent focus:outline-none focus:ring-2 focus:ring-accent/30"
                                    placeholder="Named from the text if left blank">
                         </div>
                         <button type="button" id="studio-create-project" @disabled($voices->isEmpty())

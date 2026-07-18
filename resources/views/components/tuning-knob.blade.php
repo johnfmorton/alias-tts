@@ -22,7 +22,7 @@
         <span class="flex items-center gap-1.5">
             <input type="number" min="{{ $min }}" max="{{ $max }}" step="{{ $step }}"
                    value="{{ $value }}" placeholder="{{ $placeholder }}"
-                   class="knob-number {{ $inputClass }} w-16 rounded-lg border border-zinc-700 bg-zinc-950 px-2 py-1 text-right text-sm tabular-nums">
+                   class="knob-number {{ $inputClass }} w-16 rounded-lg border border-edge bg-zinc-950 px-2 py-1 text-right text-sm tabular-nums">
             <button type="button" class="knob-reset rounded-lg border border-zinc-700 px-1.5 py-1 text-xs text-zinc-400 hover:bg-zinc-800"
                     title="Reset to the inherited default" aria-label="Reset to the inherited default">↺</button>
         </span>
@@ -30,5 +30,5 @@
     <input type="range" min="{{ $min }}" max="{{ $max }}" step="{{ $step }}"
            value="{{ ($value !== '' && $value !== null) ? $value : ($placeholder !== '' ? $placeholder : $min) }}"
            class="knob-range w-full cursor-pointer accent-cyan-500" aria-label="{{ $label }}">
-    <div class="flex justify-between text-[10px] text-zinc-600"><span>{{ $min }}</span><span>{{ $max }}</span></div>
+    <div class="flex justify-between text-[11px] text-zinc-600"><span>{{ $min }}</span><span>{{ $max }}</span></div>
 </div>

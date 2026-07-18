@@ -36,15 +36,15 @@
                 <div>
                     <label for="email" class="mb-1.5 block text-sm font-medium">Email</label>
                     <input id="email" name="email" type="email" value="{{ old('email') }}" required autofocus
-                           class="w-full rounded-lg border border-zinc-700 bg-zinc-900 px-3 py-2 text-sm focus:border-cyan-500 focus:outline-none focus:ring-2 focus:ring-cyan-500/30">
+                           class="w-full rounded-lg border border-edge bg-zinc-900 px-3 py-2 text-sm focus:border-cyan-500 focus:outline-none focus:ring-2 focus:ring-cyan-500/30">
                 </div>
                 <div>
                     <label for="password" class="mb-1.5 block text-sm font-medium">Password</label>
                     <input id="password" name="password" type="password" required
-                           class="w-full rounded-lg border border-zinc-700 bg-zinc-900 px-3 py-2 text-sm focus:border-cyan-500 focus:outline-none focus:ring-2 focus:ring-cyan-500/30">
+                           class="w-full rounded-lg border border-edge bg-zinc-900 px-3 py-2 text-sm focus:border-cyan-500 focus:outline-none focus:ring-2 focus:ring-cyan-500/30">
                 </div>
                 <label class="flex items-center gap-2 text-sm text-zinc-400">
-                    <input type="checkbox" name="remember" class="rounded border-zinc-700 bg-zinc-900 text-cyan-500 focus:ring-cyan-500/30">
+                    <input type="checkbox" name="remember" class="rounded border-edge bg-zinc-900 text-cyan-500 focus:ring-cyan-500/30">
                     Remember me
                 </label>
                 <button type="submit"

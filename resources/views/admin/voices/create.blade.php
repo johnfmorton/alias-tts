@@ -1,5 +1,5 @@
 @php
-    $inputClass = 'w-full rounded-[9px] border border-white/12 bg-inset px-3.5 py-3 text-[15px] text-zinc-100 placeholder:text-zinc-600 focus:border-accent focus:outline-none focus:ring-2 focus:ring-accent/30';
+    $inputClass = 'w-full rounded-[9px] border border-edge bg-inset px-3.5 py-3 text-[15px] text-zinc-100 placeholder:text-zinc-600 focus:border-accent focus:outline-none focus:ring-2 focus:ring-accent/30';
 @endphp
 <x-layout title="Add a voice" :heading="false" contentWidth="max-w-[1060px]">
     <form id="voice-form" method="POST" action="{{ route('admin.voices.store') }}" enctype="multipart/form-data"

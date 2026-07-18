@@ -1006,7 +1006,7 @@ function initTuningBench(bench) {
         const input = document.createElement('input');
         Object.assign(input, { type: 'number', step: def.step, min: def.min, max: def.max, placeholder: def.ph });
         if (value !== null && value !== '' && value !== undefined) input.value = value;
-        input.className = 'w-[74px] rounded-[8px] border border-white/12 bg-inset px-2.5 py-2 text-[15px] text-zinc-100 focus:border-accent focus:outline-none focus:ring-2 focus:ring-accent/30';
+        input.className = 'w-[74px] rounded-[8px] border border-edge bg-inset px-2.5 py-2 text-[15px] text-zinc-100 focus:border-accent focus:outline-none focus:ring-2 focus:ring-accent/30';
         return input;
     };
 
@@ -1744,7 +1744,7 @@ function initStudioProject() {
         dirtyBadge.classList.toggle('inline-flex', dirty);
         card.querySelector('.chunk-revert').classList.toggle('hidden', !dirty);
         textarea.classList.toggle('border-amber-500/50', dirty);
-        textarea.classList.toggle('border-zinc-800', !dirty);
+        textarea.classList.toggle('border-edge', !dirty);
         // Save applies only to an unsaved edit; Regenerate renders the SAVED text,
         // so only one is actionable at a time (the Blade markup starts a clean
         // chunk with Save disabled). The `disabled:` classes handle the dimming.

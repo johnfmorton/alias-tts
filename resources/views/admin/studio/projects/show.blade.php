@@ -77,7 +77,7 @@
                     <label class="flex items-center gap-2 text-xs text-zinc-500" title="Changing the voice marks generated chunks for regeneration.">
                         <span class="text-zinc-400">Voice</span>
                         <select id="project-voice"
-                                class="rounded-[8px] border border-white/12 bg-inset px-2.5 py-1.5 text-sm text-zinc-200 focus:border-accent/50 focus:outline-none">
+                                class="rounded-[8px] border border-edge bg-inset px-2.5 py-1.5 text-sm text-zinc-200 focus:border-accent/50 focus:outline-none">
                             @foreach($voices as $v)
                                 <option value="{{ $v->slug }}" data-model="{{ \App\Services\Tts\ModelCatalog::forVoice($v) }}" @selected($project->voice && $project->voice->id === $v->id)>{{ $v->name }}</option>
                             @endforeach
@@ -86,7 +86,7 @@
                     <label class="flex items-center gap-2 text-xs text-zinc-500" title="Final audio format. MP3 is compressed; WAV is uncompressed (~10× larger). Changing it rebuilds the final in the new format.">
                         <span class="text-zinc-400">Format</span>
                         <select id="project-format"
-                                class="rounded-[8px] border border-white/12 bg-inset px-2.5 py-1.5 text-sm text-zinc-200 focus:border-accent/50 focus:outline-none">
+                                class="rounded-[8px] border border-edge bg-inset px-2.5 py-1.5 text-sm text-zinc-200 focus:border-accent/50 focus:outline-none">
                             @foreach($outputFormats as $token => $optLabel)
                                 <option value="{{ $token }}" @selected($project->output_format === $token)>{{ $optLabel }}</option>
                             @endforeach
@@ -292,7 +292,7 @@
                         <div class="flex items-center gap-2">
                             <label class="flex items-center gap-1.5 text-xs text-zinc-500">
                                 <span class="text-zinc-400">Voice</span>
-                                <select class="chunk-voice rounded-lg border border-zinc-700 bg-zinc-950 px-2 py-1.5 text-sm text-zinc-200 focus:border-cyan-500 focus:outline-none focus:ring-2 focus:ring-cyan-500/30"
+                                <select class="chunk-voice rounded-lg border border-edge bg-zinc-950 px-2 py-1.5 text-sm text-zinc-200 focus:border-cyan-500 focus:outline-none focus:ring-2 focus:ring-cyan-500/30"
                                         data-voice-url="{{ route('admin.studio.projects.chunks.voice', [$project, $chunk]) }}"
                                         data-inherits="{{ $chunk->voice_id ? '0' : '1' }}"
                                         title="Voice for this chunk. Follows the project voice until you pick one here.">
@@ -331,7 +331,7 @@
                     </div>
 
                     @php $chunkModel = \App\Services\Tts\ModelCatalog::forVoice($chunk->voice ?? $project->voice); @endphp
-                    <textarea class="chunk-text mt-2 w-full rounded-lg border border-zinc-800 bg-zinc-950 px-3 py-2 text-sm text-zinc-200 focus:border-cyan-500 focus:outline-none focus:ring-2 focus:ring-cyan-500/30"
+                    <textarea class="chunk-text mt-2 w-full rounded-lg border border-edge bg-zinc-950 px-3 py-2 text-sm text-zinc-200 focus:border-cyan-500 focus:outline-none focus:ring-2 focus:ring-cyan-500/30"
                               rows="2" data-original="{{ $chunk->text }}">{{ $chunk->text }}</textarea>
 
                     {{-- Turbo renders these tags as actual sounds; a click inserts one
@@ -385,7 +385,7 @@
                                      nothing is saved until "Save tuning" / a preview is kept.
                                      Presets belong to an engine — JS hides foreign ones. --}}
                                 <label class="flex flex-col gap-1 text-xs text-zinc-500">Preset
-                                    <select class="chunk-preset rounded-lg border border-zinc-700 bg-zinc-950 px-2 py-1.5 text-sm text-zinc-300">
+                                    <select class="chunk-preset rounded-lg border border-edge bg-zinc-950 px-2 py-1.5 text-sm text-zinc-300">
                                         <option value="" selected>Apply…</option>
                                         @foreach($presets as $preset)
                                             <option value="{{ $preset->id }}" data-model="{{ $preset->engineModel() }}"
@@ -434,7 +434,7 @@
                                     <button type="button" class="chunk-seed-random rounded-lg border border-zinc-700 px-1.5 py-1 text-xs text-zinc-400 hover:bg-zinc-800"
                                             title="Roll a random seed" aria-label="Roll a random seed">🎲</button>
                                 </span>
-                                <div class="text-[10px] text-zinc-600">pins the draw, not the result</div>
+                                <div class="text-[11px] text-zinc-600">pins the draw, not the result</div>
                             </div>
                         </div>
 

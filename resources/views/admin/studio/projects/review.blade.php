@@ -17,7 +17,7 @@
                 <div class="flex flex-wrap items-center gap-3 rounded-lg border border-zinc-800 bg-zinc-950/50 p-3">
                     <label class="flex items-center gap-2" title="Apply this respelling and save it to your dictionary">
                         <input type="checkbox" name="approve[]" value="{{ $i }}" @checked(!empty($s['checked']))
-                               class="h-4 w-4 rounded border-zinc-600 bg-zinc-900 text-cyan-500 focus:ring-cyan-500/30">
+                               class="h-4 w-4 rounded border-edge bg-zinc-900 text-cyan-500 focus:ring-cyan-500/30">
                         <span class="font-mono text-sm text-zinc-200">{{ $s['term'] }}</span>
                     </label>
 
@@ -25,7 +25,7 @@
 
                     <input name="substitutions[{{ $i }}][phonetic]" value="{{ $s['phonetic'] }}" aria-label="Spoken respelling for {{ $s['term'] }}"
                            id="pron-phonetic-{{ $i }}"
-                           class="w-48 rounded-lg border border-zinc-700 bg-zinc-950 px-2 py-1 text-sm focus:border-cyan-500 focus:outline-none focus:ring-2 focus:ring-cyan-500/30">
+                           class="w-48 rounded-lg border border-edge bg-zinc-950 px-2 py-1 text-sm focus:border-cyan-500 focus:outline-none focus:ring-2 focus:ring-cyan-500/30">
 
                     <button type="button" data-pron-test data-url="{{ route('admin.pronunciations.test') }}"
                             data-input="#pron-phonetic-{{ $i }}" data-voice="{{ $voice->id }}"
