@@ -4053,20 +4053,8 @@ function initUsers() {
     toggle('create-toggle', 'create-form');
     toggle('user-delete-toggle', 'user-delete-confirm');
 
-    const copyBtn = document.querySelector('[data-copy-btn]');
-    const copyInput = document.querySelector('[data-copy]');
-    if (copyBtn && copyInput) {
-        copyBtn.addEventListener('click', async () => {
-            copyInput.select();
-            try {
-                await navigator.clipboard.writeText(copyInput.value);
-            } catch (_) {
-                document.execCommand('copy');
-            }
-            copyBtn.textContent = 'Copied';
-            setTimeout(() => (copyBtn.textContent = 'Copy'), 1500);
-        });
-    }
+    // The reveal panel's Copy buttons carry data-copy="<value>" and are handled by
+    // the global delegated copy listener, so multiple secrets copy independently.
 }
 initUsers();
 

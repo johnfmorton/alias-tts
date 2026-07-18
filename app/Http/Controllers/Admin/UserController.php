@@ -122,7 +122,7 @@ class UserController extends Controller
 
         $temp = Str::password(16);
 
-        User::create([
+        $user = User::create([
             'name' => $data['name'],
             'email' => $data['email'],
             'password' => $temp,
@@ -130,10 +130,14 @@ class UserController extends Controller
             'status' => User::STATUS_ACTIVE,
         ]);
 
+        // Two ways in: the friend can click the set-password link and choose their
+        // own password, or sign in with the temporary password as a fallback.
         return redirect()->route('admin.users.index')
-            ->with('success', "Created {$data['email']}. Share their temporary password below.")
-            ->with('reveal_label', "Temporary password for {$data['email']}")
-            ->with('reveal_value', $temp);
+            ->with('success', "Created {$data['email']}. Send them the set-password link, or share the temporary password as a fallback.")
+            ->with('reveals', [
+                ['label' => "Set-password link for {$data['email']}", 'value' => $this->setPasswordLink($user)],
+                ['label' => "Temporary password for {$data['email']}", 'value' => $temp],
+            ]);
     }
 
     /** Invite a user by email — they set their own password via a signed link. */
@@ -154,8 +158,9 @@ class UserController extends Controller
 
         return redirect()->route('admin.users.index')
             ->with('success', "Invited {$data['email']}. Send them this link to set a password.")
-            ->with('reveal_label', "Invite link for {$data['email']}")
-            ->with('reveal_value', $this->setPasswordLink($user));
+            ->with('reveals', [
+                ['label' => "Invite link for {$data['email']}", 'value' => $this->setPasswordLink($user)],
+            ]);
     }
 
     public function updateRole(Request $request, User $user): RedirectResponse
@@ -206,8 +211,9 @@ class UserController extends Controller
         return $this->backToUser(
             $user,
             success: "{$user->name}'s password was reset. Share this link so they can set a new one.",
-        )->with('reveal_label', "Set-password link for {$user->email}")
-            ->with('reveal_value', $this->setPasswordLink($user));
+        )->with('reveals', [
+            ['label' => "Set-password link for {$user->email}", 'value' => $this->setPasswordLink($user)],
+        ]);
     }
 
     public function impersonate(Request $request, User $user): RedirectResponse

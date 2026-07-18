@@ -37,14 +37,19 @@ class UsersTest extends TestCase
 
     public function test_create_user_persists_and_reveals_a_temp_password(): void
     {
-        $this->actingAs($this->superAdmin())
+        $response = $this->actingAs($this->superAdmin())
             ->post(route('admin.users.store'), [
                 'name' => 'New Person',
                 'email' => 'new@example.com',
                 'role' => 'User',
             ])
             ->assertRedirect(route('admin.users.index'))
-            ->assertSessionHas('reveal_value');
+            ->assertSessionHas('reveals');
+
+        // Two reveals: a signed set-password link and a temp-password fallback.
+        $reveals = collect($response->getSession()->get('reveals'));
+        $this->assertCount(2, $reveals);
+        $this->assertTrue($reveals->contains(fn ($r) => str_contains($r['value'], '/invite/')));
 
         $this->assertDatabaseHas('users', ['email' => 'new@example.com', 'is_super_admin' => false, 'status' => 'active']);
     }
@@ -54,7 +59,7 @@ class UsersTest extends TestCase
         $this->actingAs($this->superAdmin())
             ->post(route('admin.users.invite'), ['email' => 'invitee@example.com', 'role' => 'User'])
             ->assertRedirect(route('admin.users.index'))
-            ->assertSessionHas('reveal_value');
+            ->assertSessionHas('reveals');
 
         $this->assertDatabaseHas('users', ['email' => 'invitee@example.com', 'status' => 'invited']);
     }
@@ -115,7 +120,7 @@ class UsersTest extends TestCase
 
         $this->actingAs($this->superAdmin())
             ->post(route('admin.users.force-reset', $target))
-            ->assertSessionHas('reveal_value');
+            ->assertSessionHas('reveals');
 
         $this->assertFalse(Hash::check('known-password', $target->fresh()->password));
     }

@@ -7,6 +7,12 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 ## [Unreleased]
 
 ### Added
+- **Creating a user now hands you a set-password link, not just a password.**
+  **+ Create user** surfaces two things at once: a signed, 7-day link the new
+  person clicks to choose their own password (and get signed in), plus the
+  temporary password kept as a fallback. Invite a friend by texting or emailing
+  them the link — no need to relay a generated password. Each has its own Copy
+  button.
 - **Restore a default with one click on the Advanced settings.** Every threshold
   under **Settings › Advanced — detection thresholds** now has a **Reset to
   default** button that puts the field back to its shipped value (a bad number
@@ -15,6 +21,10 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   fat-finger a threshold.
 
 ### Changed
+- **"Invite by email" is now "Invite by link."** The app sends no email — it
+  hands you a link to share yourself — so the old label was misleading. The
+  button, its submit action, and a new hint make clear that you copy the link
+  and send it however you like.
 - **The Health page is now SuperAdmin-only.** It reports instance-wide
   diagnostics — database, queue, scheduler, and provider readiness — that only an
   administrator acts on, so it no longer appears in the nav or on the dashboard

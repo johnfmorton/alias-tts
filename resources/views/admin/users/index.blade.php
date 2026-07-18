@@ -25,21 +25,25 @@
     <div class="mb-6 flex flex-wrap items-start justify-between gap-4">
         <p class="text-sm text-zinc-500">{{ $activeCount }} active · {{ $invitedCount }} invited.</p>
         <div class="flex gap-2.5">
-            <button id="invite-toggle" type="button" class="{{ $btnSecondary }}">Invite by email</button>
+            <button id="invite-toggle" type="button" class="{{ $btnSecondary }}">Invite by link</button>
             <button id="create-toggle" type="button" class="{{ $btnPrimary }}">+ Create user</button>
         </div>
     </div>
 
-    {{-- One-time secret (temp password / invite link) surfaced after create/invite/reset --}}
-    @if(session('reveal_value'))
-        <div class="mb-6 rounded-[12px] border border-accent/30 bg-accent/[0.06] p-4">
-            <div class="mb-2 text-[13px] text-zinc-400">{{ session('reveal_label', 'Share this once') }}</div>
-            <div class="flex items-center gap-2">
-                <input type="text" readonly value="{{ session('reveal_value') }}" data-copy
-                       class="w-full rounded-[8px] border border-edge bg-inset px-3 py-2 font-mono text-[13px] text-zinc-200 focus:outline-none">
-                <button type="button" data-copy-btn class="{{ $btnSecondary }} shrink-0">Copy</button>
-            </div>
-            <div class="mt-2 text-xs text-zinc-500">Shown once — copy it now.</div>
+    {{-- One-time secrets (set-password link / temp password) surfaced after create/invite/reset --}}
+    @if(session('reveals'))
+        <div class="mb-6 space-y-4 rounded-[12px] border border-accent/30 bg-accent/[0.06] p-4">
+            @foreach(session('reveals') as $reveal)
+                <div>
+                    <div class="mb-2 text-[13px] text-zinc-400">{{ $reveal['label'] }}</div>
+                    <div class="flex items-center gap-2">
+                        <input type="text" readonly value="{{ $reveal['value'] }}" onfocus="this.select()"
+                               class="w-full rounded-[8px] border border-edge bg-inset px-3 py-2 font-mono text-[13px] text-zinc-200 focus:outline-none">
+                        <button type="button" data-copy="{{ $reveal['value'] }}" class="{{ $btnSecondary }} shrink-0">Copy</button>
+                    </div>
+                </div>
+            @endforeach
+            <div class="text-xs text-zinc-500">Shown once — copy what you need now.</div>
         </div>
     @endif
 
@@ -58,8 +62,9 @@
                     <option value="SuperAdmin">SuperAdmin</option>
                 </select>
             </div>
-            <button type="submit" class="{{ $btnPrimary }}">Send invite</button>
+            <button type="submit" class="{{ $btnPrimary }}">Create invite link</button>
         </form>
+        <p class="mt-3 text-xs text-zinc-500">No email is sent — you'll get a link to share yourself. Your friend clicks it to set their own password (valid 7 days).</p>
     </div>
 
     {{-- Create form (revealed) --}}
