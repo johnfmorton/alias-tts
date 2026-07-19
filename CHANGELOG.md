@@ -4,6 +4,26 @@ All notable changes to this project are documented in this file. The format is
 based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this
 project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.71.0] - 2026-07-19
+
+### Added
+- **Bounded-concurrency generation, off by default.** A background **Generate
+  remaining** run can now keep several clips in flight at once instead of
+  rendering strictly one at a time, cutting the wall-clock wait on multi-chunk
+  projects. It's an operator experiment, enabled per install with
+  `TTS_CONCURRENT_GENERATION=true` and `TTS_GENERATION_CONCURRENCY` (with a
+  matching number of queue workers; an optional `TTS_GENERATION_QUEUE` keeps
+  chunk fan-out off the main queue) — with the flag unset, generation behaves
+  exactly as before. Concurrent runs stay honest in the UI: the status line
+  counts landings ("Creating clips — 3 of 12 done") instead of pretending a
+  sequence, every clip actually being synthesized reads **rendering**, the wait
+  line still shows each clip's place, and a mid-run Regenerate still slots in
+  next. Failures stay per-clip, Stop winds down after the clips in flight, and
+  an interrupted run resumes without re-rendering or re-charging anything.
+  `docs/GENERATION-CONCURRENCY-OPS.md` covers enabling, tuning, and the
+  one-variable kill switch; the design note and measured rollout plan live in
+  `docs/GENERATION-CONCURRENCY.md`.
+
 ## [0.70.0] - 2026-07-19
 
 ### Changed
