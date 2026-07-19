@@ -87,10 +87,16 @@ class PronunciationController extends Controller
             ->with('success', 'Pronunciation updated.');
     }
 
-    public function destroy(Request $request, PronunciationEntry $entry): RedirectResponse
+    public function destroy(Request $request, PronunciationEntry $entry): RedirectResponse|JsonResponse
     {
         $this->authorizeEntry($request, $entry);
         $this->dictionary->forget($entry);
+
+        // The Studio review screen removes an auto-applied term inline via fetch;
+        // everywhere else this is a form POST that lands back on the index.
+        if ($request->expectsJson()) {
+            return response()->json(['ok' => true]);
+        }
 
         return redirect()->route('admin.pronunciations.index')
             ->with('success', 'Pronunciation removed.');

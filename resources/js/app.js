@@ -5018,6 +5018,78 @@ function initPronunciationTest() {
 }
 initPronunciationTest();
 
+// Pronunciation review screen: make Apply/Skip an explicit, tallied decision,
+// and let the writer remove an already-approved term that would otherwise apply
+// silently. The checkbox stays the submitted source of truth (unchecked = skip);
+// everything here is progressive enhancement over a form that works without JS.
+function initPronunciationReview() {
+    const form = document.querySelector('[data-pron-review]');
+    if (form) {
+        const tally = form.querySelector('[data-pron-tally]');
+        const toggles = () => [...form.querySelectorAll('[data-pron-toggle]')];
+
+        const renderTally = () => {
+            if (!tally) return;
+            const apply = toggles().filter((t) => t.checked).length;
+            tally.textContent = `${apply} will be applied · ${toggles().length - apply} skipped`;
+        };
+
+        // The segments are <label for> pairs, so a bare click merely toggles.
+        // Intercept so "Apply" always applies and "Skip" always skips — a real
+        // segmented control, not a toggle you have to reason about.
+        form.addEventListener('click', (e) => {
+            const seg = e.target.closest('[data-seg]');
+            if (!seg) return;
+            e.preventDefault();
+            const box = document.getElementById(seg.getAttribute('for'));
+            if (!box) return;
+            box.checked = seg.dataset.seg === 'apply';
+            renderTally();
+        });
+
+        // Keyboard: Space on the focused checkbox toggles it directly.
+        form.addEventListener('change', (e) => {
+            if (e.target.matches('[data-pron-toggle]')) renderTally();
+        });
+
+        renderTally();
+    }
+
+    // "Already in your dictionary" panel: Remove deletes the approved entry (in
+    // this project and every future one) so it stops being applied silently.
+    const applied = document.querySelector('[data-pron-applied]');
+    if (applied) {
+        applied.addEventListener('click', async (e) => {
+            const btn = e.target.closest('[data-pron-remove]');
+            if (!btn || btn.dataset.busy) return;
+            const term = btn.dataset.term || 'this term';
+            const ok = await confirmDialog({
+                title: 'Remove from dictionary?',
+                message: `“${term}” won’t be respelled in this project or future ones.`,
+                label: 'Remove',
+                tone: 'danger',
+            });
+            if (!ok) return;
+            startBusy(btn, 'Removing…');
+            try {
+                const res = await fetch(btn.dataset.url, {
+                    method: 'DELETE',
+                    headers: { 'X-CSRF-TOKEN': csrfToken(), 'Accept': 'application/json' },
+                });
+                if (!res.ok) throw new Error(await errorMessage(res));
+                btn.closest('[data-pron-applied-row]')?.remove();
+                // Nothing left auto-applying to this text — drop the whole panel.
+                if (!applied.querySelector('[data-pron-applied-row]')) applied.remove();
+            } catch (err) {
+                endBusy(btn);
+                btn.textContent = '✗ Failed';
+                setTimeout(() => { btn.textContent = 'Remove'; }, 4000);
+            }
+        });
+    }
+}
+initPronunciationReview();
+
 // ---------------------------------------------------------------------------
 // Jobs page: background "Generate remaining" runs — live rows + Stop.
 // ---------------------------------------------------------------------------

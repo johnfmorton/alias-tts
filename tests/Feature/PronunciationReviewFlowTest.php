@@ -176,6 +176,56 @@ class PronunciationReviewFlowTest extends TestCase
         $this->assertTrue(PronunciationEntry::where('term', 'DDEV')->first()->approved);
     }
 
+    public function test_review_screen_surfaces_already_approved_terms_that_apply_to_the_text(): void
+    {
+        $admin = $this->admin();
+        // Approved before → filtered out of the suggestion list, so it would be
+        // applied silently. It must still show in the "already in your dictionary"
+        // panel so the writer can see (and remove) it.
+        PronunciationEntry::create([
+            'user_id' => $admin->id, 'term' => 'MP3', 'phonetic' => 'em pee three',
+            'source' => 'llm', 'approved' => true, 'match_mode' => 'case_sensitive',
+        ]);
+        // Approved but absent from this text → must NOT be listed.
+        PronunciationEntry::create([
+            'user_id' => $admin->id, 'term' => 'GraphQL', 'phonetic' => 'graf cue el',
+            'source' => 'llm', 'approved' => true, 'match_mode' => 'case_sensitive',
+        ]);
+
+        // A new suggestion so the review screen renders instead of creating.
+        Http::fake(['runner.test/pronounce' => Http::response([
+            'available' => true,
+            'substitutions' => [
+                ['term' => 'DDEV', 'phonetic' => 'dee dev', 'category' => 'initialism', 'confidence' => 'high'],
+            ],
+        ])]);
+
+        $this->actingAs($admin)
+            ->post(route('admin.studio.projects.review'), ['text' => 'Get an MP3 from DDEV.', 'voice' => 'v'])
+            ->assertOk()
+            ->assertSee('Already in your dictionary')
+            ->assertSee('em pee three')
+            ->assertDontSee('graf cue el')
+            ->assertViewHas('autoApplied', fn ($autoApplied) => $autoApplied->pluck('term')->all() === ['MP3']);
+    }
+
+    public function test_destroy_returns_json_when_the_request_wants_json(): void
+    {
+        $admin = $this->admin();
+        $entry = PronunciationEntry::create([
+            'user_id' => $admin->id, 'term' => 'MP3', 'phonetic' => 'em pee three',
+            'source' => 'llm', 'approved' => true, 'match_mode' => 'case_sensitive',
+        ]);
+
+        // The review screen removes an auto-applied term inline via fetch.
+        $this->actingAs($admin)
+            ->deleteJson(route('admin.pronunciations.destroy', $entry))
+            ->assertOk()
+            ->assertExactJson(['ok' => true]);
+
+        $this->assertNull(PronunciationEntry::find($entry->id));
+    }
+
     public function test_duplicate_terms_are_collapsed_keeping_highest_confidence(): void
     {
         // The LLM sometimes lists a term once per occurrence in the text.

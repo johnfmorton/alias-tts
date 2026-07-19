@@ -4,6 +4,27 @@ All notable changes to this project are documented in this file. The format is
 based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this
 project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Changed
+- **The pronunciation review screen makes each choice unmistakable.** The tiny
+  pre-checked checkbox is now an explicit **Apply / Skip** control per row, with
+  a live tally ("2 will be applied · 1 skipped") so you can see exactly what
+  will happen before you commit. Apply still teaches the respelling to your
+  dictionary and uses it now; Skip leaves the term as written and remembers not
+  to pre-check it again. The control is the submitted source of truth and works
+  with JavaScript off.
+
+### Added
+- **See — and remove — respellings already in your dictionary.** Terms you
+  approved before are applied to new projects automatically and used to be
+  filtered out of the review screen entirely, so a respelling could show up in
+  your audio with nothing on screen to explain it. The review screen now lists
+  every already-approved term that applies to the current text under **Already
+  in your dictionary**, each with a **Remove** button that drops it from this
+  project and every future one — plus a **Manage dictionary** link to the full
+  list.
+
 ## [0.71.0] - 2026-07-19
 
 ### Added

@@ -10,6 +10,7 @@ use App\Http\Controllers\Concerns\ServesRangedAudio;
 use App\Http\Controllers\Controller;
 use App\Jobs\GenerateProjectChunksJob;
 use App\Jobs\GenerateProjectChunkWorkerJob;
+use App\Models\PronunciationEntry;
 use App\Models\TtsChunk;
 use App\Models\TtsChunkTake;
 use App\Models\TtsProject;
@@ -22,6 +23,7 @@ use App\Services\ProjectExportService;
 use App\Services\ProjectService;
 use App\Services\Pronunciation\PronunciationDetector;
 use App\Services\Pronunciation\PronunciationDictionary;
+use App\Services\Pronunciation\PronunciationSubstituter;
 use App\Services\SpokenQuotes;
 use App\Services\TextNormalizer;
 use App\Services\Tts\ChatterboxTuning;
@@ -65,6 +67,7 @@ class StudioProjectController extends Controller
         private readonly TextNormalizer $normalizer,
         private readonly PronunciationDetector $detector,
         private readonly PronunciationDictionary $dictionary,
+        private readonly PronunciationSubstituter $substituter,
         private readonly CreditService $credit,
     ) {}
 
@@ -235,6 +238,11 @@ class StudioProjectController extends Controller
 
         return view('admin.studio.projects.review', [
             'suggestions' => $suggestions,
+            // Approved dictionary entries the writer decided on before that will
+            // be applied to THIS text automatically — surfaced so a silent
+            // respelling (e.g. an "MP3" they approved weeks ago) is visible and
+            // removable right here, not a mystery on the finished audio.
+            'autoApplied' => $this->autoAppliedEntries($userId, $data['text']),
             'voice' => $voice,
             'params' => [
                 'title' => (string) ($data['title'] ?? ''),
@@ -310,6 +318,32 @@ class StudioProjectController extends Controller
         }, $suggestions);
 
         return ['suggestions' => $suggestions, 'provenance' => $detection['provenance'] ?? null];
+    }
+
+    /**
+     * The writer's already-approved dictionary entries whose term actually
+     * occurs in this text — i.e. the respellings that {@see persistWithDictionary}
+     * will apply automatically, with no checkbox to uncheck (approved terms are
+     * filtered out of the suggestion list). The review screen lists these so the
+     * writer can see and remove any they no longer want.
+     *
+     * @return Collection<int, PronunciationEntry>
+     */
+    private function autoAppliedEntries(?int $userId, string $text): Collection
+    {
+        $entries = PronunciationEntry::query()->ownedBy($userId)->approved()->orderBy('term')->get();
+        if ($entries->isEmpty()) {
+            return collect();
+        }
+
+        // Reuse the real substituter so "will apply" here matches what actually
+        // gets applied at create — same word-boundary and case rules.
+        $applied = $this->substituter->apply(
+            $this->normalizer->normalize($text),
+            $entries->map->toMapEntry()->all(),
+        )['applied'];
+
+        return $entries->filter(fn (PronunciationEntry $e) => in_array($e->term, $applied, true))->values();
     }
 
     /**
