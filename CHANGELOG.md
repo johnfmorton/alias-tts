@@ -6,6 +6,13 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Changed
+- **The Jobs page now paginates.** Background "Generate remaining" runs are
+  listed 50 to a page, newest first, instead of a single capped list that let
+  older runs age out of view. The live status poll follows the page you're on
+  (the `?page=` carries through), so it refreshes exactly the rows on screen
+  and every run stays reachable.
+
 ### Security
 - **Set-password and invite links are now single-use.** A link stops working
   the moment it's used to set a password — and any older link for the same

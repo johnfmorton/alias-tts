@@ -23,16 +23,26 @@ class ProjectJobController extends Controller
     public function index(Request $request): View
     {
         return view('admin.jobs.index', [
-            'jobs' => $this->visibleJobs($request->user())->with(['project', 'user', 'createdBy'])->get(),
+            'jobs' => $this->visibleJobs($request->user())
+                ->with(['project', 'user', 'createdBy'])
+                ->paginate(self::PAGE_SIZE)
+                ->withQueryString(),
             'isSuperAdmin' => $request->user()->isSuperAdmin(),
         ]);
     }
 
-    /** Poll target for the page: current payloads for every listed run. */
+    /**
+     * Poll target for the page: current payloads for the runs on the page being
+     * viewed. The page passes its ?page= through, so the poll refreshes exactly
+     * the rows on screen — forPage() slices without the paginator's count query.
+     */
     public function status(Request $request): JsonResponse
     {
+        $page = max(1, (int) $request->integer('page', 1));
+
         return response()->json([
             'jobs' => $this->visibleJobs($request->user())
+                ->forPage($page, self::PAGE_SIZE)
                 ->get()
                 ->map(fn (TtsProjectJob $job) => $job->statusPayload())
                 ->values(),
@@ -69,8 +79,9 @@ class ProjectJobController extends Controller
     }
 
     /**
-     * Runs this user may see, newest first, capped to keep the page (and its
-     * poll) light — old runs age out of view, not out of the table.
+     * Runs this user may see, newest first. The page paginates this; the poll
+     * fetches the same slice via forPage() — so no run ages out of reach, and
+     * the poll stays light by only touching the page on screen.
      *
      * @return Builder<TtsProjectJob>
      */
@@ -80,7 +91,6 @@ class ProjectJobController extends Controller
             ->when(! $user->isSuperAdmin(), fn (Builder $q) => $q->where(
                 fn (Builder $own) => $own->where('user_id', $user->id)->orWhere('created_by_id', $user->id),
             ))
-            ->latest('created_at')
-            ->limit(self::PAGE_SIZE);
+            ->latest('created_at');
     }
 }

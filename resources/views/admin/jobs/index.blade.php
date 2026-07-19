@@ -10,7 +10,7 @@
         ];
     @endphp
 
-    <div id="jobs-page" data-status-url="{{ route('admin.jobs.status') }}">
+    <div id="jobs-page" data-status-url="{{ route('admin.jobs.status', ['page' => $jobs->currentPage()]) }}">
         <p id="jobs-status" role="status" aria-live="polite" class="mb-2 text-sm text-zinc-400"></p>
 
         <div class="overflow-x-auto rounded-xl border border-zinc-800">
@@ -66,6 +66,64 @@
             </table>
         </div>
 
-        <p class="mt-3 text-xs text-zinc-600">Runs keep working after you leave the page. Stopping a running job finishes the clip it’s on, then winds down — finished clips are kept. Showing the latest {{ count($jobs) }} run(s).</p>
+        {{-- Pagination — newest first. Each page reloads server-side, which
+             re-points the poll (data-status-url carries ?page=) at the page you
+             land on; only a page holding an active run polls at all. --}}
+        <div class="mt-3 flex flex-wrap items-center justify-between gap-3">
+            <span class="text-xs text-zinc-500">
+                @if($jobs->total() > 0)
+                    Showing {{ $jobs->firstItem() }}–{{ $jobs->lastItem() }} of {{ $jobs->total() }} run(s)
+                @else
+                    No runs to show
+                @endif
+            </span>
+
+            @if($jobs->hasPages())
+                @php
+                    $last = $jobs->lastPage();
+                    $cur = $jobs->currentPage();
+                    $from = max(1, $cur - 1);
+                    $to = min($last, $cur + 1);
+                    $pageClass = 'inline-flex h-8 min-w-8 items-center justify-center rounded-md border border-zinc-800 px-1 text-xs text-zinc-300 transition hover:bg-zinc-800';
+                    $activeClass = 'inline-flex h-8 min-w-8 items-center justify-center rounded-md border border-cyan-500/30 bg-cyan-500/10 px-1 text-xs font-semibold text-cyan-300';
+                    $chev = 'inline-flex h-8 w-8 items-center justify-center rounded-md border border-zinc-800 text-zinc-300 transition hover:bg-zinc-800';
+                    $chevOff = 'inline-flex h-8 w-8 items-center justify-center rounded-md border border-zinc-800 text-zinc-600';
+                    $ellipsis = 'px-1 text-zinc-600';
+                @endphp
+                <nav class="flex items-center gap-1.5" aria-label="Jobs pagination">
+                    @if($jobs->onFirstPage())
+                        <span class="{{ $chevOff }}" aria-hidden="true">‹</span>
+                    @else
+                        <a href="{{ $jobs->previousPageUrl() }}" class="{{ $chev }}" aria-label="Previous page">‹</a>
+                    @endif
+
+                    @if($from > 1)
+                        <a href="{{ $jobs->url(1) }}" class="{{ $pageClass }}">1</a>
+                        @if($from > 2)<span class="{{ $ellipsis }}">…</span>@endif
+                    @endif
+
+                    @for($p = $from; $p <= $to; $p++)
+                        @if($p === $cur)
+                            <span class="{{ $activeClass }}" aria-current="page">{{ $p }}</span>
+                        @else
+                            <a href="{{ $jobs->url($p) }}" class="{{ $pageClass }}">{{ $p }}</a>
+                        @endif
+                    @endfor
+
+                    @if($to < $last)
+                        @if($to < $last - 1)<span class="{{ $ellipsis }}">…</span>@endif
+                        <a href="{{ $jobs->url($last) }}" class="{{ $pageClass }}">{{ $last }}</a>
+                    @endif
+
+                    @if($jobs->hasMorePages())
+                        <a href="{{ $jobs->nextPageUrl() }}" class="{{ $chev }}" aria-label="Next page">›</a>
+                    @else
+                        <span class="{{ $chevOff }}" aria-hidden="true">›</span>
+                    @endif
+                </nav>
+            @endif
+        </div>
+
+        <p class="mt-3 text-xs text-zinc-600">Runs keep working after you leave the page. Stopping a running job finishes the clip it’s on, then winds down — finished clips are kept.</p>
     </div>
 </x-layout>

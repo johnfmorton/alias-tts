@@ -650,4 +650,42 @@ class ProjectJobsTest extends TestCase
         $ids = $this->actingAs($this->admin())->getJson(route('admin.jobs.status'))->json('jobs.*.id');
         $this->assertEqualsCanonicalizing([$aliceJob->id, $bobJob->id], $ids);
     }
+
+    public function test_the_jobs_page_and_its_poll_paginate(): void
+    {
+        $user = User::factory()->create();
+        $project = $this->project($user->id);
+
+        // 51 runs over one project — one past a page — with distinct, ordered
+        // timestamps so newest-first paging is deterministic.
+        $jobs = [];
+        for ($i = 0; $i < 51; $i++) {
+            $jobs[] = TtsProjectJob::forceCreate([
+                'tts_project_id' => $project->id,
+                'user_id' => $user->id,
+                'created_by_id' => $user->id,
+                'chunk_ids' => [],
+                'chunks_total' => 0,
+                'created_at' => now()->addSeconds($i),
+            ]);
+        }
+        $newest = end($jobs);
+        $oldest = $jobs[0];
+
+        // Page 1's poll returns the 50 newest — the single oldest spills to page 2.
+        $page1 = $this->actingAs($user)->getJson(route('admin.jobs.status'))->json('jobs.*.id');
+        $this->assertCount(50, $page1);
+        $this->assertContains($newest->id, $page1);
+        $this->assertNotContains($oldest->id, $page1);
+
+        // The page-2 poll returns exactly the spillover run — no run is unreachable.
+        $page2 = $this->actingAs($user)->getJson(route('admin.jobs.status', ['page' => 2]))->json('jobs.*.id');
+        $this->assertSame([$oldest->id], $page2);
+
+        // The page itself renders the paginator: a next-page link and the total.
+        $this->actingAs($user)->get(route('admin.jobs.index'))
+            ->assertOk()
+            ->assertSee('of 51 run(s)')
+            ->assertSee('page=2');
+    }
 }
