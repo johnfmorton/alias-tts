@@ -71,7 +71,8 @@ first canary of the claim path before adding a second worker process.
    with exactly K workers on `generation` and the original worker left on
    `default`. If you set `TTS_GENERATION_QUEUE` but start no worker for that
    queue, runs will sit at "Waiting for a queue worker…" — the flag and the
-   worker topology must move together.
+   worker topology must move together. Step-by-step Forge instructions:
+   [DEDICATED-GENERATION-QUEUE.md](DEDICATED-GENERATION-QUEUE.md).
 
 4. Watch the signals in
    [GENERATION-CONCURRENCY.md §10](GENERATION-CONCURRENCY.md): run wall-clock

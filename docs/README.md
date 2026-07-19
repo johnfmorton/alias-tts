@@ -65,3 +65,7 @@ Start with the group that matches what you're doing.
   operations side of the above: what deploying changes (nothing, until an env
   var is set), how to enable and tune `K` on Forge/Docker/DDEV, why flag flips
   are safe mid-flight, and the one-variable kill switch.
+- **[DEDICATED-GENERATION-QUEUE.md](DEDICATED-GENERATION-QUEUE.md)** — Forge
+  walkthrough for giving chunk fan-out its own `generation` queue and worker
+  pool: exact worker settings, routing table, verification, the
+  health-probe caveat, and rollback in both directions.
