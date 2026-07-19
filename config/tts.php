@@ -242,6 +242,15 @@ return [
     // the value instance-wide and hides the hide/restore controls.
     'show_getting_started' => (bool) env('TTS_SHOW_GETTING_STARTED', true),
 
+    // Its siblings on the Studio, Voices, Pronunciations, and API Keys pages
+    // (see App\Support\GettingStarted). Each page's intro message is its own
+    // per-user flag so dismissing one never hides another; the Account page's
+    // "Restore Getting Started messages" button turns them all back on.
+    'show_getting_started_studio' => (bool) env('TTS_SHOW_GETTING_STARTED_STUDIO', true),
+    'show_getting_started_voices' => (bool) env('TTS_SHOW_GETTING_STARTED_VOICES', true),
+    'show_getting_started_pronunciations' => (bool) env('TTS_SHOW_GETTING_STARTED_PRONUNCIATIONS', true),
+    'show_getting_started_api' => (bool) env('TTS_SHOW_GETTING_STARTED_API', true),
+
     // Chunks shorter than this are merged into a neighbor so they are never sent
     // to the backend alone. Chatterbox is unreliable on very short inputs (a bare
     // "Why?" or a "The to-do list." heading) — it tends to return silence/garbage

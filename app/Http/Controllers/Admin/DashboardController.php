@@ -9,10 +9,12 @@ use App\Models\Speech;
 use App\Models\TtsProject;
 use App\Models\Voice;
 use App\Services\Settings\SettingsManager;
+use App\Support\GettingStarted;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Validator;
+use Illuminate\Validation\Rule;
 use Illuminate\View\View;
 
 class DashboardController extends Controller
@@ -54,17 +56,21 @@ class DashboardController extends Controller
     }
 
     /**
-     * Show/hide the Dashboard's getting-started guide for the signed-in user.
-     * JSON for the panel's fetch dismiss; redirect for the plain form posts
-     * (no-JS dismiss, Dashboard restore link, Account page). When
-     * TTS_SHOW_GETTING_STARTED is pinned in .env, saveFor() skips the write and
-     * the controls that reach here are hidden anyway — a stale page degrades to
-     * a no-op instead of an error.
+     * Show/hide a page's Getting Started message for the signed-in user —
+     * `page` picks which one (default: the Dashboard's, for older forms), and
+     * `all` restores every message at once (the Account page's button). JSON
+     * for the panels' fetch dismiss; redirect back for the plain form posts
+     * (no-JS dismiss, Dashboard restore link, Account page). When a page's key
+     * is pinned in .env, saveFor() skips the write and the controls that reach
+     * here are hidden anyway — a stale page degrades to a no-op, not an error.
      */
     public function setGettingStarted(Request $request, SettingsManager $settings): JsonResponse|RedirectResponse
     {
         // Explicit JSON 422 — admin paths don't auto-render validation as JSON.
-        $validator = Validator::make($request->all(), ['show' => ['required', 'boolean']]);
+        $validator = Validator::make($request->all(), [
+            'show' => ['required', 'boolean'],
+            'page' => ['sometimes', Rule::in([...array_keys(GettingStarted::PAGES), 'all'])],
+        ]);
         if ($validator->fails()) {
             if ($request->expectsJson()) {
                 return response()->json(['message' => $validator->errors()->first()], 422);
@@ -74,17 +80,22 @@ class DashboardController extends Controller
         }
 
         $show = $request->boolean('show');
+        $page = (string) $request->input('page', 'dashboard');
+        $keys = $page === 'all' ? array_values(GettingStarted::PAGES) : [GettingStarted::PAGES[$page]];
 
-        $settings->saveFor($request->user()->id, ['tts.show_getting_started' => $show]);
+        $settings->saveFor($request->user()->id, array_fill_keys($keys, $show));
 
         if ($request->expectsJson()) {
             return response()->json(['ok' => true]);
         }
 
-        return redirect()->route('admin.dashboard')->with(
+        return redirect()->back(fallback: route('admin.dashboard'))->with(
             'success',
-            $show ? 'Getting-started guide restored.'
-                  : 'Guide hidden — bring it back anytime from Settings or your Account page.'
+            match (true) {
+                $show && $page === 'all' => 'Getting Started messages restored.',
+                $show => 'Getting Started message restored.',
+                default => 'Message hidden — bring it back anytime from Settings or your Account page.',
+            }
         );
     }
 

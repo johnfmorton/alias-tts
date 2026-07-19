@@ -25,6 +25,15 @@
         $badgeBase = 'inline-flex shrink-0 items-center rounded-lg border px-[11px] py-1 text-[12.5px] font-semibold';
     @endphp
 
+    <x-getting-started page="studio" title="Welcome to Studio">
+        <p class="mt-1.5 max-w-[760px] text-sm text-zinc-400">Studio is where a script becomes finished audio. A <strong class="font-semibold text-zinc-300">project</strong> splits your text into chunks — short passages generated one at a time, so fixing one flubbed sentence never means re-rendering the whole piece.</p>
+        <ul class="mt-3 max-w-[760px] list-disc space-y-1.5 pl-5 text-[13px] leading-relaxed text-zinc-400">
+            <li>Every render is kept as a <strong class="font-semibold text-zinc-300">take</strong> — regenerate a chunk until it reads the way you want, then keep the best one.</li>
+            <li>When the whole read sounds right, download the stitched file — or seal it and get a verifiable receipt of exactly what you approved.</li>
+            <li>The <strong class="font-semibold text-zinc-300">Inspector</strong> tab shows how any text will be cleaned up and split into chunks, before you spend a render.</li>
+        </ul>
+    </x-getting-started>
+
     {{-- Segmented tab control — only one view is on screen at a time. --}}
     <div data-studio-tabs role="tablist" aria-label="Studio views"
          class="mb-[22px] inline-flex gap-1 rounded-xl border border-white/10 bg-panel p-1">

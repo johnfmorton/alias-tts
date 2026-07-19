@@ -5,14 +5,17 @@ namespace Tests\Feature;
 use App\Models\User;
 use App\Models\UserSetting;
 use App\Services\Settings\SettingsManager;
+use App\Support\GettingStarted;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
 
 /**
- * The Dashboard "Get started" guide. Backed by the managed per-user setting
- * tts.show_getting_started (default on): every user sees the panel until they
- * hide it, can bring it back from the Dashboard, Settings, or Account page,
- * and pinning TTS_SHOW_GETTING_STARTED in .env removes the controls entirely.
+ * The per-page "Getting Started" intro messages (Dashboard, Studio, Voices,
+ * Pronunciations, API Keys). Each page is backed by its own managed per-user
+ * bool (App\Support\GettingStarted, default on): every user sees a page's
+ * message until they hide it there, dismissing one page never hides another's,
+ * the Account page's "Restore Getting Started messages" button brings them all
+ * back, and pinning a page's env key removes that page's controls entirely.
  */
 class GettingStartedTest extends TestCase
 {
@@ -149,18 +152,100 @@ class GettingStartedTest extends TestCase
         $this->actingAs($other)->get(route('admin.dashboard'))->assertSee('Welcome to Alias');
     }
 
-    public function test_the_account_page_offers_the_restore_control_unless_pinned(): void
+    public function test_the_account_page_offers_the_restore_control_unless_every_key_is_pinned(): void
     {
         $user = $this->user();
 
         $this->actingAs($user)->get(route('admin.account.index'))
             ->assertOk()
-            ->assertSee('Show the guide again')
+            ->assertSee('Getting Started messages introduce key features')
+            ->assertSee('Restore Getting Started messages')
             ->assertSee(route('admin.dashboard.getting-started'), false);
 
+        // One pinned key still leaves messages the button can restore.
         $this->setLocked('tts.show_getting_started', true);
         $this->actingAs($user)->get(route('admin.account.index'))
             ->assertOk()
-            ->assertDontSee('Show the guide again');
+            ->assertSee('Restore Getting Started messages');
+
+        // Every key pinned = nothing to restore; the Interface card hides.
+        foreach (GettingStarted::PAGES as $key) {
+            $this->setLocked($key, true);
+        }
+        $this->actingAs($user)->get(route('admin.account.index'))
+            ->assertOk()
+            ->assertDontSee('Restore Getting Started messages');
+    }
+
+    public function test_each_page_shows_its_own_message_by_default(): void
+    {
+        $user = $this->user();
+
+        $this->actingAs($user)->get(route('admin.studio.index'))->assertSee('Welcome to Studio');
+        $this->actingAs($user)->get(route('admin.voices.index'))->assertSee('Welcome to Voices');
+        $this->actingAs($user)->get(route('admin.pronunciations.index'))->assertSee('Welcome to Pronunciations');
+        $this->actingAs($user)->get(route('admin.api-keys.index'))->assertSee('Welcome to API Keys');
+    }
+
+    public function test_dismissing_one_page_hides_only_that_pages_message(): void
+    {
+        $user = $this->user();
+
+        $this->actingAs($user)
+            ->postJson(route('admin.dashboard.getting-started'), ['page' => 'studio', 'show' => false])
+            ->assertOk()
+            ->assertJson(['ok' => true]);
+
+        $row = UserSetting::where('user_id', $user->id)->where('key', 'tts.show_getting_started_studio')->first();
+        $this->assertNotNull($row);
+        $this->assertFalse($row->value);
+
+        $this->actingAs($user)->get(route('admin.studio.index'))->assertDontSee('Welcome to Studio');
+        // The other pages' messages are untouched.
+        $this->actingAs($user)->get(route('admin.voices.index'))->assertSee('Welcome to Voices');
+        $this->actingAs($user)->get(route('admin.dashboard'))->assertSee('Welcome to Alias');
+    }
+
+    public function test_restore_all_brings_back_every_dismissed_message(): void
+    {
+        $user = $this->user();
+        foreach (GettingStarted::PAGES as $key) {
+            UserSetting::create(['user_id' => $user->id, 'key' => $key, 'value' => false]);
+        }
+
+        $this->actingAs($user)
+            ->post(route('admin.dashboard.getting-started'), ['page' => 'all', 'show' => 1])
+            ->assertRedirect()
+            ->assertSessionHas('success');
+
+        foreach (GettingStarted::PAGES as $key) {
+            $this->assertTrue(UserSetting::where('user_id', $user->id)->where('key', $key)->first()->value, $key);
+        }
+
+        $this->actingAs($user)->get(route('admin.studio.index'))->assertSee('Welcome to Studio');
+    }
+
+    public function test_an_unknown_page_is_rejected(): void
+    {
+        $this->actingAs($this->user())
+            ->postJson(route('admin.dashboard.getting-started'), ['page' => 'health', 'show' => false])
+            ->assertStatus(422);
+    }
+
+    public function test_a_pinned_page_key_hides_that_pages_dismiss_control(): void
+    {
+        $user = $this->user();
+        $this->setLocked('tts.show_getting_started_voices', true);
+
+        // Pinned on: the message shows but there is nothing to hide.
+        config(['tts.show_getting_started_voices' => true]);
+        $this->actingAs($user)->get(route('admin.voices.index'))
+            ->assertSee('Welcome to Voices')
+            ->assertDontSee('Hide this guide');
+
+        // An unpinned page keeps its dismiss control.
+        $this->actingAs($user)->get(route('admin.studio.index'))
+            ->assertSee('Welcome to Studio')
+            ->assertSee('Hide this guide');
     }
 }

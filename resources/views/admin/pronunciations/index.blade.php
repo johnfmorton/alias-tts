@@ -1,4 +1,13 @@
 <x-layout title="Pronunciations" description="Your personal respelling dictionary — applied to your text before it reaches the voice. Private to you.">
+    <x-getting-started page="pronunciations" title="Welcome to Pronunciations">
+        <p class="mt-1.5 max-w-[760px] text-sm text-zinc-400">When a voice mispronounces a name, an acronym, or a bit of jargon, add a respelling here — like “DDEV” said as “dee dev.” Respellings are applied to your text before it reaches the voice, on every generation.</p>
+        <ul class="mt-3 max-w-[760px] list-disc space-y-1.5 pl-5 text-[13px] leading-relaxed text-zinc-400">
+            <li>Alias also suggests respellings when you create a Studio project — the ones you approve are saved here automatically.</li>
+            <li>Press ▶ next to any respelling to hear your default voice say it before you commit.</li>
+            <li>Your dictionary is private to you and applies only to your own text.</li>
+        </ul>
+    </x-getting-started>
+
     <div class="mb-4 flex justify-end">
         <a href="{{ route('admin.pronunciations.create') }}" class="rounded-lg bg-cyan-500 px-4 py-2 text-sm font-medium text-zinc-950 hover:bg-cyan-400">Add pronunciation</a>
     </div>

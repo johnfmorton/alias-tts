@@ -67,12 +67,16 @@ class SettingsPageTest extends TestCase
         return UserSetting::where('user_id', $user->id)->where('key', $key)->first();
     }
 
-    public function test_the_interface_group_renders_the_getting_started_toggle(): void
+    public function test_the_interface_group_renders_a_getting_started_toggle_per_page(): void
     {
         $this->actingAs($this->user())->get(route('admin.settings.index'))
             ->assertOk()
             ->assertSee('Interface')
-            ->assertSee('Getting-started guide');
+            ->assertSee('Getting started — Dashboard')
+            ->assertSee('Getting started — Studio')
+            ->assertSee('Getting started — Voices')
+            ->assertSee('Getting started — Pronunciations')
+            ->assertSee('Getting started — API keys');
     }
 
     public function test_saving_the_form_persists_the_getting_started_flag(): void

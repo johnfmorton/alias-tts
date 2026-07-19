@@ -63,61 +63,47 @@
             <form id="getting-started-restore" method="POST" action="{{ route('admin.dashboard.getting-started') }}"
                   @class(['hidden' => $gettingStarted['show']])>
                 @csrf
+                <input type="hidden" name="page" value="dashboard">
                 <input type="hidden" name="show" value="1">
                 <button class="text-[12.5px] text-zinc-500 underline-offset-2 transition hover:text-zinc-300 hover:underline">Show getting started</button>
             </form>
         @endunless
     </div>
 
-    @if($gettingStarted['show'])
-        {{-- "Get started" guide — shown until the user hides it (or the key is
-             pinned via env). Dismiss is a real form so it works without JS;
-             app.js intercepts it to hide the panel in place. --}}
-        <section id="getting-started" aria-labelledby="getting-started-title"
-                 data-dismiss-url="{{ route('admin.dashboard.getting-started') }}"
-                 class="mb-8 rounded-[14px] border border-accent/30 bg-accent/5 px-7 py-6">
-            <h2 id="getting-started-title" class="text-[19px] font-bold text-zinc-100">Welcome to Alias</h2>
-            <p class="mt-1.5 max-w-[760px] text-sm text-zinc-400">Alias turns your text into natural speech — with a built-in voice, or a clone of your own. Pick a starting point:</p>
+    {{-- "Get started" guide — shown until the user hides it (or the key is
+         pinned via env); see the x-getting-started component. --}}
+    <x-getting-started page="dashboard" title="Welcome to Alias">
+        <p class="mt-1.5 max-w-[760px] text-sm text-zinc-400">Alias turns your text into natural speech — with a built-in voice, or a clone of your own. Pick a starting point:</p>
 
-            <div class="mt-5 grid grid-cols-1 gap-4 sm:grid-cols-2">
-                <a href="{{ route('admin.voices.create') }}"
-                   class="block rounded-[14px] border border-white/8 bg-panel px-6 py-[22px] transition hover:border-accent/40">
-                    <span class="flex h-10 w-10 items-center justify-center rounded-[11px] border border-accent/30 bg-accent/10 text-accent">
-                        <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-                            <rect x="9" y="3" width="6" height="11" rx="3"></rect>
-                            <path d="M5 11a7 7 0 0 0 14 0"></path>
-                            <path d="M12 18v3"></path>
-                        </svg>
-                    </span>
-                    <span class="mt-3.5 block text-[15px] font-semibold text-zinc-100">Clone your voice</span>
-                    <span class="mt-1 block text-[12.5px] leading-relaxed text-zinc-500">Record or upload 15–20 seconds of clean speech and get a voice that sounds like you.</span>
-                    <span class="mt-3 block text-sm font-semibold text-accent">Add a voice →</span>
-                </a>
-                <a href="{{ route('admin.studio.projects.create') }}"
-                   class="block rounded-[14px] border border-white/8 bg-panel px-6 py-[22px] transition hover:border-accent/40">
-                    <span class="flex h-10 w-10 items-center justify-center rounded-[11px] border border-accent/30 bg-accent/10 text-accent">
-                        <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-                            <path d="M8 5.5l11 6.5-11 6.5z"></path>
-                        </svg>
-                    </span>
-                    <span class="mt-3.5 block text-[15px] font-semibold text-zinc-100">Start with a built-in voice</span>
-                    <span class="mt-1 block text-[12.5px] leading-relaxed text-zinc-500">Paste your script into a Studio project and hear it read aloud in minutes.</span>
-                    <span class="mt-3 block text-sm font-semibold text-accent">Create a project →</span>
-                </a>
-            </div>
+        <div class="mt-5 grid grid-cols-1 gap-4 sm:grid-cols-2">
+            <a href="{{ route('admin.voices.create') }}"
+               class="block rounded-[14px] border border-white/8 bg-panel px-6 py-[22px] transition hover:border-accent/40">
+                <span class="flex h-10 w-10 items-center justify-center rounded-[11px] border border-accent/30 bg-accent/10 text-accent">
+                    <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                        <rect x="9" y="3" width="6" height="11" rx="3"></rect>
+                        <path d="M5 11a7 7 0 0 0 14 0"></path>
+                        <path d="M12 18v3"></path>
+                    </svg>
+                </span>
+                <span class="mt-3.5 block text-[15px] font-semibold text-zinc-100">Clone your voice</span>
+                <span class="mt-1 block text-[12.5px] leading-relaxed text-zinc-500">Record or upload 15–20 seconds of clean speech and get a voice that sounds like you.</span>
+                <span class="mt-3 block text-sm font-semibold text-accent">Add a voice →</span>
+            </a>
+            <a href="{{ route('admin.studio.projects.create') }}"
+               class="block rounded-[14px] border border-white/8 bg-panel px-6 py-[22px] transition hover:border-accent/40">
+                <span class="flex h-10 w-10 items-center justify-center rounded-[11px] border border-accent/30 bg-accent/10 text-accent">
+                    <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                        <path d="M8 5.5l11 6.5-11 6.5z"></path>
+                    </svg>
+                </span>
+                <span class="mt-3.5 block text-[15px] font-semibold text-zinc-100">Start with a built-in voice</span>
+                <span class="mt-1 block text-[12.5px] leading-relaxed text-zinc-500">Paste your script into a Studio project and hear it read aloud in minutes.</span>
+                <span class="mt-3 block text-sm font-semibold text-accent">Create a project →</span>
+            </a>
+        </div>
 
-            <p class="mt-4 text-[12.5px] text-zinc-500">Connecting an app or the Bespoken plugin? See <a href="#connect" class="text-accent hover:underline">Connect your app</a> below.</p>
-
-            @unless($gettingStarted['locked'])
-                <form data-getting-started-dismiss method="POST" action="{{ route('admin.dashboard.getting-started') }}"
-                      class="mt-5 border-t border-accent/15 pt-4 text-right">
-                    @csrf
-                    <input type="hidden" name="show" value="0">
-                    <button class="text-[12.5px] text-zinc-500 transition hover:text-zinc-300">Hide this guide ✕</button>
-                </form>
-            @endunless
-        </section>
-    @endif
+        <p class="mt-4 text-[12.5px] text-zinc-500">Connecting an app or the Bespoken plugin? See <a href="#connect" class="text-accent hover:underline">Connect your app</a> below.</p>
+    </x-getting-started>
 
     {{-- Destination cards --}}
     <div class="mb-3.5 text-xs font-bold uppercase tracking-[0.1em] text-accent">Manage</div>

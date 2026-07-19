@@ -1084,10 +1084,13 @@ function initStudioAdvancedToggle() {
 }
 initStudioAdvancedToggle();
 
-// Dashboard "Get started" guide: intercept the dismiss form, hide the panel in
-// place, reveal the header's restore control, persist via fetch. Without JS the
-// form still works as a plain POST. Both toggled roots are block-level, so
-// `hidden` alone is safe (no static flex/grid to pair — see the app.css note).
+// "Getting Started" intro messages (Dashboard, Studio, Voices, Pronunciations,
+// API Keys — one panel per page, see the x-getting-started component):
+// intercept the dismiss form, hide the panel in place, reveal the header's
+// restore control where the page has one (only the Dashboard does), persist
+// via fetch. Without JS the form still works as a plain POST. Both toggled
+// roots are block-level, so `hidden` alone is safe (no static flex/grid to
+// pair — see the app.css note).
 function initGettingStarted() {
     const panel = document.getElementById('getting-started');
     const form = panel?.querySelector('[data-getting-started-dismiss]');
@@ -1105,7 +1108,7 @@ function initGettingStarted() {
         fetch(panel.dataset.dismissUrl, {
             method: 'POST',
             headers: { 'X-CSRF-TOKEN': csrfToken(), 'Accept': 'application/json' },
-            body: new URLSearchParams({ show: '0' }),
+            body: new URLSearchParams({ show: '0', page: panel.dataset.page || 'dashboard' }),
         }).catch(() => {});
     });
 }

@@ -1,4 +1,13 @@
 <x-layout title="Voices" description="Each voice maps a voice_id to a reference clip for zero-shot cloning. Your voices are yours alone — other users only ever see the built-ins and their own.">
+    <x-getting-started page="voices" title="Welcome to Voices">
+        <p class="mt-1.5 max-w-[760px] text-sm text-zinc-400">A voice is a short reference recording plus your saved delivery settings. Record or upload 15–20 seconds of clean speech to clone a voice of your own, or start with the built-in defaults.</p>
+        <ul class="mt-3 max-w-[760px] list-disc space-y-1.5 pl-5 text-[13px] leading-relaxed text-zinc-400">
+            <li>Your voices are private — other users only ever see the built-ins and their own.</li>
+            <li>Drag to reorder: your order drives every voice dropdown, and the first voice is pre-selected for new projects.</li>
+            <li>Open a voice to tune its delivery by ear and save presets you can reuse anywhere.</li>
+        </ul>
+    </x-getting-started>
+
     <div class="mb-4 flex flex-wrap items-center justify-end gap-3">
         {{-- SuperAdmin-only: the owner filter, landing on the admin's own voices. --}}
         @if($showOwner)

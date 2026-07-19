@@ -6,6 +6,17 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Added
+- **Every main page now greets new users with a short intro.** Studio, Voices,
+  Pronunciations, and API Keys each get their own dismissable "Getting Started"
+  message — the same welcome pattern the Dashboard already had — explaining what
+  the page is for the first time you land on it. Each one hides independently
+  when you dismiss it, so clearing Studio's message leaves the others in place.
+  Bring any you've dismissed back in one click from the **Interface** section of
+  your Account page, or toggle each page's message individually in Settings.
+  Each message can also be pinned on or off instance-wide via its own
+  `TTS_SHOW_GETTING_STARTED_*` environment variable.
+
 ### Changed
 - **The Jobs page now paginates.** Background "Generate remaining" runs are
   listed 50 to a page, newest first, instead of a single capped list that let

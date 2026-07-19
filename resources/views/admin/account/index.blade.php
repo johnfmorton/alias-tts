@@ -246,12 +246,13 @@
             <h2 class="text-[17px] font-semibold text-zinc-100">Interface</h2>
             <div class="mt-4 flex flex-wrap items-center justify-between gap-5">
                 <p class="max-w-[440px] text-[13px] leading-relaxed text-zinc-400">
-                    The Dashboard's getting-started guide walks you through cloning a voice or creating your first project.
+                    Getting Started messages introduce key features and help you use the app. Restore any messages you previously dismissed.
                 </p>
                 <form method="POST" action="{{ route('admin.dashboard.getting-started') }}">
                     @csrf
+                    <input type="hidden" name="page" value="all">
                     <input type="hidden" name="show" value="1">
-                    <button type="submit" class="{{ $btnSecondary }} shrink-0">Show the guide again</button>
+                    <button type="submit" class="{{ $btnSecondary }} shrink-0">Restore Getting Started messages</button>
                 </form>
             </div>
         </div>

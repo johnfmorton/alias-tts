@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Models\User;
 use App\Services\Settings\SettingsManager;
 use App\Services\TwoFactorService;
+use App\Support\GettingStarted;
 use Illuminate\Contracts\Filesystem\Filesystem;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -37,8 +38,9 @@ class AccountController extends Controller
                 'secret' => $user->hasTwoFactorPending() ? $user->two_factor_secret : null,
             ],
             'providers' => $this->providerStatus($user),
-            // Env-pinned guide = nothing to restore; the Interface card hides.
-            'gettingStartedLocked' => $settings->isLocked('tts.show_getting_started'),
+            // Only when EVERY message's key is env-pinned is there nothing the
+            // restore button could bring back — then the Interface card hides.
+            'gettingStartedLocked' => collect(GettingStarted::PAGES)->every(fn (string $key) => $settings->isLocked($key)),
         ]);
     }
 

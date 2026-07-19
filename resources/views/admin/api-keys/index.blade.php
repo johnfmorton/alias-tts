@@ -1,4 +1,13 @@
 <x-layout title="API Keys" description="One key works in both dialects — send it as the xi-api-key header (ElevenLabs) or a Bearer token (OpenAI).">
+    <x-getting-started page="api" title="Welcome to API Keys">
+        <p class="mt-1.5 max-w-[760px] text-sm text-zinc-400">API keys let other apps speak with your Alias voices. One key works in both dialects — send it as the <code class="rounded bg-white/[0.06] px-1.5 py-0.5 font-mono text-[12px] text-zinc-300">xi-api-key</code> header (ElevenLabs-compatible) or as a <code class="rounded bg-white/[0.06] px-1.5 py-0.5 font-mono text-[12px] text-zinc-300">Bearer</code> token (OpenAI-compatible).</p>
+        <ul class="mt-3 max-w-[760px] list-disc space-y-1.5 pl-5 text-[13px] leading-relaxed text-zinc-400">
+            <li>Create a separate key for each app or site, so you can revoke one without breaking the rest.</li>
+            <li>The Dashboard’s Connect card has copy-paste connection examples with your key and voices filled in.</li>
+            <li>Everything generated with your keys runs as you — your voices, your settings, and your usage.</li>
+        </ul>
+    </x-getting-started>
+
     @if(session('new_key'))
         <div class="mb-4 rounded-lg border border-cyan-500/30 bg-cyan-500/10 p-4">
             <div class="text-sm font-medium text-cyan-300">New key created — copy it now:</div>
