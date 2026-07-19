@@ -6,7 +6,6 @@ use App\Enums\ChunkStatus;
 use App\Enums\ProjectJobStatus;
 use App\Jobs\GenerateProjectChunksJob;
 use App\Jobs\GenerateProjectChunkWorkerJob;
-use App\Models\TtsChunk;
 use App\Models\TtsProject;
 use App\Models\TtsProjectJob;
 use App\Models\User;
