@@ -1,244 +1,402 @@
 # Bounded-concurrency generation
 
-**Status: planned design note — not built yet.** Chunk generation is
-deliberately serial today (see below). This document sketches a *safe* way to
-run a bounded number of chunks in flight to cut wall-clock on multi-chunk
-renders, and the guardrails that make it safe. Parked on priority, not merit:
-the serial path is correct and reliable, and concurrency buys latency, not
-throughput-per-dollar. Nothing here is wired up.
+**Status: future design note — not built yet.** The production path remains
+serial. This note grounds its provider assumptions in Replicate's current
+documentation and in the operating constraint that the Replicate account will
+remain a paid account with more than $20 in credit.
+
+The short conclusion: bounded concurrency is a credible way to reduce the
+wall-clock time of multi-chunk renders. Start with Studio background generation
+at `K = 2`, measure it against the serial baseline, and increase only while the
+latency benefit remains clear and errors remain flat.
 
 ---
 
-## 1. What happens today (and why it is deliberate)
+## 1. Verified provider assumptions
 
-Every chunk is sent to the provider as a single, blocking call, and each loop
-waits for one chunk to finish before starting the next. There is no batching,
-no `Http::pool`, no `Bus::batch`, and no parallel fan-out anywhere in the
-Replicate path.
+These assumptions are specific to the two endpoints used by the application:
 
-- **The provider call blocks on one chunk.**
-  `ReplicateChatterboxProvider::synthesize()`
-  (`app/Services/Tts/ReplicateChatterboxProvider.php:81`) POSTs one prediction
-  with `Prefer: wait`, then `awaitCompletion()` (`:260`) polls every 750 ms
-  until that single prediction is terminal before returning.
-- **Every generation loop is serial.**
-  - `/v1` + queued speech: `SpeechService::process()`
-    (`app/Services/SpeechService.php:173`) — `foreach` segment, `synthesize()`
-    blocks each before the next; `$rawParts[]` accumulate in index order.
-  - Studio per-chunk: `ProjectService::generateChunk()`.
-  - Background "Generate remaining": `GenerateProjectChunksJob::handle()`
-    (`app/Jobs/GenerateProjectChunksJob.php:91`) — `for` loop with an
-    `usleep($paceMs * 1000)` **between** chunks.
-- **One worker in production.** `docker/supervisord.conf` runs a single
-  `queue:work` with no `numprocs`, so exactly one worker drains jobs.
+- `resemble-ai/chatterbox`
+- `resemble-ai/chatterbox-turbo`
 
-This is not an oversight — it protects against three real forces, all of which
-any concurrency design has to answer:
+As of 2026-07-19, both are **official Replicate models**. Replicate documents
+official models as always on and warm, with stable APIs and predictable
+pricing. Both Chatterbox endpoints are currently priced at **$0.025 per 1,000
+input characters**.
 
-1. **Replicate's burst rate limit.** Prediction creation is capped (e.g.
-   "6/min, burst 1") and returns HTTP 429 with a `retry_after` hint. The serial
-   stream plus `sendWithRetry()` (`:292`) and `respectRequestGap()` (`:365`)
-   keeps us under it.
-2. **Cold-GPU transient faults.** A burst of predictions spins up cold GPU
-   replicas that fail with transient CUDA asserts / OOM. Serial generation
-   keeps the active replica count near one; `predictWithFailureRetry()` (`:208`)
-   re-rolls the occasional transient failure. The `GenerateProjectChunksJob`
-   docblock calls this out explicitly.
-3. **Cost shape.** Replicate bills per input character *and* by GPU time;
-   cold-starting extra replicas can *add* cost. **Concurrency buys latency, not
-   throughput-per-dollar** — it does not make a render cheaper, and done naively
-   it makes it more expensive and less reliable.
+Consequences for this design:
+
+1. **Cold starts are not an expected operating state for these endpoints.** A
+   concurrency experiment does not need to provision or warm replicas.
+2. **Parallelism does not change the price of the same successful inputs.**
+   Sending 20 chunks serially or with bounded overlap sends the same number of
+   billable characters. Retries and duplicate predictions can still add cost.
+3. **The normal prediction-creation limit is 600 requests per minute.** The
+   much lower limit of one request per second and six per minute applies to
+   granted-credit accounts without a payment method. Replicate may strengthen
+   limits as purchased credit runs low; this application will keep the account
+   above $20, avoiding that documented low-credit condition.
+4. **A 429 remains possible.** Account-specific limits, service-side policy
+   changes, or future traffic growth still justify reactive retry and
+   observability. They do not make a distributed limiter a prerequisite for a
+   `K = 2` experiment.
+
+Primary sources:
+
+- [Official models](https://replicate.com/docs/topics/models/official-models)
+- [Rate limits](https://replicate.com/docs/topics/predictions/rate-limits)
+- [Chatterbox model and pricing](https://replicate.com/resemble-ai/chatterbox)
+- [Chatterbox Turbo model and pricing](https://replicate.com/resemble-ai/chatterbox-turbo)
+- [Synchronous and asynchronous predictions](https://replicate.com/docs/topics/predictions/create-a-prediction)
+
+Provider status, pricing, and rate limits are external facts and must be
+rechecked immediately before implementation.
 
 ---
 
-## 2. Goal and non-goals
+## 2. What the application does today
 
-**Goal.** Cut wall-clock on a multi-chunk render (e.g. a 40-chunk article) by
-running a small, bounded number of chunks in flight — *without* triggering 429
-storms, cold-GPU failures, credit overshoot, or any regression to the plugin's
-`/v1` path.
+A render is serial **within each generation operation**:
+
+- `ReplicateChatterboxProvider::synthesize()` creates one prediction using
+  `Prefer: wait`, polls it if necessary, downloads its output, and returns only
+  after that prediction finishes.
+- `SpeechService::process()` iterates through speech segments with `foreach`.
+  Each call to `synthesize()` finishes before the next begins.
+- `GenerateProjectChunksJob::handle()` iterates through project chunks with a
+  `for` loop and normally sleeps 800 ms between chunks.
+- `ProjectService::generateChunk()` renders one persisted chunk at a time.
+- Production Supervisor launches one queue worker, so queued speeches and
+  Studio runs also wait behind one another.
+
+There is no `Http::pool`, promise fan-out, per-chunk job batch, or
+`max_concurrency` setting in the current path.
+
+One qualification matters: the app is not necessarily globally serial.
+Separate FrankenPHP web requests can overlap. For example, two users manually
+generating chunks through separate requests may create simultaneous Replicate
+predictions even though each request is internally serial. The current
+`min_request_gap_ms` state is per provider process, not a global account-wide
+limit.
+
+---
+
+## 3. Goal, scope, and non-goals
+
+**Goal.** Reduce end-to-end wait time for multi-chunk generation by keeping a
+small, configurable number of independent chunks in flight.
+
+**Initial scope.** Studio's queued **Generate remaining** operation. It already
+persists each result independently and is the safest place to measure the
+benefit.
+
+**Later scope.** Queued `/v1` speech and, only if justified separately,
+synchronous `/v1` requests.
 
 **Non-goals.**
 
-- Unbounded parallelism. The ceiling is a small, configurable `K` (start at
-  2–3), never "as many as there are chunks."
-- Rewriting per-chunk rendering. Each chunk keeps flowing through the exact
-  existing `generateChunk()` / `synthesize()` path — retry, ASR QA, credit
-  charge, spend counters, seed pin all unchanged. Concurrency wraps *around*
-  that code, never inside it.
-- Touching the synchronous `/v1` default. The plugin path stays serial unless
-  and until a later, separately gated phase (§7) proves otherwise.
+- Unbounded fan-out.
+- Changing chunking, model inputs, audio cleanup, ASR behavior, or stitching.
+- Assuming concurrency improves quality or reduces price.
+- Deploying the feature before the current release review.
+- Moving synchronous API generation to concurrency as part of the first phase.
 
 ---
 
-## 3. Design principles
+## 4. Expected benefit
 
-1. **Bounded.** A configurable `K`; **default `K = 1` is byte-for-byte today's
-   behavior**. The feature ships as a no-op.
-2. **Globally rate-limited.** One shared token bucket across *all* workers,
-   sized to Replicate's real account limit, independent of `K`. This is the
-   keystone — see §5. `K` without a shared limiter is a footgun.
-3. **Reuse, don't rewrite.** Concurrency is added around the unchanged
-   per-chunk path.
-4. **Order-independent.** Chunks reassemble by index at stitch time;
-   completion order is irrelevant.
-5. **Feature-flagged, default-off.** Enabled per-environment, measured, then
-   tuned. Never on by default without prod evidence.
-6. **Fail-isolated.** One chunk failing never fails its siblings (matches
-   today's "record on the chunk and move on").
+For `N` similarly sized chunks with concurrency `K`:
 
----
+```text
+serial provider time   ~= N × average chunk time
+bounded provider time  ~= ceil(N / K) × average chunk time
+```
 
-## 4. Recommended architecture — batched per-chunk jobs (Design A)
+For 20 chunks averaging eight seconds each, the ideal provider-time envelope
+is approximately:
 
-Apply concurrency to the **queued / background paths first** (Studio "Generate
-remaining", and the queued speech job) — never the in-request `/v1` path
-first, where the caller is blocked on the response anyway and plugin safety is
-paramount.
+| `K` | Ideal time | Ideal speedup |
+| ---: | ---: | ---: |
+| 1 | 160 s | 1.0x |
+| 2 | 80 s | 2.0x |
+| 3 | 56 s | 2.9x |
+| 4 | 40 s | 4.0x |
 
-- Replace the single `GenerateProjectChunksJob` for-loop with a **`Bus::batch`
-  of per-chunk jobs** (`GenerateChunkJob`), one per outstanding chunk (or per
-  small shard).
-- `->allowFailures()` so a bad chunk records and the batch carries on.
-- **Concurrency `K` = the number of queue workers** pulling the batch's
-  dedicated queue (`supervisord` `numprocs = K`). Worker count is the simplest,
-  most Laravel-native lever and needs no new fan-out machinery.
-- Each `GenerateChunkJob`: acquire a slot from the **shared limiter** (§5),
-  block/retry if none, then call `generateChunk()` **unchanged**.
-- **Reassembly** stays keyed by chunk index — takes are already persisted
-  per-chunk and the final assembly reads chunks in order, so completion order
-  does not matter. Stitch/seal runs from the batch's `then()` completion
-  callback.
-- **Progress:** `chunks_done` already uses an atomic SQL `increment()`, which
-  is concurrency-safe. "Creating clip N of M" becomes "N of M complete" (a
-  strict sequence number loses meaning under concurrency).
-- **Cancellation:** `cancel_requested` → `$batch->cancel()`; each job re-checks
-  the flag before it runs, as the loop does today.
-- **Mid-run insert (`queueChunk`):** a dispatched batch is immutable, so an
-  inserted chunk is added with `$batch->add()` rather than mutating a cursor.
+Actual speedup will be lower because chunks differ in length and the local ASR,
+downloads, persistence, retries, and final assembly still consume time. The
+slowest prediction in each wave also limits completion. Provider-side queuing
+may cause the benefit to flatten as `K` increases.
 
-Why this shape: it isolates each chunk (a failure, a slow render, or a worker
-kill touches one chunk, not the run), reuses 100% of the per-chunk logic, and
-lets `K` be a pure ops dial (worker count) rather than application code.
+The change primarily buys **lower latency for one render**. Whether it also
+improves total multi-user throughput depends on Replicate capacity and local
+worker resources.
 
 ---
 
-## 5. The keystone: a shared, distributed rate limiter
+## 5. Recommended architecture: per-chunk queued jobs
 
-Today's `respectRequestGap()` and `sendWithRetry()` are **per-process**. With
-`K` workers, each independently believes it is within limits, so together they
-issue up to `K×` the request rate — a 429 storm *and* a cold-replica burst,
-i.e. exactly the two failure modes the serial design avoids. **The entire
-safety of the design rests on moving the throttle from per-process to global.**
+Use a parent run record plus one queue job per outstanding chunk. Keep the
+existing serial implementation available behind a feature flag during rollout.
 
-- Use a **Redis token bucket** (Laravel's `Redis::throttle` / `RateLimiter`, or
-  a small atomic Lua bucket). Size it to Replicate's **actual account rate**
-  (predictions/min), *not* to `K`.
-- **`K` and the rate limit are different dials and both matter.** `K` bounds
-  how many replicas can be warm at once (cold-GPU risk); the rate limit bounds
-  how fast we *create* predictions (429 risk). A render can be well under the
-  rate limit yet still cold-start too many replicas if `K` is high, and vice
-  versa.
-- Keep `sendWithRetry()`'s reactive 429 backoff as a **backstop**; the shared
-  limiter is the *proactive* primary defense.
-- **Infra note:** production is `QUEUE_CONNECTION=database` today with no Redis.
-  This design either adds Redis, or implements a DB-backed atomic bucket
-  (`SELECT … FOR UPDATE` on a counter row). That choice is an open decision
-  (§9).
+```text
+Studio run
+   |
+   +-- chunk job 1 -- existing generateChunk() path -- persisted take
+   +-- chunk job 2 -- existing generateChunk() path -- persisted take
+   +-- chunk job 3 -- existing generateChunk() path -- persisted take
+   |                  ... at most K jobs executing ...
+   +-- completion coordinator -- final run status / optional assembly
+```
 
----
+Implementation shape for future work:
 
-## 6. Credit races
+- Dispatch one job for each eligible chunk, associated with the existing
+  `TtsProjectJob` run.
+- Put these jobs on a dedicated generation queue. Run exactly `K` workers for
+  that queue; start with `K = 2`.
+- Each job re-fetches the run and chunk, checks cancellation and eligibility,
+  then calls `ProjectService::generateChunk()` without changing its provider,
+  ASR, take, spend, or timing logic.
+- A chunk failure remains isolated: record it on that chunk and increment the
+  run's failure count without canceling successful siblings.
+- Persist results by chunk identity and assemble by project position, never by
+  completion order.
+- Mark the parent run complete only when all scheduled chunk jobs have reached
+  a terminal state.
 
-Today the pre-flight `canSpend()` check and the charge-once map are evaluated
-sequentially. With `K` chunks in flight, up to `K` can pass `canSpend()` before
-any of them charges — overshooting a near-zero balance by up to `K − 1` chunks.
+Laravel `Bus::batch` is a reasonable coordinator, but it is not mandatory. A
+batch introduces framework batch metadata and requires careful handling of
+chunks inserted into an active run. The existing `TtsProjectJob` counters can
+also coordinate ordinary per-chunk jobs. Choose between them during
+implementation after testing cancellation, dynamic insertion, and recovery
+semantics—not merely because batching provides fan-out syntax.
 
-Options, cheapest first:
+Why queue jobs rather than `Http::pool` first:
 
-- **(a) Accept a bounded overshoot ≤ `K`.** With `K` at 2–3 this is a few
-  cents at the very end of a balance. Simplest; document it. Recommended for
-  Phase 1.
-- **(b) Reserve-and-settle.** Hold an estimated debit at batch dispatch, settle
-  actuals on completion.
-- **(c) Atomic check-and-debit.** The ledger is already append-only; do the
-  balance check and debit in one transaction so no two jobs both "see" the last
-  dollar.
-
----
-
-## 7. Rollout phases
-
-- **Phase 0 — limiter only, zero concurrency.** Introduce the shared limiter
-  and route the *existing serial path* through it at `K = 1`. Proves the
-  limiter under real traffic with no concurrency risk. Adds Redis (or the DB
-  bucket).
-- **Phase 1 — Studio "Generate remaining" at `K = 2`, behind the flag,
-  opt-in per environment.** Measure 429 rate, transient-failure rate, cost per
-  render, and wall-clock vs the serial baseline.
-- **Phase 2 — tune `K` on prod** from the Phase-1 metrics; consider `K` per
-  plan/tier.
-- **Phase 3 (optional) — the `/v1` path** via in-process `Http::pool` (Design
-  B below), only after the Studio path is proven, and gated so the plugin
-  default is untouched.
+- They reuse the complete existing per-chunk transaction boundary.
+- One failed or killed worker affects one chunk rather than an in-process set.
+- Worker count provides an understandable concurrency ceiling.
+- Persisted chunks naturally tolerate out-of-order completion.
+- The web request does not remain open while several external calls run.
 
 ---
 
-## 8. Alternative — in-process `Http::pool` (Design B, documented, not first)
+## 6. Concurrency control and rate limiting
 
-`Http::pool` fires `K` create-calls concurrently within a single PHP process.
-Because `Prefer: wait` mostly returns a finished prediction, you fire `K`
-creates and poll only the stragglers.
+`K` is the primary initial safety control. It caps simultaneous predictions,
+local ASR work, downloads, and database writes. With `K = 2` or `K = 3`, the
+application is far below the documented 600 prediction creations per minute
+under ordinary traffic.
 
-- **Fits** the in-request `/v1` path, where there is no worker to fan out to and
-  you want one request's internal latency reduced.
-- **Downsides:** you must reimplement the create/await/retry state machine to
-  run `K` predictions concurrently; the shared limiter is *still* required if
-  multiple `/v1` requests run at once; and one PHP process holds `K` sockets
-  open for up to the wait window each. Good for a single request's internal
-  speedup, poor for cross-request safety — hence Phase 3, `/v1` only.
+For the first canary:
 
----
+- Keep the existing 429 retry/backoff behavior.
+- Record every prediction creation, 429 response, retry delay, and final
+  outcome.
+- Keep the Replicate account above $20 as an operating requirement.
+- Do not add Redis solely for this experiment.
 
-## 9. Testing, observability, rollback
+A **shared account-wide limiter** becomes appropriate when any of these become
+true:
 
-**Testing.**
-- Unit: the limiter (bucket exhaustion, refill, cross-process behavior via a
-  Redis fake).
-- Feature: batch dispatch count; `allowFailures` isolation; cancel mid-batch;
-  mid-run `add()`; **reassembly order == chunk index regardless of completion
-  order**; credit overshoot bounded ≤ `K`.
-- Canary: a 40-chunk project at `K = 2` on staging against real Replicate —
-  assert no 429 storm, transient-failure rate within noise, final audio
-  ordering correct.
-- The **entire existing serial suite stays green at `max_concurrency = 1`**
-  (the default).
+- multiple app instances are deployed;
+- generation worker count grows materially;
+- synchronous web traffic and queued traffic together approach the provider
+  limit;
+- 429s occur at healthy credit despite low `K`;
+- Replicate assigns a lower account-specific limit.
 
-**Observability.** Log effective `K`, per-batch 429 count, transient re-roll
-count, a cold-start proxy (prediction-latency distribution), wall-clock vs
-serial baseline, and cost per render. These drive Phase-2 tuning.
+At that point use a Redis token bucket or a database-backed atomic limiter.
+Configure it from the verified account limit and keep reactive 429 handling as
+a backstop. The limiter governs *creation rate*; `K` independently governs
+*work in flight*.
 
-**Rollback.** `max_concurrency = 1` restores exact current behavior with a
-config flip — no deploy. At `K = 1` the shared limiter reduces to today's
-pacing. The `Bus::batch` path can live behind the flag alongside the current
-for-loop until it is proven.
-
-**New config (defaults preserve today).**
-
-| Key | Default | Meaning |
-| --- | --- | --- |
-| `tts.generation.max_concurrency` | `1` | chunks in flight; `1` == today |
-| `tts.providers.replicate.rate_limit_per_min` | account limit | shared bucket size (proactive) |
-| `tts.providers.replicate.min_request_gap_ms` | `0` (existing) | per-process fallback at `K = 1` |
-| `tts.studio_generate_pace_ms` | `800` (existing) | inter-chunk pace at `K = 1` |
+The current per-process `min_request_gap_ms` can remain as a serial fallback,
+but it must not be mistaken for an account-wide limiter once several workers
+exist.
 
 ---
 
-## 10. Open decisions
+## 7. Reliability and correctness constraints
 
-- **Redis vs DB bucket** for the shared limiter — a new infra dependency vs
-  slightly more application code on the existing database queue.
-- **Credit overshoot** — accept a bounded ≤ `K` overshoot, or build
-  reserve-and-settle.
-- **Does `/v1` (the plugin path) ever get concurrency**, or stay deliberately
-  serial for plugin safety forever?
+Concurrency changes ordering and race behavior even when provider behavior is
+unchanged. Future implementation must explicitly preserve these invariants:
+
+- **Ordering:** final audio follows project chunk position, not finish time.
+- **Idempotency:** a retried queue job cannot create an unintended second take
+  or double-charge local credit for the same attempt.
+- **Claiming:** two workers cannot generate the same chunk simultaneously.
+  Claim work atomically with a state transition or database lock.
+- **Cancellation:** queued jobs observe cancellation before prediction
+  creation; in-flight Replicate predictions should be canceled when practical.
+- **Deletion and edits:** jobs re-fetch state and reject deleted, skipped,
+  completed, or superseded chunks.
+- **Progress:** expose completed/failed counts. A sequential label such as
+  “Creating clip 7 of 20” is misleading when several clips are in flight.
+- **Run completion:** only one coordinator transitions the parent run to its
+  terminal state.
+- **Recovery:** a worker termination leaves the chunk safely retryable without
+  losing already persisted siblings.
+
+### Local credit race
+
+The guaranteed Replicate balance removes the provider's low-credit throttle;
+it does **not** remove the application's own customer-credit race. Several
+chunk jobs could all pass `canSpend()` before any one records its debit.
+
+Before enabling customer-facing concurrency, choose one policy:
+
+1. Accept and document a bounded overshoot at small `K`.
+2. Reserve estimated customer credit before dispatch and settle afterward.
+3. Atomically check and debit customer credit in one database transaction.
+
+This issue concerns the application's ledger, not the Replicate account.
+
+---
+
+## 8. Remaining risks
+
+Cold-starting official Chatterbox replicas is not an expected risk. The
+remaining risks are:
+
+- Replicate-side queuing reduces the theoretical speedup.
+- Concurrent predictions expose an existing model or infrastructure fault more
+  frequently even though cold boot is not its assumed cause.
+- Retries or duplicate claims synthesize the same characters more than once.
+- Concurrent ASR work can contend for the local sidecar's CPU/GPU capacity and
+  erase some provider latency gains.
+- Concurrent downloads and writes increase local memory, network, and storage
+  pressure.
+- Multiple workers complicate cancellation, run completion, dynamic chunk
+  insertion, and credit enforcement.
+- Future changes in Replicate model status, pricing, or limits invalidate the
+  assumptions in §1.
+
+The existing transient CUDA retry remains useful because observed failures are
+real application evidence. The design should stop attributing those failures
+to official-model cold starts unless production measurements demonstrate that
+causal relationship.
+
+---
+
+## 9. Rollout and experiment plan
+
+### Phase 0 — establish the serial baseline
+
+Use representative projects—for example 10, 20, and 40 chunks—with both
+classic and Turbo. Capture:
+
+- total wall-clock time;
+- prediction `starting`, queued, processing, and total durations when exposed;
+- per-chunk input length and generation duration;
+- 429 count and retry delay;
+- prediction failure and transient reroll count;
+- ASR duration and reroll count;
+- Replicate characters and charge;
+- local CPU, memory, and ASR utilization.
+
+### Phase 1 — Studio canary at `K = 2`
+
+Enable only for an administrator or test environment. Run the same fixed
+projects and compare medians and tail latency with Phase 0. Validate final
+audio order and every reliability invariant in §7.
+
+Proceed only if:
+
+- median wall-clock improves materially (a provisional target is at least
+  30%);
+- p95 failure and reroll rates remain within baseline noise;
+- no duplicate takes or local credit charges occur;
+- no unexplained Replicate charge increase occurs;
+- local ASR and storage remain healthy.
+
+### Phase 2 — tune `K`
+
+Test `K = 3`, then optionally `K = 4`, one change at a time. Stop when speedup
+flattens, p95 latency worsens, failures rise, or local contention appears. Do
+not assume the largest safe `K` is the best operational setting.
+
+### Phase 3 — broaden background use
+
+After Studio has enough production evidence, consider queued `/v1` speech.
+That path currently accumulates in-memory audio parts and has different
+failure, concatenation, progress, and charging behavior, so it needs a
+separate design review.
+
+### Phase 4 — optional synchronous `/v1`
+
+Only consider in-request concurrency if real client latency requires it.
+`Http::pool` or an asynchronous prediction state machine would require a
+provider-level rewrite and would hold more request resources. It should not be
+coupled to the background rollout.
+
+---
+
+## 10. Testing, observability, and rollback
+
+**Automated testing**
+
+- Atomic chunk claiming and idempotent retry.
+- Completion in a deliberately shuffled order followed by correctly ordered
+  assembly.
+- One failed chunk does not cancel siblings.
+- Cancellation before dispatch, while queued, and while predictions are in
+  flight.
+- Project/chunk deletion and edits during a run.
+- Worker termination and retry after provider success but before persistence.
+- Dynamic insertion or regeneration during a run.
+- Parent counters and final state under simultaneous updates.
+- Customer-credit behavior selected in §7.
+- Existing serial behavior remains unchanged at `K = 1`.
+
+**Production signals**
+
+- effective `K` and number of active generation workers;
+- run wall-clock and per-chunk latency distributions by model;
+- Replicate queued/starting/processing time where available;
+- prediction creates, 429s, retries, failures, and cancellation outcomes;
+- duplicate/idempotency suppression count;
+- billed input characters and application cost per successful character;
+- ASR duration, utilization, and rerolls;
+- queue wait time and depth by queue.
+
+**Rollback**
+
+- A feature flag selects the current serial loop.
+- `max_concurrency = 1` is the safe default.
+- Keep the serial implementation until the concurrent path has meaningful
+  production history.
+- Reducing worker count must take effect without a data migration.
+
+---
+
+## 11. Candidate configuration
+
+Names are illustrative until implementation:
+
+| Key | Initial value | Meaning |
+| --- | ---: | --- |
+| `tts.generation.concurrent_enabled` | `false` | Select concurrent background path |
+| `tts.generation.max_concurrency` | `1` | Maximum background chunks in flight |
+| `tts.generation.queue` | `generation` | Dedicated queue for chunk jobs |
+| `tts.providers.replicate.min_request_gap_ms` | `0` | Existing per-process pacing fallback |
+| `tts.studio_generate_pace_ms` | `800` | Existing serial-path inter-chunk delay |
+
+Do not hard-code 600 requests/minute into the application merely because it is
+the current public default. If a distributed limiter is later required, make
+its configured value an operational setting verified against the account.
+
+---
+
+## 12. Decisions to revisit at implementation time
+
+- `Bus::batch` versus ordinary per-chunk jobs coordinated by `TtsProjectJob`.
+- Exact atomic chunk-claim and idempotency mechanism.
+- Customer-credit reservation, atomic debit, or bounded overshoot.
+- Whether the local ASR sidecar supports `K > 1` effectively.
+- How a chunk inserted into an active run joins the outstanding work set.
+- Whether prediction IDs should be persisted to support cancellation and
+  recovery.
+- When traffic justifies a shared distributed rate limiter.
+- Whether synchronous `/v1` should remain permanently serial.
+- Reverification of official-model status, pricing, and account limits.

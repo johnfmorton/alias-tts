@@ -57,7 +57,8 @@ Start with the group that matches what you're doing.
   covers Replicate-level model choice; this note is about entirely different
   engines, e.g. LMNT.)
 - **[GENERATION-CONCURRENCY.md](GENERATION-CONCURRENCY.md)** — *future design
-  note, not built yet:* chunk generation is serial by design (Replicate burst
-  limits, cold-GPU faults); this sketches a safe, bounded, globally
-  rate-limited way to run a few chunks in flight to cut wall-clock, with a
-  default-off flag and a phased rollout.
+  note, not built yet:* chunk generation is serial within each operation; this
+  sketches a safe, bounded way to keep a few chunks in flight (per-chunk queued
+  jobs, capped by worker count) to cut wall-clock on multi-chunk renders —
+  grounded in primary-source provider facts, with a default-off flag and a
+  measured rollout.
