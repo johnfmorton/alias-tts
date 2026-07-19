@@ -19,7 +19,7 @@ FROM dunglas/frankenphp:1-php8.3 AS base
 # pdo_sqlite/sqlite3 ship with the official PHP images; the rest mirrors CI
 # (.github/workflows/ci.yml) plus pdo_mysql for installs that point DB_* at
 # MySQL/MariaDB instead of the bundled SQLite.
-RUN install-php-extensions bcmath intl pcntl pdo_mysql zip opcache \
+RUN install-php-extensions bcmath intl pcntl pdo_mysql zip opcache gd \
     && cp "$PHP_INI_DIR/php.ini-production" "$PHP_INI_DIR/php.ini"
 
 # ─── Dashboard assets (Vite + Tailwind) ───────────────────────────────────────

@@ -4087,9 +4087,32 @@ function initAccount() {
     const fileInput = document.getElementById('avatar-input');
     const avatarForm = document.getElementById('avatar-form');
     if (changeBtn && fileInput && avatarForm) {
+        // Instant feedback only — the server re-validates, re-encodes, and downsamples.
+        const errorEl = document.getElementById('avatar-error');
+        const MAX_BYTES = 4 * 1024 * 1024;
+        const ALLOWED = ['image/jpeg', 'image/png', 'image/webp'];
+        const showError = (msg) => {
+            if (errorEl) { errorEl.textContent = msg; errorEl.classList.remove('hidden'); }
+        };
+        const clearError = () => errorEl && errorEl.classList.add('hidden');
+
         changeBtn.addEventListener('click', () => fileInput.click());
         fileInput.addEventListener('change', () => {
-            if (fileInput.files.length) avatarForm.submit();
+            clearError();
+            const file = fileInput.files[0];
+            if (!file) return;
+            // Trust an explicit disallowed type; let an empty/unknown type fall through to the server.
+            if (file.type && !ALLOWED.includes(file.type)) {
+                showError('Please choose a JPG, PNG, or WebP image.');
+                fileInput.value = '';
+                return;
+            }
+            if (file.size > MAX_BYTES) {
+                showError('That image is over 4 MB. Please choose a smaller file.');
+                fileInput.value = '';
+                return;
+            }
+            avatarForm.submit();
         });
     }
 

@@ -4,9 +4,11 @@ namespace App\Http\Controllers\Admin;
 
 use App\Http\Controllers\Controller;
 use App\Models\User;
+use App\Services\AvatarProcessor;
 use App\Services\Settings\SettingsManager;
 use App\Services\TwoFactorService;
 use App\Support\GettingStarted;
+use Closure;
 use Illuminate\Contracts\Filesystem\Filesystem;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -14,6 +16,7 @@ use Illuminate\Http\Response;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Storage;
+use Illuminate\Support\Str;
 use Illuminate\Validation\Rules\Password;
 use Illuminate\View\View;
 
@@ -82,21 +85,44 @@ class AccountController extends Controller
         return back()->with('success', 'Password changed.');
     }
 
-    public function updateAvatar(Request $request): RedirectResponse
+    public function updateAvatar(Request $request, AvatarProcessor $processor): RedirectResponse
     {
         $request->validate([
-            'avatar' => ['required', 'image', 'mimes:jpg,jpeg,png,webp', 'max:4096'],
+            'avatar' => [
+                'required', 'image', 'mimes:jpg,jpeg,png,webp', 'max:4096',
+                // Guard against decompression bombs before the processor decodes:
+                // getimagesize() reads only the header, so a tiny file claiming
+                // gigapixel dimensions is rejected without allocating the bitmap.
+                function (string $attribute, mixed $value, Closure $fail): void {
+                    $info = @getimagesize($value->getRealPath());
+                    if ($info === false) {
+                        $fail('The photo must be a valid image file.');
+
+                        return;
+                    }
+                    if ($info[0] * $info[1] > AvatarProcessor::MAX_SOURCE_PIXELS) {
+                        $fail('The photo is too large in dimensions. Please use an image under 40 megapixels.');
+                    }
+                },
+            ],
         ]);
 
         $user = $request->user();
         $old = $user->avatar_path;
 
+        // Re-encode to a small square WebP. This strips anything riding along in
+        // the original file and downsamples large images — we store only the
+        // result, never the uploaded bytes. Random filename, fixed extension.
+        $webp = $processor->toWebp($request->file('avatar'));
+        $path = 'avatars/'.Str::uuid()->toString().'.webp';
+
         // Same private disk as audio (B2 in prod); served back via the proxy route.
-        $path = $request->file('avatar')->store('avatars', config('tts.storage_disk'));
+        $disk = $this->avatarDisk();
+        $disk->put($path, $webp);
         $user->update(['avatar_path' => $path]);
 
-        if ($old) {
-            $this->avatarDisk()->delete($old);
+        if ($old && $old !== $path) {
+            $disk->delete($old);
         }
 
         return back()->with('success', 'Photo updated.');
@@ -135,6 +161,8 @@ class AccountController extends Controller
 
         return response($disk->get($user->avatar_path), 200, [
             'Content-Type' => $mime,
+            // Never let a browser sniff a stored avatar into something executable.
+            'X-Content-Type-Options' => 'nosniff',
             'Cache-Control' => 'private, max-age=86400',
         ]);
     }

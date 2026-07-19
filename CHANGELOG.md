@@ -16,6 +16,11 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   your Account page, or toggle each page's message individually in Settings.
   Each message can also be pinned on or off instance-wide via its own
   `TTS_SHOW_GETTING_STARTED_*` environment variable.
+- **Profile photos are resized for you.** Upload any JPG, PNG, or WebP up to
+  4 MB and it's cropped to a neat square and scaled down automatically — there's
+  no need to prepare the image yourself, and a hint on the Account page spells
+  out the format and size. Photos are stored as compact WebP, so they load fast
+  everywhere they appear.
 
 ### Changed
 - **The Jobs page now paginates.** Background "Generate remaining" runs are
@@ -31,6 +36,13 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   or force-reset). Previously a link kept working for its full 7-day window and
   could be replayed. A spent or superseded link now sends the visitor to the
   sign-in page with a note to ask an admin for a fresh one.
+- **Uploaded profile photos are re-encoded server-side.** Every avatar is
+  decoded and re-written as a fresh square WebP, so anything that might be
+  hidden inside the original file — metadata-embedded code, payloads appended
+  after the image data — is discarded rather than stored or served. Uploads are
+  now bounded by pixel dimensions as well as file size (rejecting
+  "decompression-bomb" images that are tiny on disk but enormous when decoded),
+  and avatars are served with an `X-Content-Type-Options: nosniff` header.
 
 ## [0.67.0] - 2026-07-18
 

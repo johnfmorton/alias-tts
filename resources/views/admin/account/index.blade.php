@@ -32,12 +32,12 @@
     <div class="{{ $card }} mb-5">
         <h2 class="text-[17px] font-semibold text-zinc-100">Profile</h2>
 
-        <div class="mt-5 mb-[22px] flex items-center gap-4">
+        <div class="mt-5 mb-2 flex items-center gap-4">
             <x-avatar :user="$user" :size="64" class="border border-accent/40" />
             <div class="flex items-center gap-2.5">
                 <form id="avatar-form" method="POST" action="{{ route('admin.account.avatar') }}" enctype="multipart/form-data">
                     @csrf
-                    <input id="avatar-input" name="avatar" type="file" accept="image/*" class="hidden">
+                    <input id="avatar-input" name="avatar" type="file" accept="image/jpeg,image/png,image/webp" class="hidden">
                     <button id="avatar-change" type="button" class="{{ $btnSecondary }}">Change photo</button>
                 </form>
                 @if($user->avatar_path)
@@ -49,6 +49,13 @@
                 @endif
             </div>
         </div>
+        <p id="avatar-hint" class="mb-[22px] text-xs text-zinc-500">
+            Use a square photo for the sharpest result. JPG, PNG, or WebP, up to 4&nbsp;MB. High-resolution photos are cropped to a square and scaled down automatically.
+        </p>
+        <p id="avatar-error" class="mb-[22px] hidden text-xs text-warn" role="alert"></p>
+        @error('avatar')
+            <p class="mb-[22px] text-xs text-warn" role="alert">{{ $message }}</p>
+        @enderror
 
         <form method="POST" action="{{ route('admin.account.profile') }}">
             @csrf
