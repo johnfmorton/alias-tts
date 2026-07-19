@@ -1515,6 +1515,84 @@ class StudioProjectTest extends TestCase
         $this->assertNull($chunk->settings);
     }
 
+    public function test_take_tuning_labels_name_the_delivery_archetype_or_custom_mix(): void
+    {
+        $project = $this->project();
+        $chunk = $project->chunks()->orderBy('position')->first();
+
+        // Each take carries an exact knob override; its label should read as the
+        // matching Delivery archetype (Steady/Balanced/Expressive) or spell out a
+        // "Custom: …" mix. Created directly so one chunk holds every case at once.
+        // Turbo takes are recognised by their own knobs (top_p/top_k/…), so they
+        // read correctly even on this classic-voiced chunk. [$override, $expected]:
+        $cases = [
+            [['exaggeration' => 0.50, 'cfg_weight' => 0.50, 'temperature' => 0.80], 'Balanced'],
+            [['exaggeration' => 0.35, 'cfg_weight' => 0.65, 'temperature' => 0.65], 'Steady'],
+            [['exaggeration' => 0.85, 'cfg_weight' => 0.40, 'temperature' => 1.00], 'Expressive'],
+            [['exaggeration' => 0.62, 'cfg_weight' => 0.55, 'temperature' => 0.90], 'Custom: exaggeration 0.62 · cfg/pace 0.55 · temp 0.90'],
+            [['temperature' => 0.65, 'top_p' => 0.85, 'top_k' => 500, 'repetition_penalty' => 1.30], 'Steady'],
+            [['temperature' => 0.90, 'top_p' => 0.90, 'top_k' => 800, 'repetition_penalty' => 1.25], 'Custom: top-p 0.90 · top-k 800 · rep. penalty 1.25 · temp 0.90'],
+        ];
+
+        $expected = [];
+        foreach ($cases as [$override, $label]) {
+            $take = $chunk->takes()->create([
+                'audio_path' => 'takes/'.Str::uuid().'.wav',
+                'text' => $chunk->text,
+                'settings' => $override,
+                'source' => 'generate',
+                'characters' => mb_strlen($chunk->text),
+            ]);
+            $expected[$take->id] = $label;
+        }
+
+        // An empty override inherited the neutral defaults — which ARE Balanced,
+        // so it reads as the archetype rather than a bare "inherited".
+        $inherited = $chunk->takes()->create([
+            'audio_path' => 'takes/'.Str::uuid().'.wav',
+            'text' => $chunk->text,
+            'settings' => null,
+            'source' => 'duplicate',
+            'characters' => mb_strlen($chunk->text),
+        ]);
+        $expected[$inherited->id] = 'Balanced';
+
+        $labels = collect(
+            $this->actingAs($this->admin())
+                ->getJson(route('admin.studio.projects.chunks.takes.index', [$project, $chunk]))
+                ->assertOk()
+                ->json('takes')
+        )->pluck('tuning_label', 'id');
+
+        foreach ($expected as $id => $label) {
+            $this->assertSame($label, $labels[$id], "take {$id}");
+        }
+    }
+
+    public function test_an_inherited_take_reads_balanced_from_its_chunk_turbo_voice(): void
+    {
+        $project = $this->project();
+        $chunk = $project->chunks()->orderBy('position')->first();
+
+        // With no engine-naming knobs of its own, an empty override falls back to
+        // the chunk's current voice engine; a turbo voice resolves it against
+        // turbo's neutral defaults — still the Balanced archetype.
+        $turbo = Voice::create(['slug' => 'turbo', 'name' => 'Turbo', 'model' => 'chatterbox-turbo']);
+        $chunk->update(['voice_id' => $turbo->id]);
+        $chunk->takes()->create([
+            'audio_path' => 'takes/'.Str::uuid().'.wav',
+            'text' => $chunk->text,
+            'settings' => null,
+            'source' => 'generate',
+            'characters' => mb_strlen($chunk->text),
+        ]);
+
+        $this->actingAs($this->admin())
+            ->getJson(route('admin.studio.projects.chunks.takes.index', [$project, $chunk]))
+            ->assertOk()
+            ->assertJsonPath('takes.0.tuning_label', 'Balanced');
+    }
+
     public function test_selecting_a_legacy_take_without_text_keeps_the_chunk_text(): void
     {
         $project = $this->project();

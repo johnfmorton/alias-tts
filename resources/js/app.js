@@ -2488,14 +2488,16 @@ function initStudioProject() {
     function takeRow(card, take) {
         const li = document.createElement('li');
         li.dataset.takeId = take.id;
-        li.className = 'chunk-take flex flex-wrap items-center gap-2 rounded-lg border px-2 py-1.5 '
+        // Layout (columns) is owned by the .chunk-take grid in app.css so rows
+        // line up across chunks; this className only carries the box styling.
+        li.className = 'chunk-take rounded-lg border px-2 py-1.5 '
             + (take.selected ? 'border-emerald-600/50 bg-emerald-500/10' : 'border-zinc-800 bg-zinc-950/40');
 
         // Custom player (take weight): enhanceStudioPlayers() (called by
-        // renderTakes) wires it up.
+        // renderTakes) wires it up. Fills the grid's first (1fr) column.
         const player = buildAPlayer('take', {
             label: 'Play take',
-            extraClass: 'min-w-0 flex-1' + (take.selected ? ' aplayer--selected' : ''),
+            extraClass: 'min-w-0' + (take.selected ? ' aplayer--selected' : ''),
         });
         // Recorded length: enhanceStudioPlayers prints it immediately, so the
         // duration is visible without playing (preload stays 'none' — no request).
@@ -2506,19 +2508,22 @@ function initStudioProject() {
 
         const meta = document.createElement('div');
         meta.className = 'flex min-w-0 flex-col text-xs text-zinc-500';
-        // Provenance + selection state. A plain generate take has no source
-        // label (the unmarked default), so its top line is just "selected" —
-        // or nothing at all, in which case the line is left out entirely.
+        // Provenance line: just the source label (e.g. "copied from the original
+        // project"). Selection isn't spelled out here — the "✓ Selected" button
+        // already says so — and a plain generate take has no label, so this line
+        // is left out entirely.
         const line1 = document.createElement('span');
         line1.className = take.selected ? 'text-emerald-300' : 'text-zinc-400';
-        line1.textContent = [TAKE_SOURCE_LABELS[take.source] ?? take.source, take.selected ? 'selected' : '']
-            .filter(Boolean).join(' · ');
+        line1.textContent = TAKE_SOURCE_LABELS[take.source] ?? take.source;
         const line2 = document.createElement('span');
-        // Show the seed this take rendered at: the pinned number, or "random" when
-        // it rolled unpinned (Replicate doesn't report the seed it chose). Lets a
-        // good pinned take be spotted and re-pinned in the field above.
-        const seedText = take.seed ? `seed ${take.seed}` : 'seed random';
-        line2.textContent = take.tuning_label + ' · ' + seedText + (take.created_human ? ' · ' + take.created_human : '');
+        // Delivery/tuning label (archetype name or "Custom: …", built server-side)
+        // · the pinned seed IF one was set (a random draw isn't worth a segment,
+        // and Replicate never reports the seed it chose) · relative time.
+        // Assembled from present parts so nothing dangles.
+        const line2Parts = [take.tuning_label];
+        if (take.seed) line2Parts.push(`seed ${take.seed}`);
+        if (take.created_human) line2Parts.push(take.created_human);
+        line2.textContent = line2Parts.filter(Boolean).join(' · ');
         if (line1.textContent) meta.append(line1);
         meta.append(line2);
         if (take.asr_badge) {
@@ -2531,7 +2536,7 @@ function initStudioProject() {
         }
 
         const actions = document.createElement('div');
-        actions.className = 'ml-auto flex items-center gap-1.5';
+        actions.className = 'flex items-center gap-1.5';
         const selectBtn = document.createElement('button');
         selectBtn.type = 'button';
         selectBtn.className = 'chunk-take-select rounded-lg border border-zinc-700 px-2.5 py-1 text-xs hover:bg-zinc-800 disabled:cursor-default disabled:border-emerald-700/50 disabled:text-emerald-300 disabled:hover:bg-transparent';

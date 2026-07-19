@@ -299,6 +299,33 @@
 }
 
 /*
+ * Take rows share one grid so their columns line up ROW-TO-ROW and — because
+ * every chunk's list uses the same track sizes — CHUNK-TO-CHUNK as well:
+ *   [ player (fills) · tuning meta (fixed) · Select/Delete ]
+ * The meta track is a fixed width so the player's time readout and the action
+ * buttons land at the same x whatever a take's label reads; a long "Custom: …"
+ * label wraps inside the track instead of shoving the columns out of line.
+ * Un-layered plain CSS — the row no longer carries a Tailwind `flex` utility.
+ */
+.chunk-take {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) 16rem max-content;
+    align-items: center;
+    gap: 8px;
+}
+/* Select/✓ Selected share a width so the Delete column doesn't jog per row. */
+.chunk-take-select {
+    min-width: 5.5rem;
+    text-align: center;
+}
+@media (max-width: 767px) {
+    /* Too narrow to align three columns — stack them so nothing overflows. */
+    .chunk-take {
+        grid-template-columns: minmax(0, 1fr);
+    }
+}
+
+/*
  * Project header (11C): the status pill carries a state-colored dot and a
  * capitalized label. Driven as an id rule so it survives badge()'s className
  * rewrites in app.js (which set the base + STATUS_STYLES color classes); the

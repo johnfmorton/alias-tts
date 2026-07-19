@@ -20,6 +20,19 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   Enter to take it), marks **Duplicate instead** in caution yellow, and paints
   **Edit their project** in hazard red, so the riskiest action no longer looks
   like the primary button.
+- **A take's tuning now reads as its Delivery name instead of a knob dump.** In
+  the Studio takes list, a take rendered at a preset shows **Steady** /
+  **Balanced** / **Expressive**; anything off-preset reads **Custom: …** with the
+  knobs spelled out (engine-aware — classic prints exaggeration/cfg-pace, Turbo
+  prints top-p/top-k/rep-penalty). An inherited take now reads **Balanced** (its
+  effective neutral default) rather than a bare "inherited". The redundant
+  "selected" word is gone (the ✓ Selected button already says so), and the seed
+  only appears when one was actually pinned — no more "seed random" noise.
+- **Take rows line up into columns across chunks.** The takes list is now a
+  fixed-track grid, so the scrubber, time, tuning label, and Select/Delete
+  buttons land at the same position in every row and every chunk regardless of
+  how long a take's label is; long "Custom: …" labels wrap inside their column
+  instead of shoving the layout sideways.
 
 ## [0.68.0] - 2026-07-19
 

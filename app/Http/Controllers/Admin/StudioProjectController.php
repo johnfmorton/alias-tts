@@ -23,6 +23,8 @@ use App\Services\Pronunciation\PronunciationDictionary;
 use App\Services\SpokenQuotes;
 use App\Services\TextNormalizer;
 use App\Services\Tts\ChatterboxTuning;
+use App\Services\Tts\ChatterboxTurboTuning;
+use App\Services\Tts\DeliveryPresets;
 use App\Services\Tts\ModelCatalog;
 use App\Services\Tts\VoiceSettingsResolver;
 use App\Support\GenerationCost;
@@ -1650,8 +1652,12 @@ class StudioProjectController extends Controller
 
     private function takesPayload(TtsProject $project, TtsChunk $chunk): array
     {
+        // The chunk's current voice decides how a take with an engine-neutral
+        // override (empty, or temperature-only) is labelled; a take whose own
+        // knobs name an engine overrides this (see takeEngine()).
+        $engine = ModelCatalog::forVoice($chunk->voice ?? $project->voice);
         $selectedId = null;
-        $takes = $chunk->takes->map(function (TtsChunkTake $take) use ($project, $chunk, &$selectedId) {
+        $takes = $chunk->takes->map(function (TtsChunkTake $take) use ($project, $chunk, $engine, &$selectedId) {
             $selected = $take->audio_path !== null && $take->audio_path === $chunk->audio_path;
             if ($selected) {
                 $selectedId = $take->id;
@@ -1663,7 +1669,7 @@ class StudioProjectController extends Controller
                 'created_human' => $take->created_at?->diffForHumans(),
                 'audio_url' => route('admin.studio.projects.chunks.takes.audio', [$project, $chunk, $take]),
                 'selected' => $selected,
-                'tuning_label' => $this->tuningLabel(is_array($take->settings) ? $take->settings : []),
+                'tuning_label' => $this->tuningLabel(is_array($take->settings) ? $take->settings : [], $engine),
                 // Audio length recorded at synthesis, so the player can print the
                 // duration without loading metadata (null on unparsable legacy takes).
                 'duration_ms' => $take->duration_ms,
@@ -1677,30 +1683,115 @@ class StudioProjectController extends Controller
     }
 
     /**
-     * Human label of the tuning a take was rendered at. Reads native keys
-     * (exaggeration/cfg_weight) when present, else maps the ElevenLabs
-     * stability/style to their native equivalents so legacy takes read
-     * consistently. An empty override means the take inherited the project tuning.
+     * Human label of the tuning a take was rendered at — the friendly Delivery
+     * archetype name (Steady / Balanced / Expressive) when the take's knobs
+     * match one, else "Custom: …" spelling out the engine's native knobs. An
+     * empty override resolves to the engine's neutral defaults, which ARE the
+     * Balanced archetype, so an inherited take reads "Balanced" rather than a
+     * bare "inherited". Engine-aware: classic prints exaggeration/cfg-pace,
+     * turbo prints top-p/top-k/rep-penalty (temperature is shared).
+     *
+     * @param  array<string, mixed>  $settings
+     * @param  string  $chunkEngine  the chunk's current voice engine, consulted
+     *                               only when the take's own knobs don't reveal one.
+     */
+    private function tuningLabel(array $settings, string $chunkEngine): string
+    {
+        $engine = $this->takeEngine($settings, $chunkEngine);
+        $native = $this->nativeTuning($settings, $engine);
+
+        return $this->matchArchetype($native, $engine)
+            ?? 'Custom: '.$this->customTuning($native, $engine);
+    }
+
+    /**
+     * The engine a take was rendered with. Turbo-only knobs (top_p/top_k/
+     * repetition_penalty) or classic-only knobs (exaggeration/cfg_weight) pin
+     * the answer even if the chunk's voice has since switched engines; an
+     * engine-neutral override (empty, or only temperature/stability/style)
+     * can't tell, so it trusts the chunk's current voice.
      *
      * @param  array<string, mixed>  $settings
      */
-    private function tuningLabel(array $settings): string
+    private function takeEngine(array $settings, string $chunkEngine): string
     {
-        $tuning = array_intersect_key($settings, array_flip(['stability', 'style', 'exaggeration', 'cfg_weight', 'temperature']));
-        if ($tuning === []) {
-            return 'inherited';
+        if (array_intersect_key($settings, array_flip(['top_p', 'top_k', 'repetition_penalty'])) !== []) {
+            return 'chatterbox-turbo';
         }
 
-        $native = ChatterboxTuning::resolveNative($settings);
-        $label = sprintf('exaggeration %.2f · cfg/pace %.2f', $native['exaggeration'], $native['cfg_weight']);
-
-        // Only name temperature when the take actually overrode it, so inherited
-        // takes stay terse (temperature has no EL twin, so read it directly).
-        if (isset($settings['temperature'])) {
-            $label .= sprintf(' · temp %.2f', ChatterboxTuning::clampTemperature((float) $settings['temperature']));
+        if (array_intersect_key($settings, array_flip(['exaggeration', 'cfg_weight'])) !== []) {
+            return ModelCatalog::DEFAULT;
         }
 
-        return $label;
+        return $chunkEngine;
+    }
+
+    /**
+     * Resolve a settings override to the full native knob set for its engine,
+     * including the effective temperature (its default when unset) so an
+     * archetype match can compare every knob.
+     *
+     * @param  array<string, mixed>  $settings
+     * @return array<string, float|int>
+     */
+    private function nativeTuning(array $settings, string $engine): array
+    {
+        if ($engine === 'chatterbox-turbo') {
+            return ChatterboxTurboTuning::resolveNative($settings);
+        }
+
+        return ChatterboxTuning::resolveNative($settings) + [
+            'temperature' => ChatterboxTuning::clampTemperature(
+                (float) ($settings['temperature'] ?? ChatterboxTuning::TEMPERATURE_DEFAULT),
+            ),
+        ];
+    }
+
+    /**
+     * The Delivery archetype label whose knob values a resolved native map
+     * matches exactly (float knobs within a hair, top_k as an int), or null for
+     * a Custom mix. Reads the same {@see DeliveryPresets} the chips apply.
+     *
+     * @param  array<string, float|int>  $native
+     */
+    private function matchArchetype(array $native, string $engine): ?string
+    {
+        foreach (DeliveryPresets::forEngine($engine) as $preset) {
+            foreach ($preset['values'] as $knob => $value) {
+                $current = $native[$knob] ?? null;
+                $matches = $knob === 'top_k'
+                    ? (int) $current === (int) $value
+                    : $current !== null && abs((float) $current - (float) $value) < 0.005;
+                if (! $matches) {
+                    continue 2;
+                }
+            }
+
+            return $preset['label'];
+        }
+
+        return null;
+    }
+
+    /**
+     * The "Custom" knob readout for a resolved native map, worded to match the
+     * fine-tune sliders the user sees for that engine.
+     *
+     * @param  array<string, float|int>  $native
+     */
+    private function customTuning(array $native, string $engine): string
+    {
+        if ($engine === 'chatterbox-turbo') {
+            return sprintf(
+                'top-p %.2f · top-k %d · rep. penalty %.2f · temp %.2f',
+                $native['top_p'], $native['top_k'], $native['repetition_penalty'], $native['temperature'],
+            );
+        }
+
+        return sprintf(
+            'exaggeration %.2f · cfg/pace %.2f · temp %.2f',
+            $native['exaggeration'], $native['cfg_weight'], $native['temperature'],
+        );
     }
 
     /**
