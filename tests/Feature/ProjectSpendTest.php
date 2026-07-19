@@ -163,7 +163,7 @@ class ProjectSpendTest extends TestCase
         // system, the project-jobs table, the generation-timings table, the
         // voice-clip status column, and the take-voice column sit on top of it —
         // bump this when a migration lands above them.
-        Artisan::call('migrate:rollback', ['--step' => 10]);
+        Artisan::call('migrate:rollback', ['--step' => 11]);
         Artisan::call('migrate', ['--force' => true]);
 
         $this->assertSame(2 * mb_strlen($chunk->text), $chunk->fresh()->spent_characters);

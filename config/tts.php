@@ -383,6 +383,23 @@ return [
     // asserts). 0 = no delay (back-to-back).
     'studio_generate_pace_ms' => (int) env('TTS_STUDIO_GENERATE_PACE_MS', 800),
 
+    // Bounded-concurrency background generation (docs/GENERATION-CONCURRENCY.md).
+    // Env-only by design (like TTS_CREDIT_MARKUP) — an operator experiment, not
+    // a Settings key. Off by default: "Generate remaining" then uses the serial
+    // GenerateProjectChunksJob exactly as before. When enabled, a run dispatches
+    // min(max_concurrency, outstanding) claim-based worker jobs instead; actual
+    // parallelism is ALSO capped by how many queue workers listen on `queue`
+    // (one worker still executes the jobs one after another, correctly).
+    // max_concurrency=1 keeps the claim path serial — the safe first canary.
+    'generation' => [
+        'concurrent_enabled' => (bool) env('TTS_CONCURRENT_GENERATION', false),
+        'max_concurrency' => (int) env('TTS_GENERATION_CONCURRENCY', 1),
+        // Queue name for chunk-worker jobs; null = the default queue. A
+        // dedicated queue (e.g. "generation") with exactly K workers is the
+        // intended production shape once the experiment graduates.
+        'queue' => env('TTS_GENERATION_QUEUE'),
+    ],
+
     // Learned generation-time estimate ("~2 min remaining"). Each successful
     // render records its wall-clock into tts_generation_timings, bucketed by
     // model, and the running average drives the ETA. `defaults` seed the

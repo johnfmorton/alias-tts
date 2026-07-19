@@ -34,6 +34,8 @@ class TtsProjectJob extends Model
         'chunks_total',
         'chunks_done',
         'chunks_failed',
+        'concurrency',
+        'chunks_claimed',
         'cancel_requested',
         'error',
         'started_at',
@@ -47,6 +49,8 @@ class TtsProjectJob extends Model
         'chunks_total' => 'integer',
         'chunks_done' => 'integer',
         'chunks_failed' => 'integer',
+        'concurrency' => 'integer',
+        'chunks_claimed' => 'integer',
         'cancel_requested' => 'boolean',
         'started_at' => 'datetime',
         'finished_at' => 'datetime',
@@ -71,6 +75,16 @@ class TtsProjectJob extends Model
     public function isActive(): bool
     {
         return $this->status->isActive();
+    }
+
+    /**
+     * Executed by claim-based worker jobs (bounded concurrency) rather than the
+     * legacy serial loop. The claim cursor `chunks_claimed` is only meaningful
+     * for these runs; the serial loop's cursor stays chunks_done+chunks_failed.
+     */
+    public function claimBased(): bool
+    {
+        return $this->concurrency !== null;
     }
 
     /** @param Builder<self> $query */
@@ -107,6 +121,9 @@ class TtsProjectJob extends Model
             $this->status === ProjectJobStatus::Queued && $this->cancel_requested,
             $this->status === ProjectJobStatus::Running && $this->cancel_requested => ['Stopping after the current clip…', null],
             $this->status === ProjectJobStatus::Queued => ['Waiting for a queue worker…', null],
+            // Several clips are in flight on a concurrent run — a sequential
+            // "Creating clip N" would be a lie there, so count landings instead.
+            $this->status === ProjectJobStatus::Running && $this->concurrency > 1 => [sprintf('Creating clips — %d of %d done', $processed, $this->chunks_total), null],
             $this->status === ProjectJobStatus::Running => [sprintf('Creating clip %d of %d', min($processed + 1, $total), $this->chunks_total), null],
             $this->status === ProjectJobStatus::Completed && $this->chunks_failed > 0 => [sprintf('✗ %d chunk(s) failed — retry them, then build the final.', $this->chunks_failed), 'error'],
             $this->status === ProjectJobStatus::Completed => [sprintf('✓ All %d chunk(s) generated — build the final to stitch.', $this->chunks_done), 'ok'],

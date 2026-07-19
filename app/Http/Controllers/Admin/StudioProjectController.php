@@ -9,6 +9,7 @@ use App\Http\Controllers\Concerns\ChecksCredit;
 use App\Http\Controllers\Concerns\ServesRangedAudio;
 use App\Http\Controllers\Controller;
 use App\Jobs\GenerateProjectChunksJob;
+use App\Jobs\GenerateProjectChunkWorkerJob;
 use App\Models\TtsChunk;
 use App\Models\TtsChunkTake;
 use App\Models\TtsProject;
@@ -1022,6 +1023,20 @@ class StudioProjectController extends Controller
     }
 
     /**
+     * How many claim-based workers a run over $outstanding chunks would get,
+     * or null for the serial path (the flag is off — the default). Env-only
+     * configuration, read at dispatch time (docs/GENERATION-CONCURRENCY.md).
+     */
+    private function generationConcurrency(int $outstanding): ?int
+    {
+        if (! config('tts.generation.concurrent_enabled')) {
+            return null;
+        }
+
+        return max(1, min((int) config('tts.generation.max_concurrency', 1), $outstanding));
+    }
+
+    /**
      * The at-a-glance "About X to generate the N remaining clips" hint the
      * project page shows before a run starts (rendered into #project-final-status,
      * which the run then takes over). Null when nothing is outstanding.
@@ -1038,7 +1053,10 @@ class StudioProjectController extends Controller
             return null;
         }
 
-        $human = GenerationEstimator::humanize((int) round($this->estimateRemainingMs($project, $outstanding) / 1000));
+        // The hint matches how the run would actually execute: ideal-envelope
+        // scaling when bounded concurrency is on, serial time otherwise.
+        $workers = $this->generationConcurrency($outstanding->count()) ?? 1;
+        $human = GenerationEstimator::humanize((int) round($this->estimateRemainingMs($project, $outstanding) / $workers / 1000));
         $n = $outstanding->count();
 
         return ucfirst($human).' to generate the '.$n.' remaining '.($n === 1 ? 'clip' : 'clips').'.';
@@ -1073,18 +1091,33 @@ class StudioProjectController extends Controller
             return $error;
         }
 
+        // Bounded concurrency (docs/GENERATION-CONCURRENCY.md): when enabled,
+        // the run is executed by `workers` claim-based jobs instead of the
+        // serial loop. Stamped on the row so a flag flip mid-run can't change
+        // an active run's semantics, and never more workers than chunks.
+        $workers = $this->generationConcurrency($outstanding->count());
+
         $job = TtsProjectJob::create([
             'tts_project_id' => $project->id,
             'user_id' => $project->user_id,
             'created_by_id' => $request->user()?->id,
             'chunk_ids' => $outstanding->pluck('id')->all(),
             'chunks_total' => $outstanding->count(),
+            'concurrency' => $workers,
             // Up-front estimate from the learned per-model history: the pre-run
             // number, and the seed the live ETA uses until the first chunk lands.
-            'estimated_ms' => $this->estimateRemainingMs($project, $outstanding),
+            // A concurrent run's envelope is the serial time over K in the ideal
+            // case; the live running average corrects it as chunks land.
+            'estimated_ms' => (int) ceil($this->estimateRemainingMs($project, $outstanding) / ($workers ?? 1)),
         ]);
 
-        GenerateProjectChunksJob::dispatch($job->id);
+        if ($workers !== null) {
+            for ($i = 0; $i < $workers; $i++) {
+                GenerateProjectChunkWorkerJob::dispatch($job->id);
+            }
+        } else {
+            GenerateProjectChunksJob::dispatch($job->id);
+        }
 
         // 202 unless the queue ran it inline (QUEUE_CONNECTION=sync) — then the
         // run is already over and the payload says so.
@@ -1160,11 +1193,52 @@ class StudioProjectController extends Controller
             }
 
             $ids = array_values((array) $run->chunk_ids);
+            $running = $run->status === ProjectJobStatus::Running;
+
+            if ($run->claimBased()) {
+                // Concurrent runs: the claim cursor points at unclaimed ground
+                // (in-flight entries sit BELOW it, several at once at K > 1),
+                // so the wait line starts at the cursor itself and insertions
+                // go there — the next claim, by whichever worker, picks it up.
+                // The lock invariant carries over: the cursor only moves under
+                // this same row lock (GenerateProjectChunkWorkerJob::claimNext).
+                $cursor = min($run->chunks_claimed, count($ids));
+                $waiting = array_slice($ids, $cursor);
+
+                if (in_array($chunk->id, $waiting, true)) {
+                    // Already in line — keep its spot, re-armed if it completed
+                    // while waiting (same reasoning as the serial branch below).
+                    if ($chunk->status === ChunkStatus::Completed) {
+                        $chunk->update(['status' => ChunkStatus::Stale]);
+                    }
+
+                    return ['run' => $run, 'flavor' => 'waiting'];
+                }
+
+                // A claimed entry that hasn't landed (chunk not yet completed/
+                // failed) is rendering this instant: too late to shape that
+                // render — tell the user instead of booking a duplicate, which
+                // would put the same chunk in flight twice.
+                if ($running
+                    && in_array($chunk->id, array_slice($ids, 0, $cursor), true)
+                    && in_array($chunk->status, [ChunkStatus::Pending, ChunkStatus::Stale], true)) {
+                    return ['run' => $run, 'flavor' => 'rendering'];
+                }
+
+                if ($chunk->status === ChunkStatus::Completed) {
+                    $chunk->update(['status' => ChunkStatus::Stale]);
+                }
+
+                array_splice($ids, $cursor, 0, [$chunk->id]);
+                $run->update(['chunk_ids' => $ids, 'chunks_total' => $run->chunks_total + 1]);
+
+                return ['run' => $run, 'flavor' => 'queued'];
+            }
+
             // done+failed = how many list entries the worker has moved past, so
             // the slice is what it hasn't reached (including the one in flight).
             $cursor = min($run->chunks_done + $run->chunks_failed, count($ids));
             $waiting = array_slice($ids, $cursor);
-            $running = $run->status === ProjectJobStatus::Running;
 
             // The entry the worker is rendering this instant: too late to shape
             // this render — tell the user instead of booking a duplicate.
@@ -1299,12 +1373,21 @@ class StudioProjectController extends Controller
         }
 
         $ids = array_values((array) $job->chunk_ids);
-        $waiting = array_slice($ids, min($job->chunks_done + $job->chunks_failed, count($ids)));
-        if ($waiting === []) {
+        // Claim-based (concurrent) runs: the wait line starts at the claim
+        // cursor; claimed entries that haven't landed are rendering right now
+        // — several at once when K > 1. Serial runs: the cursor is done+failed
+        // and only its first waiting entry can be rendering.
+        $claimBased = $job->claimBased();
+        $cursor = $claimBased
+            ? min($job->chunks_claimed, count($ids))
+            : min($job->chunks_done + $job->chunks_failed, count($ids));
+        $waiting = array_slice($ids, $cursor);
+        $inFlight = $claimBased ? array_slice($ids, 0, $cursor) : [];
+        if ($waiting === [] && $inFlight === []) {
             return [];
         }
 
-        $chunks = TtsChunk::query()->whereIn('id', $waiting)->get()->keyBy('id');
+        $chunks = TtsChunk::query()->whereIn('id', [...$waiting, ...$inFlight])->get()->keyBy('id');
         $running = $job->status === ProjectJobStatus::Running;
 
         $labels = [];
@@ -1314,13 +1397,28 @@ class StudioProjectController extends Controller
             if (isset($labels[$id]) || ! $chunk || $chunk->skipped || $chunk->status === ChunkStatus::Completed) {
                 continue;
             }
-            if ($running && $j === 0) {
+            if (! $claimBased && $running && $j === 0) {
                 $labels[$id] = 'rendering';
 
                 continue;
             }
             $nth++;
             $labels[$id] = $nth === 1 ? 'queued · next in line' : sprintf('queued · %s in line', $this->ordinal($nth));
+        }
+
+        // After the wait line, so a chunk whose earlier entry already landed
+        // and that is queued AGAIN reads as queued, not rendering. A claimed
+        // entry still Pending/Stale is one a worker holds this instant.
+        if ($claimBased && $running) {
+            foreach ($inFlight as $id) {
+                $chunk = $chunks->get($id);
+                if (isset($labels[$id]) || ! $chunk || $chunk->skipped) {
+                    continue;
+                }
+                if (in_array($chunk->status, [ChunkStatus::Pending, ChunkStatus::Stale], true)) {
+                    $labels[$id] = 'rendering';
+                }
+            }
         }
 
         return $labels;

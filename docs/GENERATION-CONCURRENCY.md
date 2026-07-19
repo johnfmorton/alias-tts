@@ -1,7 +1,11 @@
 # Bounded-concurrency generation
 
-**Status: future design note — not built yet.** The production path remains
-serial. This note grounds its provider assumptions in Replicate's current
+**Status: implemented behind a flag (off by default) — not yet measured.**
+The recommended architecture in §5 is built on the
+`feature/bounded-concurrency-generation` branch: with `TTS_CONCURRENT_GENERATION`
+unset the production path remains the serial `GenerateProjectChunksJob`,
+byte-for-byte unchanged. See §13 for what exists and how to run the experiment.
+This note grounds its provider assumptions in Replicate's current
 documentation and in the operating constraint that the Replicate account will
 remain a paid account with more than $20 in credit.
 
@@ -75,8 +79,10 @@ A render is serial **within each generation operation**:
 - Production Supervisor launches one queue worker, so queued speeches and
   Studio runs also wait behind one another.
 
-There is no `Http::pool`, promise fan-out, per-chunk job batch, or
-`max_concurrency` setting in the current path.
+There is no `Http::pool`, promise fan-out, or per-chunk job batch in this
+default path. (The claim-based path of §13 exists behind
+`TTS_CONCURRENT_GENERATION`; with the flag off — the default — none of it
+runs and the description above remains exact.)
 
 One qualification matters: the app is not necessarily globally serial.
 Separate FrankenPHP web requests can overlap. For example, two users manually
@@ -376,17 +382,21 @@ coupled to the background rollout.
 
 ---
 
-## 11. Candidate configuration
+## 11. Configuration (as implemented)
 
-Names are illustrative until implementation:
+All env-only by design (like `TTS_CREDIT_MARKUP`) — an operator experiment,
+never a Settings-page key:
 
-| Key | Initial value | Meaning |
-| --- | ---: | --- |
-| `tts.generation.concurrent_enabled` | `false` | Select concurrent background path |
-| `tts.generation.max_concurrency` | `1` | Maximum background chunks in flight |
-| `tts.generation.queue` | `generation` | Dedicated queue for chunk jobs |
-| `tts.providers.replicate.min_request_gap_ms` | `0` | Existing per-process pacing fallback |
-| `tts.studio_generate_pace_ms` | `800` | Existing serial-path inter-chunk delay |
+| Config key | Env var | Default | Meaning |
+| --- | --- | ---: | --- |
+| `tts.generation.concurrent_enabled` | `TTS_CONCURRENT_GENERATION` | `false` | Select the claim-based background path |
+| `tts.generation.max_concurrency` | `TTS_GENERATION_CONCURRENCY` | `1` | Worker jobs dispatched per run (capped by outstanding chunks) |
+| `tts.generation.queue` | `TTS_GENERATION_QUEUE` | `null` | Queue for chunk-worker jobs; null = default queue |
+| `tts.studio_generate_pace_ms` | `TTS_STUDIO_GENERATE_PACE_MS` | `800` | Inter-chunk delay, now applied per worker |
+
+Do not hard-code 600 requests/minute into the application merely because it is
+the current public default. If a distributed limiter is later required, make
+its configured value an operational setting verified against the account.
 
 Do not hard-code 600 requests/minute into the application merely because it is
 the current public default. If a distributed limiter is later required, make
@@ -406,3 +416,96 @@ its configured value an operational setting verified against the account.
 - When traffic justifies a shared distributed rate limiter.
 - Whether synchronous `/v1` should remain permanently serial.
 - Reverification of official-model status, pricing, and account limits.
+
+---
+
+## 13. Implementation notes (feature branch)
+
+Built on `feature/bounded-concurrency-generation`; §12's open decisions were
+resolved as follows.
+
+**Coordinator: `TtsProjectJob` counters, not `Bus::batch`.** The existing run
+row already carries counters, cancellation, polling, and the dynamic-insertion
+contract; batching would have added metadata without covering insertion into
+an active run.
+
+**Claim mechanism.** `tts_project_jobs` gained two columns:
+
+- `concurrency` (nullable) — how the run executes: `NULL` = the legacy serial
+  `GenerateProjectChunksJob`, `N ≥ 1` = N claim-based
+  `GenerateProjectChunkWorkerJob`s. Stamped at dispatch so a flag flip cannot
+  change an active run's semantics.
+- `chunks_claimed` — the claim cursor into `chunk_ids`. Entries below it are
+  claimed (in flight or landed); entries at or above it are unclaimed. It
+  moves only inside a `lockForUpdate` transaction on the run row — the same
+  lock `queueChunk()` inserts under, so no two workers can hold the same list
+  entry and insertions always land on unclaimed ground (at the cursor, which
+  is why a re-queued clip renders next).
+
+Each worker loops: claim → eligibility re-check (deleted/skipped/completed
+count as done; empty text counts as failed) → owner-credit check →
+`ProjectService::generateChunk()` → atomic counter increment. Provider, ASR,
+take, spend, and credit behavior are untouched — only the number of chunks in
+flight changes. Results persist by chunk identity; final assembly orders by
+project position, so landing order never matters.
+
+**Single coordinator.** Every worker exit path "settles" under the run-row
+lock: while `chunks_claimed − done − failed > 0` a sibling still holds work
+and the run is left alone; once nothing is in flight, cancellation wins, then
+full claim coverage completes the run. Exactly one worker performs the
+terminal transition. An insertion racing a worker's exit is re-claimed by that
+worker instead of stranded (the settle transaction sees it and resumes
+claiming); an insertion after the terminal transition is refused by
+`queueChunk`'s own locked active-check — which closes the serial path's
+documented "unwinnable race".
+
+**Credit policy: bounded overshoot (§7 option 1).** `canSpend()` is checked
+before every claim's render and an exhausted balance still stops the run cold;
+with K in flight the owner's balance can go negative by up to K chunks. The
+serial path already allows exactly this overshoot at K = 1 (balances may go
+negative by design; zero/negative only blocks new work), so this extends an
+existing, documented behavior rather than adding a new one.
+
+**Failure and recovery.** Chunk failures stay isolated (recorded on the chunk
+and counted, siblings unaffected). A killed worker's `failed()` backstop marks
+the whole run interrupted with the same friendly, resumable message as the
+serial job; siblings stop at their next claim, persisted chunks are kept, and
+"Generate remaining" resumes the remainder. Each worker also checkpoints
+itself near the queue timeout by re-dispatching a fresh worker job.
+
+**Progress honesty (§7).** Runs with `concurrency > 1` report
+"Creating clips — N of M done" instead of the sequential "Creating clip N of
+M"; the status poll labels every in-flight chunk "rendering" (several at
+once), and the wait line is measured from the claim cursor. The up-front ETA
+seed is divided by K (ideal envelope); the live running average self-corrects
+because it already measures wall-clock per landed chunk.
+
+**Tests.** `tests/Feature/ConcurrentGenerationTest` covers flag-gated
+dispatch, claim-loop semantics (failure isolation, cancellation before and
+during work, credit stop, ineligible entries, mid-render insertion),
+checkpoint handoff, the kill backstop, sibling-aware settling with
+single-coordinator completion, concurrent status/labels, and `queueChunk`
+against the claim cursor. True multi-process interleaving cannot run inside
+one test process; interleavings are simulated by staging the run row exactly
+as an in-flight sibling would leave it. `ProjectJobsTest` still passes
+untouched — the serial path is unchanged.
+
+### Running the K = 2 experiment locally
+
+Parallelism is capped by BOTH `max_concurrency` and the number of queue
+worker processes actually listening — DDEV autostarts exactly one
+(`queue:listen`, see `.ddev/config.yaml`), so with only it running, a K = 2
+run degrades safely to serial execution of the worker jobs.
+
+1. In `.ddev/.env` (or the web environment): `TTS_CONCURRENT_GENERATION=true`
+   and `TTS_GENERATION_CONCURRENCY=2`; restart so the env lands.
+2. Start a second worker alongside the autostarted one:
+   `ddev exec php artisan queue:listen --timeout=1810 --tries=1`
+3. Run the Phase 0/1 measurements from §9 on fixed projects, serial vs
+   concurrent, before considering any default change.
+
+In production the intended shape is a dedicated queue
+(`TTS_GENERATION_QUEUE=generation`) with exactly K workers on it, so ordinary
+speech jobs never queue behind chunk fan-out. That requires a Supervisor
+change (today: one worker on `default`) and stays out of scope until the
+Studio canary has evidence.
