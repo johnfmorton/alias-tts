@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Admin;
 
 use App\Console\Commands\PruneRecoveryProjects;
 use App\Enums\ChunkStatus;
+use App\Enums\ProjectJobStatus;
 use App\Http\Controllers\Concerns\ChecksCredit;
 use App\Http\Controllers\Concerns\ServesRangedAudio;
 use App\Http\Controllers\Controller;
@@ -432,17 +433,21 @@ class StudioProjectController extends Controller
     {
         $project->load('voice');
         $chunks = $project->chunks()->with(['takes', 'voice'])->get();
-        $hasActiveRun = TtsProjectJob::activeFor($project->id) !== null;
+        $activeRun = TtsProjectJob::activeFor($project->id);
 
         return view('admin.studio.projects.show', [
             'project' => $project,
             // A background "Generate remaining" run is queued/working — the page
             // resumes following it (polling) instead of offering a fresh start.
-            'hasActiveRun' => $hasActiveRun,
+            'hasActiveRun' => $activeRun !== null,
+            // Chunks waiting their turn in that run render their place in line
+            // ("queued · next in line") instead of a bare stale/pending badge —
+            // the same masking the status poll applies (see queuedLabels()).
+            'queuedLabels' => $this->queuedLabels($activeRun),
             // "About 2 min to generate the 40 remaining clips" — the up-front
             // estimate from learned history, shown until a run takes the line
             // over. Suppressed while a run is already following.
-            'preRunEstimate' => $hasActiveRun ? null : $this->preRunEstimate($project, $chunks),
+            'preRunEstimate' => $activeRun ? null : $this->preRunEstimate($project, $chunks),
             // The access policy lets a SuperAdmin open anyone's project for
             // support. When this viewer is not the owner, the page names the
             // owner and gates the first edit behind a warning dialog.
@@ -1089,14 +1094,22 @@ class StudioProjectController extends Controller
     }
 
     /**
-     * "Regenerate" while a background run is active: append this chunk to the
-     * run instead of racing the worker (the manual endpoints 409 then — see
-     * {@see activeRunError()}). A generated chunk goes Stale in the same
-     * transaction the run adopts it, so the worker can't skip it as
-     * already-completed; queueing a chunk that's still waiting in the run is a
-     * no-op, so double-clicks can't book a clip twice. The one unwinnable race
-     * — the worker finishing the run in the same instant — leaves the chunk
-     * Stale but unprocessed; the page has settled by then and plain Regenerate
+     * "Regenerate" while a background run is active: put this chunk in the
+     * run's line instead of racing the worker (the manual endpoints 409 then —
+     * see {@see activeRunError()}). The chunk is inserted right AFTER the entry
+     * the worker is on — the clip the user is actively fixing renders next,
+     * not after everything else still in line. The insertion is race-free: the
+     * worker sits at list index chunks_done+chunks_failed (every entry it
+     * passes increments exactly one of the two), those counters can't move
+     * while this transaction holds the run row's lock, and the worker re-reads
+     * the list each iteration — so a slot after the cursor is always ground it
+     * hasn't reached. A generated chunk goes Stale in the same transaction so
+     * the worker can't skip it as already-completed. A chunk already waiting
+     * keeps its spot (double-clicks can't book a clip twice) but is re-armed
+     * to Stale if it completed while it waited; the entry being rendered right
+     * now is left alone — the response says so. The one unwinnable race — the
+     * worker finishing the run in the same instant — leaves the chunk Stale
+     * but unprocessed; the page has settled by then and plain Regenerate
      * covers it.
      */
     public function queueChunk(Request $request, TtsProject $project, TtsChunk $chunk): JsonResponse
@@ -1134,7 +1147,7 @@ class StudioProjectController extends Controller
             return response()->json(['message' => 'This run is stopping — wait for it to settle, then regenerate the clip.'], 409);
         }
 
-        $run = DB::transaction(function () use ($project, $chunk) {
+        $result = DB::transaction(function () use ($project, $chunk) {
             $run = TtsProjectJob::query()
                 ->where('tts_project_id', $project->id)
                 ->active()
@@ -1149,27 +1162,66 @@ class StudioProjectController extends Controller
             $ids = array_values((array) $run->chunk_ids);
             // done+failed = how many list entries the worker has moved past, so
             // the slice is what it hasn't reached (including the one in flight).
-            $waiting = array_slice($ids, $run->chunks_done + $run->chunks_failed);
+            $cursor = min($run->chunks_done + $run->chunks_failed, count($ids));
+            $waiting = array_slice($ids, $cursor);
+            $running = $run->status === ProjectJobStatus::Running;
 
-            if (! in_array($chunk->id, $waiting, true)) {
+            // The entry the worker is rendering this instant: too late to shape
+            // this render — tell the user instead of booking a duplicate.
+            if ($running && $waiting !== [] && $waiting[0] === $chunk->id) {
+                return ['run' => $run, 'flavor' => 'rendering'];
+            }
+
+            if (in_array($chunk->id, $waiting, true)) {
+                // Already in line — keep its spot. But a chunk that COMPLETED
+                // while waiting (e.g. a take was selected) would be passed by
+                // the worker's already-generated guard, silently dropping this
+                // regenerate: re-arm the existing entry by staling it.
                 if ($chunk->status === ChunkStatus::Completed) {
                     $chunk->update(['status' => ChunkStatus::Stale]);
                 }
-                $run->update(['chunk_ids' => [...$ids, $chunk->id], 'chunks_total' => $run->chunks_total + 1]);
+
+                return ['run' => $run, 'flavor' => 'waiting'];
             }
 
-            return $run;
+            if ($chunk->status === ChunkStatus::Completed) {
+                $chunk->update(['status' => ChunkStatus::Stale]);
+            }
+
+            // Right after the in-flight entry — or at the head of a run no
+            // worker has picked up yet (its status update blocks on our row
+            // lock, so Queued here means the loop hasn't claimed anything).
+            $insertAt = min($running ? $cursor + 1 : $cursor, count($ids));
+            array_splice($ids, $insertAt, 0, [$chunk->id]);
+            $run->update(['chunk_ids' => $ids, 'chunks_total' => $run->chunks_total + 1]);
+
+            return ['run' => $run, 'flavor' => 'queued'];
         });
 
-        if (! $run) {
+        if ($result === null) {
             return response()->json(['message' => 'The background run just finished — use Regenerate directly.'], 409);
         }
 
+        $run = $result['run']->refresh();
+        // Its place in line, computed the same way the poll reports it — the
+        // card shows this immediately instead of waiting a poll tick. Null only
+        // when the worker got there between commit and here; the DB status is
+        // the honest fallback then.
+        $label = $result['flavor'] === 'rendering' ? 'rendering' : ($this->queuedLabels($run)[$chunk->id] ?? null);
+        $clip = $chunk->position + 1;
+
+        $message = match ($result['flavor']) {
+            'rendering' => sprintf('Your edits are saved. Clip %d is rendering right now — if the new take misses them, regenerate it once it lands.', $clip),
+            'waiting' => sprintf('Clip %d is already queued%s — it will render with the edits you just saved.', $clip, $label ? ' ('.str_replace('queued · ', '', $label).')' : ''),
+            default => sprintf('Saved — clip %d will regenerate next in this run.', $clip),
+        };
+
         return response()->json([
             'ok' => true,
-            'status' => $chunk->refresh()->status->value,
-            'message' => sprintf('Clip %d added to this run.', $chunk->position + 1),
-            'job' => $run->refresh()->statusPayload(),
+            'status' => $label ? 'queued' : $chunk->refresh()->status->value,
+            'queue_label' => $label,
+            'message' => $message,
+            'job' => $run->statusPayload(),
         ]);
     }
 
@@ -1178,7 +1230,10 @@ class StudioProjectController extends Controller
      * results. Chunks the run has finished with (completed/failed) carry the
      * full card payload (takes, spend, badge) — the same shape generateChunk()
      * returns, so the JS reuses the same render path; chunks still waiting are
-     * just {id, status} to keep the poll light.
+     * just {id, status} to keep the poll light — reported as the virtual
+     * status 'queued' with their place in line ("queued · next in line"), not
+     * the underlying stale/pending, so a card always says WHY nothing is
+     * happening to it yet.
      */
     public function generationStatus(TtsProject $project): JsonResponse
     {
@@ -1191,13 +1246,19 @@ class StudioProjectController extends Controller
             return response()->json(['job' => null, 'chunks' => [], 'project_status' => $project->status->value]);
         }
 
+        $queued = $this->queuedLabels($job);
+
         $chunks = TtsChunk::query()
             ->whereIn('id', array_values((array) $job->chunk_ids))
             ->where('tts_project_id', $project->id)
             ->with('takes')
             ->orderBy('position')
             ->get()
-            ->map(function (TtsChunk $chunk) use ($project) {
+            ->map(function (TtsChunk $chunk) use ($project, $queued) {
+                if (isset($queued[$chunk->id])) {
+                    return ['id' => $chunk->id, 'status' => 'queued', 'queue_label' => $queued[$chunk->id]];
+                }
+
                 $base = ['id' => $chunk->id, 'status' => $chunk->status->value];
 
                 if (! in_array($chunk->status, [ChunkStatus::Completed, ChunkStatus::Failed], true)) {
@@ -1218,6 +1279,63 @@ class StudioProjectController extends Controller
             'chunks' => $chunks,
             'project_status' => $project->status->value,
         ]);
+    }
+
+    /**
+     * chunkId => badge label for every chunk still waiting its turn in an
+     * active run: "rendering" for the entry the worker is on, then "queued ·
+     * next in line", "queued · 2nd in line", … in run order. Empty when there
+     * is no line to wait in — run inactive, or stopping (a winding-down worker
+     * reaches no new work, so "queued" would be a lie). Entries the worker
+     * will pass without rendering (completed / skipped chunks) get no label:
+     * their real status is the truth.
+     *
+     * @return array<string, string>
+     */
+    private function queuedLabels(?TtsProjectJob $job): array
+    {
+        if (! $job || ! $job->isActive() || $job->cancel_requested) {
+            return [];
+        }
+
+        $ids = array_values((array) $job->chunk_ids);
+        $waiting = array_slice($ids, min($job->chunks_done + $job->chunks_failed, count($ids)));
+        if ($waiting === []) {
+            return [];
+        }
+
+        $chunks = TtsChunk::query()->whereIn('id', $waiting)->get()->keyBy('id');
+        $running = $job->status === ProjectJobStatus::Running;
+
+        $labels = [];
+        $nth = 0;
+        foreach ($waiting as $j => $id) {
+            $chunk = $chunks->get($id);
+            if (isset($labels[$id]) || ! $chunk || $chunk->skipped || $chunk->status === ChunkStatus::Completed) {
+                continue;
+            }
+            if ($running && $j === 0) {
+                $labels[$id] = 'rendering';
+
+                continue;
+            }
+            $nth++;
+            $labels[$id] = $nth === 1 ? 'queued · next in line' : sprintf('queued · %s in line', $this->ordinal($nth));
+        }
+
+        return $labels;
+    }
+
+    /** 2 → "2nd", 3 → "3rd", 12 → "12th" — for the queued place-in-line labels. */
+    private function ordinal(int $n): string
+    {
+        return $n.match (true) {
+            $n % 100 >= 11 && $n % 100 <= 13 => 'th',
+            $n % 10 === 1 => 'st',
+            $n % 10 === 2 => 'nd',
+            $n % 10 === 3 => 'rd',
+            default => 'th',
+        };
     }
 
     /**

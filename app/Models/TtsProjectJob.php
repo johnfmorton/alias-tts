@@ -15,7 +15,8 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
  * from the project page, executed by {@see GenerateProjectChunksJob}
  * on the queue worker, polled by the project page and listed on the Jobs page.
  * `chunk_ids` starts as the outstanding-chunk snapshot taken at dispatch and
- * can grow while the run is active (per-chunk "Regenerate" appends to it); the
+ * can grow while the run is active (per-chunk "Regenerate" inserts right after
+ * the entry in flight — see StudioProjectController::queueChunk()); the
  * counters and status are updated by the worker as it goes. Cancel is
  * cooperative: `cancel_requested` is checked between chunks, never mid-synthesis.
  */

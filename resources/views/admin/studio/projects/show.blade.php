@@ -6,6 +6,9 @@
             'stale'     => 'border-amber-500/30 bg-amber-500/10 text-amber-300',
             'failed'    => 'border-red-500/30 bg-red-500/10 text-red-300',
             'pending'   => 'border-zinc-700 bg-zinc-800 text-zinc-400',
+            // Virtual status: waiting its turn in an active background run
+            // (cyan = the run's color). Must match STATUS_STYLES in app.js.
+            'queued'    => 'border-cyan-500/30 bg-cyan-500/10 text-cyan-300',
         ];
         $hasFinal = (bool) $project->final_audio_path;
         $statusVal = $project->status->value;
@@ -297,8 +300,15 @@
                 $inheritSeedText = $project->seed ? (string) $project->seed : 'random';
             @endphp
             @foreach($chunks as $chunk)
+                @php
+                    // Set while this chunk is waiting its turn in an active
+                    // background run — the pill shows its place in line and the
+                    // render button reads "Queued" (kept fresh by the poll).
+                    $queueLabel = $queuedLabels[$chunk->id] ?? null;
+                @endphp
                 <div class="studio-chunk rounded-xl border border-zinc-800 bg-zinc-900/50 p-4"
                      data-chunk-id="{{ $chunk->id }}"
+                     data-queued="{{ $queueLabel ? '1' : '0' }}"
                      data-generate-url="{{ route('admin.studio.projects.chunks.generate', [$project, $chunk]) }}"
                      data-queue-url="{{ route('admin.studio.projects.chunks.queue', [$project, $chunk]) }}"
                      data-patch-url="{{ route('admin.studio.projects.chunks.update', [$project, $chunk]) }}"
@@ -321,7 +331,7 @@
                                 <span class="chunk-spend cursor-help text-zinc-500 {{ $chunk->spent_characters > 0 ? '' : 'hidden' }}"
                                       title="{{ $chunkSpendReadouts[$chunk->id]['title'] }}">{{ $chunkSpendReadouts[$chunk->id]['label'] }}</span>
                             @endif
-                            <span class="chunk-status inline-flex rounded-md border px-2 py-0.5 text-xs {{ $chunkStyles[$chunk->status->value] ?? $chunkStyles['pending'] }}">{{ $chunk->status->value }}</span>
+                            <span class="chunk-status inline-flex rounded-md border px-2 py-0.5 text-xs {{ $queueLabel ? $chunkStyles['queued'] : ($chunkStyles[$chunk->status->value] ?? $chunkStyles['pending']) }}">{{ $queueLabel ?? $chunk->status->value }}</span>
                             {{-- ASR transcript-QA verdict + hover/focus popover (design "QA Badge
                                  States"); only when the chunk's current audio was scored. The
                                  markup here is mirrored by renderQaBadge() in app.js. --}}
@@ -352,7 +362,7 @@
                                  (Generate until the chunk has audio, then Regenerate). --}}
                             <button type="button" class="chunk-generate rounded-lg border border-zinc-700 px-3 py-1.5 text-sm hover:bg-zinc-800 disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-transparent"
                                     data-base="{{ $chunk->isCompleted() ? 'Regenerate' : 'Generate' }}"
-                                    title="Render this chunk with the text and Delivery settings shown — they're saved as part of the click.">▶ {{ $chunk->isCompleted() ? 'Regenerate' : 'Generate' }}</button>
+                                    title="Render this chunk with the text and Delivery settings shown — they're saved as part of the click.">{{ $queueLabel ? '⏳ Queued' : '▶ '.($chunk->isCompleted() ? 'Regenerate' : 'Generate') }}</button>
                             {{-- Skip toggle: leave this chunk out of the stitched final without deleting
                                  it. Reversible, so no confirm step. Class strings must stay identical to
                                  setChunkSkipped() in app.js. --}}

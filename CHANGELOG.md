@@ -4,6 +4,35 @@ All notable changes to this project are documented in this file. The format is
 based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this
 project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Changed
+- **A chunk waiting in a background run now says so.** While **Generate
+  remaining** works through a project, every waiting chunk's badge shows its
+  place in line — **queued · next in line**, **queued · 2nd in line**, … — and
+  the clip being synthesized reads **rendering**, all in the run's cyan. The
+  chunk's render button reads **⏳ Queued** for the wait, and reloading the page
+  mid-run shows the same picture. Previously a chunk you re-queued mid-run
+  showed only an unexplained amber "stale" badge and a Generate button that
+  appeared to do nothing until the run finished.
+- **Regenerating a clip during a run puts it next in line, not last.** A
+  mid-run Regenerate used to append the clip to the end of the run, behind
+  every chunk that hadn't rendered yet; the clip you're actively fixing now
+  slots in right after the one being rendered.
+- **The mid-run Regenerate message now says your edits were saved.** The click
+  has always saved the text and Delivery panel before queueing, but nothing
+  said so; the card now reads "Saved — clip 4 will regenerate next in this
+  run," so an edit never looks lost while it waits.
+
+### Fixed
+- **A clip that finished while waiting in line no longer swallows a
+  regenerate.** If a chunk completed while it sat in the run's line (say, you
+  selected one of its takes), clicking Regenerate was a silent no-op the worker
+  then skipped as already-generated; the queued entry is now re-armed so the
+  regenerate actually happens. And clicking the clip being rendered at that
+  moment answers honestly — "rendering right now" — instead of booking a
+  duplicate render.
+
 ## [0.69.0] - 2026-07-19
 
 ### Added

@@ -1460,6 +1460,10 @@ const STATUS_STYLES = {
     failed: 'border-red-500/30 bg-red-500/10 text-red-300',
     pending: 'border-zinc-700 bg-zinc-800 text-zinc-400',
     draft: 'border-zinc-700 bg-zinc-800 text-zinc-400',
+    // Virtual status from the run poll: waiting its turn in an active
+    // background run (cyan = the run's color). Must match $chunkStyles in
+    // show.blade.php.
+    queued: 'border-cyan-500/30 bg-cyan-500/10 text-cyan-300',
 };
 
 // ASR transcript-QA badge tones — the same emerald/amber/red/zinc palette as the
@@ -1721,8 +1725,18 @@ function initStudioProject() {
     // the Blade partial); the popover's open/close and its action buttons are
     // wired by initQaPopovers and the per-card delegation below.
     const setChunkAsrBadge = (card, info) => renderQaBadge(card.querySelector('.chunk-asr-badge'), info);
-    const setChunkStatus = (card, status) => {
-        badge(card.querySelector('.chunk-status'), status, 'chunk-status ');
+    const setChunkStatus = (card, status, queueLabel = null) => {
+        const el = card.querySelector('.chunk-status');
+        // A queued chunk's pill carries its place in line ("queued · next in
+        // line", or "rendering" for the one the worker is on) instead of the
+        // bare status word.
+        el.textContent = queueLabel || status;
+        el.className = 'chunk-status inline-flex rounded-md border px-2 py-0.5 text-xs ' + (STATUS_STYLES[status] || STATUS_STYLES.pending);
+        // 'queued' is virtual — the chunk is waiting its turn in the active
+        // run. The flag flips the render button to "Queued" (setGenerateLabel)
+        // and clears itself when the poll delivers the chunk's real status.
+        card.dataset.queued = status === 'queued' ? '1' : '0';
+        setGenerateLabel(card);
         // The verdict is for the current audio; clear it once the chunk is no
         // longer completed (edited / retuned / failed). It returns on regenerate.
         if (status !== 'completed') setChunkAsrBadge(card, null);
@@ -2083,10 +2097,12 @@ function initStudioProject() {
     // Generate to Regenerate once the chunk has rendered audio. A dirty text
     // edit doesn't change it — the click saves the edit as part of the render.
     // Skipped mid-render (startBusy owns the label until endBusy restores it).
+    // While the chunk waits its turn in an active run the button says so
+    // instead (clicking then just saves any newer edits into that render).
     const setGenerateLabel = (card) => {
         const btn = card.querySelector('.chunk-generate');
         if (!btn || btn.dataset.busy) return;
-        btn.textContent = `▶ ${btn.dataset.base || 'Generate'}`;
+        btn.textContent = card.dataset.queued === '1' ? '⏳ Queued' : `▶ ${btn.dataset.base || 'Generate'}`;
     };
 
     const setDirty = (card, dirty) => {
@@ -2225,18 +2241,20 @@ function initStudioProject() {
             const gen = card.querySelector('.chunk-generate');
             if (gen) {
                 gen.title = locked
-                    ? 'Adds this clip to the active background run — it regenerates after the clips already in line.'
+                    ? 'Saves the text and Delivery settings shown, then puts this clip next in line in the background run.'
                     : "Render this chunk with the text and Delivery settings shown — they're saved as part of the click.";
             }
         });
     };
 
     // "Regenerate" while a background run is active: the direct endpoint would
-    // 409 (the worker owns generation), so append the chunk to the run instead.
-    // A pending text edit and the tuning panel are persisted with the click —
-    // same contract as a direct Regenerate — so the worker renders what's on
-    // screen. The server marks a generated chunk stale as it adopts it; the
-    // poll then reports it like any other clip in the run.
+    // 409 (the worker owns generation), so put the chunk in the run's line
+    // instead — right after the clip in flight, so it renders next. A pending
+    // text edit and the tuning panel are persisted with the click — same
+    // contract as a direct Regenerate — so the worker renders what's on
+    // screen. The server marks a generated chunk stale as it adopts it and
+    // reports its place in line ('queued' + queue_label), which the poll then
+    // keeps fresh as the line moves.
     async function queueChunkRegen(card) {
         const btn = card.querySelector('.chunk-generate');
         startBusy(btn, 'Queueing…');
@@ -2253,20 +2271,21 @@ function initStudioProject() {
             });
             if (!res.ok) throw new Error(await errorMessage(res));
             const data = await res.json();
-            setChunkStatus(card, data.status);
+            setChunkStatus(card, data.status, data.queue_label ?? null);
             // The queue endpoint persisted the pending voice + tuning (the worker
             // renders from them later) — lock them in as saved, same as a direct
             // Regenerate does.
             commitPanelAfterSave(card);
             // Nothing on the card changes until the worker gets to this clip, so
-            // the "added to the run" message carries real information — show it
-            // here; the run's own progress stays in the header status line.
+            // the message ("Saved — clip N will regenerate next…") carries real
+            // information — show it here; the run's own progress stays in the
+            // header status line.
             chunkNotice(card, data.message || data.job?.message);
         } catch (err) {
             chunkNotice(card, `✗ ${err.message}`, 'error');
         } finally {
             endBusy(btn);
-            setGenerateLabel(card); // endBusy restores a possibly stale label — re-derive from data-base
+            setGenerateLabel(card); // endBusy restores a possibly stale label — re-derive it
         }
     }
 
@@ -2277,7 +2296,7 @@ function initStudioProject() {
     const applyRunChunk = (data) => {
         const card = root.querySelector(`.studio-chunk[data-chunk-id="${data.id}"]`);
         if (!card) return false;
-        setChunkStatus(card, data.status);
+        setChunkStatus(card, data.status, data.queue_label ?? null);
         if (data.asr_badge !== undefined) setChunkAsrBadge(card, data.asr_badge ?? null);
         if (data.selected_take_id === undefined || renderedTakes.get(data.id) === data.selected_take_id) {
             return false;
@@ -2332,6 +2351,14 @@ function initStudioProject() {
         runTimer = null;
         runCancelUrl = null;
         setRunLock(false);
+        // The final poll normally delivers every run chunk's real status, which
+        // clears its queued flag — but a run whose row vanished (job: null)
+        // settles without that payload. Sweep any leftovers so the render
+        // buttons re-derive from data-base instead of reading "Queued" forever.
+        root.querySelectorAll('.studio-chunk[data-queued="1"]').forEach((card) => {
+            card.dataset.queued = '0';
+            setGenerateLabel(card);
+        });
         endBusy(generateAllBtn);
         reflectActionState(); // the pulse is suppressed while busy — re-apply it (e.g. failures left chunks outstanding)
     }

@@ -91,8 +91,10 @@ class GenerateProjectChunksJob implements ShouldQueue
         for ($i = $this->startIndex; ; $i++) {
             // Fresh row each pass: the cancel flag is set from another process,
             // the row vanishes if the project is deleted mid-run — and the chunk
-            // list can GROW, because "Regenerate" on the project page appends to
-            // an active run (queueChunk) instead of racing the worker.
+            // list can GROW, because "Regenerate" on the project page inserts
+            // into an active run (queueChunk) instead of racing the worker.
+            // Insertions land right after the in-flight entry, always at an
+            // index this loop hasn't read yet (see queueChunk's invariant).
             $job = TtsProjectJob::find($job->id);
             if (! $job) {
                 return;

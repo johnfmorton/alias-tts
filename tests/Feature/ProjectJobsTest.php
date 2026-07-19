@@ -256,13 +256,16 @@ class ProjectJobsTest extends TestCase
         $this->actingAs($this->admin())
             ->postJson(route('admin.studio.projects.chunks.queue', [$project, $first]))
             ->assertOk()
-            ->assertJsonPath('status', 'stale')
-            ->assertJsonPath('message', 'Clip 1 added to this run.')
+            ->assertJsonPath('status', 'queued')
+            ->assertJsonPath('queue_label', 'queued · next in line')
+            ->assertJsonPath('message', 'Saved — clip 1 will regenerate next in this run.')
             ->assertJsonPath('job.chunks_total', 2);
 
-        // Stale (not completed) so the worker can't skip it, and last in line.
+        // Stale (not completed) so the worker can't skip it — and FIRST in
+        // line: no worker has claimed this run yet, so the clip the user is
+        // actively fixing goes to the head, not behind the whole backlog.
         $this->assertSame(ChunkStatus::Stale, $first->fresh()->status);
-        $this->assertSame([$second->id, $first->id], $run->fresh()->chunk_ids);
+        $this->assertSame([$first->id, $second->id], $run->fresh()->chunk_ids);
 
         $this->runJob($run);
 
@@ -283,13 +286,79 @@ class ProjectJobsTest extends TestCase
         $first->update(['status' => ChunkStatus::Completed]);
 
         // …and the user, listening along, finds that clip bad and re-queues it.
+        // It slots in right after the clip in flight (here: the end anyway).
         $this->actingAs($this->admin())
             ->postJson(route('admin.studio.projects.chunks.queue', [$project, $first]))
             ->assertOk()
+            ->assertJsonPath('status', 'queued')
+            ->assertJsonPath('queue_label', 'queued · next in line')
             ->assertJsonPath('job.chunks_total', 3);
 
         $this->assertSame([$first->id, $second->id, $first->id], $run->fresh()->chunk_ids);
         $this->assertSame(ChunkStatus::Stale, $first->fresh()->status);
+    }
+
+    public function test_requeue_mid_run_inserts_right_after_the_in_flight_chunk(): void
+    {
+        $voice = Voice::firstOrCreate(['slug' => 'v'], ['name' => 'V']);
+        $project = app(ProjectService::class)->createFromText(
+            title: 'Three chunks',
+            voice: $voice,
+            text: "First paragraph with plenty of words to stand on its own two feet.\n\n".
+                  "Second paragraph, also long enough to be its very own chunk here.\n\n".
+                  'Third paragraph, again long enough to be split off by the chunker.',
+            settings: config('tts.default_voice_settings'),
+            modelId: config('tts.default_model_id'),
+            outputFormat: config('tts.default_output_format'),
+            seed: null,
+            userId: null,
+        );
+        [$a, $b, $c] = $project->chunks()->get();
+        $run = $this->queuedRun($project);
+        // The worker finished A and is rendering B; C still waits its turn.
+        $run->update(['status' => ProjectJobStatus::Running, 'chunks_done' => 1]);
+        $a->update(['status' => ChunkStatus::Completed]);
+
+        // Re-queueing A puts it right after in-flight B — ahead of C, not last.
+        $this->actingAs($this->admin())
+            ->postJson(route('admin.studio.projects.chunks.queue', [$project, $a]))
+            ->assertOk()
+            ->assertJsonPath('queue_label', 'queued · next in line')
+            ->assertJsonPath('message', 'Saved — clip 1 will regenerate next in this run.');
+
+        $this->assertSame([$a->id, $b->id, $a->id, $c->id], $run->fresh()->chunk_ids);
+
+        // The poll reports every waiting card's place in that same line.
+        $res = $this->actingAs($this->admin())
+            ->getJson(route('admin.studio.projects.generation-status', $project));
+        $res->assertOk()
+            ->assertJsonPath('chunks.0.status', 'queued')
+            ->assertJsonPath('chunks.0.queue_label', 'queued · next in line')
+            ->assertJsonPath('chunks.1.queue_label', 'rendering')
+            ->assertJsonPath('chunks.2.queue_label', 'queued · 2nd in line');
+    }
+
+    public function test_queueing_the_chunk_being_rendered_is_left_alone(): void
+    {
+        $project = $this->project();
+        [$first] = $project->chunks()->get();
+        $run = $this->queuedRun($project);
+        // The worker is on chunk one right now.
+        $run->update(['status' => ProjectJobStatus::Running]);
+
+        $this->actingAs($this->admin())
+            ->postJson(route('admin.studio.projects.chunks.queue', [$project, $first]))
+            ->assertOk()
+            ->assertJsonPath('status', 'queued')
+            ->assertJsonPath('queue_label', 'rendering')
+            ->assertJsonPath('job.chunks_total', 2);
+
+        // No duplicate booking, no status change — the render in progress owns it.
+        $this->assertCount(2, $run->fresh()->chunk_ids);
+        $this->assertSame(ChunkStatus::Pending, $first->fresh()->status);
+        $this->assertStringContainsString('rendering right now', $this->actingAs($this->admin())
+            ->postJson(route('admin.studio.projects.chunks.queue', [$project, $first]))
+            ->json('message'));
     }
 
     public function test_queueing_a_chunk_already_waiting_in_the_run_is_a_no_op(): void
@@ -301,10 +370,34 @@ class ProjectJobsTest extends TestCase
         $this->actingAs($this->admin())
             ->postJson(route('admin.studio.projects.chunks.queue', [$project, $second]))
             ->assertOk()
+            ->assertJsonPath('status', 'queued')
+            ->assertJsonPath('queue_label', 'queued · 2nd in line')
+            ->assertJsonPath('message', 'Clip 2 is already queued (2nd in line) — it will render with the edits you just saved.')
             ->assertJsonPath('job.chunks_total', 2);
 
         $this->assertCount(2, $run->fresh()->chunk_ids);
         $this->assertSame(ChunkStatus::Pending, $second->fresh()->status);
+    }
+
+    public function test_a_completed_chunk_already_in_line_is_rearmed_in_place(): void
+    {
+        $project = $this->project();
+        [$first] = $project->chunks()->get();
+        $run = $this->queuedRun($project);
+        // The chunk completed while waiting (say, a take was selected). The
+        // worker's already-generated guard would pass it — so a regenerate
+        // must re-arm the existing entry, not silently do nothing.
+        $first->update(['status' => ChunkStatus::Completed]);
+
+        $this->actingAs($this->admin())
+            ->postJson(route('admin.studio.projects.chunks.queue', [$project, $first]))
+            ->assertOk()
+            ->assertJsonPath('status', 'queued')
+            ->assertJsonPath('queue_label', 'queued · next in line')
+            ->assertJsonPath('message', 'Clip 1 is already queued (next in line) — it will render with the edits you just saved.');
+
+        $this->assertCount(2, $run->fresh()->chunk_ids);
+        $this->assertSame(ChunkStatus::Stale, $first->fresh()->status);
     }
 
     public function test_a_chunk_appended_mid_run_is_picked_up_by_the_worker(): void
@@ -594,11 +687,45 @@ class ProjectJobsTest extends TestCase
             ->assertJsonPath('chunks.0.id', $first->id)
             ->assertJsonPath('chunks.0.status', 'completed')
             ->assertJsonPath('chunks.1.id', $second->id)
-            ->assertJsonPath('chunks.1.status', 'pending');
+            // Still waiting its turn → the virtual 'queued' status + place in
+            // line, not the underlying 'pending'.
+            ->assertJsonPath('chunks.1.status', 'queued')
+            ->assertJsonPath('chunks.1.queue_label', 'queued · next in line');
 
         $chunks = $res->json('chunks');
         $this->assertNotEmpty($chunks[0]['takes']); // finished → full card payload
         $this->assertArrayNotHasKey('takes', $chunks[1]); // outstanding → light
+    }
+
+    public function test_generation_status_drops_the_queue_labels_while_stopping(): void
+    {
+        $project = $this->project();
+        // A stopping run reaches no new work — "queued" would be a lie, so the
+        // waiting chunks report their real statuses instead.
+        $this->queuedRun($project)->update(['cancel_requested' => true]);
+
+        $this->actingAs($this->admin())
+            ->getJson(route('admin.studio.projects.generation-status', $project))
+            ->assertOk()
+            ->assertJsonPath('chunks.0.status', 'pending')
+            ->assertJsonMissingPath('chunks.0.queue_label');
+    }
+
+    public function test_project_page_marks_waiting_chunks_queued(): void
+    {
+        $project = $this->project();
+        $this->queuedRun($project);
+
+        // A mid-run page load shows each waiting chunk's place in line (the
+        // pill) and flips its render button to Queued — no bare "stale" or
+        // "pending" masquerading as a problem.
+        $this->actingAs($this->admin())
+            ->get(route('admin.studio.projects.show', $project))
+            ->assertOk()
+            ->assertSee('queued · next in line')
+            ->assertSee('queued · 2nd in line')
+            ->assertSee('⏳ Queued')
+            ->assertSee('data-queued="1"', false);
     }
 
     public function test_generation_status_is_empty_for_a_project_with_no_runs(): void
