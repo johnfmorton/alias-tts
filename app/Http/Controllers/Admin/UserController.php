@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Admin;
 
 use App\Http\Controllers\Controller;
+use App\Http\Controllers\InvitationController;
 use App\Models\ApiKey;
 use App\Models\CreditTransaction;
 use App\Models\Speech;
@@ -272,7 +273,12 @@ class UserController extends Controller
 
     private function setPasswordLink(User $user): string
     {
-        return URL::temporarySignedRoute('invite.accept', now()->addDays(7), ['user' => $user->id]);
+        // The fingerprint makes the link single-use: it dies once this password is
+        // changed (by using the link) or re-randomized (by issuing a newer one).
+        return URL::temporarySignedRoute('invite.accept', now()->addDays(7), [
+            'user' => $user->id,
+            'fp' => InvitationController::linkFingerprint($user),
+        ]);
     }
 
     private function superAdminCount(): int

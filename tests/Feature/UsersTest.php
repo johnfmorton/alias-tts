@@ -2,6 +2,7 @@
 
 namespace Tests\Feature;
 
+use App\Http\Controllers\InvitationController;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Hash;
@@ -166,7 +167,10 @@ class UsersTest extends TestCase
     {
         $invited = User::factory()->create(['status' => 'invited', 'password' => 'unusable']);
 
-        $signed = URL::temporarySignedRoute('invite.accept', now()->addDay(), ['user' => $invited->id]);
+        $signed = URL::temporarySignedRoute('invite.accept', now()->addDay(), [
+            'user' => $invited->id,
+            'fp' => InvitationController::linkFingerprint($invited),
+        ]);
 
         // Visiting the signed link authorizes the session to set this user's password.
         $this->get($signed)->assertOk();
@@ -181,6 +185,37 @@ class UsersTest extends TestCase
         $this->assertAuthenticatedAs($invited->fresh());
     }
 
+    public function test_a_set_password_link_cannot_be_used_a_second_time(): void
+    {
+        $invited = User::factory()->create(['status' => 'invited', 'password' => 'unusable']);
+
+        $signed = URL::temporarySignedRoute('invite.accept', now()->addDay(), [
+            'user' => $invited->id,
+            'fp' => InvitationController::linkFingerprint($invited),
+        ]);
+
+        // First use: valid link, password gets set.
+        $this->get($signed)->assertOk();
+        $this->post(route('invite.store', $invited), [
+            'password' => 'a-brand-new-password',
+            'password_confirmation' => 'a-brand-new-password',
+        ])->assertRedirect();
+
+        // The signature is still cryptographically valid and unexpired, but setting the
+        // password changed its fingerprint — so the very same link is now dead.
+        $this->post(route('logout'));
+        $this->get($signed)->assertRedirect(route('login'));
+
+        // And a fresh session can't complete the POST either (no authorized GET).
+        $this->post(route('invite.store', $invited), [
+            'password' => 'a-second-password',
+            'password_confirmation' => 'a-second-password',
+        ])->assertForbidden();
+
+        $this->assertTrue(Hash::check('a-brand-new-password', $invited->fresh()->password));
+        $this->assertFalse(Hash::check('a-second-password', $invited->fresh()->password));
+    }
+
     public function test_suspended_user_cannot_reactivate_via_a_set_password_link(): void
     {
         // A still-valid set-password link (issued at invite or force-reset) must not
@@ -188,7 +223,10 @@ class UsersTest extends TestCase
         // security control enforced everywhere else — is bypassed.
         $suspended = User::factory()->create(['status' => 'suspended', 'password' => 'unusable']);
 
-        $signed = URL::temporarySignedRoute('invite.accept', now()->addDay(), ['user' => $suspended->id]);
+        $signed = URL::temporarySignedRoute('invite.accept', now()->addDay(), [
+            'user' => $suspended->id,
+            'fp' => InvitationController::linkFingerprint($suspended),
+        ]);
 
         // The signed GET still authorizes the session (link is genuinely valid)...
         $this->get($signed)->assertOk();

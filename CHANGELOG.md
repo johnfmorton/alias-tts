@@ -4,6 +4,16 @@ All notable changes to this project are documented in this file. The format is
 based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this
 project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Security
+- **Set-password and invite links are now single-use.** A link stops working
+  the moment it's used to set a password — and any older link for the same
+  person is retired automatically when a newer one is issued (create, invite,
+  or force-reset). Previously a link kept working for its full 7-day window and
+  could be replayed. A spent or superseded link now sends the visitor to the
+  sign-in page with a note to ask an admin for a fresh one.
+
 ## [0.67.0] - 2026-07-18
 
 ### Changed
