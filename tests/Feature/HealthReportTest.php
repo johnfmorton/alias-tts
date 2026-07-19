@@ -39,7 +39,7 @@ class HealthReportTest extends TestCase
         // intentionally absent here (see test_queue_timing_*).
         $keys = array_map(fn (HealthCheckResult $r) => $r->key, $results);
         $this->assertEqualsCanonicalizing([
-            'php_version', 'php_extensions', 'database', 'migrations', 'cache',
+            'php_version', 'php_extensions', 'image_gd', 'database', 'migrations', 'cache',
             'ffmpeg', 'storage', 'disk', 'provider', 'asr', 'enhance', 'genblaze', 'pronunciation', 'queue', 'failed_jobs',
             'scheduler', 'cleanup', 'voices', 'api_keys', 'app_key', 'debug', 'app_url', 'upload_limit',
         ], $keys);
@@ -50,6 +50,16 @@ class HealthReportTest extends TestCase
         $results = app(HealthReport::class)->run();
 
         $this->assertEmpty(array_filter($results, fn (HealthCheckResult $r) => $r->isFailure()));
+    }
+
+    public function test_image_processing_passes_when_gd_is_available(): void
+    {
+        // gd is bundled in DDEV, CI, and the Docker image; a missing gd is a
+        // hard fail because avatar uploads decode/re-encode through it.
+        $gd = $this->resultFor('image_gd');
+
+        $this->assertSame(HealthStatus::Pass, $gd->status);
+        $this->assertStringContainsString('gd loaded', $gd->detail);
     }
 
     public function test_a_result_serializes_to_an_array(): void

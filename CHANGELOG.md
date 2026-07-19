@@ -4,6 +4,15 @@ All notable changes to this project are documented in this file. The format is
 based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this
 project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+- **`tts:doctor` now checks for the GD image extension.** Avatar uploads decode
+  and re-encode through GD, so a host that never installed `php-gd` would fatal
+  on every profile-photo upload while the rest of the service looked healthy.
+  The health report (and the admin Health page) now fail loudly with the fix
+  when GD is missing.
+
 ## [0.68.0] - 2026-07-19
 
 ### Added

@@ -64,6 +64,7 @@ class HealthReport
 
         // Runtime
         $this->checkPhp();
+        $this->checkImageProcessing();
         // Data stores
         $this->checkDatabase();
         $this->checkMigrations();
@@ -113,6 +114,19 @@ class HealthReport
         $missing === []
             ? $this->add('php_extensions', HealthStatus::Pass, 'PHP extensions', 'curl, zip, fileinfo')
             : $this->add('php_extensions', HealthStatus::Fail, 'PHP extensions', 'missing: '.implode(', ', $missing));
+    }
+
+    /**
+     * Avatar uploads are decoded and re-encoded to a square WebP, which needs GD.
+     * Without it every profile-photo upload fatals — and it's easy to miss because
+     * the rest of the service runs fine. The Docker image and CI bundle gd; this
+     * catches a hand-provisioned host (e.g. Forge) that never installed php-gd.
+     */
+    private function checkImageProcessing(): void
+    {
+        extension_loaded('gd')
+            ? $this->add('image_gd', HealthStatus::Pass, 'Image processing', 'gd loaded — avatar uploads are resized and re-encoded')
+            : $this->add('image_gd', HealthStatus::Fail, 'Image processing', 'gd extension missing — profile photo uploads will fail. Install php-gd (e.g. apt-get install php8.3-gd) and reload PHP-FPM.');
     }
 
     private function checkDatabase(): void
