@@ -1515,6 +1515,124 @@ class StudioProjectTest extends TestCase
         $this->assertNull($chunk->settings);
     }
 
+    public function test_a_take_records_the_effective_voice_it_rendered_with(): void
+    {
+        $this->spyProvider();
+        $john = Voice::create(['slug' => 'john', 'name' => 'John', 'reference_audio_path' => 'voices/john.wav']);
+        $project = $this->project();
+        $chunk = $project->chunks()->orderBy('position')->first();
+        $svc = app(ProjectService::class);
+
+        // An inheriting chunk records the PROJECT voice on its take.
+        $svc->generateChunk($chunk);
+        $this->assertSame($project->voice_id, $chunk->refresh()->takes()->latest('created_at')->first()->voice_id);
+
+        // A pinned chunk records the OVERRIDE voice on its take.
+        $svc->setChunkVoice($chunk->refresh(), $john);
+        $svc->generateChunk($chunk->refresh());
+        $this->assertSame($john->id, $chunk->refresh()->takes()->latest('created_at')->first()->voice_id);
+    }
+
+    public function test_selecting_a_take_restores_the_voice_it_rendered_with(): void
+    {
+        $this->spyProvider();
+        $john = Voice::create(['slug' => 'john', 'name' => 'John', 'reference_audio_path' => 'voices/john.wav']);
+        $project = $this->projectWithVoice(Voice::resolve(Voice::defaultSlug()));
+        $chunk = $project->chunks()->orderBy('position')->first();
+        $svc = app(ProjectService::class);
+
+        // Take A on the (inherited) project voice; take B after pinning John.
+        $svc->generateChunk($chunk);
+        $chunk->refresh();
+        $takeA = $chunk->takes()->first();
+        $this->assertSame($project->voice_id, $takeA->voice_id);
+
+        $svc->setChunkVoice($chunk, $john);
+        $svc->generateChunk($chunk->refresh());
+        $this->assertSame($john->id, $chunk->refresh()->voice_id);
+
+        // Selecting take A restores its voice explicitly, stays Completed (the audio
+        // WAS made with that voice), and the response carries the slug for the picker.
+        $this->actingAs($this->admin())
+            ->post(route('admin.studio.projects.chunks.takes.select', [$project, $chunk, $takeA]))
+            ->assertOk()
+            ->assertJsonPath('status', 'completed')
+            ->assertJsonPath('voice', Voice::defaultSlug());
+
+        $chunk->refresh();
+        $this->assertSame($project->voice_id, $chunk->voice_id);
+        $this->assertSame(ChunkStatus::Completed, $chunk->status);
+    }
+
+    public function test_selecting_a_take_without_a_recorded_voice_keeps_the_chunk_voice(): void
+    {
+        $john = Voice::create(['slug' => 'john', 'name' => 'John', 'reference_audio_path' => 'voices/john.wav']);
+        $project = $this->projectWithVoice(Voice::resolve(Voice::defaultSlug()));
+        $chunk = $project->chunks()->orderBy('position')->first();
+        app(ProjectService::class)->setChunkVoice($chunk, $john); // explicit John
+
+        // A legacy take carries no voice_id (recorded before the column existed).
+        $take = $chunk->takes()->create([
+            'audio_path' => 'takes/'.Str::uuid().'.wav',
+            'voice_id' => null,
+            'text' => $chunk->text,
+            'source' => 'legacy',
+            'characters' => mb_strlen($chunk->text),
+        ]);
+
+        // Selecting it leaves the chunk's current voice in place, as with null text.
+        $this->actingAs($this->admin())
+            ->post(route('admin.studio.projects.chunks.takes.select', [$project, $chunk, $take]))
+            ->assertOk()
+            ->assertJsonPath('voice', 'john');
+        $this->assertSame($john->id, $chunk->refresh()->voice_id);
+    }
+
+    public function test_generate_persists_the_pending_voice_from_the_panel(): void
+    {
+        $spy = $this->spyProvider();
+        $john = Voice::create(['slug' => 'john', 'name' => 'John', 'reference_audio_path' => 'voices/john.wav']);
+        $project = $this->projectWithVoice(Voice::resolve(Voice::defaultSlug()));
+        $chunk = $project->chunks()->orderBy('position')->first();
+
+        // The picker is now a pending edit that rides on Regenerate: the chunk voice
+        // is persisted before the render, which then uses that voice's clip.
+        $this->actingAs($this->admin())
+            ->postJson(route('admin.studio.projects.chunks.generate', [$project, $chunk]), ['voice' => 'john'])
+            ->assertOk();
+
+        $this->assertSame($john->id, $chunk->refresh()->voice_id);
+        $this->assertStringContainsString('john.wav', (string) $spy->refs[array_key_last($spy->refs)]);
+    }
+
+    public function test_generate_rejects_an_unknown_pending_voice_without_rendering(): void
+    {
+        $project = $this->project();
+        $chunk = $project->chunks()->first();
+
+        $this->actingAs($this->admin())
+            ->postJson(route('admin.studio.projects.chunks.generate', [$project, $chunk]), ['voice' => 'nope'])
+            ->assertStatus(422);
+
+        $this->assertSame(0, $chunk->refresh()->takes()->count());
+    }
+
+    public function test_generate_without_a_voice_key_leaves_the_chunk_voice_untouched(): void
+    {
+        $this->spyProvider();
+        $john = Voice::create(['slug' => 'john', 'name' => 'John', 'reference_audio_path' => 'voices/john.wav']);
+        $project = $this->projectWithVoice(Voice::resolve(Voice::defaultSlug()));
+        $chunk = $project->chunks()->orderBy('position')->first();
+        app(ProjectService::class)->setChunkVoice($chunk, $john);
+
+        // A bare POST (no `voice` key) must not disturb the pinned voice.
+        $this->actingAs($this->admin())
+            ->post(route('admin.studio.projects.chunks.generate', [$project, $chunk]))
+            ->assertOk();
+
+        $this->assertSame($john->id, $chunk->refresh()->voice_id);
+    }
+
     public function test_take_tuning_labels_name_the_delivery_archetype_or_custom_mix(): void
     {
         $project = $this->project();
@@ -1771,8 +1889,8 @@ class StudioProjectTest extends TestCase
         // Re-run the takes migration against the already-generated chunk, as a real
         // deploy would: drop + recreate the table so up()'s backfill runs over the
         // existing audio (the chunk's audio_path is untouched by the rollback).
-        // Twenty-five steps because the takes table is the twenty-fifth-newest
-        // migration (native presets, project-seal, bundled default voices, account
+        // Twenty-seven steps because these all sit on top of the takes table
+        // (native presets, project-seal, bundled default voices, account
         // fields, two-factor/connected-accounts, the unowned-api-key reassignment,
         // project ownership, the magic-login-table drop, per-user settings,
         // per-user voices, per-user presets, the take-text snapshot, the
@@ -1780,9 +1898,9 @@ class StudioProjectTest extends TestCase
         // slug scoping, the preset-temperature column, the spent-characters
         // counters, the take-duration column, the turbo preset knobs, the
         // per-model spend counters, the per-chunk skip flag, the credit
-        // system, the project-jobs table, the generation-timings table, and the
-        // voice-clip status column all sit on top of it).
-        Artisan::call('migrate:rollback', ['--step' => 26]);
+        // system, the project-jobs table, the generation-timings table, the
+        // voice-clip status column, and the take-voice column).
+        Artisan::call('migrate:rollback', ['--step' => 27]);
         Artisan::call('migrate', ['--force' => true]);
 
         $takes = $chunk->refresh()->takes()->get();

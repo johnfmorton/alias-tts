@@ -33,6 +33,22 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   buttons land at the same position in every row and every chunk regardless of
   how long a take's label is; long "Custom: …" labels wrap inside their column
   instead of shoving the layout sideways.
+- **A chunk's voice, Delivery, and fine-tuning are now unsaved edits you can
+  revert.** Changing a chunk's voice, a Delivery preset, or a fine-tune knob now
+  marks the chunk **unsaved** — with a **Revert** that restores the whole panel
+  (text, voice, Delivery, knobs, and seed) in one click — instead of the voice
+  saving on its own and flipping the chunk to "stale". The chosen voice is
+  written with your next **Regenerate**, matching how text edits already work, so
+  a change you didn't mean to keep is one click from undo. The seed hint copy was
+  reworded to explain that reusing a number gives a similar — not identical — take.
+
+### Fixed
+- **Selecting an earlier take restores the voice it was rendered with.** Takes now
+  remember which voice made them, so choosing an earlier take in the Studio moves
+  the voice picker (and its engine's tuning knobs) back to that voice, and a
+  following Regenerate uses it — previously the picker was left on the current
+  voice. A take made with a different voice than the chunk's current one now names
+  that voice in the takes list so cross-voice takes are easy to spot.
 
 ## [0.68.0] - 2026-07-19
 

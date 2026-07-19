@@ -460,7 +460,7 @@
                                    class="chunk-seed w-28 rounded-lg border border-edge bg-zinc-950 px-2 py-1 text-right text-sm tabular-nums">
                             <button type="button" class="chunk-seed-random rounded-lg border border-edge px-1.5 py-1 text-sm text-zinc-400 hover:bg-zinc-800"
                                     title="Roll a random seed" aria-label="Roll a random seed">🎲</button>
-                            <span class="text-[11px] text-zinc-500">blank = random · pins the draw, not the result</span>
+                            <span class="text-[11px] text-zinc-500">Leave blank for a fresh variation. Reusing a number may produce a similar—but not identical—take.</span>
                         </div>
 
                         {{-- Fine-tune: the raw sliders, collapsed by default. The effective

@@ -25,13 +25,13 @@ class BundledVoiceClipReplacementTest extends TestCase
      * temperature column, the spent-characters counters, the take-duration
      * column, the turbo preset knobs, the per-model spend counters, the
      * per-chunk skip flag, the credit system, the project-jobs table, the
-     * generation-timings table, and the voice-clip status column now sit on top
-     * of it; rewinding all thirteen and re-migrating re-runs the replacement's
-     * up() (its own down() is a no-op).
+     * generation-timings table, the voice-clip status column, and the take-voice
+     * column now sit on top of it; rewinding all fourteen and re-migrating re-runs
+     * the replacement's up() (its own down() is a no-op).
      */
     private function rerunReplacementMigration(): void
     {
-        Artisan::call('migrate:rollback', ['--step' => 13]);
+        Artisan::call('migrate:rollback', ['--step' => 14]);
         Artisan::call('migrate', ['--force' => true]);
     }
 

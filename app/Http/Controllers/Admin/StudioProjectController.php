@@ -921,6 +921,10 @@ class StudioProjectController extends Controller
             return $error;
         }
 
+        if ($error = $this->persistChunkVoice($request, $project, $chunk)) {
+            return $error;
+        }
+
         if ($error = $this->persistTuning($request, $chunk)) {
             return $error;
         }
@@ -961,6 +965,34 @@ class StudioProjectController extends Controller
         }
 
         $this->projects->updateChunkTuning($chunk, $this->knobInput($request));
+
+        return null;
+    }
+
+    /**
+     * Persist the voice riding on a generate/queue request (the picker is now a
+     * pending edit, saved with the render like the text and tuning). Absent
+     * `voice` key ⇒ untouched; an empty value ⇒ clear back to the project voice;
+     * an unknown slug ⇒ 422. Any transient "stale" from the change is immaterial:
+     * generateChunk renders straight to Completed, and a queued chunk stales like
+     * every other clip in the run.
+     */
+    private function persistChunkVoice(Request $request, TtsProject $project, TtsChunk $chunk): ?JsonResponse
+    {
+        if (! $request->has('voice')) {
+            return null;
+        }
+
+        $slug = trim((string) $request->input('voice'));
+        $voice = null;
+        if ($slug !== '') {
+            $voice = Voice::resolveFor($slug, $this->projectOwnerId($request, $project));
+            if (! $voice) {
+                return response()->json(['message' => 'Unknown voice.'], 422);
+            }
+        }
+
+        $this->projects->setChunkVoice($chunk, $voice);
 
         return null;
     }
@@ -1083,9 +1115,13 @@ class StudioProjectController extends Controller
             return $error;
         }
 
-        // The queued render happens on the worker from the chunk's stored
-        // tuning, so the panel riding on this click is persisted the same way
+        // The queued render happens on the worker from the chunk's stored voice
+        // and tuning, so the panel riding on this click is persisted the same way
         // a direct Regenerate persists it.
+        if ($error = $this->persistChunkVoice($request, $project, $chunk)) {
+            return $error;
+        }
+
         if ($error = $this->persistTuning($request, $chunk)) {
             return $error;
         }
@@ -1272,6 +1308,10 @@ class StudioProjectController extends Controller
             'spend' => $this->spendPayload($project, $chunk),
             'text' => $chunk->text,
             'characters' => $chunk->characters,
+            // The voice the take restored onto the chunk, so the page can move the
+            // picker to it (and re-sync the engine's knobs). Null on a legacy take
+            // that carried no voice — the picker is then left as-is.
+            'voice' => $chunk->voice?->slug,
             'tuning' => $this->tuningValues($chunk),
             'seed' => is_array($chunk->settings) ? ($chunk->settings['seed'] ?? null) : null,
         ], $this->takesPayload($project, $chunk)));
@@ -1656,8 +1696,12 @@ class StudioProjectController extends Controller
         // override (empty, or temperature-only) is labelled; a take whose own
         // knobs name an engine overrides this (see takeEngine()).
         $engine = ModelCatalog::forVoice($chunk->voice ?? $project->voice);
+        // The chunk's current effective voice — a take made with a DIFFERENT voice
+        // is worth naming on its pill (the common single-voice project stays quiet).
+        $currentVoiceId = $chunk->voice_id ?? $project->voice_id;
+        $chunk->takes->loadMissing('voice'); // one query for every take's voice name
         $selectedId = null;
-        $takes = $chunk->takes->map(function (TtsChunkTake $take) use ($project, $chunk, $engine, &$selectedId) {
+        $takes = $chunk->takes->map(function (TtsChunkTake $take) use ($project, $chunk, $engine, $currentVoiceId, &$selectedId) {
             $selected = $take->audio_path !== null && $take->audio_path === $chunk->audio_path;
             if ($selected) {
                 $selectedId = $take->id;
@@ -1670,6 +1714,9 @@ class StudioProjectController extends Controller
                 'audio_url' => route('admin.studio.projects.chunks.takes.audio', [$project, $chunk, $take]),
                 'selected' => $selected,
                 'tuning_label' => $this->tuningLabel(is_array($take->settings) ? $take->settings : [], $engine),
+                // The voice this take used, named only when it differs from the
+                // chunk's current voice (so the pill flags a cross-voice take).
+                'voice_name' => ($take->voice_id !== null && $take->voice_id !== $currentVoiceId) ? $take->voice?->name : null,
                 // Audio length recorded at synthesis, so the player can print the
                 // duration without loading metadata (null on unparsable legacy takes).
                 'duration_ms' => $take->duration_ms,

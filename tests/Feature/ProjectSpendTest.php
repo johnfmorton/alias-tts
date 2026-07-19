@@ -158,12 +158,12 @@ class ProjectSpendTest extends TestCase
 
         // Re-run the spent-characters migration: its backfill must sum the takes
         // that exist, skipping the 'use' copy (generate + preview = 2 renders).
-        // Nine steps because the take-duration column, the turbo preset knobs,
+        // Ten steps because the take-duration column, the turbo preset knobs,
         // the per-model spend counters, the per-chunk skip flag, the credit
-        // system, the project-jobs table, the generation-timings table, and the
-        // voice-clip status column sit on top of it — bump this when a migration
-        // lands above them.
-        Artisan::call('migrate:rollback', ['--step' => 9]);
+        // system, the project-jobs table, the generation-timings table, the
+        // voice-clip status column, and the take-voice column sit on top of it —
+        // bump this when a migration lands above them.
+        Artisan::call('migrate:rollback', ['--step' => 10]);
         Artisan::call('migrate', ['--force' => true]);
 
         $this->assertSame(2 * mb_strlen($chunk->text), $chunk->fresh()->spent_characters);

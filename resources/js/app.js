@@ -495,6 +495,11 @@ const chunkTuningPayload = (card) => {
         const value = chunkKnobVal(card, sel);
         payload[key] = value === '' ? null : Number(value);
     });
+    // The voice rides along only when the user actually changed the picker —
+    // an untouched picker sends nothing, so a chunk that inherits the project
+    // voice keeps inheriting rather than being silently pinned on every render.
+    const voice = card.querySelector('.chunk-voice');
+    if (voice && voice.value !== voice.dataset.original) payload.voice = voice.value;
     return payload;
 };
 
@@ -2029,9 +2034,31 @@ function initStudioProject() {
     // leaving the page with any dirty chunk. Set when an intended reload (insert /
     // re-chunk) navigates away on purpose, so the guard doesn't fire for those.
     let skipUnloadGuard = false;
-    const isDirty = (card) => {
-        const t = card.querySelector('.chunk-text');
-        return t.value !== t.dataset.original;
+    // Every panel control whose pending edit marks the chunk "unsaved": the text,
+    // the voice, the seed pin, and every tuning knob. Each control's last-SAVED
+    // value lives in its own dataset.original; a chunk is dirty when any live value
+    // has drifted from it. Hidden (other-engine) knobs sit at their own baseline
+    // untouched, so they never add false dirt. Voice/tuning are held pending and
+    // written only on the next Regenerate — same contract as a text edit.
+    const panelControls = (card) => {
+        const controls = [
+            card.querySelector('.chunk-text'),
+            card.querySelector('.chunk-voice'),
+            card.querySelector('.chunk-seed'),
+        ];
+        KNOB_INPUTS.forEach(([, sel]) => controls.push(card.querySelector(sel)));
+        return controls.filter(Boolean);
+    };
+
+    const isDirty = (card) => panelControls(card).some((el) => el.value !== el.dataset.original);
+
+    // Snapshot the panel's current values as the new saved baseline (after a
+    // generate/queue/patch/select persists them). The voice's inherit flag is
+    // captured too so Revert can put it back.
+    const commitBaseline = (card) => {
+        panelControls(card).forEach((el) => { el.dataset.original = el.value; });
+        const voice = card.querySelector('.chunk-voice');
+        if (voice) voice.dataset.inheritsOriginal = voice.dataset.inherits ?? '1';
     };
 
     // The render button's label: the bare verb from data-base, which flips from
@@ -2052,11 +2079,25 @@ function initStudioProject() {
         dirtyBadge.classList.toggle('hidden', !dirty);
         dirtyBadge.classList.toggle('inline-flex', dirty);
         card.querySelector('.chunk-revert').classList.toggle('hidden', !dirty);
-        textarea.classList.toggle('border-amber-500/50', dirty);
-        textarea.classList.toggle('border-edge', !dirty);
+        // The amber outline belongs to the TEXTAREA, so tie it to a text change
+        // specifically — a pending voice/tuning edit lights the badge + Revert
+        // but must not outline text the user didn't touch.
+        const textDirty = dirty && textarea.value !== textarea.dataset.original;
+        textarea.classList.toggle('border-amber-500/50', textDirty);
+        textarea.classList.toggle('border-edge', !textDirty);
         // There is no save-text-without-render — the render button absorbs the
         // save (patchChunk runs first in runGeneration/queueChunkRegen).
         setGenerateLabel(card);
+    };
+
+    // After a successful save (generate/queue), lock the panel in as the new saved
+    // state: a voice the user changed is now an explicit server-side pin (it stops
+    // mirroring the project voice), then snapshot the baseline and clear the badge.
+    const commitPanelAfterSave = (card) => {
+        const voice = card.querySelector('.chunk-voice');
+        if (voice && voice.value !== voice.dataset.original) voice.dataset.inherits = '0';
+        commitBaseline(card);
+        setDirty(card, false);
     };
 
     async function patchChunk(card) {
@@ -2076,7 +2117,9 @@ function initStudioProject() {
             return true;
         }
         textarea.dataset.original = textarea.value;
-        setDirty(card, false);
+        // Only the text was saved here (this is generate's first step); a pending
+        // voice/tuning edit stays dirty until the render that follows persists it.
+        setDirty(card, isDirty(card));
         card.querySelector('.chunk-chars').textContent = `${data.characters} chars`;
         setChunkStatus(card, data.status);
         setProjectStatus(data.project_status);
@@ -2107,6 +2150,10 @@ function initStudioProject() {
             setChunkStatus(card, data.status);
             setChunkAsrBadge(card, data.asr_badge ?? null);
             setProjectStatus(data.project_status);
+            // The render saved the whole panel (text + any pending voice + tuning).
+            // A changed voice is now an explicit server-side pin, so it stops
+            // mirroring the project voice; then re-baseline so nothing reads dirty.
+            commitPanelAfterSave(card);
             const audio = card.querySelector('.chunk-audio');
             audio.src = bust(card.dataset.audioUrl);
             audio.closest('.aplayer')?.classList.remove('hidden');
@@ -2185,6 +2232,10 @@ function initStudioProject() {
             if (!res.ok) throw new Error(await errorMessage(res));
             const data = await res.json();
             setChunkStatus(card, data.status);
+            // The queue endpoint persisted the pending voice + tuning (the worker
+            // renders from them later) — lock them in as saved, same as a direct
+            // Regenerate does.
+            commitPanelAfterSave(card);
             setStatus(finalStatus, data.message || data.job?.message);
         } catch (err) {
             setStatus(finalStatus, `✗ ${err.message}`, 'error');
@@ -2520,7 +2571,12 @@ function initStudioProject() {
         // · the pinned seed IF one was set (a random draw isn't worth a segment,
         // and Replicate never reports the seed it chose) · relative time.
         // Assembled from present parts so nothing dangles.
-        const line2Parts = [take.tuning_label];
+        // Lead with the voice name only when this take used a DIFFERENT voice than
+        // the chunk's current one (server sends it just then), so a cross-voice take
+        // is obvious before you Select it.
+        const line2Parts = [];
+        if (take.voice_name) line2Parts.push(take.voice_name);
+        line2Parts.push(take.tuning_label);
         if (take.seed) line2Parts.push(`seed ${take.seed}`);
         if (take.created_human) line2Parts.push(take.created_human);
         line2.textContent = line2Parts.filter(Boolean).join(' · ');
@@ -2638,11 +2694,27 @@ function initStudioProject() {
             if (data.text != null) {
                 const textarea = card.querySelector('.chunk-text');
                 textarea.value = data.text;
-                textarea.dataset.original = data.text;
-                setDirty(card, false);
                 card.querySelector('.chunk-chars').textContent = `${data.characters} chars`;
             }
+            // Restore the take's voice BEFORE its tuning, so the take's knob values
+            // land in the correct engine's now-visible inputs. Null (legacy take)
+            // leaves the picker as-is.
+            if (data.voice) {
+                const chunkVoice = card.querySelector('.chunk-voice');
+                const opt = chunkVoice?.querySelector(`option[value="${CSS.escape(data.voice)}"]`);
+                if (chunkVoice && opt && chunkVoice.value !== data.voice) {
+                    chunkVoice.value = data.voice;
+                    chunkVoice.dataset.current = data.voice;
+                    chunkVoice.dataset.inherits = '0'; // a restored take pins its voice explicitly
+                    syncKnobEngines(card, modelOfSelect(chunkVoice));
+                    card.dispatchEvent(new Event('engine-change'));
+                }
+            }
             applyTuningSnapshot(card, data.tuning, data.seed);
+            // selectTake persisted the whole restored snapshot server-side, so it
+            // is the new saved baseline — nothing should read as unsaved.
+            commitBaseline(card);
+            setDirty(card, false);
             const audio = card.querySelector('.chunk-audio');
             audio.src = bust(card.dataset.audioUrl);
             audio.closest('.aplayer')?.classList.remove('hidden');
@@ -2758,41 +2830,23 @@ function initStudioProject() {
             runActive ? queueChunkRegen(card) : generateChunk(card).catch(() => {})
         ));
 
-        // Per-chunk voice override: PATCH the chosen voice. A generated chunk goes
-        // stale (its audio used the previous voice), and the chunk stops mirroring
-        // the project voice (data-inherits -> 0). Revert the picker on failure.
+        // Per-chunk voice override: a PENDING edit, like the text and tuning —
+        // held on screen and written with the next Regenerate, not saved on its
+        // own. Picking a voice may switch engines, so swap the knob set and
+        // re-point the Delivery chips; then flag the chunk unsaved (Revert puts it
+        // back). An explicit pick stops the chunk mirroring the project voice.
         const chunkVoice = card.querySelector('.chunk-voice');
         if (chunkVoice) {
             chunkVoice.dataset.current = chunkVoice.value;
-            chunkVoice.addEventListener('change', async () => {
+            chunkVoice.addEventListener('change', () => {
                 const voice = chunkVoice.value;
-                const previous = chunkVoice.dataset.current;
-                if (voice === previous) return;
-                chunkVoice.disabled = true;
-                try {
-                    const res = await fetch(chunkVoice.dataset.voiceUrl, {
-                        method: 'PATCH',
-                        headers: { 'X-CSRF-TOKEN': csrfToken(), 'Accept': 'application/json', 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ voice }),
-                    });
-                    if (!res.ok) throw new Error(await errorMessage(res));
-                    const data = await res.json();
-                    chunkVoice.dataset.current = voice;
-                    chunkVoice.dataset.inherits = data.inherits ? '1' : '0';
-                    // The new voice may run a different engine — swap the knob set,
-                    // then re-point the Delivery chips + Fine-tune count to it.
-                    syncKnobEngines(card, modelOfSelect(chunkVoice));
-                    card.dispatchEvent(new Event('engine-change'));
-                    setChunkStatus(card, data.status);
-                    setProjectStatus(data.project_status);
-                    refreshSeams();
-                    setStatus(finalStatus, `✓ Chunk voice set to ${data.voice_name}. Regenerate to apply.`, 'ok');
-                } catch (err) {
-                    chunkVoice.value = previous; // revert the picker on failure
-                    setStatus(finalStatus, `✗ ${err.message}`, 'error');
-                } finally {
-                    chunkVoice.disabled = false;
-                }
+                if (voice === chunkVoice.dataset.current) return;
+                chunkVoice.dataset.current = voice;
+                chunkVoice.dataset.inherits = '0';
+                syncKnobEngines(card, modelOfSelect(chunkVoice));
+                card.dispatchEvent(new Event('engine-change'));
+                setDirty(card, isDirty(card));
+                setStatus(finalStatus, 'Voice changed — Regenerate to apply.');
             });
         }
 
@@ -2803,6 +2857,10 @@ function initStudioProject() {
             seedInput.value = Math.floor(Math.random() * 1_000_000);
             seedInput.dispatchEvent(new Event('input', { bubbles: true }));
         });
+
+        // The seed lives outside the fine-tune body, so track its edits (typed, 🎲,
+        // or cleared by Reset all) as unsaved on their own.
+        card.querySelector('.chunk-seed')?.addEventListener('input', () => setDirty(card, isDirty(card)));
 
         // "Apply preset" fills the native knobs (dispatching input so the sliders
         // sync); the next Regenerate saves and renders them. Seed is deliberately
@@ -2875,8 +2933,13 @@ function initStudioProject() {
             markDelivery(key);
         };
         deliveryChips.forEach((chip) => chip.addEventListener('click', () => applyDelivery(chip.dataset.delivery)));
-        // Any slider drag re-evaluates which archetype (if any) is now matched.
-        card.querySelector('.finetune-body')?.addEventListener('input', refreshDelivery);
+        // Any slider drag re-evaluates which archetype (if any) is now matched, and
+        // flags the chunk unsaved. This also covers Delivery chips and the preset
+        // picker — both fill these knobs and dispatch input, which bubbles here.
+        card.querySelector('.finetune-body')?.addEventListener('input', () => {
+            refreshDelivery();
+            setDirty(card, isDirty(card));
+        });
 
         // ---- Fine-tune disclosure ---------------------------------------------
         // The raw sliders collapse behind a toggle whose (N) reflects the active
@@ -2933,6 +2996,10 @@ function initStudioProject() {
         updateFineCount();
         refreshDelivery();
 
+        // Snapshot the server-rendered panel as the saved baseline, so isDirty/Revert
+        // have a reference point for the voice, knobs and seed from the first paint.
+        commitBaseline(card);
+
         // Sound-tag chips (turbo only — the row swaps with the engine): insert
         // the tag at the textarea's cursor with sensible spacing, replacing any
         // selection. Dispatching `input` runs the same paths typing would
@@ -2953,11 +3020,32 @@ function initStudioProject() {
             textarea.focus();
         });
 
-        // Track dirty state as the user types; Revert restores the saved text.
+        // Track dirty state as the user types.
         card.querySelector('.chunk-text').addEventListener('input', () => setDirty(card, isDirty(card)));
+        // Revert restores the WHOLE panel to its last-saved baseline in one click:
+        // text, voice (which may switch engines back), every knob, and the seed.
         card.querySelector('.chunk-revert').addEventListener('click', () => {
             const textarea = card.querySelector('.chunk-text');
             textarea.value = textarea.dataset.original;
+            const voice = card.querySelector('.chunk-voice');
+            if (voice && voice.value !== voice.dataset.original) {
+                voice.value = voice.dataset.original;
+                voice.dataset.current = voice.dataset.original;
+                voice.dataset.inherits = voice.dataset.inheritsOriginal ?? '1';
+                syncKnobEngines(card, modelOfSelect(voice));
+                card.dispatchEvent(new Event('engine-change'));
+            }
+            // Rebuild the baseline knob/seed map and reuse applyTuningSnapshot to
+            // fill it back in (its input dispatches re-sync sliders + Delivery chips).
+            const tuning = {};
+            KNOB_INPUTS.forEach(([key, sel]) => {
+                const original = card.querySelector(sel)?.dataset.original;
+                tuning[key] = (original == null || original === '') ? null : Number(original);
+            });
+            const seedOriginal = card.querySelector('.chunk-seed')?.dataset.original;
+            applyTuningSnapshot(card, tuning, (seedOriginal == null || seedOriginal === '') ? null : Number(seedOriginal));
+            refreshDelivery();
+            updateFineCount();
             setDirty(card, false);
         });
 
@@ -3299,6 +3387,11 @@ function initStudioProject() {
                     if (!cv || cv.dataset.inherits !== '1') return;
                     cv.value = voice;
                     cv.dataset.current = voice;
+                    // The chunk still inherits, so this IS its new saved voice —
+                    // move the baseline with it, or the picker would read as an
+                    // unsaved edit the user never made. (It goes 'stale' below: its
+                    // audio predates the new voice and wants a regenerate.)
+                    cv.dataset.original = voice;
                     // Following the project voice may change the engine too.
                     syncKnobEngines(card, modelOfSelect(cv));
                     card.dispatchEvent(new Event('engine-change'));

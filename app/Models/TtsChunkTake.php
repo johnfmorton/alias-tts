@@ -21,6 +21,7 @@ class TtsChunkTake extends Model
     protected $fillable = [
         'tts_chunk_id',
         'audio_path',
+        'voice_id',
         'text',
         'settings',
         'source',
@@ -43,6 +44,18 @@ class TtsChunkTake extends Model
     public function chunk(): BelongsTo
     {
         return $this->belongsTo(TtsChunk::class, 'tts_chunk_id');
+    }
+
+    /**
+     * The voice this take was rendered with (the chunk's effective voice at
+     * synthesis — see {@see \App\Services\ProjectService::recordTake()}). Null on
+     * legacy takes recorded before the column existed, or when that voice was
+     * later deleted; {@see \App\Services\ProjectService::selectTake()} then leaves
+     * the chunk's current voice in place.
+     */
+    public function voice(): BelongsTo
+    {
+        return $this->belongsTo(Voice::class, 'voice_id');
     }
 
     /**

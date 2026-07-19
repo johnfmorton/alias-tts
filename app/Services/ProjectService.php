@@ -568,9 +568,16 @@ class ProjectService
         // player then just shows the duration once playback loads it.
         $seconds = $this->converter->wavDurationSeconds($bytes);
 
+        // The voice this render actually used — the chunk's override, else the
+        // project voice. Snapshotted so selecting this take later restores the
+        // exact voice (and engine) that produced its audio; reused for the spend
+        // counter below.
+        $voice = $chunk->voice ?? $chunk->project->voice;
+
         $take = $chunk->takes()->create([
             'id' => $takeId,
             'audio_path' => $path,
+            'voice_id' => $voice?->id,
             // Snapshot the text this take actually read, so a later "select" of an
             // earlier take can print the words it spoke on the receipt even after
             // the chunk's text was edited (see ProjectExportService::chunkRows).
@@ -600,7 +607,7 @@ class ProjectService
             TtsChunk::whereKey($chunk->id)->increment('spent_characters', $spent);
             TtsProject::whereKey($chunk->tts_project_id)->increment('spent_characters', $spent);
 
-            $model = ModelCatalog::forVoice($chunk->voice ?? $chunk->project->voice);
+            $model = ModelCatalog::forVoice($voice);
             SpendCounters::add('chunk', $chunk->id, $model, $spent);
             SpendCounters::add('project', $chunk->tts_project_id, $model, $spent);
 
@@ -1559,6 +1566,16 @@ class ProjectService
         if ($take->text !== null) {
             $attributes['text'] = $take->text;
             $attributes['characters'] = mb_strlen($take->text);
+        }
+
+        // Restore the voice this take rendered with, so the picker (and a
+        // follow-up Regenerate) match the audio. nullOnDelete guarantees a
+        // non-null id still resolves; legacy/deleted-voice takes (null) leave the
+        // chunk voice alone, as with the null-text case above. Status is forced
+        // Completed in this same update, so restoring the voice never falsely
+        // stales the chunk the way setChunkVoice() would.
+        if ($take->voice_id !== null) {
+            $attributes['voice_id'] = $take->voice_id;
         }
 
         $chunk->update($attributes);
