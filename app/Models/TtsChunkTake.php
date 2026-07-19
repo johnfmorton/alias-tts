@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Services\ProjectService;
 use Illuminate\Database\Eloquent\Concerns\HasUuids;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
@@ -48,9 +49,9 @@ class TtsChunkTake extends Model
 
     /**
      * The voice this take was rendered with (the chunk's effective voice at
-     * synthesis — see {@see \App\Services\ProjectService::recordTake()}). Null on
+     * synthesis — see {@see ProjectService::recordTake()}). Null on
      * legacy takes recorded before the column existed, or when that voice was
-     * later deleted; {@see \App\Services\ProjectService::selectTake()} then leaves
+     * later deleted; {@see ProjectService::selectTake()} then leaves
      * the chunk's current voice in place.
      */
     public function voice(): BelongsTo
