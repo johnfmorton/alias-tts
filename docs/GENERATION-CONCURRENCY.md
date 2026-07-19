@@ -52,6 +52,12 @@ Primary sources:
 Provider status, pricing, and rate limits are external facts and must be
 rechecked immediately before implementation.
 
+**Last verified 2026-07-19** against the live model pages: both endpoints show
+the *Official* and *Warm* badges and price at *$0.025 per thousand input
+characters* ("40,000 characters for $1"); the 600 requests/minute creation
+limit and the granted-credit-without-payment-method exception (1/second, 6/minute)
+are current in Replicate's rate-limit documentation.
+
 ---
 
 ## 2. What the application does today
