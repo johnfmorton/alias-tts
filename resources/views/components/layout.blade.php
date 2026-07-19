@@ -317,6 +317,7 @@
                 </div>
             </footer>
             <x-confirm-dialog />
+            <x-prompt-dialog />
         @endauth
     </div>
 </body>

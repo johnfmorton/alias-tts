@@ -338,6 +338,62 @@ function confirmDialog({ title = 'Are you sure?', message = '', label = 'Confirm
     });
 }
 
+// ---------------------------------------------------------------------------
+// In-app prompt dialog — the styled replacement for window.prompt(), with the
+// same rationale as confirmDialog above (native prompt() can be suppressed by
+// Chrome, and this matches the app). Resolves the trimmed string on confirm,
+// or null on cancel / Escape / backdrop / empty input. Falls back to native
+// prompt when the singleton is missing or already open.
+// ---------------------------------------------------------------------------
+function promptDialog({ title = '', message = '', label = 'Save', value = '', placeholder = '' } = {}) {
+    const dialog = document.getElementById('prompt-dialog');
+    if (!dialog || dialog.classList.contains('flex')) {
+        const raw = window.prompt([title, message].filter(Boolean).join('\n\n'), value);
+        return Promise.resolve(raw === null ? null : (raw.trim() || null));
+    }
+    document.getElementById('prompt-dialog-title').textContent = title;
+    const messageEl = document.getElementById('prompt-dialog-message');
+    messageEl.textContent = message;
+    messageEl.classList.toggle('hidden', !message);
+    const okBtn = document.getElementById('prompt-dialog-confirm');
+    okBtn.textContent = label;
+    const cancelBtn = document.getElementById('prompt-dialog-cancel');
+    const input = document.getElementById('prompt-dialog-input');
+    input.value = value;
+    input.placeholder = placeholder;
+    const opener = document.activeElement;
+
+    dialog.classList.remove('hidden');
+    dialog.classList.add('flex');
+    input.focus();
+    input.select();
+
+    return new Promise((resolve) => {
+        const close = (result) => {
+            dialog.classList.add('hidden');
+            dialog.classList.remove('flex');
+            okBtn.removeEventListener('click', onOk);
+            cancelBtn.removeEventListener('click', onCancel);
+            dialog.removeEventListener('mousedown', onBackdrop);
+            dialog.removeEventListener('keydown', onKey);
+            if (opener instanceof HTMLElement) opener.focus();
+            resolve(result);
+        };
+        const submit = () => { const t = input.value.trim(); close(t || null); };
+        const onOk = () => submit();
+        const onCancel = () => close(null);
+        const onBackdrop = (e) => { if (e.target === dialog) close(null); };
+        const onKey = (e) => {
+            if (e.key === 'Escape') close(null);
+            else if (e.key === 'Enter') { e.preventDefault(); submit(); }
+        };
+        okBtn.addEventListener('click', onOk);
+        cancelBtn.addEventListener('click', onCancel);
+        dialog.addEventListener('mousedown', onBackdrop);
+        dialog.addEventListener('keydown', onKey);
+    });
+}
+
 // Declarative form guard: <form data-confirm="message" data-confirm-title="…"
 // data-confirm-label="…" data-confirm-tone="warn"> pauses its submit behind the
 // dialog. On confirm, requestSubmit() re-fires the event (keeping the browser's
@@ -1327,7 +1383,12 @@ function initTuningBench(bench) {
         presetSaveBtn?.addEventListener('click', async () => {
             const picked = rows.find((s) => s.pick.checked);
             if (!picked) { setStatus(els.status, 'Pick a row to save as a preset.', 'error'); return; }
-            const name = (window.prompt('Preset name?') || '').trim();
+            const name = await promptDialog({
+                title: 'Save tuning preset',
+                message: 'Name this preset so you can apply it to other projects later.',
+                label: 'Save preset',
+                placeholder: 'e.g. Warm narration',
+            });
             if (!name) return;
             // The preset records the bench's engine so pickers offer it only
             // where its knobs apply.
@@ -2966,11 +3027,47 @@ function initStudioProject() {
     // whole point of the background run: leaving the page no longer kills it.)
     if (root.dataset.activeRun === '1') followRun();
 
-    // Don't let the user navigate away (or trigger a reload) with unsaved chunk
-    // edits without a heads-up. Intentional reloads set skipUnloadGuard first.
+    // Don't let unsaved chunk edits vanish on navigation. Two layers:
+    //
+    //  1. In-app links (← Projects, Start over, the top nav) are plain anchors,
+    //     so we can catch the click and show the app's own modal instead of
+    //     Chrome's un-stylable "Leave site?" prompt. On confirm we set
+    //     skipUnloadGuard and navigate ourselves.
+    //  2. Genuine browser exits we can't intercept — closing the tab, a reload,
+    //     the URL bar, Back/Forward, a form submit — still fall to the native
+    //     beforeunload below. The browser only allows its own dialog there, so
+    //     that plain prompt survives by necessity, for those cases alone.
+    //
+    // Intentional reloads (save, delete, insert) set skipUnloadGuard first so
+    // neither layer fires.
+    const hasUnsavedChunks = () => [...root.querySelectorAll('.studio-chunk')].some(isDirty);
+
+    document.addEventListener('click', (e) => {
+        if (skipUnloadGuard || e.defaultPrevented || e.button !== 0
+            || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
+        const link = e.target instanceof Element ? e.target.closest('a[href]') : null;
+        // Skip new-tab / download links, and anything not a real navigation away.
+        if (!link || link.target === '_blank' || link.hasAttribute('download')) return;
+        let url;
+        try { url = new URL(link.href, location.href); } catch { return; }
+        if (url.origin !== location.origin || url.pathname === location.pathname) return;
+        if (!hasUnsavedChunks()) return;
+        e.preventDefault();
+        confirmDialog({
+            title: 'Unsaved chunk edits',
+            message: "Leaving this project now will lose the chunk edits you haven't saved.",
+            label: 'Leave anyway',
+            tone: 'warn',
+        }).then((ok) => {
+            if (!ok) return;
+            skipUnloadGuard = true; // our modal already asked — don't double-prompt on unload
+            window.location.href = link.href;
+        });
+    });
+
     window.addEventListener('beforeunload', (e) => {
         if (skipUnloadGuard) return;
-        if ([...root.querySelectorAll('.studio-chunk')].some(isDirty)) {
+        if (hasUnsavedChunks()) {
             e.preventDefault();
             e.returnValue = '';
         }
