@@ -56,3 +56,8 @@ Start with the group that matches what you're doing.
   priority, not merit. (The per-voice Chatterbox/Turbo model catalog already
   covers Replicate-level model choice; this note is about entirely different
   engines, e.g. LMNT.)
+- **[GENERATION-CONCURRENCY.md](GENERATION-CONCURRENCY.md)** — *future design
+  note, not built yet:* chunk generation is serial by design (Replicate burst
+  limits, cold-GPU faults); this sketches a safe, bounded, globally
+  rate-limited way to run a few chunks in flight to cut wall-clock, with a
+  default-off flag and a phased rollout.
