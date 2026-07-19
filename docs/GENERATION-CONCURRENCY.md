@@ -4,7 +4,9 @@
 The recommended architecture in §5 is built on the
 `feature/bounded-concurrency-generation` branch: with `TTS_CONCURRENT_GENERATION`
 unset the production path remains the serial `GenerateProjectChunksJob`,
-byte-for-byte unchanged. See §13 for what exists and how to run the experiment.
+byte-for-byte unchanged. See §13 for what exists and how to run the
+experiment, and [GENERATION-CONCURRENCY-OPS.md](GENERATION-CONCURRENCY-OPS.md)
+for the deploy/enable/kill-switch runbook.
 This note grounds its provider assumptions in Replicate's current
 documentation and in the operating constraint that the Replicate account will
 remain a paid account with more than $20 in credit.

@@ -56,9 +56,12 @@ Start with the group that matches what you're doing.
   priority, not merit. (The per-voice Chatterbox/Turbo model catalog already
   covers Replicate-level model choice; this note is about entirely different
   engines, e.g. LMNT.)
-- **[GENERATION-CONCURRENCY.md](GENERATION-CONCURRENCY.md)** — *future design
-  note, not built yet:* chunk generation is serial within each operation; this
-  sketches a safe, bounded way to keep a few chunks in flight (per-chunk queued
-  jobs, capped by worker count) to cut wall-clock on multi-chunk renders —
-  grounded in primary-source provider facts, with a default-off flag and a
-  measured rollout.
+- **[GENERATION-CONCURRENCY.md](GENERATION-CONCURRENCY.md)** — bounded
+  concurrency for multi-chunk renders: a few chunks in flight (claim-based
+  per-chunk queued jobs, capped by worker count) to cut wall-clock. Implemented
+  behind a default-off flag; the note holds the design rationale,
+  primary-source provider facts, and the measured rollout plan.
+- **[GENERATION-CONCURRENCY-OPS.md](GENERATION-CONCURRENCY-OPS.md)** — the
+  operations side of the above: what deploying changes (nothing, until an env
+  var is set), how to enable and tune `K` on Forge/Docker/DDEV, why flag flips
+  are safe mid-flight, and the one-variable kill switch.
