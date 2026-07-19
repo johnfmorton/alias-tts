@@ -41,6 +41,15 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   written with your next **Regenerate**, matching how text edits already work, so
   a change you didn't mean to keep is one click from undo. The seed hint copy was
   reworded to explain that reusing a number gives a similar — not identical — take.
+- **Chunk actions now confirm themselves on the chunk, not in the header.**
+  Selecting a take, skipping or re-including a chunk, changing a chunk's voice,
+  and any chunk-level error now report on a small notice line inside that
+  chunk's card — right where you clicked — instead of up in the main player
+  area, which read as a disconnect when the action happened far down the page.
+  Confirmations quietly retire after a few seconds; errors stay until the next
+  action. Redundant messages ("Take deleted", "QA flag dismissed") are gone —
+  the row vanishing or the badge swapping already says it. The header status
+  line is reserved for project-wide news (builds, background runs, renames).
 
 ### Fixed
 - **Selecting an earlier take restores the voice it was rendered with.** Takes now
@@ -49,6 +58,16 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   following Regenerate uses it — previously the picker was left on the current
   voice. A take made with a different voice than the chunk's current one now names
   that voice in the takes list so cross-voice takes are easy to spot.
+- **A failed chunk Regenerate now says why.** The error reason was silently
+  swallowed — the chunk just flipped to "failed" with no message anywhere. The
+  failure now shows on the chunk's notice line.
+- **`npm run build`/`dev` self-install the right rolldown binding.** The
+  node_modules folder is shared between the host and the DDEV container, but
+  npm only installs rolldown's native binding for the platform that ran
+  `npm install`, so building from the other side died with a module-not-found
+  error deep inside Vite. A small pre-step now checks for this platform's
+  binding (version-matched to rolldown) and installs it `--no-save` when
+  missing, so builds work from either side without hand-fixing node_modules.
 
 ## [0.68.0] - 2026-07-19
 

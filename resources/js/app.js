@@ -46,6 +46,24 @@ function setStatus(el, message, kind) {
     el.className = 'text-sm ' + (kind === 'error' ? 'text-red-300' : kind === 'ok' ? 'text-emerald-300' : 'text-zinc-400');
 }
 
+// setStatus's chunk-scoped counterpart: feedback lands on the card the action
+// happened on (#project-final-status is for project-wide messages only). Only
+// messages that add information get written here — a state change the card
+// already shows (a take row vanishing, a badge swapping) is its own feedback.
+// Non-errors retire after a few seconds (the durable state lives in the badges);
+// errors stay until the next action on the card replaces them.
+function chunkNotice(card, message, kind) {
+    const el = card.querySelector('.chunk-notice');
+    if (!el) return;
+    el.textContent = message;
+    // Rewritten wholesale like setStatus — keep the hook class and empty:hidden.
+    el.className = 'chunk-notice mt-2 text-sm empty:hidden ' + (kind === 'error' ? 'text-red-300' : kind === 'ok' ? 'text-emerald-300' : 'text-zinc-400');
+    if (message && kind !== 'error') {
+        // Quietly retire the notice unless something newer replaced it.
+        setTimeout(() => { if (el.textContent === message) el.textContent = ''; }, 8000);
+    }
+}
+
 function playAudio(audio, blob) {
     if (!audio) return;
     audio.src = URL.createObjectURL(blob);
@@ -2163,8 +2181,12 @@ function initStudioProject() {
             setGenerateLabel(card);
             renderTakes(card, data); // the new take joins the history (and becomes selected)
             refreshSeams(); // may reveal an inline seam preview next to a generated neighbor
+            chunkNotice(card, ''); // the fresh take is the feedback — just retire any stale notice
         } catch (err) {
             setChunkStatus(card, 'failed');
+            // Callers swallow the rethrow (the click handler has nowhere to put
+            // it) — this notice is the only place the failure reason surfaces.
+            chunkNotice(card, `✗ ${err.message}`, 'error');
             reflectActionState(); // a failed chunk is outstanding again — Build final goes off
             endBusy(btn);
             setGenerateLabel(card); // endBusy restores a possibly stale label — re-derive from data-base
@@ -2236,9 +2258,12 @@ function initStudioProject() {
             // renders from them later) — lock them in as saved, same as a direct
             // Regenerate does.
             commitPanelAfterSave(card);
-            setStatus(finalStatus, data.message || data.job?.message);
+            // Nothing on the card changes until the worker gets to this clip, so
+            // the "added to the run" message carries real information — show it
+            // here; the run's own progress stays in the header status line.
+            chunkNotice(card, data.message || data.job?.message);
         } catch (err) {
-            setStatus(finalStatus, `✗ ${err.message}`, 'error');
+            chunkNotice(card, `✗ ${err.message}`, 'error');
         } finally {
             endBusy(btn);
             setGenerateLabel(card); // endBusy restores a possibly stale label — re-derive from data-base
@@ -2722,9 +2747,9 @@ function initStudioProject() {
             setGenerateLabel(card);
             renderTakes(card, data); // rebuilds the list (and detaches btn)
             refreshSeams();
-            setStatus(finalStatus, '✓ Selected this take — its text and settings are restored below.', 'ok');
+            chunkNotice(card, '✓ Selected this take — its text and settings are restored below.', 'ok');
         } catch (err) {
-            setStatus(finalStatus, `✗ ${err.message}`, 'error');
+            chunkNotice(card, `✗ ${err.message}`, 'error');
             endBusy(btn);
         }
     }
@@ -2743,9 +2768,9 @@ function initStudioProject() {
             });
             if (!res.ok) throw new Error(await errorMessage(res));
             renderTakes(card, await res.json());
-            setStatus(finalStatus, '✓ Take deleted.', 'ok');
+            chunkNotice(card, ''); // the row vanishing is the feedback — just retire any stale notice
         } catch (err) {
-            setStatus(finalStatus, `✗ ${err.message}`, 'error');
+            chunkNotice(card, `✗ ${err.message}`, 'error');
             endBusy(btn);
         }
     }
@@ -2759,7 +2784,7 @@ function initStudioProject() {
         const original = takes.find((t) => !t.selected && t.source !== 'remediate')
             || takes.find((t) => !t.selected);
         if (!original) {
-            setStatus(finalStatus, '✗ No earlier take to restore.', 'error');
+            chunkNotice(card, '✗ No earlier take to restore.', 'error');
             return;
         }
         selectTake(card, original.id, btn);
@@ -2778,9 +2803,9 @@ function initStudioProject() {
             if (!res.ok) throw new Error(await errorMessage(res));
             const data = await res.json();
             setChunkAsrBadge(card, data.asr_badge ?? null);
-            setStatus(finalStatus, '✓ QA flag dismissed — kept as reviewed.', 'ok');
+            chunkNotice(card, ''); // the badge swapping to "reviewed" is the feedback
         } catch (err) {
-            setStatus(finalStatus, `✗ ${err.message}`, 'error');
+            chunkNotice(card, `✗ ${err.message}`, 'error');
             endBusy(btn);
         }
     }
@@ -2846,7 +2871,7 @@ function initStudioProject() {
                 syncKnobEngines(card, modelOfSelect(chunkVoice));
                 card.dispatchEvent(new Event('engine-change'));
                 setDirty(card, isDirty(card));
-                setStatus(finalStatus, 'Voice changed — Regenerate to apply.');
+                chunkNotice(card, 'Voice changed — Regenerate to apply.');
             });
         }
 
@@ -3073,12 +3098,12 @@ function initStudioProject() {
                     setChunkSkipped(card, data.skipped);
                     setProjectStatus(data.project_status); // also re-lights the action cluster
                     refreshSeams();
-                    setStatus(finalStatus, data.skipped
+                    chunkNotice(card, data.skipped
                         ? "✓ Chunk skipped — it won't be in the final."
                         : '✓ Chunk included again.', 'ok');
                 } catch (err) {
                     endBusy(skipBtn);
-                    setStatus(finalStatus, `✗ ${err.message}`, 'error');
+                    chunkNotice(card, `✗ ${err.message}`, 'error');
                 }
             });
         }
@@ -3106,7 +3131,7 @@ function initStudioProject() {
                     skipUnloadGuard = true; // the delete is committed; the reload is intentional
                     window.location.reload();
                 } catch (err) {
-                    setStatus(finalStatus, `✗ ${err.message}`, 'error');
+                    chunkNotice(card, `✗ ${err.message}`, 'error');
                     endBusy(yesBtn);
                     showConfirm(false);
                 }

@@ -375,6 +375,13 @@
                         </div>
                     </div>
 
+                    {{-- Chunk-scoped feedback (select's restore hint, skip state, voice-change
+                         hint, errors) lands here on the card it belongs to — the header status
+                         line is for project-wide messages only. Written by chunkNotice() in
+                         app.js; empty:hidden keeps the row out of the layout when clear, so
+                         the element must stay literally empty (no whitespace) in this markup. --}}
+                    <div class="chunk-notice mt-2 text-sm empty:hidden text-zinc-400" role="status" aria-live="polite"></div>
+
                     @php $chunkModel = \App\Services\Tts\ModelCatalog::forVoice($chunk->voice ?? $project->voice); @endphp
                     <textarea class="chunk-text mt-2 w-full rounded-lg border border-edge bg-zinc-950 px-3 py-2 text-sm text-zinc-200 focus:border-cyan-500 focus:outline-none focus:ring-2 focus:ring-cyan-500/30"
                               rows="2" data-original="{{ $chunk->text }}">{{ $chunk->text }}</textarea>
