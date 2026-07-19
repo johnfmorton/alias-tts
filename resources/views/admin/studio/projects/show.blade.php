@@ -600,13 +600,16 @@
                         To experiment safely, duplicate the project and work on your own copy instead.
                     </p>
                     <div class="mt-5 flex flex-wrap items-center justify-end gap-2.5">
+                        {{-- Default/active choice (focused on open, so Enter keeps it): the
+                             safe option, styled green and prominent. Duplicate = caution
+                             (yellow); Edit their project = hazard (red). --}}
                         <button type="button" id="foreign-guard-cancel"
-                                class="rounded-lg border border-zinc-700 px-3.5 py-2 text-sm text-zinc-300 hover:bg-zinc-800">Keep read-only</button>
+                                class="rounded-lg bg-ok px-3.5 py-2 text-sm font-semibold text-zinc-950 ring-2 ring-ok/60 ring-offset-2 ring-offset-zinc-900 transition hover:bg-ok/90 focus:outline-none">Keep read-only</button>
                         <button type="button" id="foreign-guard-duplicate"
-                                class="rounded-lg border border-zinc-700 px-3.5 py-2 text-sm text-zinc-300 hover:bg-zinc-800"
+                                class="rounded-lg border border-warn/50 bg-warn/10 px-3.5 py-2 text-sm font-medium text-warn transition hover:bg-warn/20"
                                 title="Make your own independent copy — {{ $foreignOwner }}'s project is left untouched.">⧉ Duplicate instead</button>
                         <button type="button" id="foreign-guard-continue"
-                                class="rounded-lg border border-amber-500/50 bg-amber-500/10 px-3.5 py-2 text-sm font-medium text-amber-300 hover:bg-amber-500/20">Edit their project</button>
+                                class="rounded-lg border border-bad/50 bg-bad/10 px-3.5 py-2 text-sm font-medium text-bad transition hover:bg-bad/20">Edit their project</button>
                     </div>
                 </div>
             </div>

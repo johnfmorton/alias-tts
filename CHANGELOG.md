@@ -13,6 +13,14 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   The health report (and the admin Health page) now fail loudly with the fix
   when GD is missing.
 
+### Changed
+- **The "you're editing someone else's project" warning now colour-codes its
+  choices.** When a SuperAdmin opens another user's project, the guard dialog
+  makes the safe option — **Keep read-only** — the green, focused default (press
+  Enter to take it), marks **Duplicate instead** in caution yellow, and paints
+  **Edit their project** in hazard red, so the riskiest action no longer looks
+  like the primary button.
+
 ## [0.68.0] - 2026-07-19
 
 ### Added
