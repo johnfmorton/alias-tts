@@ -10,6 +10,7 @@ use App\Services\Audio\AudioConverter;
 use App\Services\Genblaze\GenblazeRunStore;
 use App\Services\TextChunker;
 use App\Services\TextNormalizer;
+use App\Services\Tts\ChunkGaps;
 use App\Services\Tts\ModelCatalog;
 use App\Services\Tts\ParalinguisticTags;
 use App\Services\Tts\TtsProvider;
@@ -241,8 +242,7 @@ class PipelineController extends Controller
         $preserves = array_values((array) ($data['preserve_tail'] ?? []));
         $outputFormat = $data['output_format'] ?? (string) config('tts.default_output_format', 'mp3_44100_128');
 
-        $sentenceGap = (int) config('tts.chunk_gap_ms', 120);
-        $paragraphGap = (int) config('tts.paragraph_gap_ms', 400);
+        [$sentenceGap, $paragraphGap] = ChunkGaps::resolve();
 
         $rawParts = [];
         $seamGapsMs = [];

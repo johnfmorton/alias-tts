@@ -7,6 +7,16 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 ## [Unreleased]
 
 ### Added
+- **You can now tune the pause between sentences and paragraphs.** Two new
+  Settings controls under Speech generation — *Pause between sentences (ms)* and
+  *Pause between paragraphs (ms)* — set the silence inserted where clips are
+  joined in the final audio. They apply everywhere: projects, Studio, and your
+  API keys. Left at **0 (Auto)**, the sentence pause is now mode-aware — 120 ms
+  with Packed chunking, and a slightly roomier **200 ms with Per-sentence
+  chunking**, which turns every sentence boundary into a joined seam and so
+  benefits from a little more air (previously every seam was a flat 120 ms
+  regardless of mode). Enter any value above 0 to fix a pause yourself; it then
+  applies in both chunking modes.
 - **Changed settings are obvious at a glance.** Any setting whose value differs
   from its shipped default now carries a **Modified** badge next to its name and
   a **Reset to default** control beside it — previously only the Advanced

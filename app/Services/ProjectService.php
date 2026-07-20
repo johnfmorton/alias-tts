@@ -17,6 +17,7 @@ use App\Services\Asr\ChunkRemediator;
 use App\Services\Audio\AudioConverter;
 use App\Services\Credit\CreditService;
 use App\Services\Pronunciation\PronunciationSubstituter;
+use App\Services\Tts\ChunkGaps;
 use App\Services\Tts\ModelCatalog;
 use App\Services\Tts\ParalinguisticTags;
 use App\Services\Tts\TtsProvider;
@@ -940,8 +941,7 @@ class ProjectService
      */
     private function partitionForStitch($chunks): array
     {
-        $sentenceGap = (int) config('tts.chunk_gap_ms', 120);
-        $paragraphGap = (int) config('tts.paragraph_gap_ms', 400);
+        [$sentenceGap, $paragraphGap] = ChunkGaps::resolve();
         $gapAfter = fn (TtsChunk $chunk): int => $chunk->break_after === 'paragraph' ? $paragraphGap : $sentenceGap;
 
         $included = [];

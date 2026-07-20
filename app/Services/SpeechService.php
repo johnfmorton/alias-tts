@@ -13,6 +13,7 @@ use App\Services\Asr\AsrClient;
 use App\Services\Asr\ChunkRemediator;
 use App\Services\Audio\AudioConverter;
 use App\Services\Credit\CreditService;
+use App\Services\Tts\ChunkGaps;
 use App\Services\Tts\ModelCatalog;
 use App\Services\Tts\ParalinguisticTags;
 use App\Services\Tts\TtsProvider;
@@ -163,8 +164,7 @@ class SpeechService
             // learned average before the first segment finishes.
             $this->progress->begin($speech->id, $total, $model);
 
-            $sentenceGap = (int) config('tts.chunk_gap_ms', 120);
-            $paragraphGap = (int) config('tts.paragraph_gap_ms', 400);
+            [$sentenceGap, $paragraphGap] = ChunkGaps::resolve();
             $supportsTags = ModelCatalog::supportsTags($providerSettings['model'] ?? null);
 
             $rawParts = [];

@@ -18,6 +18,7 @@ use App\Services\SpeechService;
 use App\Services\SpokenQuotes;
 use App\Services\TextChunker;
 use App\Services\TextNormalizer;
+use App\Services\Tts\ChunkGaps;
 use App\Services\Tts\ModelCatalog;
 use App\Services\Tts\ParalinguisticTags;
 use App\Services\Tts\TtsProvider;
@@ -521,8 +522,7 @@ class StudioController extends Controller
             return response()->json(['message' => 'Nothing to synthesize.'], 422);
         }
 
-        $sentenceGap = (int) config('tts.chunk_gap_ms', 120);
-        $paragraphGap = (int) config('tts.paragraph_gap_ms', 400);
+        [$sentenceGap, $paragraphGap] = ChunkGaps::resolve();
 
         try {
             $reference = $this->referencePath($voice);
@@ -599,8 +599,7 @@ class StudioController extends Controller
         $breaks = array_values((array) $request->input('breaks', []));
         $texts = array_values((array) $request->input('texts', []));
         $voice = $request->filled('voice') ? Voice::resolveFor((string) $request->input('voice'), $request->user()->id) : null;
-        $sentenceGap = (int) config('tts.chunk_gap_ms', 120);
-        $paragraphGap = (int) config('tts.paragraph_gap_ms', 400);
+        [$sentenceGap, $paragraphGap] = ChunkGaps::resolve();
 
         $rawParts = [];
         $seamGapsMs = [];

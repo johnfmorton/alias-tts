@@ -878,7 +878,7 @@ class StudioProjectTest extends TestCase
         // A (sentence) · B (paragraph, skipped) · C — the pause where B used to
         // be must keep B's paragraph gap, not collapse to A's sentence gap: the
         // text boundary between A and C is still a paragraph boundary.
-        config(['tts.chunk_gap_ms' => 120, 'tts.paragraph_gap_ms' => 400]);
+        config(['tts.chunk_gap_ms' => 120, 'tts.paragraph_gap_ms' => 400, 'tts.chunk_mode' => 'packed']);
         $admin = $this->admin();
         [$project, , $second] = $this->paragraphSplitProject($admin);
 
@@ -898,7 +898,7 @@ class StudioProjectTest extends TestCase
     {
         // Previewing A+C while B (paragraph break) is skipped must use the same
         // folded gap the rebuilt final will, or the audition misrepresents it.
-        config(['tts.chunk_gap_ms' => 120, 'tts.paragraph_gap_ms' => 400]);
+        config(['tts.chunk_gap_ms' => 120, 'tts.paragraph_gap_ms' => 400, 'tts.chunk_mode' => 'packed']);
         $admin = $this->admin();
         [$project, $first, $second, $third] = $this->paragraphSplitProject($admin);
         $this->actingAs($admin)

@@ -59,6 +59,8 @@ class SettingsPageTest extends TestCase
             'tts_project_output_format' => 'mp3_44100_128',
             'tts_chunk_mode' => 'packed',
             'tts_spoken_quotes' => 'off',
+            'tts_sentence_gap_override_ms' => 0,
+            'tts_paragraph_gap_override_ms' => 0,
         ], $overrides);
     }
 
@@ -325,6 +327,52 @@ class SettingsPageTest extends TestCase
             ->assertSessionHasErrors('tts_chunk_mode');
 
         $this->assertNull($this->row($admin, 'tts.chunk_mode'));
+    }
+
+    public function test_generation_group_renders_the_seam_gap_controls(): void
+    {
+        $res = $this->actingAs($this->admin())->get(route('admin.settings.index'));
+
+        $res->assertOk();
+        $res->assertSee('Pause between sentences (ms)');
+        $res->assertSee('Pause between paragraphs (ms)');
+    }
+
+    public function test_saving_persists_an_explicit_sentence_gap(): void
+    {
+        config(['tts.asr.enabled' => true]);
+        $this->setLocked('tts.asr.enabled', true);
+
+        $user = $this->user();
+
+        $this->actingAs($user)
+            ->put(route('admin.settings.update'), $this->validPayload([
+                'tts_sentence_gap_override_ms' => 260,
+            ]))
+            ->assertRedirect(route('admin.settings.index'))
+            ->assertSessionHas('success');
+
+        $this->assertSame(260, $this->row($user, 'tts.sentence_gap_override_ms')->value);
+
+        // And it wins over the mode-aware Auto default once applied.
+        (new SettingsManager)->applyForUser($user->id);
+        $this->assertSame(260, (int) config('tts.sentence_gap_override_ms'));
+    }
+
+    public function test_an_out_of_range_sentence_gap_is_rejected(): void
+    {
+        config(['tts.asr.enabled' => true]);
+        $this->setLocked('tts.asr.enabled', true);
+
+        $admin = $this->admin();
+
+        $this->actingAs($admin)
+            ->put(route('admin.settings.update'), $this->validPayload([
+                'tts_sentence_gap_override_ms' => 9000, // > max 2000
+            ]))
+            ->assertSessionHasErrors('tts_sentence_gap_override_ms');
+
+        $this->assertNull($this->row($admin, 'tts.sentence_gap_override_ms'));
     }
 
     public function test_generation_group_renders_with_spoken_quotes_labels(): void

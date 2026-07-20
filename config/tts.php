@@ -373,8 +373,23 @@ return [
 
     // True digital silence (ms) inserted between chunks at a sentence seam and
     // at a block/paragraph seam respectively. Tune by ear for natural pacing.
+    // These are the "Auto" bases; a per-user pause (below) can override them.
     'chunk_gap_ms' => (int) env('TTS_CHUNK_GAP_MS', 120),
     'paragraph_gap_ms' => (int) env('TTS_PARAGRAPH_GAP_MS', 400),
+
+    // The sentence-seam gap Auto uses when chunking PER SENTENCE: that mode turns
+    // every sentence boundary into a hard concatenation seam, so it wants a touch
+    // more air than packed mode's tight chunk_gap_ms. See App\Services\Tts\ChunkGaps.
+    'sentence_gap_ms' => (int) env('TTS_SENTENCE_GAP_MS', 200),
+
+    // Per-user "Pause between sentences / paragraphs" overrides, editable on the
+    // Settings page (registered in config/settings.php). 0 = Auto: fall back to
+    // the mode-aware bases above. Any value > 0 is an explicit pause applied in
+    // both chunking modes. Separate keys (not the *_gap_ms bases) so an operator
+    // pinning TTS_CHUNK_GAP_MS/TTS_PARAGRAPH_GAP_MS in .env doesn't lock the
+    // per-user field read-only.
+    'sentence_gap_override_ms' => (int) env('TTS_SENTENCE_GAP_OVERRIDE_MS', 0),
+    'paragraph_gap_override_ms' => (int) env('TTS_PARAGRAPH_GAP_OVERRIDE_MS', 0),
 
     // Delay (ms) the Studio "Generate remaining" background run waits between
     // chunks (GenerateProjectChunksJob). Generation is already sequential, but a
