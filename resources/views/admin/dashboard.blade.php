@@ -8,20 +8,20 @@
     // above it with z-10. Counts come from the controller's per-user stats.
     $cards = [
         [
+            'icon' => 'projects',
+            'title' => 'Projects',
+            'desc' => "Scripts you're producing",
+            'count' => $stats['projects'],
+            'manage' => ['label' => 'Open in Studio', 'route' => 'admin.studio.index'],
+            'add' => ['label' => '+ New project', 'route' => 'admin.studio.projects.create'],
+        ],
+        [
             'icon' => 'voices',
             'title' => 'Voices',
             'desc' => 'Custom & default voices',
             'count' => $stats['voices'],
             'manage' => ['label' => 'Manage voices', 'route' => 'admin.voices.index'],
             'add' => ['label' => '+ Add voice', 'route' => 'admin.voices.create'],
-        ],
-        [
-            'icon' => 'key',
-            'title' => 'API Keys',
-            'desc' => 'Active credentials',
-            'count' => $stats['apiKeys'],
-            'manage' => ['label' => 'Manage API keys', 'route' => 'admin.api-keys.index'],
-            'add' => ['label' => '+ New key', 'route' => 'admin.api-keys.create'],
         ],
         [
             'icon' => 'pronunciations',
@@ -32,12 +32,12 @@
             'add' => ['label' => '+ Add rule', 'route' => 'admin.pronunciations.create'],
         ],
         [
-            'icon' => 'projects',
-            'title' => 'Projects',
-            'desc' => "Scripts you're producing",
-            'count' => $stats['projects'],
-            'manage' => ['label' => 'Open in Studio', 'route' => 'admin.studio.index'],
-            'add' => ['label' => '+ New project', 'route' => 'admin.studio.projects.create'],
+            'icon' => 'key',
+            'title' => 'API Keys',
+            'desc' => 'Active credentials',
+            'count' => $stats['apiKeys'],
+            'manage' => ['label' => 'Manage API keys', 'route' => 'admin.api-keys.index'],
+            'add' => ['label' => '+ New key', 'route' => 'admin.api-keys.create'],
         ],
     ];
 
