@@ -6,6 +6,16 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Fixed
+- **No more long pause in the middle of a sentence.** When a single sentence is
+  split across two chunks — a very long sentence, or a bulleted list that gets
+  reflowed into one running sentence — the seam between those chunks is now paced
+  as a small breath (`TTS_CONTINUATION_GAP_MS`, default 50 ms) instead of a full
+  sentence or paragraph pause. A seam counts as mid-sentence when the chunk does
+  not end in terminal punctuation and the next chunk continues in lowercase. This
+  is decided from the chunks' final text at stitch time, so it corrects existing
+  projects on their next rebuild — not just newly created ones.
+
 ### Added
 - **You can now tune the pause between sentences and paragraphs.** Two new
   Settings controls under Speech generation — *Pause between sentences (ms)* and

@@ -18,6 +18,7 @@ class ChunkGapsTest extends TestCase
             'tts.chunk_gap_ms' => 120,
             'tts.paragraph_gap_ms' => 400,
             'tts.sentence_gap_ms' => 200,
+            'tts.continuation_gap_ms' => 50,
             'tts.sentence_gap_override_ms' => 0,
             'tts.paragraph_gap_override_ms' => 0,
         ], $values));
@@ -62,5 +63,42 @@ class ChunkGapsTest extends TestCase
         $this->config(['tts.chunk_mode' => 'packed']);
 
         $this->assertSame([200, 400], ChunkGaps::resolve('sentence'));
+    }
+
+    public function test_seam_gap_maps_the_structural_breaks(): void
+    {
+        $this->config(['tts.chunk_mode' => 'packed']);
+
+        $this->assertSame(120, ChunkGaps::seamGap('sentence', 'First sentence.', 'Second sentence.'));
+        $this->assertSame(400, ChunkGaps::seamGap('paragraph', 'Ends the block.', 'A new block begins.'));
+    }
+
+    public function test_a_stored_continuation_break_gets_the_small_breath(): void
+    {
+        $this->config(['tts.chunk_mode' => 'packed']);
+
+        $this->assertSame(50, ChunkGaps::seamGap('continuation', '', ''));
+    }
+
+    public function test_a_mid_sentence_seam_is_detected_from_text_over_a_stale_break(): void
+    {
+        // The reported bug: a bulleted list reflowed into one sentence left a
+        // stored 'paragraph' break on unterminated text, so the stitch paused
+        // 400 ms mid-sentence. Reading the final text re-paces it to a breath.
+        $this->config(['tts.chunk_mode' => 'packed']);
+
+        $this->assertSame(50, ChunkGaps::seamGap(
+            'paragraph',
+            'a Laravel application containing',
+            'the Studio editor; eleven labs- and open ai-compatible API endpoints;',
+        ));
+    }
+
+    public function test_a_real_sentence_boundary_is_not_mistaken_for_a_continuation(): void
+    {
+        $this->config(['tts.chunk_mode' => 'sentence']);
+
+        // Prev ends a sentence and next opens with a capital → a true boundary.
+        $this->assertSame(200, ChunkGaps::seamGap('sentence', 'The build is green.', 'Ship it.'));
     }
 }

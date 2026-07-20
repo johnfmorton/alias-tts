@@ -913,6 +913,42 @@ class StudioProjectTest extends TestCase
         $this->assertSame([400, 120], $recorder->seamGaps[0]);
     }
 
+    public function test_rebuild_paces_a_mid_sentence_seam_as_a_breath_not_a_paragraph(): void
+    {
+        // Regression: a bulleted list reflowed into one running sentence leaves a
+        // stored 'paragraph' break on now-unterminated text ("…containing" →
+        // "the Studio editor; …"). The rebuild must read the FINAL chunk text and
+        // insert only the small continuation breath there, not the 400 ms
+        // paragraph pause its stale break would otherwise earn.
+        config([
+            'tts.chunk_gap_ms' => 120,
+            'tts.paragraph_gap_ms' => 400,
+            'tts.continuation_gap_ms' => 50,
+            'tts.chunk_mode' => 'packed',
+        ]);
+        $admin = $this->admin();
+        $project = $this->project();
+        [$first, $second] = $project->chunks()->orderBy('position')->get();
+        $first->update([
+            'text' => 'Around the generation pipeline is a Laravel application containing',
+            'break_after' => 'paragraph', // the stale block break the reflow left behind
+        ]);
+        $second->update([
+            'text' => 'the Studio editor; eleven labs- and more; and seven hundred automated tests.',
+            'break_after' => 'sentence',
+        ]);
+
+        foreach ([$first, $second] as $chunk) {
+            $this->actingAs($admin)->post(route('admin.studio.projects.chunks.generate', [$project, $chunk]));
+        }
+
+        $recorder = $this->recordingConverter();
+        $this->actingAs($admin)->postJson(route('admin.studio.projects.rebuild', $project))->assertOk();
+
+        // Seam after the first chunk = a breath (50 ms), not the stale 400 ms.
+        $this->assertSame([50, 120], $recorder->seamGaps[0]);
+    }
+
     public function test_rebuild_refuses_when_every_chunk_is_skipped(): void
     {
         $admin = $this->admin();

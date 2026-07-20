@@ -522,8 +522,6 @@ class StudioController extends Controller
             return response()->json(['message' => 'Nothing to synthesize.'], 422);
         }
 
-        [$sentenceGap, $paragraphGap] = ChunkGaps::resolve();
-
         try {
             $reference = $this->referencePath($voice);
             $settings = $this->settings($request, $voice);
@@ -531,7 +529,7 @@ class StudioController extends Controller
             $rawParts = [];
             $seamGapsMs = [];
             $preserveTails = [];
-            foreach ($segments as $segment) {
+            foreach ($segments as $i => $segment) {
                 $rawParts[] = $this->provider->synthesize($segment['text'], $reference, $settings);
                 // Paid the moment the provider returns — charge per segment so
                 // a later failure doesn't hide money already spent.
@@ -541,7 +539,11 @@ class StudioController extends Controller
                     ModelCatalog::forVoice($voice),
                     'inspector',
                 );
-                $seamGapsMs[] = $segment['breakAfter'] === 'paragraph' ? $paragraphGap : $sentenceGap;
+                $seamGapsMs[] = ChunkGaps::seamGap(
+                    $segment['breakAfter'],
+                    $segment['text'],
+                    $segments[$i + 1]['text'] ?? '',
+                );
                 $preserveTails[] = $this->preservesTail($voice, $segment['text']);
             }
 
@@ -585,7 +587,7 @@ class StudioController extends Controller
             'files' => ['required', 'array', 'min:1', 'max:200'],
             'files.*' => ['file', 'max:51200'], // 50 MB/chunk; raw WAV is ~85 KB/s mono
             'breaks' => ['array'],
-            'breaks.*' => ['in:sentence,paragraph'],
+            'breaks.*' => ['in:sentence,paragraph,continuation'],
             // Each uploaded blob's source text + the voice it rendered with, so
             // the trim can spare a rendered trailing sound tag exactly like
             // production would (absent = the full cleanup, as before).
@@ -599,14 +601,17 @@ class StudioController extends Controller
         $breaks = array_values((array) $request->input('breaks', []));
         $texts = array_values((array) $request->input('texts', []));
         $voice = $request->filled('voice') ? Voice::resolveFor((string) $request->input('voice'), $request->user()->id) : null;
-        [$sentenceGap, $paragraphGap] = ChunkGaps::resolve();
 
         $rawParts = [];
         $seamGapsMs = [];
         $preserveTails = [];
         foreach (array_values($request->file('files')) as $i => $file) {
             $rawParts[] = (string) file_get_contents($file->getRealPath());
-            $seamGapsMs[] = (($breaks[$i] ?? 'sentence') === 'paragraph') ? $paragraphGap : $sentenceGap;
+            $seamGapsMs[] = ChunkGaps::seamGap(
+                (string) ($breaks[$i] ?? 'sentence'),
+                (string) ($texts[$i] ?? ''),
+                (string) ($texts[$i + 1] ?? ''),
+            );
             $preserveTails[] = $voice !== null && $this->preservesTail($voice, (string) ($texts[$i] ?? ''));
         }
 

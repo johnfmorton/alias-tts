@@ -382,6 +382,14 @@ return [
     // more air than packed mode's tight chunk_gap_ms. See App\Services\Tts\ChunkGaps.
     'sentence_gap_ms' => (int) env('TTS_SENTENCE_GAP_MS', 200),
 
+    // Silence at a *mid-sentence* seam — a long sentence split across chunks, or
+    // a block boundary the reflowed text no longer reflects (e.g. a bulleted list
+    // rewritten into running prose). Only a small breath, never a sentence pause,
+    // so the sentence flows unbroken. A seam is judged mid-sentence when the chunk
+    // does not end in terminal punctuation and the next chunk continues lowercase
+    // (TextChunker::isContinuation). Tune by ear.
+    'continuation_gap_ms' => (int) env('TTS_CONTINUATION_GAP_MS', 50),
+
     // Per-user "Pause between sentences / paragraphs" overrides, editable on the
     // Settings page (registered in config/settings.php). 0 = Auto: fall back to
     // the mode-aware bases above. Any value > 0 is an explicit pause applied in

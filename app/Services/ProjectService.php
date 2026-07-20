@@ -942,7 +942,14 @@ class ProjectService
     private function partitionForStitch($chunks): array
     {
         [$sentenceGap, $paragraphGap] = ChunkGaps::resolve();
-        $gapAfter = fn (TtsChunk $chunk): int => $chunk->break_after === 'paragraph' ? $paragraphGap : $sentenceGap;
+        $continuationGap = (int) config('tts.continuation_gap_ms', 50);
+        // Gap from the stored break alone — used for skip-folding, where a skipped
+        // chunk still shapes the surviving seam but has no text to weigh.
+        $structuralGap = fn (TtsChunk $chunk): int => match ($chunk->break_after) {
+            'paragraph' => $paragraphGap,
+            'continuation' => $continuationGap,
+            default => $sentenceGap,
+        };
 
         $included = [];
         $seamGapsMs = [];
@@ -952,13 +959,26 @@ class ProjectService
             // column dropped.
             if ($chunk->skipped) {
                 if ($seamGapsMs !== []) {
-                    $seamGapsMs[count($seamGapsMs) - 1] = max(end($seamGapsMs), $gapAfter($chunk));
+                    $seamGapsMs[count($seamGapsMs) - 1] = max(end($seamGapsMs), $structuralGap($chunk));
                 }
 
                 continue;
             }
             $included[] = $chunk;
-            $seamGapsMs[] = $gapAfter($chunk);
+            $seamGapsMs[] = $structuralGap($chunk);
+        }
+
+        // Re-pace each surviving seam from the FINAL text of the two chunks it
+        // joins: a mid-sentence seam — a long sentence split across chunks, or a
+        // stored 'paragraph'/'sentence' break on text since reflowed into running
+        // prose (a bulleted list becoming one sentence) — gets only a small
+        // breath. Keyed on text, so it corrects older chunks whose stored break
+        // predates this without a re-chunk. See TextChunker::isContinuation.
+        $n = count($included);
+        for ($k = 0; $k < $n - 1; $k++) {
+            if (TextChunker::isContinuation($included[$k]->text, $included[$k + 1]->text)) {
+                $seamGapsMs[$k] = $continuationGap;
+            }
         }
 
         return [new Collection($included), $seamGapsMs];

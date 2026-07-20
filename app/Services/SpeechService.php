@@ -164,7 +164,6 @@ class SpeechService
             // learned average before the first segment finishes.
             $this->progress->begin($speech->id, $total, $model);
 
-            [$sentenceGap, $paragraphGap] = ChunkGaps::resolve();
             $supportsTags = ModelCatalog::supportsTags($providerSettings['model'] ?? null);
 
             $rawParts = [];
@@ -201,7 +200,11 @@ class SpeechService
                 GenerationTimings::record($model, (int) round((microtime(true) - $segStart) * 1000));
 
                 $rawParts[] = $part;
-                $seamGapsMs[] = $segment['breakAfter'] === 'paragraph' ? $paragraphGap : $sentenceGap;
+                $seamGapsMs[] = ChunkGaps::seamGap(
+                    $segment['breakAfter'],
+                    $segment['text'],
+                    $segments[$i + 1]['text'] ?? '',
+                );
                 // A segment ending in a rendered sound tag keeps its tail — the
                 // artifact detectors would mistake the laugh/sigh for junk.
                 $preserveTails[] = $supportsTags && ParalinguisticTags::endsWith($segment['text']);

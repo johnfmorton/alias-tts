@@ -62,7 +62,7 @@ class TextChunker
      * synthesized alone is exactly the input Chatterbox garbles, so very short
      * sentences still ride with a neighbor.
      *
-     * @return array<int, array{text: string, breakAfter: 'sentence'|'paragraph'}>
+     * @return array<int, array{text: string, breakAfter: 'sentence'|'paragraph'|'continuation'}>
      */
     public function segment(string $text, int $targetChars = 280, int $blockSpaceRun = 4, int $minChars = 0, int $shortTrailerWords = 0, string $mode = self::MODE_PACKED): array
     {
@@ -91,8 +91,32 @@ class TextChunker
         }
 
         $segments = $this->mergeShort($segments, $targetChars, $minChars);
+        $segments = $this->liftShortTrailers($segments, $shortTrailerWords);
 
-        return $this->liftShortTrailers($segments, $shortTrailerWords);
+        return $this->markContinuations($segments);
+    }
+
+    /**
+     * Re-mark any seam that falls MID-SENTENCE as 'continuation' so the stitch
+     * inserts only a small breath there — not the sentence/paragraph pause its
+     * structural break would otherwise earn. Runs last, on the final text and
+     * adjacency (after merge/lift), so a long sentence split across chunks reads
+     * unbroken. See {@see isContinuation()}.
+     *
+     * @param  array<int, array{text: string, breakAfter: string}>  $segments
+     * @return array<int, array{text: string, breakAfter: string}>
+     */
+    private function markContinuations(array $segments): array
+    {
+        $last = count($segments) - 1;
+
+        for ($i = 0; $i < $last; $i++) {
+            if (self::isContinuation($segments[$i]['text'], $segments[$i + 1]['text'])) {
+                $segments[$i]['breakAfter'] = 'continuation';
+            }
+        }
+
+        return $segments;
     }
 
     /**
@@ -107,8 +131,8 @@ class TextChunker
      * strips a chunk of its last real sentence — a chunk made only of short
      * sentences is left alone. Pass 0 to disable.
      *
-     * @param  array<int, array{text: string, breakAfter: 'sentence'|'paragraph'}>  $segments
-     * @return array<int, array{text: string, breakAfter: 'sentence'|'paragraph'}>
+     * @param  array<int, array{text: string, breakAfter: 'sentence'|'paragraph'|'continuation'}>  $segments
+     * @return array<int, array{text: string, breakAfter: 'sentence'|'paragraph'|'continuation'}>
      */
     private function liftShortTrailers(array $segments, int $maxWords): array
     {
@@ -175,8 +199,8 @@ class TextChunker
      * near the length cap). Iterates to a fixed point so runs of tiny chunks
      * settle.
      *
-     * @param  array<int, array{text: string, breakAfter: 'sentence'|'paragraph'}>  $segments
-     * @return array<int, array{text: string, breakAfter: 'sentence'|'paragraph'}>
+     * @param  array<int, array{text: string, breakAfter: 'sentence'|'paragraph'|'continuation'}>  $segments
+     * @return array<int, array{text: string, breakAfter: 'sentence'|'paragraph'|'continuation'}>
      */
     private function mergeShort(array $segments, int $targetChars, int $minChars): array
     {
@@ -281,6 +305,40 @@ class TextChunker
         }
 
         return rtrim((string) preg_replace('/[,;:]+$/u', '', $block)).'.';
+    }
+
+    /**
+     * Does $text end a sentence — terminal punctuation (. ! ? …), looking through
+     * any trailing closing quotes/brackets? Mirrors {@see terminate()}'s test.
+     */
+    public static function endsSentence(string $text): bool
+    {
+        return (bool) preg_match('/[.!?…][\'"’”)\]»]*$/u', rtrim($text));
+    }
+
+    /**
+     * Is the seam between two adjacent chunks *mid-sentence*? True when $prevText
+     * does not end a sentence and $nextText continues it (its first letter is
+     * lowercase, looking past any opening quote/bracket). Such a seam is a long
+     * sentence split by length, or a block boundary the reflowed text no longer
+     * reflects (a bulleted list rewritten into running prose) — it wants only a
+     * small breath, never a sentence/paragraph pause.
+     *
+     * Used two ways: when assigning a chunk's break (so new chunks store
+     * 'continuation') and again at stitch time (so chunks whose text was reshaped
+     * after chunking are still paced from their FINAL text — see ChunkGaps).
+     */
+    public static function isContinuation(string $prevText, string $nextText): bool
+    {
+        $prev = rtrim($prevText);
+        $next = ltrim($nextText);
+
+        if ($prev === '' || $next === '') {
+            return false;
+        }
+
+        return ! self::endsSentence($prev)
+            && (bool) preg_match('/^[\'"“”‘’(\[«]*\p{Ll}/u', $next);
     }
 
     /**

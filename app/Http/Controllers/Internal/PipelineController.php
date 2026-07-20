@@ -227,7 +227,7 @@ class PipelineController extends Controller
             'chunks' => ['required', 'array', 'min:1'],
             'chunks.*' => ['required', 'file'],
             'break_after' => ['sometimes', 'array'],
-            'break_after.*' => ['string', 'in:sentence,paragraph'],
+            'break_after.*' => ['string', 'in:sentence,paragraph,continuation'],
             // Per-chunk: skip the tail-artifact cut (the chunk ends in a
             // rendered sound tag). The runner echoes back the flags the chunk
             // endpoint computed; multipart booleans arrive as "0"/"1" strings.
@@ -242,15 +242,15 @@ class PipelineController extends Controller
         $preserves = array_values((array) ($data['preserve_tail'] ?? []));
         $outputFormat = $data['output_format'] ?? (string) config('tts.default_output_format', 'mp3_44100_128');
 
-        [$sentenceGap, $paragraphGap] = ChunkGaps::resolve();
-
         $rawParts = [];
         $seamGapsMs = [];
         $preserveTails = [];
         foreach ($files as $i => $file) {
             $rawParts[] = $this->fileBytes($file);
-            $break = $breaks[$i] ?? 'sentence';
-            $seamGapsMs[] = $break === 'paragraph' ? $paragraphGap : $sentenceGap;
+            // No chunk text at this internal seam-only endpoint, so the gap comes
+            // from the break the runner computed — which already carries
+            // 'continuation' for a mid-sentence seam (TextChunker::markContinuations).
+            $seamGapsMs[] = ChunkGaps::seamGap((string) ($breaks[$i] ?? 'sentence'));
             $preserveTails[] = filter_var($preserves[$i] ?? false, FILTER_VALIDATE_BOOLEAN);
         }
 

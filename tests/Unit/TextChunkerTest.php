@@ -169,6 +169,46 @@ class TextChunkerTest extends TestCase
         }
     }
 
+    public function test_segment_tags_a_split_sentence_seam_as_continuation(): void
+    {
+        // A single over-long sentence (no internal terminal punctuation) is hard
+        // split across chunks; each interior seam is mid-sentence, so it is tagged
+        // 'continuation' — a small breath, not a sentence pause. Only the chunk
+        // carrying the final period ends the sentence.
+        $long = 'In this release we shipped a genuinely enormous number of interlocking '
+            .'capabilities across the whole generation pipeline including chunking quality '
+            .'scoring remediation stitching and delivery all of which had to be validated '
+            .'end to end before we could confidently call the milestone complete.';
+        $segments = (new TextChunker)->segment($long, 120, 4, 30, 3, TextChunker::MODE_SENTENCE);
+
+        $this->assertGreaterThan(1, count($segments));
+        $breaks = array_map(static fn ($s) => $s['breakAfter'], $segments);
+
+        // Every interior seam is a continuation; nothing before the last chunk is
+        // a sentence/paragraph pause.
+        foreach (array_slice($breaks, 0, -1) as $break) {
+            $this->assertSame('continuation', $break);
+        }
+    }
+
+    public function test_ends_sentence_and_is_continuation_helpers(): void
+    {
+        $this->assertTrue(TextChunker::endsSentence('All done.'));
+        $this->assertTrue(TextChunker::endsSentence('Really?"'));      // through a closing quote
+        $this->assertTrue(TextChunker::endsSentence('Wait…'));
+        $this->assertFalse(TextChunker::endsSentence('a list containing'));
+        $this->assertFalse(TextChunker::endsSentence('the intro:'));
+
+        // Mid-sentence: prev unterminated AND next continues lowercase.
+        $this->assertTrue(TextChunker::isContinuation('application containing', 'the Studio editor;'));
+        // A real boundary: prev ends a sentence.
+        $this->assertFalse(TextChunker::isContinuation('The build is green.', 'ship it'));
+        // Next opens a new sentence (capitalised) → not a continuation.
+        $this->assertFalse(TextChunker::isContinuation('containing', 'The Studio editor'));
+        // Empty either side → never a continuation (the final chunk has no next).
+        $this->assertFalse(TextChunker::isContinuation('containing', ''));
+    }
+
     public function test_segment_merges_short_chunk_forward_into_following_block(): void
     {
         // A short heading block ("The to-do list.", 15 chars) would be dropped by

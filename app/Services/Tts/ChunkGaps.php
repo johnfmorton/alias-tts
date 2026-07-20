@@ -27,9 +27,33 @@ use App\Services\TextChunker;
  * The mode-aware branch reads config('tts.chunk_mode') by default, which matches
  * how each render path already chunked its text; a caller that chunked with an
  * explicit mode can pass it to keep the pause in step.
+ *
+ * A third, smaller gap — tts.continuation_gap_ms — paces a MID-SENTENCE seam: a
+ * long sentence split across chunks, or a block boundary the reflowed text no
+ * longer reflects (a bulleted list rewritten into running prose). {@see seamGap}
+ * applies it whenever the chunk's stored break says 'continuation' OR its FINAL
+ * text reads as a continuation (TextChunker::isContinuation) — the latter catches
+ * older chunks whose text was reshaped after their break was assigned.
  */
 final class ChunkGaps
 {
+    /**
+     * The silence (ms) for one seam, given the chunk's stored break and — when
+     * available — its text and the next chunk's text. Reading the final text lets
+     * a chunk reshaped after chunking (its colon dropped, its list flattened) still
+     * be paced as the continuation it now is, regardless of a stale stored break.
+     */
+    public static function seamGap(string $breakAfter, string $prevText = '', string $nextText = '', ?string $chunkMode = null): int
+    {
+        [$sentence, $paragraph] = self::resolve($chunkMode);
+
+        if ($breakAfter === 'continuation' || TextChunker::isContinuation($prevText, $nextText)) {
+            return (int) config('tts.continuation_gap_ms', 50);
+        }
+
+        return $breakAfter === 'paragraph' ? $paragraph : $sentence;
+    }
+
     /**
      * @return array{0: int, 1: int} [sentenceGapMs, paragraphGapMs]
      */
