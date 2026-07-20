@@ -4,6 +4,39 @@ All notable changes to this project are documented in this file. The format is
 based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this
 project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.73.0] - 2026-07-20
+
+### Changed
+- **Regenerate can't time out anymore.** Clicking Regenerate (or Generate) on a
+  chunk now renders in a background run — the same machinery as "Generate
+  remaining" — instead of inside the web request, where a long render plus its
+  quality-check re-rolls could outlive the server's 60-second gateway limit and
+  come back as an HTTP 504 even though audio was still being made. The card now
+  shows an honest queued → rendering → done progression, Stop works on it, and
+  the fresh take lands on the card automatically (it no longer autoplays —
+  press play when you're ready).
+- **Long runs share the queue fairly.** A background run now hands its worker
+  back every couple of minutes (`TTS_GENERATION_SLICE_SECONDS`, default 120)
+  instead of holding it until done, so API speech jobs and other users'
+  regenerates interleave with a long run rather than waiting it out. Operators
+  can also route one-clip regenerates to a dedicated fast lane with
+  `TTS_INTERACTIVE_QUEUE` plus a worker listening on that queue — a quick fix
+  then never waits behind bulk work at all.
+
+### Fixed
+- **Build final waits for unsaved edits.** Editing a chunk's text (or voice or
+  tuning) without regenerating left Build final clickable — and it would stitch
+  the old audio while the screen showed your new text. Build final now steps
+  aside until the edited chunk is regenerated or reverted, a status line names
+  the chunk holding it, and that chunk's Regenerate button lights up in the
+  accent color so the resolving action is unmissable. Skipped chunks are exempt
+  — they're not in the stitch.
+- **A one-clip run's finish message no longer claims the whole project.** After
+  regenerating a single chunk, the header used to announce "All 1 chunk(s)
+  generated" — on a 30-chunk project that read as "everything's done." It now
+  says which clip landed: "✓ Clip 29 generated — build the final to include
+  it."
+
 ## [0.72.0] - 2026-07-19
 
 ### Changed
