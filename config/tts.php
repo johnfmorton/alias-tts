@@ -220,13 +220,13 @@ return [
     // shorter calls.
     'chunk_chars' => (int) env('TTS_CHUNK_CHARS', 280),
 
-    // How sentences are grouped into chunks. 'packed' (default) packs sentences
-    // greedily up to chunk_chars per backend call; 'sentence' gives every
+    // How sentences are grouped into chunks. 'sentence' (default) gives every
     // sentence its own chunk — more, shorter calls, but each sentence can be
-    // re-rolled/edited independently in Studio. Very short sentences are still
-    // merged with a neighbor (min_chunk_chars) in both modes. Per-user editable
-    // on the Settings page.
-    'chunk_mode' => env('TTS_CHUNK_MODE', 'packed'),
+    // re-rolled/edited independently in Studio; 'packed' packs sentences greedily
+    // up to chunk_chars per backend call. Very short sentences are still merged
+    // with a neighbor (min_chunk_chars) in both modes. Per-user editable on the
+    // Settings page.
+    'chunk_mode' => env('TTS_CHUNK_MODE', 'sentence'),
 
     // Spoken quote markers: voice paired double quotes as words ("open quote …
     // close quote"), like automated news narration. Only confidently PAIRED

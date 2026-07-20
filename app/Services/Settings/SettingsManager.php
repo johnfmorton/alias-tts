@@ -156,11 +156,22 @@ class SettingsManager
      */
     public function defaultFor(string $configPath): mixed
     {
-        if ($this->baseline !== null && array_key_exists($configPath, $this->baseline)) {
-            return $this->baseline[$configPath];
+        $default = ($this->baseline !== null && array_key_exists($configPath, $this->baseline))
+            ? $this->baseline[$configPath]
+            : config($configPath);
+
+        // Mirror displayValue()'s inheritance: a key whose own default is null
+        // (e.g. project_output_format) takes its effective default from the key it
+        // inherits. Without this the field would read as "changed from default"
+        // the moment the inherited value is shown, and Reset would target null.
+        if ($default === null) {
+            $entry = $this->managed()[$configPath] ?? null;
+            if ($entry !== null && isset($entry['inherits'])) {
+                return config($entry['inherits']);
+            }
         }
 
-        return config($configPath);
+        return $default;
     }
 
     /**

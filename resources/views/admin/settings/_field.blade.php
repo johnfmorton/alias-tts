@@ -4,19 +4,39 @@
     $value = old($name, $f['value']);
     $disabled = $locked ? 'disabled' : '';
     $input = 'w-full rounded-lg border border-edge bg-zinc-900 px-3 py-2 text-sm focus:border-cyan-500 focus:outline-none focus:ring-2 focus:ring-cyan-500/30 disabled:cursor-not-allowed disabled:opacity-60';
+
+    // Does this field's current value deviate from its shipped default? Compared
+    // per type so "80" vs 80 and 1.20 vs 1.2 don't read as changes. A locked
+    // (.env) field is never flagged — its value is instance policy, not a choice.
+    $hasDefault = array_key_exists('default', $f);
+    $default = $hasDefault ? $f['default'] : null;
+    $isCustom = ! $locked && $hasDefault && match ($f['type']) {
+        'bool' => (bool) $value !== (bool) $default,
+        'int' => (int) $value !== (int) $default,
+        'float' => abs((float) $value - (float) $default) > 1e-9,
+        default => (string) $value !== (string) $default,
+    };
 @endphp
 <div>
     <div class="flex items-center justify-between gap-3">
-        <label for="{{ $name }}" class="text-sm font-medium text-zinc-200">{{ $f['label'] }}</label>
+        <div class="flex min-w-0 items-center gap-2">
+            <label for="{{ $name }}" class="text-sm font-medium text-zinc-200">{{ $f['label'] }}</label>
+            @if($isCustom)
+                {{-- Value differs from the shipped default — flag it so a customised
+                     field is obvious at a glance, paired with Reset to default below. --}}
+                <span class="shrink-0 rounded-md border border-cyan-500/30 bg-cyan-500/10 px-2 py-0.5 text-xs text-cyan-300"
+                      title="You've changed this from its default — use Reset to default to restore it.">Modified</span>
+            @endif
+        </div>
         @if($locked)
-            <span class="rounded-md border border-amber-500/30 bg-amber-500/10 px-2 py-0.5 text-xs text-amber-300"
+            <span class="shrink-0 rounded-md border border-amber-500/30 bg-amber-500/10 px-2 py-0.5 text-xs text-amber-300"
                   title="Pinned by the {{ $f['env'] }} environment variable">Set in .env</span>
-        @elseif(! empty($f['advanced']) && array_key_exists('default', $f))
-            {{-- A bad Advanced value can wreck generation, so every threshold can be
-                 put back to its shipped default. Stages the change like any edit;
-                 the user still clicks Save to persist it. --}}
-            <button type="button" data-restore-default="{{ $name }}" data-default="{{ $f['default'] }}"
-                    title="Restore the shipped default ({{ $f['default'] }})"
+        @elseif($isCustom && $f['type'] !== 'bool')
+            {{-- Any changed field can be put back to its shipped default. Stages the
+                 change like any edit; the user still clicks Save to persist it.
+                 Booleans are omitted — the checkbox itself is the one-click reset. --}}
+            <button type="button" data-restore-default="{{ $name }}" data-default="{{ $default }}"
+                    title="Restore the shipped default ({{ $f['option_labels'][$default] ?? $default }})"
                     class="shrink-0 rounded-md border border-edge px-2 py-0.5 text-xs text-zinc-400 transition hover:border-zinc-500 hover:text-zinc-200">
                 Reset to default
             </button>

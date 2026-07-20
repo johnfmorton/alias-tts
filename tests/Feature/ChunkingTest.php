@@ -59,7 +59,12 @@ class ChunkingTest extends TestCase
     {
         $provider = $this->countingProvider();
 
-        $key = ApiKey::generate('chunk');
+        // Pin packed mode on the key owner so this asserts the packed multi-chunk
+        // path regardless of the instance default (which is per-sentence).
+        $user = User::factory()->create();
+        UserSetting::create(['user_id' => $user->id, 'key' => 'tts.chunk_mode', 'value' => 'packed']);
+
+        $key = ApiKey::generate('chunk', null, $user->id);
         Voice::create(['slug' => 'v', 'name' => 'V']);
 
         $text = str_repeat('This is a sentence that is reasonably long and clear. ', 10);

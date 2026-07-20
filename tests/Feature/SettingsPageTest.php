@@ -475,14 +475,38 @@ class SettingsPageTest extends TestCase
         $this->assertNull($this->row($user, 'tts.pronunciation.llm_provider'));
     }
 
-    public function test_advanced_fields_render_a_reset_to_default_control(): void
+    public function test_a_changed_field_is_flagged_and_offers_a_reset_control(): void
     {
-        // A bad Advanced threshold can wreck generation, so each one can be put
-        // back to its shipped default (both roles see the Advanced section).
+        // A value that deviates from its shipped default is flagged "Modified" and
+        // paired with a Reset control that stages the default back (still Save-gated).
+        $user = $this->user();
+        UserSetting::create(['user_id' => $user->id, 'key' => 'tts.asr.trail_s_max', 'value' => 2.5]);
+
+        $res = $this->actingAs($user)->get(route('admin.settings.index'));
+
+        $res->assertOk();
+        $res->assertSee('Modified');
+        $res->assertSee('Reset to default');
+        $res->assertSee('data-restore-default="tts_asr_trail_s_max"', false);
+    }
+
+    public function test_a_field_at_its_default_shows_no_badge_or_reset_control(): void
+    {
+        // A user riding every default sees no "Modified" flag or Reset clutter —
+        // including keys whose default is inherited (project output format).
         $res = $this->actingAs($this->user())->get(route('admin.settings.index'));
 
         $res->assertOk();
-        $res->assertSee('Reset to default');
-        $res->assertSee('data-restore-default="tts_asr_trail_s_max"', false);
+        $res->assertDontSee('Modified');
+        $res->assertDontSee('data-restore-default', false);
+    }
+
+    public function test_the_settings_form_opts_into_the_unsaved_changes_guard(): void
+    {
+        // The form carries the hook the app.js dirty-guard watches, so leaving
+        // with unsaved edits prompts before navigation.
+        $this->actingAs($this->user())->get(route('admin.settings.index'))
+            ->assertOk()
+            ->assertSee('data-dirty-guard', false);
     }
 }

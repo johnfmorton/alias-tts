@@ -108,7 +108,7 @@ class InternalPipelineTest extends TestCase
             .'This is the second reasonably long sentence right here.';
 
         $packed = $this->withHeaders($this->headers())
-            ->postJson('/v1/internal/chunk', ['text' => $text])
+            ->postJson('/v1/internal/chunk', ['text' => $text, 'chunk_mode' => 'packed'])
             ->assertStatus(200)
             ->json('chunks');
         $this->assertCount(1, $packed);

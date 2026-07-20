@@ -4,6 +4,30 @@ All notable changes to this project are documented in this file. The format is
 based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this
 project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+- **Changed settings are obvious at a glance.** Any setting whose value differs
+  from its shipped default now carries a **Modified** badge next to its name and
+  a **Reset to default** control beside it — previously only the Advanced
+  transcript-QA thresholds could be reset, and nothing told you which of your
+  settings you had actually customised. (A checkbox is its own reset, so those
+  get the badge but no extra button.)
+- **The Settings page warns before you lose unsaved edits.** Change a value and
+  then try to leave — closing the tab, reloading, Back, or following a link —
+  and you're asked to confirm first. The prompt drops away the moment you save,
+  or revert the field back to where it started.
+
+### Changed
+- **Per-sentence chunking is the new default.** Long text is now split one
+  sentence per generation call by default (previously packed greedily up to the
+  size budget), so each sentence is independently re-rollable and editable in
+  Studio out of the box. This applies everywhere the setting is read — projects,
+  Studio, and /v1 API keys — for any account that hasn't picked its own Chunking
+  mode; accounts that already chose a mode are untouched.
+- **Spoken quote marks options read in order of how much they say** — Off, Open
+  only, Quote and close, Open and close.
+
 ## [0.73.0] - 2026-07-20
 
 ### Changed

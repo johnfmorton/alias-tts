@@ -5145,3 +5145,29 @@ function initJobsPage() {
     });
 }
 initJobsPage();
+
+// ---------------------------------------------------------------------------
+// Unsaved-changes guard
+// ---------------------------------------------------------------------------
+// A form marked [data-dirty-guard] warns before the page is left — tab close,
+// reload, Back, or an in-app link — while any field differs from what it was on
+// load. A real navigation only honours the native beforeunload prompt, so the
+// shared confirm dialog can't stand in here. Comparing a fresh serialization to
+// the on-load snapshot means reverting an edit (including a "Reset to default"
+// back to the original) clears the guard, and submitting the form releases it.
+function initDirtyGuard() {
+    document.querySelectorAll('form[data-dirty-guard]').forEach((form) => {
+        const serialize = () => new URLSearchParams(new FormData(form)).toString();
+        const initial = serialize();
+        let submitting = false;
+
+        form.addEventListener('submit', () => { submitting = true; });
+
+        window.addEventListener('beforeunload', (e) => {
+            if (submitting || serialize() === initial) return;
+            e.preventDefault();
+            e.returnValue = ''; // Chrome shows the prompt only when returnValue is set.
+        });
+    });
+}
+initDirtyGuard();
