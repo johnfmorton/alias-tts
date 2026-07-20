@@ -394,7 +394,17 @@ never a Settings-page key:
 | `tts.generation.concurrent_enabled` | `TTS_CONCURRENT_GENERATION` | `false` | Select the claim-based background path |
 | `tts.generation.max_concurrency` | `TTS_GENERATION_CONCURRENCY` | `1` | Worker jobs dispatched per run (capped by outstanding chunks) |
 | `tts.generation.queue` | `TTS_GENERATION_QUEUE` | `null` | Queue for chunk-worker jobs; null = default queue |
+| `tts.generation.interactive_queue` | `TTS_INTERACTIVE_QUEUE` | `null` | Queue for the single-chunk run a Regenerate starts; workers must listen `--queue=interactive,default` |
+| `tts.generation.slice_seconds` | `TTS_GENERATION_SLICE_SECONDS` | `120` | Fairness slice: a run hands off to a fresh queue job this often so co-queued jobs interleave; `0` = off |
 | `tts.studio_generate_pace_ms` | `TTS_STUDIO_GENERATE_PACE_MS` | `800` | Inter-chunk delay, now applied per worker |
+
+The two queue-fairness knobs apply to BOTH background paths (serial and
+claim-based), not just the experiment: `interactive_queue` routes the
+single-chunk run a per-chunk Regenerate starts (unset = safe default queue; a
+name no worker listens on would strand every Regenerate), and `slice_seconds`
+caps how long any run occupies one worker before its continuation re-queues at
+the back of the FIFO line — that hand-off is what lets an API speech job or
+another user's regenerate interleave with a long run instead of waiting it out.
 
 Do not hard-code 600 requests/minute into the application merely because it is
 the current public default. If a distributed limiter is later required, make

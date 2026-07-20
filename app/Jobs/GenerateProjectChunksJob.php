@@ -26,10 +26,12 @@ use Throwable;
  * matching the old loop — while out-of-credit stops the run cold, since every
  * further chunk would fail the same way.
  *
- * A run larger than one worker attempt's time budget checkpoints itself: near
- * the timeout the loop re-dispatches a continuation job carrying the next
- * chunk index, so a big or slow run is never killed mid-render (and never hits
- * the tries=1 retry refusal a kill leaves behind).
+ * A run larger than one attempt's time budget ({@see sliceBudget()}) hands off
+ * by re-dispatching a continuation job carrying the next chunk index, so a big
+ * or slow run is never killed mid-render (and never hits the tries=1 retry
+ * refusal a kill leaves behind). The budget is normally the FAIRNESS slice
+ * (tts.generation.slice_seconds), far below the worker timeout: each hand-off
+ * re-queues at the back, letting co-queued jobs interleave with a long run.
  *
  * Requires a running queue worker (QUEUE_CONNECTION + `queue:work`).
  */
@@ -58,6 +60,23 @@ class GenerateProjectChunksJob implements ShouldQueue
     ) {
         // Captured at dispatch time and serialized with the job.
         $this->timeout = (int) config('tts.async_timeout', 1800);
+    }
+
+    /**
+     * Seconds one queue attempt may run before handing off. The hard ceiling
+     * is the worker timeout minus the checkpoint margin; the (much smaller)
+     * fairness slice re-queues the run every couple of minutes so co-queued
+     * jobs — API speech, another user's regenerate — interleave with a long
+     * run instead of waiting the whole thing out: the continuation goes to
+     * the BACK of the FIFO queue. slice_seconds=0 disables the fairness
+     * slice, leaving only the timeout ceiling.
+     */
+    private function sliceBudget(): float
+    {
+        $ceiling = max(0, $this->timeout - self::CHECKPOINT_MARGIN_SECONDS);
+        $slice = (float) config('tts.generation.slice_seconds', 120);
+
+        return $slice > 0 ? min($slice, $ceiling) : $ceiling;
     }
 
     public function handle(ProjectService $service): void
@@ -110,15 +129,15 @@ class GenerateProjectChunksJob implements ShouldQueue
                 break;
             }
 
-            // A worker attempt has a fixed time budget (timeout) no matter how
-            // many chunks the run holds. Blowing it gets the process killed
-            // mid-render and the retry refused (tries = 1) — so near the line,
-            // hand the remainder to a FRESH queue job (new attempt counter, new
-            // reservation) and exit clean. At least one chunk per attempt, so
-            // even a tiny budget still makes progress.
-            if ($i > $this->startIndex
-                && microtime(true) - $startedAt >= max(0, $this->timeout - self::CHECKPOINT_MARGIN_SECONDS)) {
-                self::dispatch($this->jobId, $i);
+            // A worker attempt has a fixed time budget (sliceBudget) no matter
+            // how many chunks the run holds. Blowing the worker timeout gets
+            // the process killed mid-render and the retry refused (tries = 1)
+            // — so near the line, hand the remainder to a FRESH queue job (new
+            // attempt counter, new reservation) and exit clean, staying on the
+            // same queue this attempt ran on. At least one chunk per attempt,
+            // so even a tiny budget still makes progress.
+            if ($i > $this->startIndex && microtime(true) - $startedAt >= $this->sliceBudget()) {
+                self::dispatch($this->jobId, $i)->onQueue($this->queue);
 
                 return;
             }

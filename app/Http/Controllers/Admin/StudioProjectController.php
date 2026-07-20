@@ -1161,23 +1161,26 @@ class StudioProjectController extends Controller
     }
 
     /**
-     * "Regenerate" while a background run is active: put this chunk in the
-     * run's line instead of racing the worker (the manual endpoints 409 then —
-     * see {@see activeRunError()}). The chunk is inserted right AFTER the entry
-     * the worker is on — the clip the user is actively fixing renders next,
-     * not after everything else still in line. The insertion is race-free: the
-     * worker sits at list index chunks_done+chunks_failed (every entry it
-     * passes increments exactly one of the two), those counters can't move
-     * while this transaction holds the run row's lock, and the worker re-reads
-     * the list each iteration — so a slot after the cursor is always ground it
-     * hasn't reached. A generated chunk goes Stale in the same transaction so
-     * the worker can't skip it as already-completed. A chunk already waiting
-     * keeps its spot (double-clicks can't book a clip twice) but is re-armed
-     * to Stale if it completed while it waited; the entry being rendered right
-     * now is left alone — the response says so. The one unwinnable race — the
-     * worker finishing the run in the same instant — leaves the chunk Stale
-     * but unprocessed; the page has settled by then and plain Regenerate
-     * covers it.
+     * "Regenerate" one chunk — always through the queue worker, never inside
+     * the web request (a render plus its ASR re-rolls can outlive any gateway
+     * timeout; the in-request path is what produced HTTP 504s whose worker was
+     * then killed mid-render). With no run active, this starts a single-chunk
+     * run ({@see startSingleChunkRun()}); while one is active, the chunk joins
+     * the run's line instead of racing the worker. It is inserted right AFTER
+     * the entry the worker is on — the clip the user is actively fixing
+     * renders next, not after everything else still in line. The insertion is
+     * race-free: the worker sits at list index chunks_done+chunks_failed
+     * (every entry it passes increments exactly one of the two), those
+     * counters can't move while this transaction holds the run row's lock, and
+     * the worker re-reads the list each iteration — so a slot after the cursor
+     * is always ground it hasn't reached. A generated chunk goes Stale in the
+     * same transaction so the worker can't skip it as already-completed. A
+     * chunk already waiting keeps its spot (double-clicks can't book a clip
+     * twice) but is re-armed to Stale if it completed while it waited; the
+     * entry being rendered right now is left alone — the response says so. The
+     * one unwinnable race — the worker finishing the run in the same instant —
+     * leaves the chunk Stale but unprocessed; the page settles and the next
+     * Regenerate finds no active run, so a fresh single-chunk run covers it.
      */
     public function queueChunk(Request $request, TtsProject $project, TtsChunk $chunk): JsonResponse
     {
@@ -1208,7 +1211,7 @@ class StudioProjectController extends Controller
 
         $active = TtsProjectJob::activeFor($project->id);
         if (! $active) {
-            return response()->json(['message' => 'The background run just finished — use Regenerate directly.'], 409);
+            return $this->startSingleChunkRun($request, $project, $chunk);
         }
         if ($active->cancel_requested) {
             return response()->json(['message' => 'This run is stopping — wait for it to settle, then regenerate the clip.'], 409);
@@ -1222,8 +1225,14 @@ class StudioProjectController extends Controller
                 ->lockForUpdate()
                 ->first();
 
-            if (! $run || $run->cancel_requested) {
+            // Gone: it finished in the gap since the check above — fall through
+            // to a fresh single-chunk run. Stopping: it is still winding down
+            // (its worker may be mid-clip), so a new run can't start yet.
+            if (! $run) {
                 return null;
+            }
+            if ($run->cancel_requested) {
+                return ['flavor' => 'stopping'];
             }
 
             $ids = array_values((array) $run->chunk_ids);
@@ -1307,7 +1316,10 @@ class StudioProjectController extends Controller
         });
 
         if ($result === null) {
-            return response()->json(['message' => 'The background run just finished — use Regenerate directly.'], 409);
+            return $this->startSingleChunkRun($request, $project, $chunk);
+        }
+        if ($result['flavor'] === 'stopping') {
+            return response()->json(['message' => 'This run is stopping — wait for it to settle, then regenerate the clip.'], 409);
         }
 
         $run = $result['run']->refresh();
@@ -1331,6 +1343,64 @@ class StudioProjectController extends Controller
             'message' => $message,
             'job' => $run->statusPayload(),
         ]);
+    }
+
+    /**
+     * No run to join — start one over just this chunk. Everything downstream
+     * is the ordinary run machinery: the worker renders from the persisted
+     * voice/tuning under the dispatcher's settings, results land on the page
+     * via {@see generationStatus()}, and Stop works. Another Regenerate while
+     * this run is live joins its line, so the run can grow past one chunk.
+     */
+    private function startSingleChunkRun(Request $request, TtsProject $project, TtsChunk $chunk): JsonResponse
+    {
+        // The worker's loop treats Completed as "no work left" — re-arm first,
+        // same as adopting a generated chunk into an active run does.
+        if ($chunk->status === ChunkStatus::Completed) {
+            $chunk->update(['status' => ChunkStatus::Stale]);
+        }
+
+        $chunk->loadMissing('voice');
+        $workers = $this->generationConcurrency(1);
+
+        $job = TtsProjectJob::create([
+            'tts_project_id' => $project->id,
+            'user_id' => $project->user_id,
+            'created_by_id' => $request->user()?->id,
+            'chunk_ids' => [$chunk->id],
+            'chunks_total' => 1,
+            'concurrency' => $workers,
+            'estimated_ms' => $this->estimateRemainingMs($project, collect([$chunk])),
+        ]);
+
+        // An interactive queue (tts.generation.interactive_queue) lets this
+        // one-clip run jump the line past bulk runs and API speech jobs —
+        // workers must listen with --queue=interactive,default. Unset, the
+        // run rides the same queue "Generate remaining" uses. The job is
+        // dispatched as an instance so the queue is pinned before dispatch()
+        // fires (a held PendingDispatch would not dispatch until it falls out
+        // of scope — after the refresh below reads the row).
+        $one = $workers !== null
+            ? new GenerateProjectChunkWorkerJob($job->id)
+            : new GenerateProjectChunksJob($job->id);
+        if ($queue = config('tts.generation.interactive_queue')) {
+            $one->onQueue($queue);
+        }
+        dispatch($one);
+
+        // Under QUEUE_CONNECTION=sync the run already finished inline — the
+        // refreshed row reports terminal state, the label falls away, and the
+        // status below is the chunk's real one.
+        $job->refresh();
+        $label = $this->queuedLabels($job)[$chunk->id] ?? null;
+
+        return response()->json([
+            'ok' => true,
+            'status' => $label ? 'queued' : $chunk->refresh()->status->value,
+            'queue_label' => $label,
+            'message' => sprintf('Saved — clip %d is regenerating in the background.', $chunk->position + 1),
+            'job' => $job->statusPayload(),
+        ], $job->isActive() ? 202 : 200);
     }
 
     /**

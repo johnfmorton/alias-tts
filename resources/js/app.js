@@ -2120,7 +2120,7 @@ function initStudioProject() {
         textarea.classList.toggle('border-amber-500/50', textDirty);
         textarea.classList.toggle('border-edge', !textDirty);
         // There is no save-text-without-render — the render button absorbs the
-        // save (patchChunk runs first in runGeneration/queueChunkRegen).
+        // save (patchChunk runs first in queueChunkRegen).
         setGenerateLabel(card);
     };
 
@@ -2161,58 +2161,6 @@ function initStudioProject() {
         return false;
     }
 
-    // Generate one chunk: persist a pending text edit first, then POST with the
-    // whole tuning panel riding along (the server saves it before rendering) —
-    // so a Regenerate always renders exactly the text + settings on screen.
-    async function runGeneration(card, url, btn, label) {
-        const textarea = card.querySelector('.chunk-text');
-        startBusy(btn, label);
-        try {
-            if (textarea.value !== textarea.dataset.original) {
-                // Persist the edit first. If that split the chunk, the page is
-                // reloading — don't generate the now-orphaned original chunk.
-                if (await patchChunk(card)) return;
-            }
-            const res = await fetch(url, {
-                method: 'POST',
-                headers: { 'X-CSRF-TOKEN': csrfToken(), 'Accept': 'application/json', 'Content-Type': 'application/json' },
-                body: JSON.stringify(chunkTuningPayload(card)),
-            });
-            if (!res.ok) throw new Error(await errorMessage(res));
-            const data = await res.json();
-
-            setChunkStatus(card, data.status);
-            setChunkAsrBadge(card, data.asr_badge ?? null);
-            setProjectStatus(data.project_status);
-            // The render saved the whole panel (text + any pending voice + tuning).
-            // A changed voice is now an explicit server-side pin, so it stops
-            // mirroring the project voice; then re-baseline so nothing reads dirty.
-            commitPanelAfterSave(card);
-            const audio = card.querySelector('.chunk-audio');
-            audio.src = bust(card.dataset.audioUrl);
-            audio.closest('.aplayer')?.classList.remove('hidden');
-            audio.play().catch(() => {});
-            endBusy(btn);
-            card.querySelector('.chunk-generate').dataset.base = 'Regenerate';
-            setGenerateLabel(card);
-            renderTakes(card, data); // the new take joins the history (and becomes selected)
-            refreshSeams(); // may reveal an inline seam preview next to a generated neighbor
-            chunkNotice(card, ''); // the fresh take is the feedback — just retire any stale notice
-        } catch (err) {
-            setChunkStatus(card, 'failed');
-            // Callers swallow the rethrow (the click handler has nowhere to put
-            // it) — this notice is the only place the failure reason surfaces.
-            chunkNotice(card, `✗ ${err.message}`, 'error');
-            reflectActionState(); // a failed chunk is outstanding again — Build final goes off
-            endBusy(btn);
-            setGenerateLabel(card); // endBusy restores a possibly stale label — re-derive from data-base
-            throw err;
-        }
-    }
-
-    const generateChunk = (card) =>
-        runGeneration(card, card.dataset.generateUrl, card.querySelector('.chunk-generate'), 'Generating…');
-
     // ---- Background "Generate remaining" ------------------------------------
     // The run executes on the queue worker, so it survives leaving the page
     // (the old in-page loop died with the tab). This page only dispatches it,
@@ -2247,14 +2195,16 @@ function initStudioProject() {
         });
     };
 
-    // "Regenerate" while a background run is active: the direct endpoint would
-    // 409 (the worker owns generation), so put the chunk in the run's line
-    // instead — right after the clip in flight, so it renders next. A pending
-    // text edit and the tuning panel are persisted with the click — same
-    // contract as a direct Regenerate — so the worker renders what's on
-    // screen. The server marks a generated chunk stale as it adopts it and
-    // reports its place in line ('queued' + queue_label), which the poll then
-    // keeps fresh as the line moves.
+    // "Regenerate" one chunk — the only render path, and it never renders
+    // inside the request: with no run active the server starts a single-chunk
+    // background run, and while one is active the chunk joins its line — right
+    // after the clip in flight, so it renders next. (The old direct endpoint
+    // rendered synchronously and died on the gateway's timeout — HTTP 504 —
+    // whenever a render plus its ASR re-rolls ran long.) A pending text edit
+    // and the tuning panel are persisted with the click, so the worker renders
+    // what's on screen. The server marks a generated chunk stale as it adopts
+    // it and reports its place in line ('queued' + queue_label); followRun's
+    // poll then delivers the take and keeps the line fresh as it moves.
     async function queueChunkRegen(card) {
         const btn = card.querySelector('.chunk-generate');
         startBusy(btn, 'Queueing…');
@@ -2281,6 +2231,11 @@ function initStudioProject() {
             // information — show it here; the run's own progress stays in the
             // header status line.
             chunkNotice(card, data.message || data.job?.message);
+            // A fresh single-chunk run needs following — the poll is what lands
+            // the take on the card. No-op while a run is already being followed
+            // (followRun guards on its own timer); a run that already finished
+            // inline (sync queue) settles on the first poll.
+            if (data.job) followRun();
         } catch (err) {
             chunkNotice(card, `✗ ${err.message}`, 'error');
         } finally {
@@ -2878,9 +2833,7 @@ function initStudioProject() {
             card.querySelector('.qa-badge')?.setAttribute('aria-expanded', 'false');
         });
 
-        card.querySelector('.chunk-generate').addEventListener('click', () => (
-            runActive ? queueChunkRegen(card) : generateChunk(card).catch(() => {})
-        ));
+        card.querySelector('.chunk-generate').addEventListener('click', () => queueChunkRegen(card));
 
         // Per-chunk voice override: a PENDING edit, like the text and tuning —
         // held on screen and written with the next Regenerate, not saved on its

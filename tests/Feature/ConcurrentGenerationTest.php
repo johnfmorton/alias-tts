@@ -133,6 +133,26 @@ class ConcurrentGenerationTest extends TestCase
         $this->assertSame(GenerationTimings::perChunkMs('chatterbox'), $run->estimated_ms);
     }
 
+    public function test_regenerate_with_no_run_starts_a_one_worker_claim_run(): void
+    {
+        Queue::fake();
+        $project = $this->project();
+        $chunk = $project->chunks()->first();
+
+        // A Regenerate with no run to join starts a single-chunk run; under
+        // the flag it follows the claim-based shape, capped at 1 worker.
+        $this->actingAs($this->admin())
+            ->postJson(route('admin.studio.projects.chunks.queue', [$project, $chunk]))
+            ->assertStatus(202)
+            ->assertJsonPath('job.chunks_total', 1);
+
+        Queue::assertPushed(GenerateProjectChunkWorkerJob::class, 1);
+        Queue::assertNotPushed(GenerateProjectChunksJob::class);
+        $run = TtsProjectJob::sole();
+        $this->assertSame(1, $run->concurrency);
+        $this->assertSame([$chunk->id], $run->chunk_ids);
+    }
+
     public function test_workers_go_to_the_configured_generation_queue(): void
     {
         config(['tts.generation.queue' => 'generation']);
@@ -143,6 +163,38 @@ class ConcurrentGenerationTest extends TestCase
             ->postJson(route('admin.studio.projects.generate-remaining', $project));
 
         Queue::assertPushedOn('generation', GenerateProjectChunkWorkerJob::class);
+    }
+
+    public function test_a_single_chunk_run_prefers_the_interactive_queue(): void
+    {
+        config([
+            'tts.generation.queue' => 'generation',
+            'tts.generation.interactive_queue' => 'interactive',
+        ]);
+        Queue::fake();
+        $project = $this->project();
+
+        $this->actingAs($this->admin())
+            ->postJson(route('admin.studio.projects.chunks.queue', [$project, $project->chunks()->first()]))
+            ->assertStatus(202);
+
+        // The regenerate's worker job overrides its constructor's generation
+        // queue — a one-clip fix jumps the bulk line.
+        Queue::assertPushedOn('interactive', GenerateProjectChunkWorkerJob::class);
+    }
+
+    public function test_a_worker_hand_off_stays_on_its_queue(): void
+    {
+        Queue::fake();
+        config(['tts.async_timeout' => 0]); // zero budget: hand off after every chunk
+        $project = $this->project();
+        $run = $this->claimRun($project, concurrency: 1);
+
+        $worker = new GenerateProjectChunkWorkerJob($run->id);
+        $worker->onQueue('interactive'); // as the controller pins an interactive run
+        $worker->handle(app(ProjectService::class));
+
+        Queue::assertPushedOn('interactive', GenerateProjectChunkWorkerJob::class);
     }
 
     // --- The claim loop ------------------------------------------------------

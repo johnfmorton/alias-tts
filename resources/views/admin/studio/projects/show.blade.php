@@ -309,7 +309,6 @@
                 <div class="studio-chunk rounded-xl border border-zinc-800 bg-zinc-900/50 p-4"
                      data-chunk-id="{{ $chunk->id }}"
                      data-queued="{{ $queueLabel ? '1' : '0' }}"
-                     data-generate-url="{{ route('admin.studio.projects.chunks.generate', [$project, $chunk]) }}"
                      data-queue-url="{{ route('admin.studio.projects.chunks.queue', [$project, $chunk]) }}"
                      data-patch-url="{{ route('admin.studio.projects.chunks.update', [$project, $chunk]) }}"
                      data-qa-dismiss-url="{{ route('admin.studio.projects.chunks.qa-dismiss', [$project, $chunk]) }}"

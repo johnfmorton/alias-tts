@@ -23,7 +23,8 @@ use RuntimeException;
 use Tests\TestCase;
 
 /**
- * Background "Generate remaining" runs: dispatch + join semantics, the queue
+ * Background "Generate remaining" runs: dispatch + join semantics (including
+ * the single-chunk run a Regenerate starts when no run is active), the queue
  * job's chunk loop (failures, cancellation, credit), the status poll, and the
  * Jobs page (scoping + cancel). The queue is sync in tests, so dispatching
  * without Queue::fake() runs the whole job inline.
@@ -439,20 +440,78 @@ class ProjectJobsTest extends TestCase
         $this->assertSame(ChunkStatus::Completed, $second->fresh()->status);
     }
 
-    public function test_queueing_is_refused_without_an_active_run_or_while_stopping(): void
+    public function test_regenerate_with_no_run_starts_a_single_chunk_run(): void
+    {
+        Queue::fake();
+        $project = $this->project();
+        [$first, $second] = $project->chunks()->get();
+        $first->update(['status' => ChunkStatus::Completed]);
+
+        // No active run: the click starts a background run over just this
+        // chunk — never a render inside the web request (that path is what
+        // 504'd on long renders and lost the worker mid-clip).
+        $this->actingAs($this->admin())
+            ->postJson(route('admin.studio.projects.chunks.queue', [$project, $first]))
+            ->assertStatus(202)
+            ->assertJsonPath('status', 'queued')
+            ->assertJsonPath('queue_label', 'queued · next in line')
+            ->assertJsonPath('message', 'Saved — clip 1 is regenerating in the background.')
+            ->assertJsonPath('job.chunks_total', 1)
+            ->assertJsonPath('job.active', true);
+
+        Queue::assertPushed(GenerateProjectChunksJob::class, 1);
+        $run = TtsProjectJob::sole();
+        $this->assertSame([$first->id], $run->chunk_ids);
+        // Re-armed so the worker's already-generated guard can't skip it; the
+        // untouched sibling is not the run's business.
+        $this->assertSame(ChunkStatus::Stale, $first->fresh()->status);
+        $this->assertSame(ChunkStatus::Pending, $second->fresh()->status);
+        $this->assertSame(GenerationTimings::perChunkMs('chatterbox'), $run->estimated_ms);
+    }
+
+    public function test_a_single_chunk_run_rides_the_interactive_queue_when_configured(): void
+    {
+        config(['tts.generation.interactive_queue' => 'interactive']);
+        Queue::fake();
+        $project = $this->project();
+
+        $this->actingAs($this->admin())
+            ->postJson(route('admin.studio.projects.chunks.queue', [$project, $project->chunks()->first()]))
+            ->assertStatus(202);
+
+        // Workers listening --queue=interactive,default serve this ahead of
+        // bulk runs and API speech jobs sitting on the default queue.
+        Queue::assertPushedOn('interactive', GenerateProjectChunksJob::class);
+    }
+
+    public function test_single_chunk_run_renders_inline_on_the_sync_queue(): void
     {
         $project = $this->project();
         $chunk = $project->chunks()->first();
-        $admin = $this->admin();
 
-        // No run at all — use the direct endpoint instead.
-        $this->actingAs($admin)
+        // The sync queue executed the run inside the POST — the response
+        // already reports the finished state and the real chunk status.
+        $this->actingAs($this->admin())
             ->postJson(route('admin.studio.projects.chunks.queue', [$project, $chunk]))
-            ->assertStatus(409);
+            ->assertOk()
+            ->assertJsonPath('status', 'completed')
+            ->assertJsonPath('queue_label', null)
+            ->assertJsonPath('job.status', 'completed')
+            ->assertJsonPath('job.chunks_done', 1);
 
-        // A stopping run winds down without reaching new work — refuse too.
+        $this->assertSame(ChunkStatus::Completed, $chunk->fresh()->status);
+        $this->assertGreaterThan(0, $chunk->takes()->count());
+    }
+
+    public function test_queueing_is_refused_while_the_run_is_stopping(): void
+    {
+        $project = $this->project();
+        $chunk = $project->chunks()->first();
+
+        // A stopping run winds down without reaching new work, and a second
+        // run can't start while it's still active — refuse the click.
         $this->queuedRun($project)->update(['cancel_requested' => true]);
-        $this->actingAs($admin)
+        $this->actingAs($this->admin())
             ->postJson(route('admin.studio.projects.chunks.queue', [$project, $chunk]))
             ->assertStatus(409);
     }
@@ -623,6 +682,28 @@ class ProjectJobsTest extends TestCase
         Queue::assertPushed(
             GenerateProjectChunksJob::class,
             fn (GenerateProjectChunksJob $pushed) => $pushed->jobId === $job->id && $pushed->startIndex === 1,
+        );
+    }
+
+    public function test_the_fairness_slice_checkpoints_a_run_and_keeps_its_queue(): void
+    {
+        Queue::fake();
+        // The slice alone forces the hand-off — the timeout ceiling is miles off.
+        config(['tts.generation.slice_seconds' => 0.000001]);
+        $project = $this->project();
+        $run = $this->queuedRun($project);
+
+        $job = new GenerateProjectChunksJob($run->id);
+        $job->onQueue('interactive'); // as the controller pins an interactive run
+        $job->handle(app(ProjectService::class));
+
+        // Chunk one rendered, then the slice handed off — on the SAME queue,
+        // so an interactive run never falls back into the bulk line.
+        $this->assertSame(1, $run->fresh()->chunks_done);
+        Queue::assertPushedOn(
+            'interactive',
+            GenerateProjectChunksJob::class,
+            fn (GenerateProjectChunksJob $pushed) => $pushed->jobId === $run->id && $pushed->startIndex === 1,
         );
     }
 

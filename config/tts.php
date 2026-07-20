@@ -398,6 +398,19 @@ return [
         // dedicated queue (e.g. "generation") with exactly K workers is the
         // intended production shape once the experiment graduates.
         'queue' => env('TTS_GENERATION_QUEUE'),
+        // Queue for the single-chunk run a Regenerate click starts when no run
+        // is active. Null = the default queue (safe everywhere). Set it (e.g.
+        // "interactive") AND run workers with --queue=interactive,default so a
+        // user's one-clip fix jumps ahead of bulk runs and API speech jobs —
+        // a name no worker listens on would strand every Regenerate.
+        'interactive_queue' => env('TTS_INTERACTIVE_QUEUE'),
+        // Fairness slice (seconds): a background run hands off to a fresh
+        // queue job this often so co-queued work — API speech, another user's
+        // regenerate — interleaves with a long run instead of waiting behind
+        // the whole thing (the continuation re-queues at the BACK of the FIFO
+        // queue). The worker-timeout checkpoint still applies as the ceiling.
+        // 0 disables slicing (checkpoint at the timeout ceiling only).
+        'slice_seconds' => (float) env('TTS_GENERATION_SLICE_SECONDS', 120),
     ],
 
     // Learned generation-time estimate ("~2 min remaining"). Each successful

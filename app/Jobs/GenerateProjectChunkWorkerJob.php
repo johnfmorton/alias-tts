@@ -62,6 +62,20 @@ class GenerateProjectChunkWorkerJob implements ShouldQueue
         }
     }
 
+    /**
+     * Seconds one queue attempt may run before handing off — same shape as
+     * the serial job's sliceBudget(): the fairness slice
+     * (tts.generation.slice_seconds, 0 = off) under the worker-timeout
+     * ceiling, so co-queued jobs interleave with a long run.
+     */
+    private function sliceBudget(): float
+    {
+        $ceiling = max(0, $this->timeout - self::CHECKPOINT_MARGIN_SECONDS);
+        $slice = (float) config('tts.generation.slice_seconds', 120);
+
+        return $slice > 0 ? min($slice, $ceiling) : $ceiling;
+    }
+
     public function handle(ProjectService $service): void
     {
         $startedAt = microtime(true);
@@ -85,14 +99,13 @@ class GenerateProjectChunkWorkerJob implements ShouldQueue
         $handled = 0;
 
         while (true) {
-            // Fixed time budget per queue attempt: near the line, hand the
-            // remainder to a fresh worker job (new attempt counter) and exit
-            // clean — without settling, since unclaimed work remains for the
-            // replacement. At least one claim per attempt, so even a tiny
-            // budget still makes progress.
-            if ($handled > 0
-                && microtime(true) - $startedAt >= max(0, $this->timeout - self::CHECKPOINT_MARGIN_SECONDS)) {
-                self::dispatch($this->jobId);
+            // Fixed time budget per queue attempt (sliceBudget): near the
+            // line, hand the remainder to a fresh worker job (new attempt
+            // counter) on the same queue, and exit clean — without settling,
+            // since unclaimed work remains for the replacement. At least one
+            // claim per attempt, so even a tiny budget still makes progress.
+            if ($handled > 0 && microtime(true) - $startedAt >= $this->sliceBudget()) {
+                self::dispatch($this->jobId)->onQueue($this->queue);
 
                 return;
             }
