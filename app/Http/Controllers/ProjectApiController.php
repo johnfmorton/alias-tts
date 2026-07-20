@@ -7,6 +7,7 @@ use App\Models\ApiKey;
 use App\Models\TtsProject;
 use App\Models\Voice;
 use App\Services\ProjectService;
+use App\Services\Pronunciation\ApiPronunciation;
 use App\Services\Tts\VoiceSettingsResolver;
 use App\Support\VoiceAliases;
 use Illuminate\Support\Carbon;
@@ -28,6 +29,7 @@ class ProjectApiController extends Controller
     public function __construct(
         private ProjectService $projects,
         private VoiceSettingsResolver $settingsResolver,
+        private ApiPronunciation $pronunciation,
     ) {}
 
     public function store(CreateProjectRequest $request): Response
@@ -57,6 +59,10 @@ class ProjectApiController extends Controller
             outputFormat: $request->outputFormat(),
             seed: $request->seed(),
             apiKey: $apiKey,
+            // Respell dictionary terms in the chunks (source_text stays verbatim)
+            // only when the key owner opted the API surface in; [] otherwise, which
+            // is the historical passthrough behavior. See ApiPronunciation.
+            pronunciationMap: $this->pronunciation->mapFor($apiKey->user_id),
             // Marks the project as born from the /v1/projects call so the Studio
             // list can tell it apart from a hand-made project AND from an audio
             // generation persisted by the text-to-speech endpoints ('api').

@@ -22,6 +22,10 @@ use App\Services\TextNormalizer;
  *    re-scanned and substitutions cannot cascade into one another.
  *  - Per-entry case sensitivity: a `case_insensitive` entry matches
  *    DDEV/ddev/Ddev via an inline (?i:…) group; the default is exact-case.
+ *  - Dash-insensitive: every dash-like code point is folded together, so a term
+ *    stored with one dash still matches text spelled with another (see
+ *    {@see DASH_CLASS}). Only the dash positions are loosened; the rest of the
+ *    term stays a literal, and non-matching text is never rewritten.
  *  - Replaces every occurrence.
  *
  * ASCII respelling only — the open-source Chatterbox model takes plain `prompt`
@@ -30,6 +34,26 @@ use App\Services\TextNormalizer;
  */
 class PronunciationSubstituter
 {
+    /**
+     * Every dash-like code point folded together for matching: ASCII hyphen-minus
+     * (U+002D), Unicode hyphen (U+2010), non-breaking hyphen (U+2011), figure
+     * dash (U+2012), en dash (U+2013), em dash (U+2014), horizontal bar (U+2015)
+     * and the minus sign (U+2212). LLM-suggested terms routinely carry a
+     * typographic en dash ("SHA–256") that a writer's text spells with a plain
+     * hyphen ("SHA-256"); without this fold the exact match would never fire.
+     */
+    private const DASH_CLASS = '[-\x{2010}-\x{2015}\x{2212}]';
+
+    /**
+     * Fold every dash variant to a plain ASCII hyphen. Used to canonicalize both
+     * the map keys and the matched surface so either side's dash choice lines up —
+     * and reused by {@see PronunciationDictionary} to store terms canonically.
+     */
+    public static function normalizeDashes(string $value): string
+    {
+        return preg_replace('/'.self::DASH_CLASS.'/u', '-', $value) ?? $value;
+    }
+
     /**
      * @param  list<array{term: string, phonetic: string, match_mode?: string}>  $entries
      * @return array{text: string, applied: list<string>}
@@ -41,9 +65,13 @@ class PronunciationSubstituter
 
         $fragments = [];
         $seen = [];
-        $exactMap = [];   // term (exact case)   => phonetic
-        $ciMap = [];      // mb_strtolower(term) => phonetic
-        $ciTermMap = [];  // mb_strtolower(term) => original term (for the applied list)
+        // Keyed by the dash-normalized term so a stored "SHA–256" is found by a
+        // "SHA-256" surface (and vice-versa); the *TermMap keeps the original term
+        // for the applied list (what the review screen matches on).
+        $exactMap = [];      // normalizeDashes(term)                => phonetic
+        $exactTermMap = [];  // normalizeDashes(term)                => original term
+        $ciMap = [];         // mb_strtolower(normalizeDashes(term)) => phonetic
+        $ciTermMap = [];     // mb_strtolower(normalizeDashes(term)) => original term
 
         foreach ($entries as $entry) {
             $term = (string) ($entry['term'] ?? '');
@@ -51,16 +79,17 @@ class PronunciationSubstituter
                 continue;
             }
             $phonetic = (string) ($entry['phonetic'] ?? '');
-            $quoted = preg_quote($term, '/');
+            $key = self::normalizeDashes($term);
 
             if (($entry['match_mode'] ?? 'case_sensitive') === 'case_insensitive') {
-                $lower = mb_strtolower($term);
+                $lower = mb_strtolower($key);
                 $ciMap[$lower] = $phonetic;
                 $ciTermMap[$lower] = $term;
-                $fragment = '(?i:'.$quoted.')';
+                $fragment = '(?i:'.$this->fuzzyDashPattern($term).')';
             } else {
-                $exactMap[$term] = $phonetic;
-                $fragment = $quoted;
+                $exactMap[$key] = $phonetic;
+                $exactTermMap[$key] = $term;
+                $fragment = $this->fuzzyDashPattern($term);
             }
 
             if (! isset($seen[$fragment])) {
@@ -77,28 +106,46 @@ class PronunciationSubstituter
         $pattern = '/(?<!\w)('.implode('|', $fragments).')(?!\w)/u';
 
         $applied = [];
-        $result = preg_replace_callback($pattern, function (array $m) use (&$applied, $exactMap, $ciMap, $ciTermMap) {
-            $surface = $m[1];
+        $result = preg_replace_callback($pattern, function (array $m) use (&$applied, $exactMap, $exactTermMap, $ciMap, $ciTermMap) {
+            // Fold the matched surface's dash to line up with the normalized keys;
+            // the replacement text and everything else is left exactly as written.
+            $key = self::normalizeDashes($m[1]);
 
-            if (array_key_exists($surface, $exactMap)) {
-                $applied[$surface] = true;
+            if (array_key_exists($key, $exactMap)) {
+                $applied[$exactTermMap[$key]] = true;
 
-                return $exactMap[$surface];
+                return $exactMap[$key];
             }
 
-            $lower = mb_strtolower($surface);
+            $lower = mb_strtolower($key);
             if (array_key_exists($lower, $ciMap)) {
                 $applied[$ciTermMap[$lower]] = true;
 
                 return $ciMap[$lower];
             }
 
-            return $surface; // unreachable: every alternative lives in one of the maps
+            return $m[1]; // unreachable: every alternative lives in one of the maps
         }, $text);
 
         return [
             'text' => $result ?? $text,
             'applied' => array_keys($applied),
         ];
+    }
+
+    /**
+     * A regex for $term whose every dash matches any dash variant while every
+     * other character stays a literal. Built by splitting on the dash class and
+     * quoting each run between dashes, so only the dash positions are loosened —
+     * a term without a dash yields exactly preg_quote($term), unchanged behavior.
+     */
+    private function fuzzyDashPattern(string $term): string
+    {
+        $parts = preg_split('/'.self::DASH_CLASS.'/u', $term) ?: [$term];
+
+        return implode(self::DASH_CLASS, array_map(
+            static fn (string $part): string => preg_quote($part, '/'),
+            $parts,
+        ));
     }
 }

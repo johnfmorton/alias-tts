@@ -4,6 +4,7 @@ namespace Tests\Feature;
 
 use App\Enums\ProjectStatus;
 use App\Models\ApiKey;
+use App\Models\PronunciationEntry;
 use App\Models\TtsProject;
 use App\Models\User;
 use App\Models\UserSetting;
@@ -184,6 +185,56 @@ class ProjectApiTest extends TestCase
             ->assertStatus(201);
 
         $this->assertSame($text, TtsProject::firstWhere('title', 'Quoted via API')->normalized_text);
+    }
+
+    public function test_apply_to_api_off_leaves_v1_project_text_verbatim(): void
+    {
+        // The default: even with an approved dictionary entry, /v1 stays a faithful
+        // passthrough (the Bespoken plugin substitutes upstream) — the chunks keep
+        // the writer's exact words.
+        $user = User::factory()->create();
+        PronunciationEntry::create([
+            'user_id' => $user->id, 'term' => 'SHA-256', 'phonetic' => 'shah two fifty-six',
+            'match_mode' => 'case_sensitive', 'source' => 'user', 'approved' => true,
+        ]);
+        $key = ApiKey::generate('test', null, $user->id);
+        $this->makeVoice();
+
+        $text = 'We seal every final with SHA-256 provenance.';
+        $this->withHeaders(['xi-api-key' => $key->key])
+            ->postJson('/v1/projects', ['title' => 'Off', 'voice_id' => 'my-voice', 'text' => $text])
+            ->assertStatus(201);
+
+        $project = TtsProject::firstWhere('title', 'Off');
+        $this->assertSame($text, $project->source_text);
+        $this->assertSame($text, $project->normalized_text);
+    }
+
+    public function test_apply_to_api_on_respells_chunks_but_keeps_source_text_verbatim(): void
+    {
+        // Opted in: the dictionary respells the chunks the voice will read, while
+        // source_text (what "Start over" re-opens) keeps the original words — the
+        // same split ProjectService gives a Studio-made project. The entry is
+        // stored with a typographic en dash to also pin the dash-fold: it must
+        // still match the plain hyphen the writer typed.
+        $user = User::factory()->create();
+        UserSetting::create(['user_id' => $user->id, 'key' => 'tts.pronunciation.apply_to_api', 'value' => true]);
+        PronunciationEntry::create([
+            'user_id' => $user->id, 'term' => "SHA\u{2013}256", 'phonetic' => 'shah two fifty-six',
+            'match_mode' => 'case_sensitive', 'source' => 'llm', 'approved' => true,
+        ]);
+        $key = ApiKey::generate('test', null, $user->id);
+        $this->makeVoice();
+
+        $text = 'We seal every final with SHA-256 provenance.';
+        $this->withHeaders(['xi-api-key' => $key->key])
+            ->postJson('/v1/projects', ['title' => 'On', 'voice_id' => 'my-voice', 'text' => $text])
+            ->assertStatus(201);
+
+        $project = TtsProject::firstWhere('title', 'On');
+        $this->assertSame($text, $project->source_text);
+        $this->assertStringContainsString('shah two fifty-six', (string) $project->normalized_text);
+        $this->assertStringNotContainsString('SHA-256', (string) $project->normalized_text);
     }
 
     public function test_it_auto_generates_a_title_when_omitted(): void

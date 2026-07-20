@@ -178,6 +178,10 @@ return [
     */
     'pronunciation' => [
         'enabled' => (bool) env('TTS_PRONUNCIATION_ENABLED', false),
+        // Off by default: the /v1 surface stays a faithful ElevenLabs/OpenAI
+        // passthrough (the Bespoken plugin substitutes upstream). On => the
+        // server applies the key owner's dictionary to direct API requests too.
+        'apply_to_api' => (bool) env('TTS_PRONUNCIATION_APPLY_TO_API', false),
         'llm_provider' => env('TTS_PRONUNCIATION_LLM_PROVIDER', 'replicate'),
         'model' => env('TTS_PRONUNCIATION_MODEL'),                  // null => provider default
         'temperature' => (float) env('TTS_PRONUNCIATION_TEMPERATURE', 0.2),

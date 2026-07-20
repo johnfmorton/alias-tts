@@ -274,6 +274,15 @@ $keys = [
     ],
     [
         'group' => 'pronunciation',
+        'key' => 'apply_to_api',
+        'config' => 'tts.pronunciation.apply_to_api',
+        'env' => 'TTS_PRONUNCIATION_APPLY_TO_API',
+        'type' => 'bool',
+        'label' => 'Apply dictionary to API requests',
+        'help' => 'Also respell your dictionary terms on direct /v1 API calls — the ElevenLabs and OpenAI text-to-speech endpoints and the "Create project" endpoint the Bespoken plugin uses. Off by default: the Bespoken plugin already substitutes before it sends, and the raw /v1 surface otherwise passes your text through untouched. Turn this on to have the server respell as a backstop, or when you call the API directly. Studio and the Genblaze demo always apply your dictionary regardless of this switch.',
+    ],
+    [
+        'group' => 'pronunciation',
         'key' => 'llm_provider',
         'config' => 'tts.pronunciation.llm_provider',
         'env' => 'TTS_PRONUNCIATION_LLM_PROVIDER',

@@ -137,7 +137,7 @@ class PronunciationDictionary
     public function updateEntry(PronunciationEntry $entry, array $data): PronunciationEntry
     {
         $entry->update([
-            'term' => trim((string) ($data['term'] ?? $entry->term)),
+            'term' => $this->canonicalTerm((string) ($data['term'] ?? $entry->term)),
             'phonetic' => trim((string) ($data['phonetic'] ?? $entry->phonetic)),
             'category' => $data['category'] ?? null,
             'confidence' => $data['confidence'] ?? null,
@@ -157,11 +157,24 @@ class PronunciationDictionary
     }
 
     /**
+     * Canonicalize a term on the way into the lexicon: trim, then fold every dash
+     * variant to a plain hyphen. The detector routinely suggests typographic
+     * dashes (an en dash in "SHA–256") that a writer's text spells with a hyphen;
+     * storing the canonical form keeps the plugin's synced copy — which matches
+     * client-side, upstream of this app's dash-insensitive substituter — from
+     * silently failing to fire. See {@see PronunciationSubstituter::normalizeDashes}.
+     */
+    private function canonicalTerm(string $term): string
+    {
+        return PronunciationSubstituter::normalizeDashes(trim($term));
+    }
+
+    /**
      * @param  array<string, mixed>  $data
      */
     private function upsert(?int $userId, array $data, bool $approved): ?PronunciationEntry
     {
-        $term = trim((string) ($data['term'] ?? ''));
+        $term = $this->canonicalTerm((string) ($data['term'] ?? ''));
         $phonetic = trim((string) ($data['phonetic'] ?? ''));
         if ($term === '' || $phonetic === '') {
             return null;

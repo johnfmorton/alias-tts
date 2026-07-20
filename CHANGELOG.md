@@ -4,6 +4,27 @@ All notable changes to this project are documented in this file. The format is
 based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this
 project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+- **Apply your pronunciation dictionary to API requests (optional).** A new
+  Settings control under Pronunciation — *Apply dictionary to API requests*, off
+  by default — makes direct `/v1` calls respell your dictionary terms too: the
+  ElevenLabs and OpenAI text-to-speech endpoints, and the "Create project"
+  endpoint the Bespoken plugin uses. Left off, `/v1` stays a faithful
+  passthrough (the Bespoken plugin already substitutes before it sends); turn it
+  on to have the server respell as a backstop, or when you call the API
+  directly. Studio and the Genblaze demo always apply your dictionary regardless.
+
+### Fixed
+- **Pronunciation terms written with a typographic dash now match.** A dictionary
+  term saved with an en or em dash — e.g. `SHA–256`, which the term detector
+  often suggests — no longer silently fails to match text you wrote with a plain
+  hyphen (`SHA-256`). Matching now treats every dash variant as equivalent, and
+  terms are canonicalized to a plain hyphen when saved, so the copy the Bespoken
+  plugin syncs matches too. Only the term's own dash is loosened; a stray dash
+  elsewhere in your text is left exactly as written.
+
 ## [0.74.0] - 2026-07-20
 
 ### Fixed

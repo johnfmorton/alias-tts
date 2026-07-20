@@ -9,6 +9,7 @@ use App\Models\ApiKey;
 use App\Models\Speech;
 use App\Models\TtsProject;
 use App\Models\Voice;
+use App\Services\Pronunciation\ApiPronunciation;
 use App\Services\SpeechProgressStore;
 use App\Services\SpeechService;
 use App\Services\Tts\VoiceSettingsResolver;
@@ -41,6 +42,7 @@ class TextToSpeechController extends Controller
         private SpeechService $speechService,
         private VoiceSettingsResolver $settingsResolver,
         private SpeechProgressStore $progress,
+        private ApiPronunciation $pronunciation,
     ) {}
 
     public function store(TextToSpeechRequest $request, string $voice_id): Response
@@ -59,7 +61,9 @@ class TextToSpeechController extends Controller
             $speech = $this->speechService->synthesize(
                 apiKey: $apiKey,
                 voice: $voice,
-                text: $request->input('text'),
+                // Respell dictionary terms only when the key owner opted the API
+                // surface in (default off = verbatim passthrough). See ApiPronunciation.
+                text: $this->pronunciation->apply($apiKey?->user_id, (string) $request->input('text')),
                 settings: $this->settingsResolver->resolve($voice, $request->voiceSettingOverrides()),
                 modelId: $request->modelId(),
                 outputFormat: $request->outputFormat(),
@@ -99,7 +103,8 @@ class TextToSpeechController extends Controller
             $speech = $this->speechService->queueSynthesis(
                 apiKey: $apiKey,
                 voice: $voice,
-                text: $request->input('text'),
+                // See store(): respell only when the key owner opted the API surface in.
+                text: $this->pronunciation->apply($apiKey?->user_id, (string) $request->input('text')),
                 settings: $this->settingsResolver->resolve($voice, $request->voiceSettingOverrides()),
                 modelId: $request->modelId(),
                 outputFormat: $request->outputFormat(),

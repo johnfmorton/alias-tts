@@ -6,6 +6,7 @@ use App\Http\Requests\OpenAiSpeechRequest;
 use App\Models\Speech;
 use App\Models\Voice;
 use App\Services\Audio\AudioConverter;
+use App\Services\Pronunciation\ApiPronunciation;
 use App\Services\SpeechService;
 use App\Services\Tts\ModelCatalog;
 use App\Services\Tts\VoiceSettingsResolver;
@@ -59,6 +60,7 @@ class OpenAiSpeechController extends Controller
     public function __construct(
         private SpeechService $speechService,
         private VoiceSettingsResolver $settingsResolver,
+        private ApiPronunciation $pronunciation,
     ) {}
 
     public function store(OpenAiSpeechRequest $request): Response
@@ -81,7 +83,9 @@ class OpenAiSpeechController extends Controller
             $speech = $this->speechService->synthesize(
                 apiKey: $apiKey,
                 voice: $voice,
-                text: $request->text(),
+                // Respell only when the key owner opted the API surface in
+                // (default off = verbatim passthrough). See ApiPronunciation.
+                text: $this->pronunciation->apply($apiKey?->user_id, $request->text()),
                 settings: $this->settingsResolver->resolve($voice),
                 modelId: (string) config('tts.default_model_id'),
                 outputFormat: self::FORMAT_MAP[$request->responseFormat()],

@@ -86,6 +86,50 @@ class PronunciationSubstituterTest extends TestCase
         $this->assertSame('I love C sharp a lot', $out['text']);
     }
 
+    public function test_a_term_stored_with_an_en_dash_matches_text_written_with_a_hyphen(): void
+    {
+        // The real-world bug: the detector suggests a typographic en dash while the
+        // writer's text uses a plain hyphen. Match should fire, and `applied` must
+        // report the ORIGINAL stored term (what the review screen matches on).
+        $out = $this->apply('seal every final with SHA-256 provenance', [
+            $this->entry("SHA\u{2013}256", 'shah two fifty-six'),
+        ]);
+
+        $this->assertSame('seal every final with shah two fifty-six provenance', $out['text']);
+        $this->assertSame(["SHA\u{2013}256"], $out['applied']);
+    }
+
+    public function test_a_term_stored_with_a_hyphen_matches_text_written_with_an_en_dash(): void
+    {
+        $out = $this->apply("compute the SHA\u{2013}256 digest", [
+            $this->entry('SHA-256', 'shah two fifty-six'),
+        ]);
+
+        $this->assertSame('compute the shah two fifty-six digest', $out['text']);
+    }
+
+    public function test_dash_folding_leaves_non_matching_dashes_in_the_prose_untouched(): void
+    {
+        // Only the term's own dash is loosened; a stray em dash in the surrounding
+        // sentence (an intentional aside) must survive verbatim.
+        $out = $this->apply("Use SHA\u{2013}256 now \u{2014} really", [
+            $this->entry('SHA-256', 'shah'),
+        ]);
+
+        $this->assertSame("Use shah now \u{2014} really", $out['text']);
+        $this->assertSame(['SHA-256'], $out['applied']);
+    }
+
+    public function test_dash_folding_composes_with_case_insensitive_matching(): void
+    {
+        $out = $this->apply("wi\u{2013}fi and WI-FI", [
+            $this->entry("Wi\u{2014}Fi", 'wify', 'case_insensitive'),
+        ]);
+
+        $this->assertSame('wify and wify', $out['text']);
+        $this->assertSame(["Wi\u{2014}Fi"], $out['applied']);
+    }
+
     public function test_a_replacement_is_never_rescanned(): void
     {
         // The "dev" rule (case-insensitive) must NOT fire on the "dev" produced by

@@ -36,6 +36,29 @@ class PronunciationDictionaryTest extends TestCase
         $this->assertTrue($rows->first()->approved);
     }
 
+    public function test_a_terms_typographic_dashes_are_canonicalized_on_save(): void
+    {
+        // The detector routinely suggests a typographic en dash ("SHA–256") where
+        // the writer's text uses a plain hyphen. Storing the canonical hyphen keeps
+        // the plugin's synced copy (which matches client-side) from silently
+        // failing, and dedupes en/em/hyphen spellings onto one row.
+        $user = User::factory()->create();
+
+        $created = $this->dict()->approveSuggestions($user->id, [
+            ['term' => "SHA\u{2013}256", 'phonetic' => 'shah two fifty-six'],
+        ])->first();
+        $this->assertSame('SHA-256', $created->term);
+
+        // An em-dash spelling of the same term updates the same row, not a new one.
+        $this->dict()->upsertManual($user->id, ['term' => "SHA\u{2014}256", 'phonetic' => 'shah']);
+        $this->assertCount(1, PronunciationEntry::where('user_id', $user->id)->get());
+        $this->assertSame('SHA-256', PronunciationEntry::where('user_id', $user->id)->first()->term);
+
+        // Editing an existing row canonicalizes too.
+        $edited = $this->dict()->updateEntry($created->fresh(), ['term' => "AES\u{2013}256"]);
+        $this->assertSame('AES-256', $edited->term);
+    }
+
     public function test_known_terms_returns_only_approved(): void
     {
         $user = User::factory()->create();
