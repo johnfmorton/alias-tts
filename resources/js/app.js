@@ -1629,6 +1629,7 @@ function initStudioProject() {
     const finalAudio = document.getElementById('project-final-audio');
     const finalStatus = document.getElementById('project-final-status');
     const estimateEl = document.getElementById('project-generate-estimate');
+    const dirtyHint = document.getElementById('project-dirty-hint');
     const estimateUrl = root.dataset.estimateUrl;
     const projectStatus = document.getElementById('project-status');
     const downloadLink = document.getElementById('project-download');
@@ -1842,6 +1843,11 @@ function initStudioProject() {
         const anyPending = cards.some((c) => !isChunkCompleted(c));
         const allCompleted = cards.length > 0 && ! anyPending;
         const ready = hasFinal && status === 'ready';
+        // Pending (unsaved) edits: the stitch would speak audio that no longer
+        // matches the screen, so they hold Build final below until each chunk
+        // is regenerated or reverted. Skipped chunks are already filtered out
+        // of `cards` — an edit on an excluded chunk can't lie in the final.
+        const dirtyCards = cards.filter((c) => c.dataset.dirty === '1');
 
         // Generate-all shows while chunks remain outstanding — and since the
         // final-audio actions below all HIDE in exactly those states, it's the
@@ -1865,8 +1871,21 @@ function initStudioProject() {
         // a background run is going, none of these final-audio actions can do
         // anything — building would stitch stale/absent audio, and the server 409s
         // a mid-run rebuild — so they disappear until the work is done.
-        const canBuild = ! runActive && allCompleted;   // every chunk current, no run
+        const canBuild = ! runActive && allCompleted && dirtyCards.length === 0;   // every chunk current AND saved, no run
         const finalReady = ready && ! anyPending;        // a built, in-sync final exists
+
+        // Build final vanishing needs a why: name the chunks holding it. Only
+        // when dirty edits are the SOLE blocker — while chunks are outstanding
+        // or a run is active the button is absent for those louder reasons.
+        if (dirtyHint) {
+            const blocked = ! runActive && allCompleted && dirtyCards.length > 0;
+            if (blocked) {
+                const nos = dirtyCards.map((c) => c.querySelector('.chunk-no')?.textContent).filter(Boolean);
+                dirtyHint.textContent = (nos.length === 1 ? `Chunk ${nos[0]} has` : `Chunks ${nos.join(', ')} have`)
+                    + ' unsaved edits — Regenerate or Revert before building the final.';
+            }
+            showEl(dirtyHint, blocked);
+        }
 
         // Build final: lit primary (pulsing) while a final is due; a quiet outline
         // once one is ready, as a rebuild after edits. Hidden while chunks are
@@ -2122,6 +2141,24 @@ function initStudioProject() {
         // There is no save-text-without-render — the render button absorbs the
         // save (patchChunk runs first in queueChunkRegen).
         setGenerateLabel(card);
+        // A dirty chunk's one resolving action is its render button (Build
+        // final holds meanwhile) — flip it from the quiet zinc outline to the
+        // lit accent look with the same gentle pulse the header primaries use.
+        // Each pair is toggled both ways so the utilities are never co-present
+        // (co-present classes fight and stylesheet order picks the winner).
+        const gen = card.querySelector('.chunk-generate');
+        if (gen) {
+            gen.classList.toggle('border-zinc-700', !dirty);
+            gen.classList.toggle('hover:bg-zinc-800', !dirty);
+            gen.classList.toggle('border-accent/60', dirty);
+            gen.classList.toggle('text-accent', dirty);
+            gen.classList.toggle('hover:bg-accent/10', dirty);
+            gen.classList.toggle('act-pulse', dirty && ! gen.dataset.busy);
+        }
+        // Build final reacts to pending edits project-wide (guard + hint live
+        // in reflectActionState) — keep it in step with every dirty flip.
+        card.dataset.dirty = dirty ? '1' : '0';
+        reflectActionState();
     };
 
     // After a successful save (generate/queue), lock the panel in as the new saved
@@ -2240,7 +2277,9 @@ function initStudioProject() {
             chunkNotice(card, `✗ ${err.message}`, 'error');
         } finally {
             endBusy(btn);
-            setGenerateLabel(card); // endBusy restores a possibly stale label — re-derive it
+            // endBusy restores a possibly stale label and busy suppressed the
+            // dirty styling — re-derive both from the panel's real state.
+            setDirty(card, isDirty(card));
         }
     }
 

@@ -126,6 +126,10 @@ class TtsProjectJob extends Model
             $this->status === ProjectJobStatus::Running && $this->concurrency > 1 => [sprintf('Creating clips — %d of %d done', $processed, $this->chunks_total), null],
             $this->status === ProjectJobStatus::Running => [sprintf('Creating clip %d of %d', min($processed + 1, $total), $this->chunks_total), null],
             $this->status === ProjectJobStatus::Completed && $this->chunks_failed > 0 => [sprintf('✗ %d chunk(s) failed — retry them, then build the final.', $this->chunks_failed), 'error'],
+            // A single-chunk run (per-chunk Regenerate): "All 1 chunk(s)
+            // generated" reads as project-wide on a 30-chunk project — name
+            // the one clip that landed instead.
+            $this->status === ProjectJobStatus::Completed && $this->chunks_total === 1 => ['✓ '.$this->singleClipLabel().' generated — build the final to include it.', 'ok'],
             $this->status === ProjectJobStatus::Completed => [sprintf('✓ All %d chunk(s) generated — build the final to stitch.', $this->chunks_done), 'ok'],
             $this->status === ProjectJobStatus::Failed => ['✗ '.($this->error ?: 'The run failed.'), 'error'],
             default => [sprintf('Stopped — %d of %d generated.', $this->chunks_done, $this->chunks_total), null],
@@ -159,6 +163,19 @@ class TtsProjectJob extends Model
             'eta_human' => $eta['eta_human'],
             'cancel_url' => $this->isActive() ? route('admin.jobs.cancel', $this) : null,
         ];
+    }
+
+    /**
+     * "Clip 29" for a single-chunk run's messages. Looked up live — cheap,
+     * since only terminal single-chunk payloads ask — and just "Clip" when
+     * the chunk was deleted after the run.
+     */
+    private function singleClipLabel(): string
+    {
+        $ids = array_values((array) $this->chunk_ids);
+        $position = count($ids) === 1 ? TtsChunk::whereKey($ids[0])->value('position') : null;
+
+        return $position === null ? 'Clip' : 'Clip '.($position + 1);
     }
 
     /**

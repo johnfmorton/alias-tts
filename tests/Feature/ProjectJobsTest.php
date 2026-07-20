@@ -497,7 +497,10 @@ class ProjectJobsTest extends TestCase
             ->assertJsonPath('status', 'completed')
             ->assertJsonPath('queue_label', null)
             ->assertJsonPath('job.status', 'completed')
-            ->assertJsonPath('job.chunks_done', 1);
+            ->assertJsonPath('job.chunks_done', 1)
+            // Scoped to the one clip — "All 1 chunk(s) generated" would read
+            // as the whole project on a many-chunk page.
+            ->assertJsonPath('job.message', '✓ Clip 1 generated — build the final to include it.');
 
         $this->assertSame(ChunkStatus::Completed, $chunk->fresh()->status);
         $this->assertGreaterThan(0, $chunk->takes()->count());

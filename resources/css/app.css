@@ -355,6 +355,7 @@
  * wiped. margin-top is restored here for the same reason (setStatus drops mt-2).
  */
 #project-generate-estimate,
+#project-dirty-hint,
 #project-final-status {
     margin-top: 0.5rem;
     text-align: right;

@@ -246,6 +246,10 @@
                  CSS id rules in app.css — NOT utility classes — because setStatus()
                  rewrites #project-final-status's className on every run message. --}}
             <div id="project-generate-estimate" class="text-sm text-zinc-500 {{ $preRunEstimate ? '' : 'hidden' }}" role="status">{{ $preRunEstimate ?? '' }}</div>
+            {{-- Why Build final is missing while an edit is pending: a stitch now
+                 would speak audio that no longer matches the screen. Text +
+                 visibility are owned by reflectActionState() in app.js. --}}
+            <div id="project-dirty-hint" class="hidden text-sm text-amber-400" role="status"></div>
             <div id="project-final-status" class="text-sm text-zinc-400" role="status" aria-live="polite"></div>
         </div>
 
@@ -320,7 +324,7 @@
                      data-takes='@json($takesByChunk[$chunk->id])'>
                     <div class="flex flex-wrap items-center justify-between gap-2">
                         <div class="flex items-center gap-2 text-sm text-zinc-400">
-                            <span class="font-mono text-zinc-300">#{{ $chunk->position + 1 }}</span>
+                            <span class="chunk-no font-mono text-zinc-300">#{{ $chunk->position + 1 }}</span>
                             <span class="chunk-chars">{{ $chunk->characters }} chars</span>
                             @if(\App\Support\GenerationCost::enabled())
                                 {{-- This chunk's lifetime render spend; hidden until the first
