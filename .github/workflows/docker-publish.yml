@@ -3,17 +3,23 @@
 # the repo's visibility (private) — grant pull access per user in the
 # package's settings on GitHub.
 #
-# MANUAL-ONLY by design: releases are cut far more often than image users
-# need them, and each run costs 30-60 private-repo Actions minutes (the
-# arm64 leg builds under QEMU; the asset/vendor stages are pinned to the
-# build platform in the Dockerfile so only the runtime stage pays the
-# emulation tax). To publish: Actions → Docker image → Run workflow. With
-# no inputs it publishes the LATEST GitHub release — the code is checked
-# out from that release's tag, tagged :<version> + :latest. Type a version
-# (e.g. "0.36.0") to publish that release instead. Tick "smoke" to build
-# :main from the dispatched branch without touching :latest. If image
-# users ever want every release, restore an `on: push: tags: ["v*"]`
-# trigger.
+# Each architecture builds on its OWN NATIVE runner (amd64 on ubuntu-latest,
+# arm64 on ubuntu-24.04-arm) — no QEMU emulation, which is what made the old
+# single-runner build take 30-60 minutes (the arm64 leg's Python venv installs
+# ran ~5-10x slower under emulation). The two legs run in parallel, push by
+# digest, and a final `merge` job stitches them into one multi-arch manifest.
+# Expect ~8-15 minutes wall-clock. NOTE: arm64 hosted runners are billed on
+# private repos; if your account can't schedule `ubuntu-24.04-arm`, the arm64
+# job will queue indefinitely — revert to a single QEMU job or a self-hosted
+# arm64 runner.
+#
+# MANUAL-ONLY by design: releases are cut far more often than image users need
+# them. To publish: Actions -> Docker image -> Run workflow. With no inputs it
+# publishes the LATEST GitHub release — the code is checked out from that
+# release's tag, tagged :<version> + :latest. Type a version (e.g. "0.36.0")
+# to publish that release instead. Tick "smoke" to build :main from the
+# dispatched branch without touching :latest. If image users ever want every
+# release, restore an `on: push: tags: ["v*"]` trigger.
 
 name: Docker image
 
@@ -33,27 +39,37 @@ concurrency:
   group: docker-publish-${{ github.ref }}
   cancel-in-progress: true
 
+env:
+  IMAGE: ghcr.io/${{ github.repository }}
+
 jobs:
-  publish:
+  # Resolve the version + the git ref to build ONCE, so both arch legs agree.
+  # A version label must never be stamped onto whatever main happens to be, so
+  # a publish checks out the release's own tag; a smoke build uses the
+  # dispatched ref. (Dispatching on the tag itself wouldn't work for tags that
+  # predate this workflow, so we always dispatch on main and resolve here.)
+  prepare:
     runs-on: ubuntu-latest
-    timeout-minutes: 90
     permissions:
       contents: read
-      packages: write
-
+    outputs:
+      version: ${{ steps.resolve.outputs.version }}
+      ref: ${{ steps.resolve.outputs.ref }}
     steps:
-      # The version to publish: the typed input, or the latest GitHub release.
-      # Resolved BEFORE checkout so the build uses that release's own tree —
-      # a version label must never be stamped onto whatever main happens to be.
-      # (Dispatching on the tag ref itself wouldn't work for tags that predate
-      # this workflow file, so we always dispatch on main and check out here.)
-      - name: Resolve the version to publish
-        id: version
-        if: ${{ !inputs.smoke }}
+      - name: Resolve version and ref
+        id: resolve
         env:
           GH_TOKEN: ${{ github.token }}
           INPUT_TAG: ${{ inputs.tag }}
+          SMOKE: ${{ inputs.smoke }}
+          DISPATCH_REF: ${{ github.ref }}
         run: |
+          if [ "$SMOKE" = "true" ]; then
+            echo "Smoke build from $DISPATCH_REF"
+            echo "version=" >> "$GITHUB_OUTPUT"
+            echo "ref=$DISPATCH_REF" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
           if [ -n "$INPUT_TAG" ]; then
             version="${INPUT_TAG#v}"
           else
@@ -63,14 +79,35 @@ jobs:
           [ -n "$version" ] || { echo "::error::Could not resolve a version to publish"; exit 1; }
           echo "Publishing v$version"
           echo "version=$version" >> "$GITHUB_OUTPUT"
+          echo "ref=refs/tags/v$version" >> "$GITHUB_OUTPUT"
+
+  # One job per architecture, each on a native runner. Builds and pushes the
+  # image BY DIGEST (no tag) so the merge job can assemble the manifest list.
+  build:
+    needs: prepare
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - platform: linux/amd64
+            runner: ubuntu-latest
+          - platform: linux/arm64
+            runner: ubuntu-24.04-arm
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 45
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - name: Sanitize platform for artifact/cache names
+        id: platform
+        env:
+          PLATFORM: ${{ matrix.platform }}
+        run: echo "pair=${PLATFORM//\//-}" >> "$GITHUB_OUTPUT"
 
       - uses: actions/checkout@v4
         with:
-          # The release's tag for a publish; the dispatched ref for a smoke build.
-          ref: ${{ steps.version.outputs.version && format('refs/tags/v{0}', steps.version.outputs.version) || github.ref }}
-
-      - name: Set up QEMU (arm64 build on the amd64 runner)
-        uses: docker/setup-qemu-action@v3
+          ref: ${{ needs.prepare.outputs.ref }}
 
       - name: Set up Buildx
         uses: docker/setup-buildx-action@v3
@@ -82,34 +119,115 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Image tags
+      # Per-arch (manifest-level) OCI annotations + the pinned description
+      # label. The index-level description that GHCR reads for the package page
+      # is set in the merge job.
+      - name: Image metadata
         id: meta
         uses: docker/metadata-action@v5
-        # Emit OCI annotations at BOTH the per-platform manifest and the top
-        # image index. GHCR reads a multi-arch package's description from the
-        # *index* annotation, so without "index" here the package page shows
-        # "No description provided" even though the Dockerfile sets the label.
         env:
-          DOCKER_METADATA_ANNOTATIONS_LEVELS: manifest,index
+          DOCKER_METADATA_ANNOTATIONS_LEVELS: manifest
         with:
-          images: ghcr.io/${{ github.repository }}
-          tags: |
-            type=ref,event=branch,enable=${{ inputs.smoke }}
-            type=raw,value=${{ steps.version.outputs.version }},enable=${{ steps.version.outputs.version != '' }}
-            type=raw,value=latest,enable=${{ steps.version.outputs.version != '' }}
-          # Pin the description here (not just the repo's GitHub blurb) so it
-          # stays in lockstep with the Dockerfile LABEL of the same key.
+          images: ${{ env.IMAGE }}
           labels: |
             org.opencontainers.image.description=Self-hosted TTS server speaking the ElevenLabs and OpenAI API dialects, with voice cloning, transcript QA, and provenance — complete in one image.
 
-      - name: Build and push
+      - name: Build and push by digest
+        id: build
         uses: docker/build-push-action@v6
         with:
           context: .
-          platforms: linux/amd64,linux/arm64
-          push: true
-          tags: ${{ steps.meta.outputs.tags }}
+          platforms: ${{ matrix.platform }}
           labels: ${{ steps.meta.outputs.labels }}
           annotations: ${{ steps.meta.outputs.annotations }}
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
+          outputs: type=image,name=${{ env.IMAGE }},push-by-digest=true,name-canonical=true,push=true
+          # Per-arch cache scope so the two legs don't evict each other.
+          cache-from: type=gha,scope=${{ steps.platform.outputs.pair }}
+          cache-to: type=gha,mode=max,scope=${{ steps.platform.outputs.pair }}
+
+      - name: Export digest
+        env:
+          DIGEST: ${{ steps.build.outputs.digest }}
+        run: |
+          mkdir -p /tmp/digests
+          touch "/tmp/digests/${DIGEST#sha256:}"
+
+      - name: Upload digest
+        uses: actions/upload-artifact@v4
+        with:
+          name: digests-${{ steps.platform.outputs.pair }}
+          path: /tmp/digests/*
+          if-no-files-found: error
+          retention-days: 1
+
+  # Stitch the per-arch digests into one multi-arch manifest and apply the
+  # real tags (:<version> + :latest, or :<branch> for a smoke build).
+  merge:
+    needs:
+      - prepare
+      - build
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - name: Download digests
+        uses: actions/download-artifact@v4
+        with:
+          path: /tmp/digests
+          pattern: digests-*
+          merge-multiple: true
+
+      - name: Set up Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      # Tags for the manifest list + the index-level annotation GHCR reads for
+      # the package description.
+      - name: Image metadata
+        id: meta
+        uses: docker/metadata-action@v5
+        env:
+          DOCKER_METADATA_ANNOTATIONS_LEVELS: index
+        with:
+          images: ${{ env.IMAGE }}
+          tags: |
+            type=ref,event=branch,enable=${{ inputs.smoke }}
+            type=raw,value=${{ needs.prepare.outputs.version }},enable=${{ needs.prepare.outputs.version != '' }}
+            type=raw,value=latest,enable=${{ needs.prepare.outputs.version != '' }}
+          labels: |
+            org.opencontainers.image.description=Self-hosted TTS server speaking the ElevenLabs and OpenAI API dialects, with voice cloning, transcript QA, and provenance — complete in one image.
+
+      - name: Create manifest list and push
+        working-directory: /tmp/digests
+        env:
+          IMAGE: ${{ env.IMAGE }}
+        run: |
+          args=()
+          # Index-level annotations (may contain spaces) — build as an array so
+          # quoting survives; a naive $(...) would word-split the description.
+          while IFS= read -r line; do
+            [ -n "$line" ] && args+=(--annotation "$line")
+          done <<< "$DOCKER_METADATA_OUTPUT_ANNOTATIONS"
+          while IFS= read -r line; do
+            [ -n "$line" ] && args+=(-t "$line")
+          done <<< "$DOCKER_METADATA_OUTPUT_TAGS"
+          sources=()
+          for f in *; do
+            [ -e "$f" ] || continue
+            sources+=("${IMAGE}@sha256:${f}")
+          done
+          [ ${#sources[@]} -gt 0 ] || { echo "::error::No per-arch digests to merge"; exit 1; }
+          docker buildx imagetools create "${args[@]}" "${sources[@]}"
+
+      - name: Inspect
+        run: |
+          tag="$(printf '%s\n' "$DOCKER_METADATA_OUTPUT_TAGS" | head -n1)"
+          docker buildx imagetools inspect "$tag"

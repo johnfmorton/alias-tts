@@ -64,34 +64,6 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
         curl xz-utils openssl libcap2-bin util-linux \
     && rm -rf /var/lib/apt/lists/*
 
-# ffmpeg + ffprobe: static BtbN GPL build. We track the permanent "latest"
-# release's n8.1-latest asset (tip of the 8.1 release branch) rather than a
-# dated autobuild-* tag — those are pruned within weeks, which 404s the build.
-# n8.1-latest only moves forward on the 8.1 branch, so it stays >= 8.1.2, the
-# tts:doctor minimum (first release with the MagicYUV "PixelSmash" fix,
-# CVE-2026-8461; distro packages are older). Each build re-verifies the
-# download against BtbN's published checksums.sha256 and fails closed if the
-# asset is missing from it.
-RUN set -eux; \
-    case "${TARGETARCH}" in \
-        amd64) arch="linux64" ;; \
-        arm64) arch="linuxarm64" ;; \
-        *) echo "unsupported TARGETARCH=${TARGETARCH}" >&2; exit 1 ;; \
-    esac; \
-    base="https://github.com/BtbN/FFmpeg-Builds/releases/download/latest"; \
-    fname="ffmpeg-n8.1-latest-${arch}-gpl-8.1.tar.xz"; \
-    cd /tmp; \
-    curl -fsSL -o "${fname}" "${base}/${fname}"; \
-    curl -fsSL -o checksums.sha256 "${base}/checksums.sha256"; \
-    grep -E "  ${fname}$" checksums.sha256 > ffmpeg.sha256; \
-    test -s ffmpeg.sha256; \
-    sha256sum -c ffmpeg.sha256; \
-    mkdir /tmp/ffmpeg; \
-    tar -xJf "${fname}" -C /tmp/ffmpeg --strip-components=1; \
-    mv /tmp/ffmpeg/bin/ffmpeg /tmp/ffmpeg/bin/ffprobe /usr/local/bin/; \
-    rm -rf /tmp/ffmpeg "${fname}" checksums.sha256 ffmpeg.sha256; \
-    ffmpeg -version | head -1
-
 # Whisper ASR sidecar venv (faster-whisper on CPU).
 COPY asr-sidecar/requirements.txt /tmp/asr-requirements.txt
 RUN python3 -m venv /opt/asr \
@@ -117,6 +89,36 @@ RUN python3 -m venv /opt/runner \
 # seeds it into /data/asr-models (a bigger ASR_MODEL downloads there at runtime).
 ARG ASR_BAKE_MODEL=tiny
 RUN /opt/asr/bin/python -c "from faster_whisper import WhisperModel; WhisperModel('${ASR_BAKE_MODEL}', device='cpu', compute_type='int8', download_root='/opt/asr-models')"
+
+# ffmpeg + ffprobe: static BtbN GPL build. Placed AFTER the venv installs and
+# model bake — it's the most volatile line (it tracks BtbN's rolling "latest"),
+# so keeping it late means a routine ffmpeg bump doesn't invalidate the cache
+# for those expensive layers above it. We track the permanent "latest" release's
+# n8.1-latest asset (tip of the 8.1 branch) rather than a dated autobuild-* tag —
+# those are pruned within weeks, which 404s the build. n8.1-latest only moves
+# forward on the 8.1 branch, so it stays >= 8.1.2, the tts:doctor minimum (first
+# release with the MagicYUV "PixelSmash" fix, CVE-2026-8461; distro packages are
+# older). Each build re-verifies the download against BtbN's published
+# checksums.sha256 and fails closed if the asset is missing from it.
+RUN set -eux; \
+    case "${TARGETARCH}" in \
+        amd64) arch="linux64" ;; \
+        arm64) arch="linuxarm64" ;; \
+        *) echo "unsupported TARGETARCH=${TARGETARCH}" >&2; exit 1 ;; \
+    esac; \
+    base="https://github.com/BtbN/FFmpeg-Builds/releases/download/latest"; \
+    fname="ffmpeg-n8.1-latest-${arch}-gpl-8.1.tar.xz"; \
+    cd /tmp; \
+    curl -fsSL -o "${fname}" "${base}/${fname}"; \
+    curl -fsSL -o checksums.sha256 "${base}/checksums.sha256"; \
+    awk -v f="${fname}" '$2 == f' checksums.sha256 > ffmpeg.sha256; \
+    test -s ffmpeg.sha256; \
+    sha256sum -c ffmpeg.sha256; \
+    mkdir /tmp/ffmpeg; \
+    tar -xJf "${fname}" -C /tmp/ffmpeg --strip-components=1; \
+    mv /tmp/ffmpeg/bin/ffmpeg /tmp/ffmpeg/bin/ffprobe /usr/local/bin/; \
+    rm -rf /tmp/ffmpeg "${fname}" checksums.sha256 ffmpeg.sha256; \
+    ffmpeg -version | head -1
 
 RUN useradd --uid 1000 --user-group --create-home --shell /usr/sbin/nologin app \
     # Non-root bind to 80/443 (Docker usually allows this anyway; belt & braces).
