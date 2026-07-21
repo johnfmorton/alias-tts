@@ -130,10 +130,19 @@ Flag a term only if a typical TTS voice would likely get it wrong:
 
 ## Respelling rules
 - Use plain ASCII that reads naturally when spoken aloud. No IPA.
-- Letter-by-letter initialisms: separate lowercase letters
-  -> "DDEV" => "dee dev",  "SQL" => "ess cue ell"
-- Word-style terms: respell with spaces/hyphens to guide syllables
-  -> "nginx" => "engine ex",  "kubectl" => "cube control",  "Caddy" => "kaddy"
+- NEVER use hyphens. The TTS engine reads a hyphen as a hard pause, so a
+  hyphen inside a word (e.g. "an-thropic", "dock-er") produces an unnatural
+  stutter mid-word. Do not use hyphens for any reason.
+- Do NOT split a single spoken word into syllables. A word pronounced as one
+  word must be ONE unbroken token — no hyphens and no spaces between its
+  syllables. Respell the whole word phonetically instead.
+  -> "Anthropic" => "anthropik",  "Laravel" => "laruhvel",
+     "Docker" => "dokker",  "python" => "piethon",  "Caddy" => "kaddy"
+- Use a space ONLY to separate genuinely distinct spoken tokens:
+  * Letter-by-letter initialisms: separate the lowercase letters
+    -> "DDEV" => "dee dev",  "SQL" => "ess cue ell",  "UX" => "you ex"
+  * Terms that are actually pronounced as more than one word
+    -> "nginx" => "engine ex",  "kubectl" => "cube control"
 - Avoid gratuitous capitals: Chatterbox reads a lone capital as emphasis, so
   prefer "engine ex" over "engine X".
 - Change only what is needed for correct pronunciation; keep it minimal.

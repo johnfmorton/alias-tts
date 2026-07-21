@@ -4,6 +4,20 @@ All notable changes to this project are documented in this file. The format is
 based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this
 project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Fixed
+- **Suggested pronunciations no longer add pauses inside words.** The LLM that
+  proposes respellings was told it could use hyphens to guide syllables, so it
+  produced spellings like `an-thropic`, `dock-er`, and `pie-thon`. The TTS engine
+  reads a hyphen as a hard pause, which broke those words with an unnatural
+  mid-word stutter. The pronunciation prompt now forbids hyphens entirely and
+  respells a single spoken word as one unbroken token (`anthropik`, `dokker`,
+  `piethon`); spaces are kept only where the spoken form is genuinely separate —
+  letter-by-letter initialisms (`DDEV` → `dee dev`) or true multi-word terms
+  (`nginx` → `engine ex`). Existing saved dictionary entries are unchanged; this
+  affects newly suggested respellings.
+
 ## [0.75.0] - 2026-07-20
 
 ### Added
