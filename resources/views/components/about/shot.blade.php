@@ -190,6 +190,14 @@
         dialog.showModal();
 
         const aspect = srcImg.naturalWidth ? srcImg.naturalHeight / srcImg.naturalWidth : 0.625;
+        // Pin the flown image to its intrinsic ratio so its box height is
+        // definite before this cloned, cache-backed <img> finishes decoding.
+        // Chrome lays a cached clone out synchronously; Safari/iOS lay it out a
+        // beat late, so finalRect below reads short (≈ chrome bar only), the
+        // FLIP scaleY over-stretches vertically, then snaps when the real
+        // height lands mid-flight. An explicit aspect-ratio makes it stable.
+        if (srcImg.naturalWidth && srcImg.naturalHeight)
+            cImg.style.aspectRatio = srcImg.naturalWidth + ' / ' + srcImg.naturalHeight;
         clone.style.width = '1200px'; // provisional, for a stable chrome-height read
         const chromeH = clone.querySelector('[data-shot-chrome]').getBoundingClientRect().height;
         const fit = fitRect(chromeH, aspect);
