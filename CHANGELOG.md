@@ -6,6 +6,15 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Added
+- **Downloaded MP3s now carry title, date, and voice tags.** When Alias TTS
+  builds a project's final MP3, it writes standard ID3 metadata: the **title** is
+  the project title, the **date** is when the file was created, and the
+  **comment** reads `Created with Alias TTS · Voice: <name>` — or lists every
+  voice (`· Voices: A, B`) when a project mixes more than one. Players, phones,
+  and file browsers now show a named, dated track instead of a blank one. WAV
+  finals are unaffected.
+
 ### Fixed
 - **Suggested pronunciations no longer add pauses inside words.** The LLM that
   proposes respellings was told it could use hyphens to guide syllables, so it

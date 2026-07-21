@@ -860,7 +860,10 @@ class ProjectService
      */
     public function rebuild(TtsProject $project): TtsProject
     {
-        $chunks = $project->chunks()->get();
+        // Eager-load each chunk's override voice so the final-file metadata can
+        // enumerate the distinct voices without an N+1 (the project's own voice
+        // caches on the model after the first access).
+        $chunks = $project->chunks()->with('voice')->get();
 
         if ($chunks->isEmpty()) {
             throw new RuntimeException('This project has no chunks.');
@@ -876,7 +879,12 @@ class ProjectService
             throw new RuntimeException("{$missing} chunk(s) still need to be generated before rebuilding.");
         }
 
-        [$bytes, $mime, $ext] = $this->concatenateChunks($included, $project->output_format, $seamGapsMs);
+        [$bytes, $mime, $ext] = $this->concatenateChunks(
+            $included,
+            $project->output_format,
+            $seamGapsMs,
+            $this->buildFinalMetadata($project, $included),
+        );
 
         $path = config('tts.storage_path').'/projects/'.$project->id.'/final.'.$ext;
         Storage::disk($this->disk())->put($path, $bytes);
@@ -993,7 +1001,7 @@ class ProjectService
      * @param  array<int, int>  $seamGapsMs
      * @return array{0: string, 1: string, 2: string} [bytes, mimeType, extension]
      */
-    private function concatenateChunks($chunks, string $outputFormat, array $seamGapsMs): array
+    private function concatenateChunks($chunks, string $outputFormat, array $seamGapsMs, array $metadata = []): array
     {
         $disk = Storage::disk($this->disk());
 
@@ -1014,7 +1022,45 @@ class ProjectService
             $this->provider->outputContainer(),
             $seamGapsMs,
             $preserveTails,
+            $metadata,
         );
+    }
+
+    /**
+     * ID3 tags stamped onto the project's final MP3 (ignored for WAV output):
+     * the project title, the date the file is built (per the request, the MP3's
+     * own creation time, not the project's), and a credit line naming the
+     * distinct voice(s) actually stitched into this render. Keyed by ffmpeg
+     * metadata name.
+     *
+     * @param  Collection<int, TtsChunk>  $included  the chunks that reach the stitch
+     * @return array<string, string>
+     */
+    private function buildFinalMetadata(TtsProject $project, Collection $included): array
+    {
+        $voiceNames = $included
+            ->map(fn (TtsChunk $chunk) => ($chunk->voice ?? $project->voice)?->name)
+            ->filter()
+            ->unique()
+            ->values();
+
+        $comment = 'Created with Alias TTS';
+        if ($voiceNames->isNotEmpty()) {
+            $label = $voiceNames->count() === 1 ? 'Voice' : 'Voices';
+            $comment .= ' · '.$label.': '.$voiceNames->implode(', ');
+        }
+
+        // ID3v2 comments have no hard length cap, but keep it tidy for players
+        // that truncate: trim the voice list before the tag runs long.
+        if (mb_strlen($comment) > 250) {
+            $comment = rtrim(mb_substr($comment, 0, 249)).'…';
+        }
+
+        return [
+            'title' => (string) $project->title,
+            'date' => now()->format('Y-m-d'),
+            'comment' => $comment,
+        ];
     }
 
     public function chunkAudioBytes(TtsChunk $chunk): ?string

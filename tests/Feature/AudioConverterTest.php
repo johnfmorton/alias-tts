@@ -3,6 +3,7 @@
 namespace Tests\Feature;
 
 use App\Services\Audio\AudioConverter;
+use Symfony\Component\Process\Process;
 use Tests\TestCase;
 
 class AudioConverterTest extends TestCase
@@ -35,6 +36,58 @@ class AudioConverterTest extends TestCase
         $this->assertSame('audio/mpeg', $mime);
         $this->assertNotEmpty($gapped);
         $this->assertGreaterThan(strlen($nogap), strlen($gapped), 'Inserted silence makes the gapped output longer.');
+    }
+
+    public function test_concatenate_stamps_id3_metadata_on_mp3(): void
+    {
+        $converter = new AudioConverter(config('tts.ffmpeg_path', 'ffmpeg'));
+        $chunks = [$this->loudMonoWav(0.2), $this->loudMonoWav(0.2)];
+
+        [$bytes, $mime] = $converter->concatenate($chunks, 'mp3_44100_128', 'wav', [0], [], [
+            'title' => 'My Project',
+            'date' => '2026-07-21',
+            'comment' => 'Created with Alias TTS · Voices: Emma, James',
+        ]);
+
+        $this->assertSame('audio/mpeg', $mime);
+        $tags = $this->id3Tags($bytes);
+        $this->assertSame('My Project', $tags['title'] ?? null);
+        $this->assertSame('Created with Alias TTS · Voices: Emma, James', $tags['comment'] ?? null);
+        // ffmpeg writes the year into TDRC/date; players read at least the year.
+        $this->assertStringStartsWith('2026', $tags['date'] ?? '');
+    }
+
+    public function test_blank_and_whitespace_metadata_values_are_dropped(): void
+    {
+        $converter = new AudioConverter(config('tts.ffmpeg_path', 'ffmpeg'));
+        $chunks = [$this->loudMonoWav(0.2), $this->loudMonoWav(0.2)];
+
+        // An empty title must not emit a tag; a multi-line comment collapses to
+        // a single line so the ID3 frame never spills.
+        [$bytes] = $converter->concatenate($chunks, 'mp3_44100_128', 'wav', [0], [], [
+            'title' => '   ',
+            'comment' => "line one\nline two",
+        ]);
+
+        $tags = $this->id3Tags($bytes);
+        $this->assertArrayNotHasKey('title', $tags);
+        $this->assertSame('line one line two', $tags['comment'] ?? null);
+    }
+
+    public function test_wav_output_ignores_metadata(): void
+    {
+        // Metadata is an MP3-only feature; a WAV request must encode cleanly and
+        // simply carry no title tag (no error, no bogus stream).
+        $converter = new AudioConverter(config('tts.ffmpeg_path', 'ffmpeg'));
+        $chunks = [$this->loudMonoWav(0.2), $this->loudMonoWav(0.2)];
+
+        [$bytes, $mime] = $converter->concatenate($chunks, 'wav_44100', 'wav', [0], [], [
+            'title' => 'My Project',
+        ]);
+
+        $this->assertSame('audio/wav', $mime);
+        $this->assertSame('RIFF', substr($bytes, 0, 4));
+        $this->assertArrayNotHasKey('title', $this->id3Tags($bytes));
     }
 
     public function test_silent_chunks_survive_trimming(): void
@@ -572,5 +625,32 @@ class AudioConverterTest extends TestCase
         $header .= 'data'.pack('V', $dataSize);
 
         return $header.$samples;
+    }
+
+    /**
+     * Read a media file's container-level tags via ffprobe.
+     *
+     * @return array<string, string> lower-cased tag name => value
+     */
+    private function id3Tags(string $bytes): array
+    {
+        $file = tempnam(sys_get_temp_dir(), 'tts_probe_');
+        try {
+            file_put_contents($file, $bytes);
+
+            $process = new Process([
+                'ffprobe', '-hide_banner', '-loglevel', 'error',
+                '-show_entries', 'format_tags', '-of', 'json', $file,
+            ]);
+            $process->run();
+            $this->assertTrue($process->isSuccessful(), 'ffprobe failed: '.$process->getErrorOutput());
+
+            $json = json_decode($process->getOutput(), true);
+            $tags = $json['format']['tags'] ?? [];
+
+            return array_change_key_case(is_array($tags) ? $tags : [], CASE_LOWER);
+        } finally {
+            @unlink($file);
+        }
     }
 }

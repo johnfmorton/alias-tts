@@ -20,9 +20,10 @@ class AudioConverter
     ) {}
 
     /**
+     * @param  array<string, string>  $metadata  ID3 tags to stamp on the output (MP3 only; see metadataArgs()).
      * @return array{0: string, 1: string, 2: string} [bytes, mimeType, extension]
      */
-    public function convert(string $inputBytes, string $outputFormat, string $inputContainer = 'wav'): array
+    public function convert(string $inputBytes, string $outputFormat, string $inputContainer = 'wav', array $metadata = []): array
     {
         $spec = $this->parseFormat($outputFormat);
 
@@ -37,6 +38,7 @@ class AudioConverter
             $args = array_merge(
                 [$this->ffmpegPath, '-y', '-hide_banner', '-loglevel', 'error', '-i', $in, '-vn', '-ac', '1', '-ar', (string) $spec['rate']],
                 $spec['codec_args'],
+                $this->metadataArgs($metadata, $spec['ext']),
                 [$out]
             );
 
@@ -83,8 +85,9 @@ class AudioConverter
      *                                           tail-ARTIFACT detectors — they cannot tell a wanted laugh
      *                                           from the junk drone they hunt. The safe edge work (head
      *                                           trim, bounded tail SILENCE trim, fades) still runs.
+     * @param  array<string, string>  $metadata  ID3 tags to stamp on the output (MP3 only; see metadataArgs()).
      */
-    public function concatenate(array $inputChunks, string $outputFormat, string $inputContainer = 'wav', array $seamGapsMs = [], array $preserveTails = []): array
+    public function concatenate(array $inputChunks, string $outputFormat, string $inputContainer = 'wav', array $seamGapsMs = [], array $preserveTails = [], array $metadata = []): array
     {
         $inputChunks = array_values($inputChunks);
         $spec = $this->parseFormat($outputFormat);
@@ -98,7 +101,7 @@ class AudioConverter
             // then encode to the requested format.
             $trimmed = $this->trimChunk($inputChunks[0], $spec['rate'], $threshold, $fadeMs, $tailWindowMs, (bool) ($preserveTails[0] ?? false));
 
-            return $this->convert($trimmed, $outputFormat, 'wav');
+            return $this->convert($trimmed, $outputFormat, 'wav', $metadata);
         }
 
         $files = [];          // every temp file to clean up
@@ -145,6 +148,7 @@ class AudioConverter
                     '-f', 'concat', '-safe', '0', '-i', $list, '-vn',
                     '-ac', '1', '-ar', (string) $spec['rate']],
                 $spec['codec_args'],
+                $this->metadataArgs($metadata, $spec['ext']),
                 [$outFile]
             );
 
@@ -1233,5 +1237,34 @@ class AudioConverter
                 'codec_args' => ['-c:a', 'libmp3lame', '-b:a', (isset($parts[2]) && is_numeric($parts[2]) ? (int) $parts[2] : 128).'k', '-f', 'mp3'],
             ],
         };
+    }
+
+    /**
+     * Turn an assoc array of ID3 tags into ffmpeg `-metadata key=value` args.
+     * Only MP3 output carries them — WAV/pcm/ulaw metadata is unreliable across
+     * players, and the feature is scoped to MP3. Each value is its own argv
+     * element (no shell escaping needed); blanks are dropped and internal
+     * whitespace is collapsed so a tag never spills onto a second line.
+     *
+     * @param  array<string, string>  $metadata
+     * @return array<int, string>
+     */
+    private function metadataArgs(array $metadata, string $ext): array
+    {
+        if ($ext !== 'mp3' || $metadata === []) {
+            return [];
+        }
+
+        $args = [];
+        foreach ($metadata as $key => $value) {
+            $value = trim((string) preg_replace('/\s+/', ' ', (string) $value));
+            if ($value === '') {
+                continue;
+            }
+            $args[] = '-metadata';
+            $args[] = $key.'='.$value;
+        }
+
+        return $args;
     }
 }

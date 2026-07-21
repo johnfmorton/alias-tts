@@ -21,6 +21,7 @@ use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
+use Symfony\Component\Process\Process;
 use Tests\TestCase;
 
 class StudioProjectTest extends TestCase
@@ -85,7 +86,7 @@ class StudioProjectTest extends TestCase
             /** @var list<array<int, int>> one entry per concatenate() call */
             public array $seamGaps = [];
 
-            public function concatenate(array $inputChunks, string $outputFormat, string $inputContainer = 'wav', array $seamGapsMs = [], array $preserveTails = []): array
+            public function concatenate(array $inputChunks, string $outputFormat, string $inputContainer = 'wav', array $seamGapsMs = [], array $preserveTails = [], array $metadata = []): array
             {
                 $this->seamGaps[] = $seamGapsMs;
 
@@ -699,6 +700,68 @@ class StudioProjectTest extends TestCase
         $audio = $this->actingAs($this->admin())->get(route('admin.studio.projects.audio', $project));
         $audio->assertOk();
         $this->assertStringStartsWith('audio/mpeg', (string) $audio->headers->get('content-type'));
+    }
+
+    public function test_rebuild_stamps_title_date_and_voice_into_mp3_metadata(): void
+    {
+        // project() is titled "My project" and uses the single voice "V".
+        $project = $this->project();
+        foreach ($project->chunks()->get() as $chunk) {
+            $this->actingAs($this->admin())->post(route('admin.studio.projects.chunks.generate', [$project, $chunk]));
+        }
+
+        $this->actingAs($this->admin())->postJson(route('admin.studio.projects.rebuild', $project))->assertOk();
+        $project->refresh();
+
+        $tags = $this->id3Tags(Storage::disk('local')->get($project->final_audio_path));
+        $this->assertSame('My project', $tags['title'] ?? null);
+        $this->assertSame('Created with Alias TTS · Voice: V', $tags['comment'] ?? null);
+        $this->assertStringStartsWith((string) now()->year, $tags['date'] ?? '');
+    }
+
+    public function test_rebuild_lists_every_distinct_voice_in_the_comment(): void
+    {
+        $project = $this->project();
+        // Give the second chunk an override voice so the final mixes two voices.
+        $other = Voice::create(['slug' => 'w', 'name' => 'Wren']);
+        [$first, $second] = $project->chunks()->orderBy('position')->get();
+        $second->update(['voice_id' => $other->id]);
+
+        foreach ([$first, $second] as $chunk) {
+            $this->actingAs($this->admin())->post(route('admin.studio.projects.chunks.generate', [$project, $chunk]));
+        }
+
+        $this->actingAs($this->admin())->postJson(route('admin.studio.projects.rebuild', $project))->assertOk();
+        $project->refresh();
+
+        $tags = $this->id3Tags(Storage::disk('local')->get($project->final_audio_path));
+        $this->assertSame('Created with Alias TTS · Voices: V, Wren', $tags['comment'] ?? null);
+    }
+
+    /**
+     * Read a media file's container-level tags via ffprobe.
+     *
+     * @return array<string, string> lower-cased tag name => value
+     */
+    private function id3Tags(string $bytes): array
+    {
+        $file = tempnam(sys_get_temp_dir(), 'tts_probe_');
+        try {
+            file_put_contents($file, $bytes);
+
+            $process = new Process([
+                'ffprobe', '-hide_banner', '-loglevel', 'error',
+                '-show_entries', 'format_tags', '-of', 'json', $file,
+            ]);
+            $process->run();
+            $this->assertTrue($process->isSuccessful(), 'ffprobe failed: '.$process->getErrorOutput());
+
+            $tags = json_decode($process->getOutput(), true)['format']['tags'] ?? [];
+
+            return array_change_key_case(is_array($tags) ? $tags : [], CASE_LOWER);
+        } finally {
+            @unlink($file);
+        }
     }
 
     public function test_audio_endpoints_honor_range_requests(): void
