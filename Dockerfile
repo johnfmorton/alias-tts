@@ -64,22 +64,32 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
         curl xz-utils openssl libcap2-bin util-linux \
     && rm -rf /var/lib/apt/lists/*
 
-# ffmpeg + ffprobe: static BtbN build, pinned by version AND checksum. The
-# health check (tts:doctor) requires >= 8.1.2 — the first release with the
-# MagicYUV "PixelSmash" fix (CVE-2026-8461) — and distro packages are older.
+# ffmpeg + ffprobe: static BtbN GPL build. We track the permanent "latest"
+# release's n8.1-latest asset (tip of the 8.1 release branch) rather than a
+# dated autobuild-* tag — those are pruned within weeks, which 404s the build.
+# n8.1-latest only moves forward on the 8.1 branch, so it stays >= 8.1.2, the
+# tts:doctor minimum (first release with the MagicYUV "PixelSmash" fix,
+# CVE-2026-8461; distro packages are older). Each build re-verifies the
+# download against BtbN's published checksums.sha256 and fails closed if the
+# asset is missing from it.
 RUN set -eux; \
     case "${TARGETARCH}" in \
-        amd64) arch="linux64"; sha="df99ffb3803ee56dc68954f43f950ea9f33685a3595a5da8a3e73ef4bef37e3c" ;; \
-        arm64) arch="linuxarm64"; sha="069d5c818de116003d717d194b5e97ee24c550a656d31c6a973952bb6df5e5ea" ;; \
+        amd64) arch="linux64" ;; \
+        arm64) arch="linuxarm64" ;; \
         *) echo "unsupported TARGETARCH=${TARGETARCH}" >&2; exit 1 ;; \
     esac; \
-    curl -fsSL -o /tmp/ffmpeg.tar.xz \
-        "https://github.com/BtbN/FFmpeg-Builds/releases/download/autobuild-2026-07-06-14-19/ffmpeg-n8.1.2-22-g94138f6973-${arch}-gpl-8.1.tar.xz"; \
-    echo "${sha}  /tmp/ffmpeg.tar.xz" | sha256sum -c -; \
+    base="https://github.com/BtbN/FFmpeg-Builds/releases/download/latest"; \
+    fname="ffmpeg-n8.1-latest-${arch}-gpl-8.1.tar.xz"; \
+    cd /tmp; \
+    curl -fsSL -o "${fname}" "${base}/${fname}"; \
+    curl -fsSL -o checksums.sha256 "${base}/checksums.sha256"; \
+    grep -E "  ${fname}$" checksums.sha256 > ffmpeg.sha256; \
+    test -s ffmpeg.sha256; \
+    sha256sum -c ffmpeg.sha256; \
     mkdir /tmp/ffmpeg; \
-    tar -xJf /tmp/ffmpeg.tar.xz -C /tmp/ffmpeg --strip-components=1; \
+    tar -xJf "${fname}" -C /tmp/ffmpeg --strip-components=1; \
     mv /tmp/ffmpeg/bin/ffmpeg /tmp/ffmpeg/bin/ffprobe /usr/local/bin/; \
-    rm -rf /tmp/ffmpeg /tmp/ffmpeg.tar.xz; \
+    rm -rf /tmp/ffmpeg "${fname}" checksums.sha256 ffmpeg.sha256; \
     ffmpeg -version | head -1
 
 # Whisper ASR sidecar venv (faster-whisper on CPU).

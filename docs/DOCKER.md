@@ -157,12 +157,15 @@ Migrations and cache warming run automatically on boot. Nothing outside
 ## Building notes
 
 - `docker build` produces the image for the host architecture; both `amd64`
-  and `arm64` work (ffmpeg is checksum-pinned per arch). Multi-arch:
+  and `arm64` work (a per-arch static ffmpeg is downloaded and checksum-verified
+  at build time). Multi-arch:
   `docker buildx build --platform linux/amd64,linux/arm64 .`
 - `--build-arg ASR_BAKE_MODEL=small` bakes a bigger Whisper model into the
   image instead of `tiny` (useful for air-gapped hosts).
 - The bundled ffmpeg is a static [BtbN](https://github.com/BtbN/FFmpeg-Builds)
   **GPL** build (sources available at that project); the app invokes it as a
-  separate binary.
+  separate binary. The build tracks that project's permanent `latest` release
+  (`n8.1-latest` asset, the tip of the 8.1 branch) so it stays ≥ 8.1.2 without
+  pinning a dated `autobuild-*` tag that upstream would later prune.
 - Want the fake provider for a demo without a Replicate token? Run with
   `-e TTS_PROVIDER=fake` — deterministic placeholder audio, full pipeline.
