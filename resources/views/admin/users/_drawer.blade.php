@@ -146,7 +146,8 @@
             <button id="user-delete-toggle" type="button" class="{{ $action }} border-bad/45 font-semibold text-bad hover:bg-bad/[0.06]">Delete user</button>
             <div id="user-delete-confirm" class="hidden rounded-[10px] border border-bad/25 bg-bad/[0.04] p-3">
                 <p class="mb-3 text-[13px] leading-relaxed text-zinc-400">Permanently delete {{ $u->name }} and everything they own. This cannot be undone.</p>
-                <form method="POST" action="{{ route('admin.users.destroy', $u) }}">
+                <form method="POST" action="{{ route('admin.users.destroy', $u) }}"
+                      data-busy data-busy-label="Deleting…">
                     @csrf
                     @method('DELETE')
                     <button class="w-full rounded-[9px] bg-bad py-[10px] text-sm font-semibold text-white transition hover:bg-bad/90">Permanently delete</button>

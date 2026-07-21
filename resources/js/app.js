@@ -4049,7 +4049,9 @@ initHealthReport();
 // take on initCreateProjectForm for the one-off, two-stage new-project form.
 function initBusyForms() {
     document.querySelectorAll('form[data-busy]').forEach((form) => {
-        const btn = form.querySelector('button[type=submit]');
+        // A <button> with no explicit type is still the form's submit button, so
+        // match both — the destructive action menus render bare <button>s.
+        const btn = form.querySelector('button[type=submit], button:not([type])');
         const status = form.querySelector('[data-busy-status]');
         const reset = () => {
             if (btn) endBusy(btn);
@@ -4058,6 +4060,13 @@ function initBusyForms() {
         // Native validation blocks submit before this fires, so reaching here
         // means the form is valid and the (slow) request is on its way.
         form.addEventListener('submit', () => {
+            // A data-confirm form fires submit twice: once to open the dialog
+            // (the guard at the top of this file prevents it) and again after the
+            // user confirms. Only spin on the confirmed pass — otherwise a cancel
+            // leaves the button stuck mid-spin. The guard runs on document (bubble
+            // phase), after this target-phase listener, so on the re-fire the
+            // one-shot `confirmed` flag is already set when we look.
+            if (form.dataset.confirm !== undefined && form.dataset.confirmed === undefined) return;
             if (btn) startBusy(btn, form.dataset.busyLabel || 'Working…');
             if (status && form.dataset.busyMessage) setStatus(status, form.dataset.busyMessage);
         });
@@ -4254,7 +4263,16 @@ function initAccount() {
                 fileInput.value = '';
                 return;
             }
+            // Re-encoding + the B2 upload run server-side before the redirect, so
+            // spin the trigger instead of leaving a dead page. form.submit() skips
+            // the submit event (so data-busy/initBusyForms can't see it); drive the
+            // spinner here. It clears on navigation; bfcache restore is handled below.
+            startBusy(changeBtn, 'Uploading…');
             avatarForm.submit();
+        });
+        // bfcache can restore this page with the button stuck mid-spin — reset it.
+        window.addEventListener('pageshow', (e) => {
+            if (e.persisted && changeBtn.dataset.busy) endBusy(changeBtn);
         });
     }
 

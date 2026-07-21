@@ -1,5 +1,6 @@
 <x-layout title="Start over" description="Edit the original text and re-split it into fresh chunks. This discards all audio generated so far.">
     <form method="POST" action="{{ route('admin.studio.projects.reset', $project) }}"
+          data-busy data-busy-label="Resetting…"
           data-confirm="{{ ($foreignOwner ? "This is {$foreignOwner}'s project, not yours. " : '') }}This deletes all generated audio and re-splits the text into fresh chunks."
           data-confirm-title="Start over?"
           data-confirm-label="Reset &amp; re-chunk"

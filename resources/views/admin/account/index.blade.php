@@ -41,7 +41,8 @@
                     <button id="avatar-change" type="button" class="{{ $btnSecondary }}">Change photo</button>
                 </form>
                 @if($user->avatar_path)
-                    <form method="POST" action="{{ route('admin.account.avatar.delete') }}">
+                    <form method="POST" action="{{ route('admin.account.avatar.delete') }}"
+                          data-busy data-busy-label="Removing…">
                         @csrf
                         @method('DELETE')
                         <button type="submit" class="px-1.5 py-2 text-sm text-zinc-400 transition hover:text-zinc-200">Remove</button>
@@ -278,7 +279,8 @@
             </button>
         </div>
         <div id="danger-confirm" class="mt-4 hidden border-t border-bad/20 pt-4">
-            <form method="POST" action="{{ route('admin.account.destroy') }}" class="flex flex-wrap items-end gap-3">
+            <form method="POST" action="{{ route('admin.account.destroy') }}" class="flex flex-wrap items-end gap-3"
+                  data-busy data-busy-label="Deleting…">
                 @csrf
                 @method('DELETE')
                 <div class="min-w-[220px] flex-1">

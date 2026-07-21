@@ -116,13 +116,15 @@
                                 @if($voice->isManagedBy(auth()->user()))
                                     <a href="{{ route('admin.voices.edit', $voice) }}" class="rounded-md border border-zinc-700 px-2.5 py-1 text-xs hover:bg-zinc-800">Edit</a>
                                 @endif
-                                <form method="POST" action="{{ route('admin.voices.duplicate', $voice) }}">@csrf
+                                <form method="POST" action="{{ route('admin.voices.duplicate', $voice) }}"
+                                      data-busy data-busy-label="Duplicating…">@csrf
                                     <button class="rounded-md border border-zinc-700 px-2.5 py-1 text-xs hover:bg-zinc-800"
                                             title="{{ $voice->isManagedBy(auth()->user()) ? 'Clone this voice, clip and tuning included' : 'Shared voices can\'t be tuned directly — clone one you own' }}">Duplicate</button>
                                 </form>
                                 <a href="{{ route('admin.voices.export', $voice) }}" class="rounded-md border border-zinc-700 px-2.5 py-1 text-xs hover:bg-zinc-800">Export</a>
                                 @if($voice->isManagedBy(auth()->user()) && ! $voice->isBuiltin())
                                     <form method="POST" action="{{ route('admin.voices.destroy', $voice) }}"
+                                          data-busy data-busy-label="Deleting…"
                                           data-confirm="The voice and its reference clip are deleted permanently."
                                           data-confirm-title="Delete this voice?"
                                           data-confirm-label="Delete voice">@csrf @method('DELETE')

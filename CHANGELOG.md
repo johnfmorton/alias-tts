@@ -16,6 +16,16 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   finals are unaffected.
 
 ### Fixed
+- **Heavy actions no longer look frozen while they work.** Deleting a project
+  ran a recursive cloud-storage cleanup behind a plain button, so after you
+  confirmed, the page just sat there with no sign anything was happening — it
+  read as locked up. Every slow full-page action now shows a spinner and a
+  status label ("Deleting…", "Cleaning up…", "Resetting…", "Uploading…") on its
+  button until the work finishes and the page moves on: delete / clean up /
+  reset ("Start over") a project, delete or duplicate a voice, delete a user,
+  delete your account, change or remove your avatar, and "Apply and continue"
+  when creating a project. The confirmation dialog still shows first, and the
+  spinner only starts once you actually confirm.
 - **Suggested pronunciations no longer add pauses inside words.** The LLM that
   proposes respellings was told it could use hyphens to guide syllables, so it
   produced spellings like `an-thropic`, `dock-er`, and `pie-thon`. The TTS engine

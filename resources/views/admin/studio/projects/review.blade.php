@@ -1,7 +1,8 @@
 <x-layout title="Review pronunciations" description="Choose which respellings to apply. Applied terms are saved to your dictionary so next time it's automatic; skipped terms are left as written and remembered.">
     @php($applyCount = collect($suggestions)->filter(fn ($s) => ! empty($s['checked']))->count())
 
-    <form method="POST" action="{{ route('admin.studio.projects.apply') }}" data-pron-review class="space-y-5 rounded-xl border border-zinc-800 bg-zinc-900/50 p-6">
+    <form method="POST" action="{{ route('admin.studio.projects.apply') }}" data-pron-review
+          data-busy data-busy-label="Creating project…" class="space-y-5 rounded-xl border border-zinc-800 bg-zinc-900/50 p-6">
         @csrf
 
         {{-- Carry the original project params straight through. --}}
