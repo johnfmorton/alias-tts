@@ -3,7 +3,15 @@
 <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>Set your password — Alias TTS</title>
+    @php $isInvite = $user->status === \App\Models\User::STATUS_INVITED; @endphp
+    <title>{{ $isInvite ? "You're invited — Alias TTS" : 'Set your password — Alias TTS' }}</title>
+    @include('partials.social-meta', [
+        'metaTitle'       => $isInvite ? "You're invited to Alias TTS" : 'Set your password — Alias TTS',
+        'metaDescription' => $isInvite
+            ? 'Create your account — clone voices, keep your API integration, and finish every take in Studio.'
+            : 'Set a new password and sign back in to Alias TTS.',
+        'metaImage'       => $isInvite ? 'images/social/alias-tts-invite-og.png' : 'images/social/alias-tts-reset-og.png',
+    ])
     <link rel="icon" href="{{ asset('favicon.ico') }}" sizes="32x32">
     <link rel="icon" href="{{ asset('alias-icon.svg') }}" type="image/svg+xml">
     <link rel="apple-touch-icon" href="{{ asset('apple-touch-icon.png') }}">

@@ -185,6 +185,39 @@ class UsersTest extends TestCase
         $this->assertAuthenticatedAs($invited->fresh());
     }
 
+    public function test_invite_link_previews_the_invite_social_card(): void
+    {
+        $invited = User::factory()->create(['status' => 'invited', 'password' => 'unusable']);
+
+        $signed = URL::temporarySignedRoute('invite.accept', now()->addDay(), [
+            'user' => $invited->id,
+            'fp' => InvitationController::linkFingerprint($invited),
+        ]);
+
+        $this->get($signed)
+            ->assertOk()
+            ->assertSee('images/social/alias-tts-invite-og.png')
+            ->assertSee('Create your account')
+            ->assertDontSee('alias-tts-reset-og.png');
+    }
+
+    public function test_force_reset_link_previews_the_reset_social_card(): void
+    {
+        // A force-reset targets an existing active user, so the page shows the
+        // "welcome back" reset card, not the new-user invite card.
+        $active = User::factory()->create(['status' => 'active', 'password' => 'unusable']);
+
+        $signed = URL::temporarySignedRoute('invite.accept', now()->addDay(), [
+            'user' => $active->id,
+            'fp' => InvitationController::linkFingerprint($active),
+        ]);
+
+        $this->get($signed)
+            ->assertOk()
+            ->assertSee('images/social/alias-tts-reset-og.png')
+            ->assertDontSee('alias-tts-invite-og.png');
+    }
+
     public function test_a_set_password_link_cannot_be_used_a_second_time(): void
     {
         $invited = User::factory()->create(['status' => 'invited', 'password' => 'unusable']);
