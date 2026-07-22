@@ -2283,6 +2283,15 @@ function initStudioProject() {
         }
     }
 
+    // One-shot accent glow (chunk-rendered-glow in app.css) on a card whose
+    // fresh render just landed. Remove-reflow-add restarts the animation when
+    // the same chunk re-renders while a previous glow is still playing.
+    const flashRenderedChunk = (card) => {
+        card.classList.remove('chunk-rendered-glow');
+        void card.offsetWidth;
+        card.classList.add('chunk-rendered-glow');
+    };
+
     // One chunk entry from the poll. Light entries ({id, status}) are chunks the
     // run hasn't finished with; full ones carry the same payload generateChunk()
     // returns, and flow through the same render path. Returns whether the
@@ -2302,6 +2311,7 @@ function initStudioProject() {
             // (or was — a resumed run may deliver several at once).
             audio.src = bust(card.dataset.audioUrl);
             audio.closest('.aplayer')?.classList.remove('hidden');
+            flashRenderedChunk(card);
         }
         card.querySelector('.chunk-generate').dataset.base = 'Regenerate';
         setGenerateLabel(card);

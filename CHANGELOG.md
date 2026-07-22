@@ -4,6 +4,20 @@ All notable changes to this project are documented in this file. The format is
 based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this
 project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+- **A freshly rendered clip now glows to say it's ready.** When a render
+  finished, the only signal was the small status line in the page header —
+  "Clip 136 generated — build the final to include it." — easy to miss when
+  the clip itself sits somewhere far down a long project. Now the clip's card
+  announces itself too: the moment its new audio lands, the card's border
+  tints cyan and a soft ring breathes outward, then fades on its own — right
+  where the play button for that new audio is. During a long generate run each
+  clip lights up as it finishes, so progress is visible in the list itself,
+  and a clip re-rendered again mid-run simply glows again. The animation is
+  skipped for anyone whose system asks for reduced motion.
+
 ## [0.80.1] - 2026-07-22
 
 ### Fixed

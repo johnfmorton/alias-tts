@@ -134,6 +134,46 @@
 }
 
 /*
+ * A chunk whose fresh render just landed from the queue (applyRunChunk in
+ * app.js): the border tints accent while two soft rings breathe outward, so
+ * the eye finds the card whose new audio is now playable — the header status
+ * line alone is easy to miss on a long project. The border fades back to the
+ * stylesheet zinc on its own (the final keyframe omits it), and the class is
+ * re-applied per landing so a chunk re-rendered mid-run glows again. Gated on
+ * prefers-reduced-motion like the cues above.
+ */
+@media (prefers-reduced-motion: no-preference) {
+    .chunk-rendered-glow {
+        animation: chunk-rendered-glow 2.8s ease-out 1;
+    }
+}
+@keyframes chunk-rendered-glow {
+    0% {
+        border-color: var(--color-accent);
+        box-shadow:
+            0 0 0 0 color-mix(in srgb, var(--color-accent) 50%, transparent),
+            0 0 24px 2px color-mix(in srgb, var(--color-accent) 25%, transparent);
+    }
+    35% {
+        border-color: var(--color-accent);
+        box-shadow:
+            0 0 0 10px transparent,
+            0 0 24px 2px color-mix(in srgb, var(--color-accent) 18%, transparent);
+    }
+    45% {
+        box-shadow:
+            0 0 0 0 color-mix(in srgb, var(--color-accent) 35%, transparent),
+            0 0 20px 2px color-mix(in srgb, var(--color-accent) 14%, transparent);
+    }
+    80%,
+    100% {
+        box-shadow:
+            0 0 0 10px transparent,
+            0 0 0 0 transparent;
+    }
+}
+
+/*
  * Chunk seam — Preview stitch (design 8A). A borderless text action on the seam's
  * connector line: a muted label with a cyan play glyph at rest (base colors are
  * Tailwind utilities on the button). While its stitched preview plays it turns
