@@ -31,6 +31,7 @@ class TtsChunkTake extends Model
         'characters',
         'seed',
         'duration_ms',
+        'audio_sha256',
     ];
 
     protected $casts = [

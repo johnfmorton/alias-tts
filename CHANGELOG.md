@@ -4,6 +4,42 @@ All notable changes to this project are documented in this file. The format is
 based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this
 project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Fixed
+- **Building the final no longer times out on big projects.** "Build final"
+  used to stitch every clip inside the web request — downloading each one,
+  concatenating, encoding, uploading — and on a 111-chunk project that blew
+  past the server's gateway timeout and died with an HTTP 504 after the work
+  was already half done. The stitch now runs as a background job, exactly like
+  Regenerate and "Generate remaining" already do: the button shows live
+  progress ("Stitching 111 clips into the final…"), you can leave the page and
+  come back mid-stitch, and the player appears with "✓ Final rebuilt." when it
+  lands. While a stitch is running, generate and regenerate actions wait their
+  turn with a clear message instead of racing it — and a queued stitch can
+  still be stopped from the Jobs page before it starts.
+- **Receipt and archive downloads stream instead of timing out.** The
+  "Download archive" zip gathered every saved take — hundreds of clips on a
+  big project — and built the entire archive in memory before sending the
+  first byte, which risked the same gateway timeout plus a memory spike. Both
+  the receipt and archive zips now stream as they're packed: the approved
+  audio starts downloading immediately and clips follow one at a time, so the
+  connection never sits silent and the server never holds more than one clip
+  at once.
+
+### Changed
+- **Receipts and the public verify page stopped re-hashing every clip.** Each
+  new take now records its audio fingerprint (SHA-256) the moment it's
+  rendered, so building a receipt or viewing /verify reads stored hashes
+  instead of re-downloading every chunk's audio to hash it — a pass that grew
+  ~30 seconds long on a 111-chunk project. Takes recorded before this release
+  are still hashed on the fly.
+- **Project clean-up returns immediately.** "Clean up" removes unused takes'
+  files from cloud storage one round-trip each; with hundreds of takes that
+  crawled toward the same gateway timeout. The take rows are removed right
+  away (the page reflects it instantly) and the files are reaped in the
+  background.
+
 ## [0.76.0] - 2026-07-21
 
 ### Added

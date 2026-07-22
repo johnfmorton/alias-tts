@@ -36,7 +36,8 @@
               in native knob values — the JS applies them on a chip click and matches
               the sliders against them to light the active chip (or none = Custom). --}}
          data-delivery-presets='@json(\App\Services\Tts\DeliveryPresets::all())'
-         data-active-run="{{ $hasActiveRun ? '1' : '0' }}">
+         data-active-run="{{ $hasActiveRun ? '1' : '0' }}"
+         data-active-run-type="{{ $activeRunType ?? '' }}">
 
         @if($project->origin === 'api_failure')
             <div id="project-failure-notice" class="mb-6 rounded-xl border border-red-500/30 bg-red-500/10 px-5 py-4 text-sm text-red-200">

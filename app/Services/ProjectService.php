@@ -4,6 +4,7 @@ namespace App\Services;
 
 use App\Enums\ChunkStatus;
 use App\Enums\ProjectStatus;
+use App\Jobs\DeleteStoredFilesJob;
 use App\Models\ApiKey;
 use App\Models\Speech;
 use App\Models\TtsChunk;
@@ -593,6 +594,9 @@ class ProjectService
             'asr_score' => $verdict?->score,
             'asr_report' => $report,
             'characters' => mb_strlen($chunk->text),
+            // Hashed now, while the bytes are in hand — the receipt/verify
+            // provenance reads this instead of re-downloading every clip.
+            'audio_sha256' => hash('sha256', $bytes),
         ]);
 
         // Lifetime spend counters (chunk + project). A 'use' take re-records
@@ -858,6 +862,29 @@ class ProjectService
      * they used to be. Requires every included chunk to have audio; reports how
      * many are missing otherwise.
      */
+    /**
+     * The cheap half of {@see rebuild()}'s validation, for the request that
+     * BOOKS an async stitch: the same refusals, as count queries, so the user
+     * gets an instant 422 instead of a background run that fails a minute
+     * later. The worker's rebuild() re-checks — chunks can change while queued.
+     */
+    public function assertRebuildable(TtsProject $project): void
+    {
+        if (! $project->chunks()->exists()) {
+            throw new RuntimeException('This project has no chunks.');
+        }
+
+        $included = $project->chunks()->where('skipped', false);
+        if (! $included->clone()->exists()) {
+            throw new RuntimeException('Every chunk is skipped — include at least one chunk before rebuilding.');
+        }
+
+        $missing = $included->clone()->whereNull('audio_path')->count();
+        if ($missing > 0) {
+            throw new RuntimeException("{$missing} chunk(s) still need to be generated before rebuilding.");
+        }
+    }
+
     public function rebuild(TtsProject $project): TtsProject
     {
         // Eager-load each chunk's override voice so the final-file metadata can
@@ -1285,6 +1312,9 @@ class ProjectService
                             'duration_ms' => $selected?->duration_ms,
                             'asr_score' => $selected ? $selected->asr_score : $chunk->asr_score,
                             'asr_report' => $selected ? $selected->asr_report : $chunk->asr_report,
+                            // A server-side copy is byte-identical, so the
+                            // source take's hash carries over (null on legacy).
+                            'audio_sha256' => $selected?->audio_sha256,
                         ];
                     } else {
                         Log::warning('Duplicate skipped a chunk whose audio file is missing', [
@@ -1368,6 +1398,7 @@ class ProjectService
                             'characters' => $plan['take']['characters'],
                             'duration_ms' => $plan['take']['duration_ms'],
                             'seed' => $plan['take']['seed'],
+                            'audio_sha256' => $plan['take']['audio_sha256'],
                         ])->save();
                     }
                 }
@@ -1402,8 +1433,8 @@ class ProjectService
      */
     public function cleanupTakes(TtsProject $project): int
     {
-        $disk = Storage::disk($this->disk());
         $removed = 0;
+        $paths = [];
 
         foreach ($project->chunks as $chunk) {
             $unselected = $chunk->takes->filter(
@@ -1412,14 +1443,19 @@ class ProjectService
 
             // Distinct paths only (legacy takes can share one file); the selected
             // file can't appear here because of the filter above.
-            foreach ($unselected->pluck('audio_path')->filter()->unique() as $path) {
-                $disk->delete($path);
-            }
+            $paths = array_merge($paths, $unselected->pluck('audio_path')->filter()->unique()->all());
 
             foreach ($unselected as $take) {
                 $take->delete();
                 $removed++;
             }
+        }
+
+        // The rows are gone above (that's what the page reflects); the files
+        // are one storage round-trip EACH, so a big cleanup deletes them on
+        // the queue worker instead of crawling toward the gateway timeout.
+        foreach (array_chunk($paths, DeleteStoredFilesJob::BATCH_SIZE) as $batch) {
+            DeleteStoredFilesJob::dispatch($this->disk(), $batch);
         }
 
         return $removed;

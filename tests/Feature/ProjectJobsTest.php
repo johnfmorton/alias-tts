@@ -4,7 +4,9 @@ namespace Tests\Feature;
 
 use App\Enums\ChunkStatus;
 use App\Enums\ProjectJobStatus;
+use App\Enums\ProjectStatus;
 use App\Jobs\GenerateProjectChunksJob;
+use App\Jobs\StitchProjectJob;
 use App\Models\TtsChunk;
 use App\Models\TtsProject;
 use App\Models\TtsProjectJob;
@@ -898,5 +900,166 @@ class ProjectJobsTest extends TestCase
             ->assertOk()
             ->assertSee('of 51 run(s)')
             ->assertSee('page=2');
+    }
+
+    // --- Async "Build final" (stitch runs) ------------------------------------
+
+    /** A project with every chunk generated, ready to stitch. */
+    private function generatedProject(?int $userId = null): TtsProject
+    {
+        $project = $this->project($userId);
+        $svc = app(ProjectService::class);
+        foreach ($project->chunks()->get() as $chunk) {
+            $svc->generateChunk($chunk);
+        }
+
+        return $project->refresh();
+    }
+
+    /** A queued stitch run row (no worker involved). */
+    private function queuedStitch(TtsProject $project): TtsProjectJob
+    {
+        return TtsProjectJob::create([
+            'tts_project_id' => $project->id,
+            'user_id' => $project->user_id,
+            'created_by_id' => $project->user_id,
+            'type' => TtsProjectJob::TYPE_STITCH,
+            'chunk_ids' => [],
+            'chunks_total' => $project->chunks()->count(),
+        ])->refresh(); // pull the DB-default status
+    }
+
+    public function test_build_final_books_a_stitch_run(): void
+    {
+        Queue::fake();
+        $project = $this->generatedProject();
+
+        $res = $this->actingAs($this->admin())
+            ->postJson(route('admin.studio.projects.rebuild', $project));
+
+        // The stitch runs on the queue worker, never inside the request — the
+        // in-request path 504'd on big projects.
+        $res->assertStatus(202)
+            ->assertJsonPath('ok', true)
+            ->assertJsonPath('job.type', 'stitch')
+            ->assertJsonPath('job.status', 'queued')
+            ->assertJsonPath('job.active', true);
+
+        Queue::assertPushed(StitchProjectJob::class, 1);
+        $job = TtsProjectJob::sole();
+        $this->assertTrue($job->isStitch());
+        $this->assertSame([], $job->chunk_ids);
+        $this->assertSame(2, $job->chunks_total);
+        $this->assertNull($project->refresh()->final_audio_path);
+    }
+
+    public function test_stitch_job_builds_the_final_and_completes_the_run(): void
+    {
+        $project = $this->generatedProject();
+        $job = $this->queuedStitch($project);
+
+        (new StitchProjectJob($job->id))->handle(app(ProjectService::class));
+
+        $job->refresh();
+        $this->assertSame(ProjectJobStatus::Completed, $job->status);
+        // All-or-nothing: the counters flip to full so the Jobs page reads 100%.
+        $this->assertSame($job->chunks_total, $job->chunks_done);
+
+        $project->refresh();
+        $this->assertSame(ProjectStatus::Ready, $project->status);
+        $this->assertNotNull($project->final_audio_path);
+        Storage::disk('local')->assertExists($project->final_audio_path);
+    }
+
+    public function test_stitch_run_failure_is_recorded_on_the_row(): void
+    {
+        $project = $this->generatedProject();
+        // Break the stitch after booking: wipe a chunk's audio file reference.
+        $project->chunks()->orderBy('position')->first()->update(['audio_path' => null]);
+        $job = $this->queuedStitch($project);
+
+        (new StitchProjectJob($job->id))->handle(app(ProjectService::class));
+
+        $job->refresh();
+        $this->assertSame(ProjectJobStatus::Failed, $job->status);
+        $this->assertSame('1 chunk(s) still need to be generated before rebuilding.', $job->error);
+    }
+
+    public function test_stitch_cancelled_while_queued_never_touches_the_final(): void
+    {
+        $project = $this->generatedProject();
+        $job = $this->queuedStitch($project);
+        $job->update(['cancel_requested' => true]);
+
+        (new StitchProjectJob($job->id))->handle(app(ProjectService::class));
+
+        $this->assertSame(ProjectJobStatus::Cancelled, $job->refresh()->status);
+        $this->assertNull($project->refresh()->final_audio_path);
+    }
+
+    public function test_rebuild_preflight_rejects_without_booking_a_run(): void
+    {
+        Queue::fake();
+        $project = $this->project(); // nothing generated
+
+        $this->actingAs($this->admin())
+            ->postJson(route('admin.studio.projects.rebuild', $project))
+            ->assertStatus(422)
+            ->assertJsonPath('message', '2 chunk(s) still need to be generated before rebuilding.');
+
+        Queue::assertNothingPushed();
+        $this->assertSame(0, TtsProjectJob::count());
+    }
+
+    public function test_build_final_refuses_while_a_generate_run_is_active(): void
+    {
+        Queue::fake();
+        $project = $this->generatedProject();
+        $this->queuedRun($project);
+
+        $this->actingAs($this->admin())
+            ->postJson(route('admin.studio.projects.rebuild', $project))
+            ->assertStatus(409);
+
+        Queue::assertNothingPushed();
+    }
+
+    public function test_generate_endpoints_refuse_while_a_stitch_run_is_active(): void
+    {
+        Queue::fake();
+        $project = $this->generatedProject();
+        $this->queuedStitch($project);
+        $chunk = $project->chunks()->orderBy('position')->first();
+        $admin = $this->admin();
+
+        // A stitch has no chunk line to join — every render path 409s while it
+        // holds the project, and so does a second Build final.
+        $this->actingAs($admin)
+            ->postJson(route('admin.studio.projects.generate-remaining', $project))
+            ->assertStatus(409);
+        $this->actingAs($admin)
+            ->postJson(route('admin.studio.projects.chunks.queue', [$project, $chunk]))
+            ->assertStatus(409);
+        $this->actingAs($admin)
+            ->postJson(route('admin.studio.projects.chunks.generate', [$project, $chunk]))
+            ->assertStatus(409);
+        $this->actingAs($admin)
+            ->postJson(route('admin.studio.projects.rebuild', $project))
+            ->assertStatus(409);
+
+        Queue::assertNothingPushed();
+    }
+
+    public function test_stitch_status_payload_offers_no_cancel_while_running(): void
+    {
+        $project = $this->generatedProject();
+        $job = $this->queuedStitch($project);
+
+        // Queued: still cancellable (nothing is being written yet).
+        $this->assertNotNull($job->statusPayload()['cancel_url']);
+
+        // Running: one ffmpeg pass, no seam to stop at — Stop disappears.
+        $job->update(['status' => ProjectJobStatus::Running, 'started_at' => now()]);
+        $this->assertNull($job->refresh()->statusPayload()['cancel_url']);
     }
 }

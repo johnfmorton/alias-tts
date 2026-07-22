@@ -10,6 +10,7 @@ use App\Http\Controllers\Concerns\ServesRangedAudio;
 use App\Http\Controllers\Controller;
 use App\Jobs\GenerateProjectChunksJob;
 use App\Jobs\GenerateProjectChunkWorkerJob;
+use App\Jobs\StitchProjectJob;
 use App\Models\PronunciationEntry;
 use App\Models\TtsChunk;
 use App\Models\TtsChunkTake;
@@ -475,6 +476,9 @@ class StudioProjectController extends Controller
             // A background "Generate remaining" run is queued/working — the page
             // resumes following it (polling) instead of offering a fresh start.
             'hasActiveRun' => $activeRun !== null,
+            // Which kind: a 'stitch' run resumes as a Build final follow (busy
+            // Build button + status line), not a generate follow.
+            'activeRunType' => $activeRun?->type,
             // Chunks waiting their turn in that run render their place in line
             // ("queued · next in line") instead of a bare stale/pending badge —
             // the same masking the status poll applies (see queuedLabels()).
@@ -1106,6 +1110,11 @@ class StudioProjectController extends Controller
     public function generateRemaining(Request $request, TtsProject $project): JsonResponse
     {
         if ($active = TtsProjectJob::activeFor($project->id)) {
+            // A stitch run can't be joined — it has no chunk line to enter.
+            if ($active->isStitch()) {
+                return response()->json(['message' => 'The final is being stitched — wait for it to finish before generating.'], 409);
+            }
+
             return response()->json(['ok' => true, 'job' => $active->statusPayload()]);
         }
 
@@ -1213,6 +1222,9 @@ class StudioProjectController extends Controller
         if (! $active) {
             return $this->startSingleChunkRun($request, $project, $chunk);
         }
+        if ($active->isStitch()) {
+            return response()->json(['message' => 'The final is being stitched — wait for it to finish, then regenerate the clip.'], 409);
+        }
         if ($active->cancel_requested) {
             return response()->json(['message' => 'This run is stopping — wait for it to settle, then regenerate the clip.'], 409);
         }
@@ -1230,6 +1242,11 @@ class StudioProjectController extends Controller
             // (its worker may be mid-clip), so a new run can't start yet.
             if (! $run) {
                 return null;
+            }
+            // The generate run finished and a stitch was booked in the gap —
+            // its chunk_ids list is not a render line to insert into.
+            if ($run->isStitch()) {
+                return ['flavor' => 'stitching'];
             }
             if ($run->cancel_requested) {
                 return ['flavor' => 'stopping'];
@@ -1317,6 +1334,9 @@ class StudioProjectController extends Controller
 
         if ($result === null) {
             return $this->startSingleChunkRun($request, $project, $chunk);
+        }
+        if ($result['flavor'] === 'stitching') {
+            return response()->json(['message' => 'The final is being stitched — wait for it to finish, then regenerate the clip.'], 409);
         }
         if ($result['flavor'] === 'stopping') {
             return response()->json(['message' => 'This run is stopping — wait for it to settle, then regenerate the clip.'], 409);
@@ -1563,8 +1583,10 @@ class StudioProjectController extends Controller
      */
     private function activeRunError(TtsProject $project): ?JsonResponse
     {
-        if (TtsProjectJob::activeFor($project->id)) {
-            return response()->json(['message' => 'A background generation run is working on this project — wait for it to finish or stop it first.'], 409);
+        if ($run = TtsProjectJob::activeFor($project->id)) {
+            return response()->json(['message' => $run->isStitch()
+                ? 'The final is being stitched — wait for it to finish.'
+                : 'A background generation run is working on this project — wait for it to finish or stop it first.'], 409);
         }
 
         return null;
@@ -1711,23 +1733,50 @@ class StudioProjectController extends Controller
         return response($bytes, 200)->header('Content-Type', $mime);
     }
 
-    public function rebuild(TtsProject $project): JsonResponse
+    /**
+     * "Build final" — book an async stitch run and return its payload; the
+     * page follows it on the generation-status poll. The stitch runs on the
+     * queue worker because a large project's rebuild (download every clip,
+     * concatenate, encode, upload) outlives the gateway timeout — the
+     * in-request path produced HTTP 504s at 111 chunks, exactly the way
+     * synchronous Regenerate used to.
+     */
+    public function rebuild(Request $request, TtsProject $project): JsonResponse
     {
         if ($error = $this->activeRunError($project)) {
             return $error;
         }
 
         try {
-            $this->projects->rebuild($project);
+            $this->projects->assertRebuildable($project);
         } catch (RuntimeException $e) {
             return response()->json(['message' => $e->getMessage()], 422);
-        } catch (Throwable $e) {
-            report($e);
-
-            return response()->json(['message' => 'Rebuild failed: '.$e->getMessage()], 502);
         }
 
-        return response()->json(['ok' => true]);
+        $job = TtsProjectJob::create([
+            'tts_project_id' => $project->id,
+            'user_id' => $project->user_id,
+            'created_by_id' => $request->user()?->id,
+            'type' => TtsProjectJob::TYPE_STITCH,
+            'chunk_ids' => [],
+            'chunks_total' => $project->chunks()->where('skipped', false)->count(),
+        ]);
+
+        // Same interactive lane as single-chunk Regenerate: a Build final
+        // click is someone waiting at the page, so it may jump bulk runs and
+        // API speech jobs. Dispatched as an instance so the queue is pinned
+        // before dispatch() fires.
+        $stitch = new StitchProjectJob($job->id);
+        if ($queue = config('tts.generation.interactive_queue')) {
+            $stitch->onQueue($queue);
+        }
+        dispatch($stitch);
+
+        // Under QUEUE_CONNECTION=sync the stitch already ran inline — the
+        // refreshed row is terminal and the page settles on its first poll.
+        $job->refresh();
+
+        return response()->json(['ok' => true, 'job' => $job->statusPayload()], $job->isActive() ? 202 : 200);
     }
 
     /**
@@ -1785,22 +1834,26 @@ class StudioProjectController extends Controller
     public function receipt(TtsProject $project): Response
     {
         try {
-            $zip = $this->export->buildReceiptZip($project);
+            $this->export->assertSealed($project);
         } catch (RuntimeException $e) {
             return response()->json(['message' => $e->getMessage()], 422);
-        } catch (Throwable $e) {
-            report($e);
-
-            return response()->json(['message' => 'Receipt failed: '.$e->getMessage()], 502);
         }
 
         // Shared base name so the .zip, the folder it unzips to, and the audio
         // inside all read as a set (love-what-you-do-sealed-bbe2014e.*).
         $filename = $project->sealedBaseName().'.zip';
 
-        return response($zip, 200)
-            ->header('Content-Type', 'application/zip')
-            ->header('Content-Disposition', 'attachment; filename="'.$filename.'"');
+        // Streamed (see ProjectExportService): the sealed audio goes out
+        // immediately and bytes keep flowing while the provenance pass runs,
+        // so a big project can't sit silent past the gateway timeout. The
+        // buffering opt-out makes nginx pass those bytes through as they come.
+        return response()->streamDownload(function () use ($project) {
+            set_time_limit(0);
+            $this->export->streamReceiptZip($project);
+        }, $filename, [
+            'Content-Type' => 'application/zip',
+            'X-Accel-Buffering' => 'no',
+        ]);
     }
 
     /**
@@ -1812,22 +1865,26 @@ class StudioProjectController extends Controller
     public function archive(TtsProject $project): Response
     {
         try {
-            $zip = $this->export->buildArchiveZip($project);
+            $this->export->assertSealed($project);
         } catch (RuntimeException $e) {
             return response()->json(['message' => $e->getMessage()], 422);
-        } catch (Throwable $e) {
-            report($e);
-
-            return response()->json(['message' => 'Archive failed: '.$e->getMessage()], 502);
         }
 
         // Same base name family as the receipt zip, tagged -archive so the two
         // downloads never collide on disk.
         $filename = $project->sealedBaseName().'-archive.zip';
 
-        return response($zip, 200)
-            ->header('Content-Type', 'application/zip')
-            ->header('Content-Disposition', 'attachment; filename="'.$filename.'"');
+        // Streamed clip by clip (see ProjectExportService): the old build
+        // fetched every take AND held the whole zip in memory before the first
+        // byte left — a 504 and a memory spike waiting to happen on a big
+        // project.
+        return response()->streamDownload(function () use ($project) {
+            set_time_limit(0);
+            $this->export->streamArchiveZip($project);
+        }, $filename, [
+            'Content-Type' => 'application/zip',
+            'X-Accel-Buffering' => 'no',
+        ]);
     }
 
     public function finalAudio(Request $request, TtsProject $project): Response

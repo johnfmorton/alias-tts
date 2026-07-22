@@ -6,7 +6,6 @@ use App\Enums\ProjectStatus;
 use App\Models\TtsProject;
 use App\Models\User;
 use App\Models\Voice;
-use App\Services\ProjectExportService;
 use App\Services\ProjectService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\UploadedFile;
@@ -237,7 +236,7 @@ class ProjectSealTest extends TestCase
         $res->assertOk();
         $this->assertSame('application/zip', $res->headers->get('content-type'));
 
-        $bytes = $res->getContent();
+        $bytes = $res->streamedContent();
         $this->assertStringStartsWith('PK', $bytes);
 
         $zip = $this->openZip($bytes);
@@ -264,7 +263,7 @@ class ProjectSealTest extends TestCase
         $this->actingAs($admin)->postJson(route('admin.studio.projects.seal', $project))->assertOk();
 
         $res = $this->actingAs($admin)->get(route('admin.studio.projects.receipt', $project));
-        $zip = $this->openZip($res->getContent());
+        $zip = $this->openZip($res->streamedContent());
         $receipt = $zip->getFromName('receipt.html');
         $zip->close();
 
@@ -287,7 +286,7 @@ class ProjectSealTest extends TestCase
         $this->actingAs($admin)->postJson(route('admin.studio.projects.seal', $project))->assertOk();
 
         $res = $this->actingAs($admin)->get(route('admin.studio.projects.receipt', $project));
-        $zip = $this->openZip($res->getContent());
+        $zip = $this->openZip($res->streamedContent());
 
         $manifest = json_decode($zip->getFromName('manifest.json'), true);
         $final = $zip->getFromName($this->sealedAudioName($project));
@@ -314,7 +313,7 @@ class ProjectSealTest extends TestCase
         $this->actingAs($admin)->postJson(route('admin.studio.projects.seal', $project))->assertOk();
 
         $res = $this->actingAs($admin)->get(route('admin.studio.projects.receipt', $project));
-        $zip = $this->openZip($res->getContent());
+        $zip = $this->openZip($res->streamedContent());
         $manifest = json_decode($zip->getFromName('manifest.json'), true);
         $receipt = $zip->getFromName('receipt.html');
         $zip->close();
@@ -351,7 +350,7 @@ class ProjectSealTest extends TestCase
         $svc->seal($project->refresh(), $admin);
 
         $res = $this->actingAs($admin)->get(route('admin.studio.projects.receipt', $project));
-        $zip = $this->openZip($res->getContent());
+        $zip = $this->openZip($res->streamedContent());
         $manifest = json_decode($zip->getFromName('manifest.json'), true);
         $zip->close();
 
@@ -373,7 +372,7 @@ class ProjectSealTest extends TestCase
         app(ProjectService::class)->seal($project->refresh(), $admin);
 
         $res = $this->actingAs($admin)->get(route('admin.studio.projects.receipt', $project));
-        $zip = $this->openZip($res->getContent());
+        $zip = $this->openZip($res->streamedContent());
         $manifest = json_decode($zip->getFromName('manifest.json'), true);
         $zip->close();
 
@@ -408,7 +407,7 @@ class ProjectSealTest extends TestCase
         $svc->seal($project->refresh(), $admin);
 
         $res = $this->actingAs($admin)->get(route('admin.studio.projects.receipt', $project));
-        $zip = $this->openZip($res->getContent());
+        $zip = $this->openZip($res->streamedContent());
         $manifest = json_decode($zip->getFromName('manifest.json'), true);
         $zip->close();
 
@@ -430,7 +429,7 @@ class ProjectSealTest extends TestCase
         Storage::disk('local')->put($project->final_audio_path, 'TAMPERED-NOT-THE-APPROVED-BYTES');
 
         $res = $this->actingAs($admin)->get(route('admin.studio.projects.receipt', $project));
-        $zip = $this->openZip($res->getContent());
+        $zip = $this->openZip($res->streamedContent());
         $final = $zip->getFromName($this->sealedAudioName($project));
         $zip->close();
 
@@ -439,10 +438,12 @@ class ProjectSealTest extends TestCase
 
     public function test_export_service_receipt_has_no_client_side_verifier(): void
     {
+        $admin = $this->admin();
         $project = $this->readyProject();
-        app(ProjectService::class)->seal($project, $this->admin());
+        app(ProjectService::class)->seal($project, $admin);
 
-        $zip = $this->openZip(app(ProjectExportService::class)->buildReceiptZip($project));
+        $res = $this->actingAs($admin)->get(route('admin.studio.projects.receipt', $project));
+        $zip = $this->openZip($res->streamedContent());
         $receipt = $zip->getFromName('receipt.html');
         $zip->close();
 
@@ -489,11 +490,11 @@ class ProjectSealTest extends TestCase
         $res->assertOk();
         $this->assertSame('application/zip', $res->headers->get('content-type'));
         $this->assertStringContainsString(
-            'filename="'.$project->sealedBaseName().'-archive.zip"',
+            'filename='.$project->sealedBaseName().'-archive.zip',
             (string) $res->headers->get('content-disposition'),
         );
 
-        $zip = $this->openZip($res->getContent());
+        $zip = $this->openZip($res->streamedContent());
         foreach ([
             'receipt.html',
             'manifest.json',
@@ -544,7 +545,7 @@ class ProjectSealTest extends TestCase
         $res = $this->actingAs($admin)->get(route('admin.studio.projects.archive', $project));
         $res->assertOk();
 
-        $zip = $this->openZip($res->getContent());
+        $zip = $this->openZip($res->streamedContent());
         $clips = [];
         for ($i = 0; $i < $zip->numFiles; $i++) {
             $name = $zip->getNameIndex($i);
@@ -578,7 +579,7 @@ class ProjectSealTest extends TestCase
         $res = $this->actingAs($admin)->get(route('admin.studio.projects.archive', $project));
         $res->assertOk();
 
-        $zip = $this->openZip($res->getContent());
+        $zip = $this->openZip($res->streamedContent());
         $manifest = json_decode($zip->getFromName('manifest.json'), true);
         $zip->close();
 
@@ -617,7 +618,7 @@ class ProjectSealTest extends TestCase
         $res = $this->actingAs($admin)->get(route('admin.studio.projects.receipt', $project));
         $res->assertOk();
         $this->assertStringContainsString(
-            'filename="my-project-sealed-'.$short.'.zip"',
+            'filename=my-project-sealed-'.$short.'.zip',
             (string) $res->headers->get('content-disposition'),
         );
     }

@@ -2398,6 +2398,55 @@ function initStudioProject() {
         }
     });
 
+    // ---- Async "Build final" -------------------------------------------------
+    // The stitch runs on the queue worker (the old in-request stitch died on
+    // the gateway timeout — HTTP 504 — once a project grew past what ~60s of
+    // download+concat+encode can cover). Build final books a stitch run, then
+    // follows it on the same generation-status poll the generate runs use.
+    let stitchTimer = null;
+
+    // Settle the page from a terminal stitch payload. autoplay only when the
+    // user just clicked Build final — a resumed page (or a stitch that finished
+    // while they were elsewhere) must not start playback on its own.
+    function applyStitchResult(job, autoplay) {
+        if (!job) return;
+        setStatus(finalStatus, job.message, job.tone || undefined);
+        if (job.status !== 'completed') return;
+        finalAudio.src = bust(finalUrl);
+        hasFinal = true;
+        finalPlayer?.classList.remove('hidden');
+        document.getElementById('project-final-placeholder')?.remove();
+        if (autoplay) finalAudio.play().catch(() => {});
+        isSealed = false; // new bytes — the server cleared the seal; offer to re-seal
+        setProjectStatus('ready'); // also re-lights the action cluster (Download leads)
+    }
+
+    // Follow an active stitch run until it settles. The latest run IS the
+    // stitch — nothing else can start while it holds the project (the join
+    // endpoints 409). No-op while already following.
+    function followStitch(autoplay) {
+        if (stitchTimer) return;
+        startBusy(rebuildBtn, 'Rebuilding…');
+        const tick = async () => {
+            try {
+                const res = await fetch(generationStatusUrl, { headers: { 'Accept': 'application/json' } });
+                if (res.ok) {
+                    const data = await res.json();
+                    if (!data.job || !data.job.active) {
+                        stitchTimer = null;
+                        endBusy(rebuildBtn);
+                        applyStitchResult(data.job, autoplay);
+                        reflectActionState();
+                        return;
+                    }
+                    setStatus(finalStatus, data.job.message, data.job.tone || undefined);
+                }
+            } catch { /* transient — keep polling */ }
+            stitchTimer = setTimeout(tick, RUN_POLL_MS);
+        };
+        stitchTimer = setTimeout(tick, 800); // first read right away-ish
+    }
+
     async function rebuild() {
         startBusy(rebuildBtn, 'Rebuilding…');
         setStatus(finalStatus, 'Stitching chunks…');
@@ -2407,18 +2456,20 @@ function initStudioProject() {
                 headers: { 'X-CSRF-TOKEN': csrfToken(), 'Accept': 'application/json' },
             });
             if (!res.ok) throw new Error(await errorMessage(res));
-            finalAudio.src = bust(finalUrl);
-            hasFinal = true;
-            finalPlayer?.classList.remove('hidden');
-            document.getElementById('project-final-placeholder')?.remove();
-            finalAudio.play().catch(() => {});
-            isSealed = false; // new bytes — the server cleared the seal; offer to re-seal
-            setProjectStatus('ready'); // also re-lights the action cluster (Download leads)
-            setStatus(finalStatus, '✓ Rebuilt.', 'ok');
+            const data = await res.json();
+            if (data.job?.active) {
+                // Booked — the worker stitches while this page follows along.
+                setStatus(finalStatus, data.job.message, data.job.tone || undefined);
+                followStitch(true);
+            } else {
+                // Inline finish (sync queue) — settle without a poll.
+                endBusy(rebuildBtn);
+                applyStitchResult(data.job, true);
+                reflectActionState();
+            }
         } catch (err) {
-            setStatus(finalStatus, `✗ ${err.message}`, 'error');
-        } finally {
             endBusy(rebuildBtn);
+            setStatus(finalStatus, `✗ ${err.message}`, 'error');
         }
     }
 
@@ -3165,7 +3216,12 @@ function initStudioProject() {
 
     // A run dispatched earlier is still working — pick it back up. (This is the
     // whole point of the background run: leaving the page no longer kills it.)
-    if (root.dataset.activeRun === '1') followRun();
+    if (root.dataset.activeRun === '1') {
+        // A stitch run resumes as a Build final follow (busy Build button +
+        // status line), not a generate follow.
+        if (root.dataset.activeRunType === 'stitch') followStitch(false);
+        else followRun();
+    }
 
     // Don't let unsaved chunk edits vanish on navigation. Two layers:
     //

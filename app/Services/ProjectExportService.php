@@ -7,7 +7,8 @@ use App\Models\TtsChunkTake;
 use App\Models\TtsProject;
 use Illuminate\Support\Facades\Storage;
 use RuntimeException;
-use ZipArchive;
+use ZipStream\CompressionMethod;
+use ZipStream\ZipStream;
 
 /**
  * Builds the "approved final" receipt: a portable .zip containing the frozen
@@ -17,82 +18,113 @@ use ZipArchive;
  * /verify — upload the audio there and the server re-hashes it and matches it
  * against the sealed approval.
  *
- * Modeled on {@see VoiceService::export()}. The load-bearing value is the byte
- * SHA-256 of the SEALED snapshot (computed at seal time, persisted on the
- * project); the export ships those exact bytes so the printed hash always matches
- * the file in the zip. The receiptData() view-data is shared with the /verify page.
+ * The zips are STREAMED (ZipStream writing to php://output via streamDownload):
+ * a big project's archive is hundreds of clip downloads, which used to run in
+ * full — and buffer in full — before the first response byte, the recipe for a
+ * gateway 504 and a memory spike. Streaming sends the sealed audio immediately
+ * and keeps bytes flowing as each clip is fetched, so the gateway timer resets
+ * and no more than one clip is ever held in memory.
+ *
+ * The load-bearing value is the byte SHA-256 of the SEALED snapshot (computed at
+ * seal time, persisted on the project); the export ships those exact bytes so the
+ * printed hash always matches the file in the zip. The receiptData() view-data is
+ * shared with the /verify page.
  */
 class ProjectExportService
 {
     public function __construct(private readonly ProjectService $projects) {}
 
-    public function buildReceiptZip(TtsProject $project): string
+    /**
+     * The cheap preflight for both downloads, run BEFORE the response starts
+     * streaming (a refusal must be a JSON 422, not a truncated zip).
+     */
+    public function assertSealed(TtsProject $project): void
     {
         if (! $project->isSealed()) {
             throw new RuntimeException('This project has not been sealed yet.');
         }
 
-        $bytes = $this->projects->sealedAudioBytes($project);
-        if ($bytes === null) {
+        if (! $project->sealed_audio_path
+            || ! Storage::disk(config('tts.storage_disk'))->exists($project->sealed_audio_path)) {
             throw new RuntimeException('The sealed audio is missing — re-seal the project.');
         }
-
-        $data = $this->receiptData($project);
-
-        return $this->zipUp([
-            $data['finalName'] => $bytes,
-            'receipt.html' => view('admin.studio.projects.receipt', $data)->render(),
-            'manifest.json' => json_encode($data['manifest'], JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES),
-        ]);
     }
 
     /**
-     * The receipt zip plus a clips/ directory holding EVERY saved take in the
-     * project — the local record a user downloads before deleting a project
-     * from the site. The manifest gains a `clips` listing (one row per clip,
-     * with its SHA-256) so the alternates are provable, not just present.
+     * Stream the receipt .zip to php://output. Entry order is deliberate: the
+     * sealed audio goes out first so bytes flow immediately; the provenance
+     * pass (which may still need to hash legacy clips) runs after.
      */
-    public function buildArchiveZip(TtsProject $project): string
+    public function streamReceiptZip(TtsProject $project): void
     {
-        if (! $project->isSealed()) {
-            throw new RuntimeException('Approve the project as final first — the archive packages the approved audio, its receipt, and every clip.');
-        }
-
         $bytes = $this->projects->sealedAudioBytes($project);
         if ($bytes === null) {
             throw new RuntimeException('The sealed audio is missing — re-seal the project.');
         }
 
+        $zip = $this->openZip();
+        $this->addAudio($zip, $this->finalName($project), $bytes);
+        unset($bytes);
+
         $data = $this->receiptData($project);
-        [$clips, $clipRows] = $this->clipEntries($project);
+        $zip->addFile(fileName: 'receipt.html', data: view('admin.studio.projects.receipt', $data)->render());
+        $zip->addFile(fileName: 'manifest.json', data: json_encode($data['manifest'], JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES));
+        $zip->finish();
+    }
+
+    /**
+     * Stream the everything-zip: the receipt package plus a clips/ directory
+     * holding EVERY saved take in the project — the local record a user
+     * downloads before deleting a project from the site. The manifest gains a
+     * `clips` listing (one row per clip, with its SHA-256) so the alternates
+     * are provable, not just present.
+     *
+     * Clips stream one at a time as they download; their hashes are collected
+     * along the way and reused for the receipt's per-chunk provenance, so no
+     * clip is fetched twice.
+     */
+    public function streamArchiveZip(TtsProject $project): void
+    {
+        $bytes = $this->projects->sealedAudioBytes($project);
+        if ($bytes === null) {
+            throw new RuntimeException('The sealed audio is missing — re-seal the project.');
+        }
+
+        $project->loadMissing('voice', 'chunks.takes', 'chunks.voice');
+
+        $zip = $this->openZip();
+        $this->addAudio($zip, $this->finalName($project), $bytes);
+        unset($bytes);
+
+        [$clipRows, $sourceShas] = $this->streamClips($zip, $project);
+
+        $data = $this->receiptData($project, $sourceShas);
 
         $manifest = $data['manifest'];
         $manifest['clips'] = $clipRows;
         $manifest['note'] .= ' The clips/ directory archives every saved take still in the project ("selected" marks '
             .'the one in the final); a take whose audio file has gone missing is listed with "file": null.';
 
-        return $this->zipUp(array_merge([
-            $data['finalName'] => $bytes,
-            'receipt.html' => view('admin.studio.projects.receipt', $data)->render(),
-            'manifest.json' => json_encode($manifest, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES),
-        ], $clips));
+        $zip->addFile(fileName: 'receipt.html', data: view('admin.studio.projects.receipt', $data)->render());
+        $zip->addFile(fileName: 'manifest.json', data: json_encode($manifest, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES));
+        $zip->finish();
     }
 
     /**
-     * Every saved clip for the archive: [zip entries (name => bytes), manifest
-     * rows]. One clip per distinct audio file — a legacy in-place set is many
-     * take rows sharing one file — numbered oldest-first within each chunk, the
-     * selected one suffixed `-selected`. A take whose file is gone from storage
-     * is still listed (file/sha256 null) so the archive never silently
-     * under-reports what existed.
+     * Stream every saved clip into clips/ and return [manifest rows, chunk id
+     * => selected clip sha]. One clip per distinct audio file — a legacy
+     * in-place set is many take rows sharing one file — numbered oldest-first
+     * within each chunk, the selected one suffixed `-selected`. A take whose
+     * file is gone from storage is still listed (file/sha256 null) so the
+     * archive never silently under-reports what existed.
      *
-     * @return array{0: array<string, string>, 1: list<array<string, mixed>>}
+     * @return array{0: list<array<string, mixed>>, 1: array<string, string>}
      */
-    private function clipEntries(TtsProject $project): array
+    private function streamClips(ZipStream $zip, TtsProject $project): array
     {
         $disk = Storage::disk(config('tts.storage_disk'));
-        $files = [];
         $rows = [];
+        $sourceShas = [];
 
         foreach ($project->chunks as $chunk) {
             // Oldest first (the relation is newest-first) so clip numbers are stable.
@@ -113,10 +145,17 @@ class ProjectExportService
                 $bytes = $take->audio_path && $disk->exists($take->audio_path) ? $disk->get($take->audio_path) : null;
 
                 $name = null;
+                $sha = null;
                 if ($bytes !== null) {
                     $ext = pathinfo((string) $take->audio_path, PATHINFO_EXTENSION) ?: 'wav';
                     $name = sprintf('clips/chunk-%02d/take-%02d%s.%s', $chunk->position + 1, $i + 1, $selected ? '-selected' : '', $ext);
-                    $files[$name] = $bytes;
+                    $sha = hash('sha256', $bytes);
+                    $this->addAudio($zip, $name, $bytes);
+                    unset($bytes);
+
+                    if ($selected) {
+                        $sourceShas[$chunk->id] = $sha;
+                    }
                 }
 
                 $rows[] = [
@@ -127,33 +166,43 @@ class ProjectExportService
                     'seed' => $take->seed,
                     'duration_ms' => $take->duration_ms,
                     'text' => $take->text,
-                    'sha256' => $bytes !== null ? hash('sha256', $bytes) : null,
+                    'sha256' => $sha,
                 ];
             }
         }
 
-        return [$files, $rows];
+        return [$rows, $sourceShas];
     }
 
-    /** Zip the given name => bytes entries and return the archive's bytes. */
-    private function zipUp(array $entries): string
+    /**
+     * A ZipStream writing to php://output, headers left to streamDownload().
+     * flushOutput pushes each entry through PHP's output buffer as it lands —
+     * the gateway timer feeds on those bytes — but its ob_flush() would leak
+     * the capture buffer TestResponse::streamedContent() reads, so it stays
+     * off under PHPUnit.
+     */
+    private function openZip(): ZipStream
     {
-        $tmp = tempnam(sys_get_temp_dir(), 'receipt_').'.zip';
+        return new ZipStream(sendHttpHeaders: false, flushOutput: ! app()->runningUnitTests());
+    }
 
-        try {
-            $zip = new ZipArchive;
-            if ($zip->open($tmp, ZipArchive::CREATE | ZipArchive::OVERWRITE) !== true) {
-                throw new RuntimeException('Could not create the archive.');
-            }
-            foreach ($entries as $name => $bytes) {
-                $zip->addFromString($name, $bytes);
-            }
-            $zip->close();
+    /** Audio bytes are already compressed (MP3) or raw speed-sensitive (WAV) — STORE, don't deflate. */
+    private function addAudio(ZipStream $zip, string $name, string $bytes): void
+    {
+        $zip->addFile(fileName: $name, data: $bytes, compressionMethod: CompressionMethod::STORE);
+    }
 
-            return (string) file_get_contents($tmp);
-        } finally {
-            @unlink($tmp);
-        }
+    /**
+     * The in-zip audio name, matching the .zip and the folder it unzips to
+     * (e.g. love-what-you-do-sealed-bbe2014e.mp3) rather than a bare
+     * "final.mp3". This name flows into receipt.html, the manifest, and the
+     * verify page.
+     */
+    private function finalName(TtsProject $project): string
+    {
+        $ext = pathinfo((string) $project->final_audio_path, PATHINFO_EXTENSION) ?: 'mp3';
+
+        return $project->sealedBaseName().'.'.$ext;
     }
 
     /**
@@ -161,19 +210,18 @@ class ProjectExportService
      * (offline record) and the hosted /verify result so both render the identical
      * seal panel + per-chunk provenance table (including the selected take's text).
      *
+     * @param  array<string, string>  $sourceShas  chunk id => already-computed sha of its
+     *                                             selected audio (the archive stream
+     *                                             collects these while zipping clips)
      * @return array{project: TtsProject, chunks: list<array<string, mixed>>, manifest: array<string, mixed>, finalName: string}
      */
-    public function receiptData(TtsProject $project): array
+    public function receiptData(TtsProject $project, array $sourceShas = []): array
     {
         $project->loadMissing('voice', 'chunks.takes', 'chunks.voice');
 
-        $ext = pathinfo((string) $project->final_audio_path, PATHINFO_EXTENSION) ?: 'mp3';
-        // Name the audio to match the .zip and the folder it unzips to (e.g.
-        // love-what-you-do-sealed-bbe2014e.mp3) rather than a bare "final.mp3".
-        // This name flows into receipt.html, the manifest, and the verify page.
-        $finalName = $project->sealedBaseName().'.'.$ext;
+        $finalName = $this->finalName($project);
 
-        $chunks = $this->chunkRows($project);
+        $chunks = $this->chunkRows($project, $sourceShas);
 
         return [
             'project' => $project,
@@ -188,9 +236,15 @@ class ProjectExportService
      * hash of each chunk's SELECTED take audio — input provenance only, since
      * rebuild() trims/stitches/re-encodes before the final (see the manifest note).
      *
+     * The hash comes from the caller's already-computed set, else the take's
+     * stored audio_sha256 (stamped at record time); only a legacy take from
+     * before that column falls back to downloading and hashing the clip —
+     * the O(chunks) fetch pass that used to make receipts and /verify crawl.
+     *
+     * @param  array<string, string>  $sourceShas
      * @return list<array<string, mixed>>
      */
-    private function chunkRows(TtsProject $project): array
+    private function chunkRows(TtsProject $project, array $sourceShas = []): array
     {
         $disk = Storage::disk(config('tts.storage_disk'));
         $rows = [];
@@ -198,8 +252,8 @@ class ProjectExportService
         foreach ($project->chunks as $chunk) {
             $selected = $chunk->takes->firstWhere('audio_path', $chunk->audio_path);
 
-            $sha = null;
-            if ($chunk->audio_path && $disk->exists($chunk->audio_path)) {
+            $sha = $sourceShas[$chunk->id] ?? $selected?->audio_sha256;
+            if ($sha === null && $chunk->audio_path && $disk->exists($chunk->audio_path)) {
                 $sha = hash('sha256', $disk->get($chunk->audio_path));
             }
 

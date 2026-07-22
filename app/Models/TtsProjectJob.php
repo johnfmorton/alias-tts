@@ -4,6 +4,7 @@ namespace App\Models;
 
 use App\Enums\ProjectJobStatus;
 use App\Jobs\GenerateProjectChunksJob;
+use App\Jobs\StitchProjectJob;
 use App\Support\GenerationEstimator;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Concerns\HasUuids;
@@ -23,6 +24,11 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 class TtsProjectJob extends Model
 {
     use HasUuids;
+
+    public const TYPE_GENERATE = 'generate_chunks';
+
+    /** A "Build final" stitch run — executed by {@see StitchProjectJob}. */
+    public const TYPE_STITCH = 'stitch';
 
     protected $fillable = [
         'tts_project_id',
@@ -78,6 +84,16 @@ class TtsProjectJob extends Model
     }
 
     /**
+     * A "Build final" stitch run. It occupies the project like a generate run
+     * (the guards 409 the other kind while one is active) but carries no chunk
+     * list — the worker stitches whatever is selected when it runs.
+     */
+    public function isStitch(): bool
+    {
+        return $this->type === self::TYPE_STITCH;
+    }
+
+    /**
      * Executed by claim-based worker jobs (bounded concurrency) rather than the
      * legacy serial loop. The claim cursor `chunks_claimed` is only meaningful
      * for these runs; the serial loop's cursor stays chunks_done+chunks_failed.
@@ -117,7 +133,7 @@ class TtsProjectJob extends Model
         $processed = $this->chunks_done + $this->chunks_failed;
         $total = max(1, $this->chunks_total);
 
-        [$message, $tone] = match (true) {
+        [$message, $tone] = $this->isStitch() ? $this->stitchMessage() : match (true) {
             $this->status === ProjectJobStatus::Queued && $this->cancel_requested,
             $this->status === ProjectJobStatus::Running && $this->cancel_requested => ['Stopping after the current clip…', null],
             $this->status === ProjectJobStatus::Queued => ['Waiting for a queue worker…', null],
@@ -147,6 +163,7 @@ class TtsProjectJob extends Model
 
         return [
             'id' => $this->id,
+            'type' => $this->type,
             'status' => $this->status->value,
             'active' => $this->isActive(),
             'cancel_requested' => $this->cancel_requested,
@@ -161,8 +178,33 @@ class TtsProjectJob extends Model
             'finished_human' => $this->finished_at?->diffForHumans(),
             'eta_seconds' => $eta['eta_seconds'],
             'eta_human' => $eta['eta_human'],
-            'cancel_url' => $this->isActive() ? route('admin.jobs.cancel', $this) : null,
+            // A running stitch is one ffmpeg pass — there is no between-chunks
+            // seam to stop at, so Stop is only offered while it still waits.
+            'cancel_url' => $this->isActive() && ! ($this->isStitch() && $this->status === ProjectJobStatus::Running)
+                ? route('admin.jobs.cancel', $this)
+                : null,
         ];
+    }
+
+    /**
+     * [message, tone] for a stitch run. All-or-nothing, so there is no clip
+     * counter to narrate — just the phase. Cancelled is only reachable while
+     * the run was still queued (a running stitch can't be stopped).
+     *
+     * @return array{0: string, 1: ?string}
+     */
+    private function stitchMessage(): array
+    {
+        $n = $this->chunks_total;
+
+        return match (true) {
+            $this->status === ProjectJobStatus::Queued && $this->cancel_requested => ['Stopping…', null],
+            $this->status === ProjectJobStatus::Queued => ['Waiting for a queue worker…', null],
+            $this->status === ProjectJobStatus::Running => [sprintf('Stitching %d clip%s into the final…', $n, $n === 1 ? '' : 's'), null],
+            $this->status === ProjectJobStatus::Completed => ['✓ Final rebuilt.', 'ok'],
+            $this->status === ProjectJobStatus::Failed => ['✗ '.($this->error ?: 'The rebuild failed.'), 'error'],
+            default => ['Stopped before it started.', null],
+        };
     }
 
     /**
@@ -187,7 +229,8 @@ class TtsProjectJob extends Model
      */
     private function etaMs(int $processed): ?int
     {
-        if ($this->status !== ProjectJobStatus::Running) {
+        // A stitch has no per-chunk cadence to extrapolate from.
+        if ($this->isStitch() || $this->status !== ProjectJobStatus::Running) {
             return null;
         }
 
