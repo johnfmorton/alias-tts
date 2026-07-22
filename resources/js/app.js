@@ -3624,6 +3624,114 @@ function enhanceStudioPlayers(scope) {
 
 initStudioProject();
 
+// ---- Studio project "Revise text" page --------------------------------------
+// Paste the updated manuscript, preview the chunk-level diff (AJAX), then the
+// plain form POST applies it. The preview is advisory — the server recomputes
+// the plan on apply — so this only has to render honestly, not stay in sync.
+function initReviseText() {
+    const root = document.getElementById('revise-root');
+    if (!root) return;
+
+    const textarea = document.getElementById('revise-text');
+    const previewBtn = document.getElementById('revise-preview');
+    const results = document.getElementById('revise-results');
+    const status = document.getElementById('revise-status');
+
+    const KINDS = {
+        update: ['updated', 'border-amber-500/30 bg-amber-500/10 text-amber-300'],
+        insert: ['new', 'border-emerald-500/30 bg-emerald-500/10 text-emerald-300'],
+        delete: ['removed', 'border-red-500/30 bg-red-500/10 text-red-300'],
+        moved: ['moved', 'border-cyan-500/30 bg-cyan-500/10 text-cyan-300'],
+        break: ['pause change', 'border-zinc-600 bg-zinc-800/60 text-zinc-300'],
+    };
+
+    const row = (kind, text, oldText) => {
+        const el = document.createElement('div');
+        el.className = 'rounded-lg border border-zinc-800 bg-zinc-950/60 p-3 text-sm';
+        const [label, badgeClasses] = KINDS[kind];
+        const badge = document.createElement('span');
+        badge.className = `mb-1.5 inline-flex rounded-md border px-2 py-0.5 text-xs ${badgeClasses}`;
+        badge.textContent = label;
+        el.append(badge);
+        if (oldText && oldText !== text) {
+            const old = document.createElement('p');
+            old.className = 'text-zinc-500 line-through';
+            old.textContent = oldText;
+            el.append(old);
+        }
+        if (kind !== 'delete') {
+            const now = document.createElement('p');
+            now.className = 'text-zinc-200';
+            now.textContent = text;
+            el.append(now);
+        }
+        return el;
+    };
+
+    async function preview() {
+        startBusy(previewBtn, 'Previewing…');
+        setStatus(status, '');
+        try {
+            const res = await fetch(root.dataset.previewUrl, {
+                method: 'POST',
+                headers: { 'X-CSRF-TOKEN': csrfToken(), 'Accept': 'application/json', 'Content-Type': 'application/json' },
+                body: JSON.stringify({ text: textarea.value }),
+            });
+            if (!res.ok) throw new Error(await errorMessage(res));
+            render(await res.json());
+        } catch (err) {
+            setStatus(status, `✗ ${err.message}`, 'error');
+        } finally {
+            endBusy(previewBtn);
+        }
+    }
+
+    function render(data) {
+        results.replaceChildren();
+        results.classList.remove('hidden', 'opacity-50');
+
+        const c = data.counts;
+        const unchanged = c.keep - c.moved - c.break_only;
+        const summary = document.createElement('div');
+        summary.className = 'rounded-lg border border-zinc-800 bg-zinc-900/70 px-4 py-3 text-sm text-zinc-200';
+        summary.textContent = data.changed
+            ? [
+                `${unchanged} unchanged`,
+                c.update && `${c.update} updated`,
+                c.insert && `${c.insert} new`,
+                c.delete && `${c.delete} removed`,
+                c.moved && `${c.moved} moved`,
+                c.break_only && `${c.break_only} pause-only`,
+            ].filter(Boolean).join(' · ')
+            : '✓ No changes — the project already matches this text.';
+        results.append(summary);
+
+        // Every change came from the pipeline, not the paste: say so, or the
+        // dictionary-repair flow reads as a bug ("I didn't edit anything!").
+        if (data.pipeline_only && data.changed) {
+            const note = document.createElement('div');
+            note.className = 'rounded-lg border border-cyan-500/20 bg-cyan-500/5 px-4 py-3 text-sm text-cyan-300';
+            note.textContent = 'You didn’t change the text — these updates come from your pronunciation dictionary or text settings.';
+            results.append(note);
+        }
+
+        (data.changes || []).forEach((ch) => results.append(row(ch.kind, ch.text, ch.old_text)));
+        (data.deletes || []).forEach((d) => results.append(row('delete', null, d.text)));
+    }
+
+    previewBtn.addEventListener('click', preview);
+    // A preview describes the text it was computed from — dim it the moment
+    // the textarea moves on, so stale results never read as current.
+    textarea.addEventListener('input', () => {
+        if (!results.classList.contains('hidden')) {
+            results.classList.add('opacity-50');
+            setStatus(status, 'Text changed — preview again for a current diff.');
+        }
+    });
+}
+
+initReviseText();
+
 // Skin every statically-rendered player on the page (voices table, health,
 // the Studio inspector) — enhancing is idempotent, so pages that already
 // enhance their own scope are unaffected. Dynamically-built players are

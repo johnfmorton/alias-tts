@@ -25,6 +25,7 @@ use App\Services\ProjectService;
 use App\Services\Pronunciation\PronunciationDetector;
 use App\Services\Pronunciation\PronunciationDictionary;
 use App\Services\Pronunciation\PronunciationSubstituter;
+use App\Services\Settings\SettingsManager;
 use App\Services\SpokenQuotes;
 use App\Services\TextNormalizer;
 use App\Services\Tts\ChatterboxTuning;
@@ -811,6 +812,129 @@ class StudioProjectController extends Controller
 
         return redirect()->route('admin.studio.projects.show', $project)
             ->with('success', 'Project reset — generate the chunks below.');
+    }
+
+    /**
+     * "Revise text" — the surgical sibling of Start over: paste the updated
+     * manuscript, preview which chunks it touches, commit, re-render only
+     * those. The form prefills the CANONICAL current text (chunks joined in
+     * order), not the stale source_text.
+     */
+    public function revise(Request $request, TtsProject $project): View
+    {
+        return view('admin.studio.projects.revise', [
+            'project' => $project,
+            'foreignOwner' => $this->foreignOwner($request, $project),
+            'canonicalText' => $this->projects->canonicalText($project),
+        ]);
+    }
+
+    /**
+     * Preview a revision (AJAX, JSON): the change plan without touching
+     * anything. Runs under the OWNER's settings + dictionary — a SuperAdmin
+     * revising a foreign project must produce the owner's chunks.
+     */
+    public function revisePreview(Request $request, TtsProject $project): JsonResponse
+    {
+        $validator = Validator::make($request->all(), [
+            'text' => ['required', 'string', 'max:'.(int) config('tts.max_async_text_length', 40000)],
+        ]);
+        if ($validator->fails()) {
+            return response()->json(['message' => $validator->errors()->first()], 422);
+        }
+
+        $ownerId = $this->projectOwnerId($request, $project);
+        app(SettingsManager::class)->applyForUser($ownerId);
+
+        try {
+            $revision = $this->projects->planRevision(
+                $project,
+                (string) $request->input('text'),
+                $this->dictionary->approvedMap($ownerId),
+                (string) config('tts.spoken_quotes', SpokenQuotes::MODE_OFF),
+            );
+        } catch (RuntimeException $e) {
+            return response()->json(['message' => $e->getMessage()], 422);
+        }
+
+        $plan = $revision['plan'];
+
+        // Keeps stay collapsed behind their count; the preview lists only what
+        // changes, in final document order, plus the removals.
+        $changes = collect($plan['ops'])
+            ->filter(fn (array $op) => $op['op'] !== 'keep' || $op['moved'] || $op['break_changed'])
+            ->map(fn (array $op) => [
+                'kind' => $op['op'] === 'keep' ? ($op['moved'] ? 'moved' : 'break') : $op['op'],
+                'position' => $op['position'],
+                'text' => $op['text'],
+                'old_text' => $op['old_text'] ?? null,
+            ])
+            ->values()
+            ->all();
+
+        return response()->json([
+            'ok' => true,
+            'changed' => $plan['changed'],
+            'pipeline_only' => $revision['pipeline_only'],
+            'counts' => $plan['counts'],
+            'total' => count($plan['ops']),
+            'changes' => $changes,
+            'deletes' => array_map(fn (array $d) => ['text' => $d['text']], $plan['deletes']),
+        ]);
+    }
+
+    /**
+     * Commit a revision. The plan is recomputed server-side from the submitted
+     * text — the preview is advisory, so nothing stashed can go stale between
+     * the two requests. Ordinary form POST (redirect + flash), like reset().
+     */
+    public function reviseApply(Request $request, TtsProject $project): RedirectResponse
+    {
+        $data = $request->validate([
+            'text' => ['required', 'string', 'max:'.(int) config('tts.max_async_text_length', 40000)],
+        ]);
+
+        // Same occupancy rule as every other mutation: a generate or stitch
+        // run owns the chunk list while it's active.
+        if (TtsProjectJob::activeFor($project->id)) {
+            return redirect()->route('admin.studio.projects.revise', $project)
+                ->withInput()
+                ->with('error', 'A background run is working on this project — wait for it to finish before revising.');
+        }
+
+        $ownerId = $this->projectOwnerId($request, $project);
+        app(SettingsManager::class)->applyForUser($ownerId);
+
+        try {
+            $result = $this->projects->reviseFromText(
+                $project,
+                $data['text'],
+                $this->dictionary->approvedMap($ownerId),
+                (string) config('tts.spoken_quotes', SpokenQuotes::MODE_OFF),
+            );
+        } catch (RuntimeException $e) {
+            return redirect()->route('admin.studio.projects.revise', $project)
+                ->withInput()
+                ->with('error', $e->getMessage());
+        }
+
+        if (! $result['changed']) {
+            return redirect()->route('admin.studio.projects.show', $project)
+                ->with('success', 'Nothing to update — the project already matches the pasted text.');
+        }
+
+        $c = $result['counts'];
+        $parts = array_filter([
+            $c['update'] ? $c['update'].' updated' : null,
+            $c['insert'] ? $c['insert'].' new' : null,
+            $c['delete'] ? $c['delete'].' removed' : null,
+            $c['moved'] ? $c['moved'].' moved' : null,
+        ]);
+        $needsRender = $c['update'] + $c['insert'] > 0;
+
+        return redirect()->route('admin.studio.projects.show', $project)
+            ->with('success', 'Revision applied — '.implode(', ', $parts).'.'
+                .($needsRender ? ' Generate the changed chunks, then build the final.' : ' Build the final to apply the new order.'));
     }
 
     /** Insert a new (empty) chunk at a position; the editor reloads to re-render. */

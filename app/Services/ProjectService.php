@@ -287,6 +287,156 @@ class ProjectService
     }
 
     /**
+     * The project's current SPOKEN text, reconstructed from the chunks in
+     * order — paragraph breaks from break_after, everything else joined with a
+     * space. This (not the stale source_text, which predates any per-chunk
+     * hand edits) is what the Revise text form prefills, so a paste-over is a
+     * true revision of what the project actually says.
+     */
+    public function canonicalText(TtsProject $project): string
+    {
+        $chunks = $project->chunks()->orderBy('position')->get(['text', 'break_after']);
+        $out = '';
+
+        foreach ($chunks as $i => $chunk) {
+            $out .= $chunk->text;
+            if ($i < $chunks->count() - 1) {
+                $out .= $chunk->break_after === 'paragraph' ? "\n\n" : ' ';
+            }
+        }
+
+        return $out;
+    }
+
+    /**
+     * Plan a revision: run the revised manuscript through the IDENTICAL ingest
+     * pipeline create used (normalize → pronunciation map → spoken quotes →
+     * chunker, so callers must apply the owner's settings overlay first), then
+     * diff the segments against the existing chunks ({@see ReviseTextPlanner}).
+     * Read-only — this is the Preview endpoint's whole job, and the first half
+     * of {@see reviseFromText()}.
+     *
+     * `pipeline_only` flags a paste identical to the canonical current text:
+     * every resulting change then comes from pipeline drift (a corrected
+     * pronunciation entry, a changed spoken-quotes/chunking setting), which is
+     * a headline use case — fix the dictionary, revise with nothing edited,
+     * re-render exactly the affected chunks.
+     *
+     * @param  list<array{term: string, phonetic: string, match_mode?: string}>  $pronunciationMap
+     * @return array{plan: array<string, mixed>, segments: list<array{text: string, breakAfter: string}>, normalized: string, pipeline_only: bool}
+     */
+    public function planRevision(TtsProject $project, string $text, array $pronunciationMap = [], string $spokenQuotes = SpokenQuotes::MODE_OFF): array
+    {
+        $normalized = $this->substituter->apply($this->normalizer->normalize($text), $pronunciationMap)['text'];
+        $normalized = $this->quotes->apply($normalized, $spokenQuotes, (int) config('tts.block_space_run', 4))['text'];
+        $segments = $this->segmentText($normalized);
+
+        if ($segments === []) {
+            throw new RuntimeException('The revised text is empty — use Start over to clear the project instead.');
+        }
+
+        $old = $project->chunks()->orderBy('position')->get()
+            ->map(fn (TtsChunk $chunk) => [
+                'id' => $chunk->id,
+                'text' => $chunk->text,
+                'break_after' => $chunk->break_after,
+                'has_audio' => $chunk->audio_path !== null,
+            ])
+            ->values()
+            ->all();
+
+        $squash = fn (string $s) => trim((string) preg_replace('/\r\n?/', "\n", $s));
+
+        return [
+            'plan' => (new ReviseTextPlanner)->plan($old, $segments),
+            'segments' => $segments,
+            'normalized' => $normalized,
+            'pipeline_only' => $squash($text) === $squash($this->canonicalText($project)),
+        ];
+    }
+
+    /**
+     * Apply a revision: recompute the plan from the submitted text (a stashed
+     * preview is never trusted — chunks may have changed since) and commit it
+     * in one transaction. Kept rows keep everything (audio, takes, tuning,
+     * voice, seed, skip, spend); updated rows keep their identity and history
+     * but go Stale/Pending for re-render; removed rows delete (takes cascade),
+     * their files reaped by {@see DeleteStoredFilesJob} off the request like
+     * Clean up. A plan with no changes touches nothing.
+     *
+     * @param  list<array{term: string, phonetic: string, match_mode?: string}>  $pronunciationMap
+     * @return array{changed: bool, counts: array<string, int>}
+     */
+    public function reviseFromText(TtsProject $project, string $text, array $pronunciationMap = [], string $spokenQuotes = SpokenQuotes::MODE_OFF): array
+    {
+        $revision = $this->planRevision($project, $text, $pronunciationMap, $spokenQuotes);
+        $plan = $revision['plan'];
+
+        if (! $plan['changed']) {
+            return ['changed' => false, 'counts' => $plan['counts']];
+        }
+
+        // Doomed rows' file paths, collected while the rows still exist — the
+        // rows delete in the transaction, the files reap on the queue.
+        $deleteIds = array_column($plan['deletes'], 'id');
+        $paths = [];
+        if ($deleteIds !== []) {
+            $paths = TtsChunkTake::whereIn('tts_chunk_id', $deleteIds)->pluck('audio_path')
+                ->merge(TtsChunk::whereIn('id', $deleteIds)->pluck('audio_path'))
+                ->filter()
+                ->unique()
+                ->values()
+                ->all();
+        }
+
+        DB::transaction(function () use ($project, $plan, $deleteIds, $text, $revision) {
+            if ($deleteIds !== []) {
+                TtsChunk::whereIn('id', $deleteIds)->delete(); // takes cascade (FK)
+            }
+
+            foreach ($plan['ops'] as $op) {
+                match ($op['op']) {
+                    'keep' => TtsChunk::whereKey($op['id'])->update([
+                        'position' => $op['position'],
+                        'break_after' => $op['break_after'],
+                    ]),
+                    'update' => TtsChunk::whereKey($op['id'])->update([
+                        'position' => $op['position'],
+                        'text' => $op['text'],
+                        'characters' => mb_strlen($op['text']),
+                        'break_after' => $op['break_after'],
+                        // Same rule as updateChunkText: generated goes Stale,
+                        // never-generated stays Pending.
+                        'status' => $op['was_generated'] ? ChunkStatus::Stale->value : ChunkStatus::Pending->value,
+                    ]),
+                    'insert' => $project->chunks()->create([
+                        'position' => $op['position'],
+                        'text' => $op['text'],
+                        'break_after' => $op['break_after'],
+                        'status' => ChunkStatus::Pending,
+                        'characters' => mb_strlen($op['text']),
+                    ]),
+                };
+            }
+
+            $project->update([
+                'source_text' => $text,
+                'normalized_text' => $revision['normalized'],
+            ]);
+        });
+
+        // The document changed, so the built final no longer reflects it (and
+        // any seal drops with it).
+        $this->markFinalOutdated($project);
+
+        foreach (array_chunk($paths, DeleteStoredFilesJob::BATCH_SIZE) as $batch) {
+            DeleteStoredFilesJob::dispatch($this->disk(), $batch);
+        }
+
+        return ['changed' => true, 'counts' => $plan['counts']];
+    }
+
+    /**
      * Switch the project's voice. Only chunks that INHERIT the project voice
      * (voice_id is null) were generated with the old voice, so just those Completed
      * chunks are marked Stale and the final file is flagged out of date — the

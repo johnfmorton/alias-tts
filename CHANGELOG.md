@@ -4,6 +4,31 @@ All notable changes to this project are documented in this file. The format is
 based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this
 project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+- **Revise text: update the manuscript without losing your renders.** Until
+  now, editing a story after hearing it read meant either hunting through
+  every chunk card for the sentences you changed, or "Start over" — which
+  re-chunks from scratch and throws away every generated clip. The project
+  menu now has **✎ Revise text**: it opens the project's current spoken text
+  (rebuilt from the chunks in order, so hand edits are included), you paste or
+  type your revision over it, and **Preview changes** shows exactly what a
+  commit would touch — "104 unchanged · 5 updated · 2 new · 1 removed" with
+  before/after text for every change. Applying it re-renders only those
+  chunks: everything whose text survived keeps its audio, takes, tuning,
+  per-chunk voice, seed pin, and skip flag. A paragraph that merely moved
+  carries its audio to the new position instead of re-rendering, and a pause
+  change (a sentence break becoming a paragraph break) never re-renders at
+  all — it just re-stitches.
+- **Fixing a pronunciation now fixes the whole project.** Revise text runs
+  your paste through the same pipeline that created the project — including
+  your *current* pronunciation dictionary. So if you accepted a respelling
+  that turned out to read wrong, fix the dictionary entry and revise with the
+  text unchanged: the preview flags exactly the chunks the correction touches
+  (with a note that the changes come from your dictionary, not your edits),
+  and only those re-render. No more hunting occurrences chunk by chunk.
+
 ## [0.77.0] - 2026-07-22
 
 ### Fixed

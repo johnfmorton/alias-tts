@@ -133,6 +133,9 @@
                             <button type="button" id="project-unseal"
                                     title="Remove the approval so you can edit or re-approve. The audio is kept."
                                     class="w-full rounded-lg px-3 py-2 text-left text-sm text-zinc-300 hover:bg-white/[0.04] {{ $project->isSealed() ? 'block' : 'hidden' }}">↺ Unapprove</button>
+                            <a href="{{ route('admin.studio.projects.revise', $project) }}"
+                               title="Paste the updated text and re-render only the chunks that changed — everything else keeps its audio."
+                               class="block rounded-lg px-3 py-2 text-sm text-zinc-300 hover:bg-white/[0.04]">✎ Revise text</a>
                             <a href="{{ route('admin.studio.projects.edit', $project) }}"
                                class="block rounded-lg px-3 py-2 text-sm text-zinc-300 hover:bg-white/[0.04]">↺ Start over</a>
                             <form method="POST" action="{{ route('admin.studio.projects.duplicate', $project) }}" id="project-duplicate-form">

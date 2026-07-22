@@ -139,6 +139,11 @@ Route::prefix('studio')->name('studio.')->group(function () {
             Route::delete('/{project}', [StudioProjectController::class, 'destroy'])->name('destroy');
             Route::get('/{project}/edit', [StudioProjectController::class, 'edit'])->name('edit');
             Route::post('/{project}/reset', [StudioProjectController::class, 'reset'])->name('reset');
+            // "Revise text": paste the updated manuscript, preview the chunk-level
+            // diff (AJAX), commit — only the changed chunks re-render.
+            Route::get('/{project}/revise', [StudioProjectController::class, 'revise'])->name('revise');
+            Route::post('/{project}/revise/preview', [StudioProjectController::class, 'revisePreview'])->name('revise.preview');
+            Route::post('/{project}/revise', [StudioProjectController::class, 'reviseApply'])->name('revise.apply');
             // Deep copy: new rows + byte-copied audio, so the two projects share nothing.
             Route::post('/{project}/duplicate', [StudioProjectController::class, 'duplicate'])->name('duplicate');
             // Housekeeping: delete every non-selected take (rows + files); the selected audio and final stay.
