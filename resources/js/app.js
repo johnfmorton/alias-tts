@@ -3595,6 +3595,10 @@ function enhanceStudioPlayers(scope) {
             ? Math.floor(s / 60) + ':' + String(Math.floor(s % 60)).padStart(2, '0')
             : '0:00';
         const sync = () => {
+            // A failed load owns the readout until the next attempt starts —
+            // the browser fires trailing timeupdate/pause after 'error' that
+            // would otherwise immediately overwrite the failure notice.
+            if (el.dataset.loadFailed) return;
             // Until the audio's own metadata loads, fall back to the server-recorded
             // length (data-duration-ms) so the duration shows without any interaction
             // — take players are preload="none", so metadata only loads on play.
@@ -3605,7 +3609,13 @@ function enhanceStudioPlayers(scope) {
             if (time) time.textContent = fmt(audio.currentTime) + ' / ' + fmt(d);
         };
 
-        btn.addEventListener('click', () => { audio.paused ? audio.play().catch(() => {}) : audio.pause(); });
+        btn.addEventListener('click', () => {
+            // A failed fetch bricks the element: after a media error, play()
+            // won't re-run resource selection, so clicks would silently no-op
+            // forever. load() re-arms it and the play below retries the fetch.
+            if (audio.error) audio.load();
+            audio.paused ? audio.play().catch(() => {}) : audio.pause();
+        });
         track.addEventListener('click', (e) => {
             const r = track.getBoundingClientRect();
             if (audio.duration) audio.currentTime = ((e.clientX - r.left) / r.width) * audio.duration;
@@ -3618,6 +3628,16 @@ function enhanceStudioPlayers(scope) {
         audio.addEventListener('play', () => el.classList.add('is-playing'));
         audio.addEventListener('pause', () => el.classList.remove('is-playing'));
         audio.addEventListener('ended', () => el.classList.remove('is-playing'));
+        // Surface load/decode failures in the readout, so a dropped connection
+        // reads as retryable instead of a dead button. A fresh attempt (the
+        // retry's load()+play() above) fires loadstart, which hands the readout
+        // back to sync().
+        audio.addEventListener('loadstart', () => { delete el.dataset.loadFailed; sync(); });
+        audio.addEventListener('error', () => {
+            el.classList.remove('is-playing');
+            el.dataset.loadFailed = '1';
+            if (time) time.textContent = 'failed — press ▶ to retry';
+        });
         sync();
     });
 }

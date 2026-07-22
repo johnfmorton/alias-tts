@@ -4,6 +4,19 @@ All notable changes to this project are documented in this file. The format is
 based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this
 project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Fixed
+- **A failed audio load no longer kills the play button.** If a clip's audio
+  request died in transit — a dropped connection, a server hiccup — the player
+  quietly bricked itself: browsers refuse to re-fetch after a media error, so
+  every further press of play did nothing, with no message anywhere. (Selecting
+  a different take happened to rebuild the player, which made the workaround
+  look magical and the bug look haunted.) Every Studio player — chunk, take,
+  and final alike — now says "failed — press ▶ to retry" in its timecode
+  readout, and pressing play again genuinely re-requests the audio. A transient
+  network blip now costs one extra click instead of a dead button.
+
 ## [0.80.0] - 2026-07-22
 
 ### Fixed
