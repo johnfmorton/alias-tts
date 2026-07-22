@@ -15,6 +15,24 @@
         $statusBadgeClass = $statusVal === 'ready' ? $chunkStyles['completed'] : ($statusVal === 'stale' ? $chunkStyles['stale'] : $chunkStyles['pending']);
     @endphp
 
+    {{-- A big project takes a beat to arrive, parse, and wire up (a card + player
+         per chunk) — without a signal that read as the page freezing. This veil
+         paints with the first bytes of the page and covers the not-yet-interactive
+         markup; app.js removes it the moment initStudioProject() finishes (see the
+         try/finally around that call). Small projects load too fast to need it. --}}
+    @if($chunks->count() >= 20)
+        <div id="studio-loading" class="fixed inset-0 z-[60] flex cursor-wait items-center justify-center bg-zinc-950/90">
+            <div class="flex flex-col items-center gap-3" role="status">
+                <svg class="size-8 animate-spin text-cyan-400" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                    <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"/>
+                    <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 0 1 8-8v4a4 4 0 0 0-4 4H4z"/>
+                </svg>
+                <p class="text-sm font-medium text-zinc-200">Loading project…</p>
+                <p class="text-xs text-zinc-500">Preparing {{ $chunks->count() }} audio clips.</p>
+            </div>
+        </div>
+    @endif
+
     <div id="studio-project"
          data-has-final="{{ $hasFinal ? '1' : '0' }}"
          data-rebuild-url="{{ route('admin.studio.projects.rebuild', $project) }}"
@@ -135,6 +153,7 @@
                                     class="w-full rounded-lg px-3 py-2 text-left text-sm text-zinc-300 hover:bg-white/[0.04] {{ $project->isSealed() ? 'block' : 'hidden' }}">↺ Unapprove</button>
                             <a href="{{ route('admin.studio.projects.revise', $project) }}"
                                title="Paste the updated text and re-render only the chunks that changed — everything else keeps its audio."
+                               data-busy data-busy-label="Opening Revise text…"
                                class="block rounded-lg px-3 py-2 text-sm text-zinc-300 hover:bg-white/[0.04]">✎ Revise text</a>
                             <a href="{{ route('admin.studio.projects.edit', $project) }}"
                                class="block rounded-lg px-3 py-2 text-sm text-zinc-300 hover:bg-white/[0.04]">↺ Start over</a>
@@ -422,15 +441,17 @@
                     </div>
 
                     {{-- data-duration-ms: the selected take's recorded length, so the
-                         readout shows the duration before any metadata request resolves
-                         (and regardless of the browser's preload heuristics). --}}
+                         readout shows the duration without any metadata request.
+                         preload="none" (like the take players) — with it on "metadata"
+                         a big project fired one ranged-audio request per chunk on page
+                         load, enough to saturate the server and freeze the page. --}}
                     @php $selectedTakeDuration = collect($takesByChunk[$chunk->id]['takes'])->firstWhere('selected', true)['duration_ms'] ?? null; @endphp
                     <div class="aplayer aplayer--chunk mt-3 rounded-[12px] border border-white/8 bg-inset px-3.5 py-2.5 {{ $chunk->isCompleted() ? '' : 'hidden' }}"
                          @if($selectedTakeDuration) data-duration-ms="{{ $selectedTakeDuration }}" @endif>
                         <button type="button" class="aplayer__btn" aria-label="Play chunk audio"><span class="aplayer__icon"></span></button>
                         <div class="aplayer__track"><div class="aplayer__fill"></div><div class="aplayer__knob"></div></div>
                         <span class="aplayer__time">0:00 / 0:00</span>
-                        <audio class="chunk-audio aplayer__native" preload="metadata"
+                        <audio class="chunk-audio aplayer__native" preload="none"
                                @if($chunk->isCompleted()) src="{{ route('admin.studio.projects.chunks.audio', [$project, $chunk]) }}" @endif></audio>
                     </div>
 

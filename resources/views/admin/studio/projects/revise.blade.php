@@ -36,7 +36,7 @@
                 <button type="button" id="revise-preview"
                         class="rounded-lg border border-cyan-500/30 bg-cyan-500/10 px-4 py-2 text-sm font-medium text-cyan-300 hover:bg-cyan-500/20">👁 Preview changes</button>
                 <button type="submit" class="rounded-lg bg-accent px-4 py-2 text-sm font-semibold text-accent-on hover:bg-accent/90">✓ Apply revision</button>
-                <a href="{{ route('admin.studio.projects.show', $project) }}" class="text-sm text-zinc-400 hover:text-zinc-200">Cancel</a>
+                <a href="{{ route('admin.studio.projects.show', $project) }}" data-busy data-busy-label="Opening project…" class="text-sm text-zinc-400 hover:text-zinc-200">Cancel</a>
                 <span id="revise-status" class="text-sm" role="status"></span>
             </div>
         </form>

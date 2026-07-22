@@ -85,6 +85,7 @@
 
                 @foreach($projects as $project)
                     <a href="{{ route('admin.studio.projects.show', $project) }}"
+                       data-busy data-busy-label="Opening project…"
                        class="grid grid-cols-[1fr_auto] items-center gap-3 border-b border-white/[0.05] px-[22px] py-[15px] transition last:border-b-0 hover:bg-white/[0.03] {{ $projectGridRow }}">
                         <div class="min-w-0">
                             <div class="truncate text-[15px] font-semibold text-zinc-100">{{ $project->title }}</div>

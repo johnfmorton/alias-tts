@@ -4,6 +4,29 @@ All notable changes to this project are documented in this file. The format is
 based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this
 project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Fixed
+- **Big projects no longer freeze the page on load.** Every finished clip's
+  player asked the browser to pre-fetch its audio the moment the page arrived —
+  on a project with a hundred clips, that's a hundred simultaneous audio
+  requests hammering the server before you've clicked anything. The page
+  janked while the browser churned, and worse, your next click (Revise text,
+  say) queued up behind the storm with nothing on screen to say why — it read
+  as the app hanging. Players now fetch audio only when you press play. Nothing
+  visible changes — each clip's length was already printed from the project's
+  own records — the page just arrives fast and clicks answer immediately.
+
+### Added
+- **Loading and navigation feedback on big projects.** A project with many
+  clips still takes a moment to arrive and wire up, so the page now says so:
+  a loading veil — spinner, "Loading project… Preparing 132 audio clips." —
+  covers the page and comes down the instant everything is clickable. The same
+  feedback now rides the slow navigations around it: opening a project from
+  the list, opening Revise text, or cancelling back out shows a brief
+  "Opening project…" veil instead of leaving the old page sitting there
+  looking dead.
+
 ## [0.79.0] - 2026-07-22
 
 ### Added

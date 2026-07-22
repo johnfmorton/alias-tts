@@ -3622,7 +3622,14 @@ function enhanceStudioPlayers(scope) {
     });
 }
 
-initStudioProject();
+// Big projects render a Blade loading veil (#studio-loading) over the page; it
+// comes down only once every control here is wired and live. Remove it even if
+// init throws, so a JS error degrades to the old inert page, not a stuck veil.
+try {
+    initStudioProject();
+} finally {
+    document.getElementById('studio-loading')?.remove();
+}
 
 // ---- Studio project "Revise text" page --------------------------------------
 // Paste the updated manuscript, preview the chunk-level diff (AJAX), then the
@@ -4241,6 +4248,44 @@ function initBusyForms() {
     });
 }
 initBusyForms();
+
+// initBusyForms' counterpart for plain links: a navigation that lands on (or
+// leaves) a heavy page can sit on the old page for seconds with zero feedback —
+// a dead-feeling click. Mark such links [data-busy]: clicking drops a
+// full-screen veil (spinner + data-busy-label) that stays up until the next
+// page paints over it. Delegated, so it also covers links in loops (the
+// projects index rows).
+function initBusyLinks() {
+    const showVeil = (label) => {
+        if (document.getElementById('nav-veil')) return;
+        const veil = document.createElement('div');
+        veil.id = 'nav-veil';
+        veil.className = 'fixed inset-0 z-[60] flex cursor-wait items-center justify-center bg-zinc-950/90';
+        const box = document.createElement('div');
+        box.className = 'inline-flex items-center gap-2.5 text-sm font-medium text-zinc-200';
+        box.setAttribute('role', 'status');
+        box.append(spinnerSvg(), document.createTextNode(label));
+        veil.append(box);
+        document.body.append(veil);
+    };
+    const hideVeil = () => document.getElementById('nav-veil')?.remove();
+
+    document.addEventListener('click', (e) => {
+        const link = e.target instanceof Element ? e.target.closest('a[data-busy]') : null;
+        // Guards that leave: e.defaultPrevented covers the Studio unsaved-edits
+        // interceptor (registered earlier, so it has already run); the modifier/
+        // target/download checks cover clicks that don't navigate this tab.
+        if (!link || e.defaultPrevented) return;
+        if (e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
+        if (link.target === '_blank' || link.hasAttribute('download')) return;
+        showVeil(link.dataset.busyLabel || 'Loading…');
+    });
+    // The page can outlive the click: Escape cancels an in-flight navigation,
+    // bfcache restores the old page veil-and-all on Back. Clear it for both.
+    document.addEventListener('keydown', (e) => { if (e.key === 'Escape') hideVeil(); });
+    window.addEventListener('pageshow', (e) => { if (e.persisted) hideVeil(); });
+}
+initBusyLinks();
 
 // Global-nav account menu: the avatar pill toggles a dropdown; dismiss on outside
 // click or Escape. The menu root is display:block so toggling `hidden` is safe
