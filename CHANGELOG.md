@@ -6,7 +6,29 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Added
+- **Monetary amounts are now read as money.** "$0.18" used to reach the voice
+  as raw notation and came out garbled — "zero point one eight dollars" on a
+  good day. The text pipeline now expands money into the words a narrator
+  would say: "eighteen cents", "five dollars and fifty cents", "one thousand
+  two hundred ninety nine dollars and ninety nine cents", "three point five
+  million dollars" — including € and £ (pounds get pence), the cent sign, and
+  shorthand like "$10k" and "$2bn". Only clearly monetary shapes are touched:
+  things like $PATH or a version-ish "$1.2345" pass through unchanged. An
+  existing project can pick this up with Revise text — apply with the text
+  unchanged and the preview flags exactly the money-bearing chunks.
+
 ### Fixed
+- **Pronunciation suggestions no longer split a word with spaces.** The
+  detector was already forbidden from hyphenating a respelling, but it
+  sometimes reached for a space instead — "Genblaze" became "jen blaze" —
+  which breaks the word the same way: the voice reads two separately-stressed
+  words instead of one. The detector's rules now lead with "one spoken word,
+  one unbroken token" and it double-checks every spaced suggestion before
+  returning. Spaces remain only where they're the right call: letter-by-letter
+  initialisms ("dee dev") and terms genuinely spoken as multiple words
+  ("engine ex"). Already-approved dictionary entries aren't rewritten — edit
+  the entry once and every future project gets it right.
 - **Applying a revision now starts the re-renders itself.** Revise text
   marked the changed chunks for re-render but then just dropped you on the
   project page, where they sat silently as "stale" until you found and

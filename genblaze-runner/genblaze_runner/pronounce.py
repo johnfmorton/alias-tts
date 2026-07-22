@@ -125,24 +125,32 @@ Flag a term only if a typical TTS voice would likely get it wrong:
 - Ordinary English words, even long or uncommon ones
 - Terms already pronounced correctly by default
 - Anything in the provided `known_terms` list (already handled)
+- Monetary amounts ($4.99, $1,200) — the pipeline already expands these to
+  spoken words before synthesis
 - Do not flag a term merely because it is capitalized or technical — flag it
   only if mispronunciation is genuinely likely
 
 ## Respelling rules
 - Use plain ASCII that reads naturally when spoken aloud. No IPA.
-- NEVER use hyphens. The TTS engine reads a hyphen as a hard pause, so a
-  hyphen inside a word (e.g. "an-thropic", "dock-er") produces an unnatural
-  stutter mid-word. Do not use hyphens for any reason.
-- Do NOT split a single spoken word into syllables. A word pronounced as one
-  word must be ONE unbroken token — no hyphens and no spaces between its
-  syllables. Respell the whole word phonetically instead.
+- THE MOST IMPORTANT RULE: one spoken word => ONE unbroken token. If a term is
+  pronounced as a single word, its respelling must contain no hyphens AND no
+  spaces. Both break the word apart: the TTS engine reads a hyphen as a hard
+  pause and a space as two separately-stressed words, so "an-thropic" and
+  "jen blaze" are equally wrong. Respell the whole word phonetically as one
+  token instead. Coined and brand compounds ("Genblaze", "Chatterbox",
+  "WordPress") are single spoken words.
   -> "Anthropic" => "anthropik",  "Laravel" => "laruhvel",
-     "Docker" => "dokker",  "python" => "piethon",  "Caddy" => "kaddy"
-- Use a space ONLY to separate genuinely distinct spoken tokens:
+     "Docker" => "dokker",  "python" => "piethon",  "Genblaze" => "jenblayz"
+- NEVER use hyphens, for any reason.
+- Never use a space as a hyphen substitute or a syllable separator.
+- Use a space ONLY when the term is genuinely SPOKEN as multiple separate
+  words:
   * Letter-by-letter initialisms: separate the lowercase letters
     -> "DDEV" => "dee dev",  "SQL" => "ess cue ell",  "UX" => "you ex"
   * Terms that are actually pronounced as more than one word
     -> "nginx" => "engine ex",  "kubectl" => "cube control"
+- Before returning, re-check every `phonetic` that contains a space: if its
+  term is one spoken word, remove the spaces and respell it as one token.
 - Avoid gratuitous capitals: Chatterbox reads a lone capital as emphasis, so
   prefer "engine ex" over "engine X".
 - Change only what is needed for correct pronunciation; keep it minimal.

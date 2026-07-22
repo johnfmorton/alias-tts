@@ -72,7 +72,7 @@ class TextNormalizer
         //    block; emphasis ("*note*"), a leading negative ("-5 degrees"), and
         //    math ("3 * 4") are spared by the required [ \t]+ after the marker.
         //    Any soft/doubled terminator this creates ("clips;." / "clips..") is
-        //    tidied by steps 6–7 below. The \r? guards keep wrap/blank detection
+        //    tidied by steps 7–8 below. The \r? guards keep wrap/blank detection
         //    and the continuation join correct under CRLF, without this step
         //    rewriting the newlines of surrounding (non-list) text — TextNormalizer
         //    stays a fixed point on line endings it did not touch.
@@ -82,13 +82,19 @@ class TextNormalizer
             $text,
         );
 
-        // 6. Drop horizontal whitespace left *before* end-of-token punctuation
+        // 6. Expand monetary amounts into spoken words ("$0.18" -> "eighteen
+        //    cents") — the TTS engines routinely garble currency notation. An
+        //    app-side addition, not part of the plugin port; see SpokenCurrency
+        //    for the shapes covered and the conservative bail-outs.
+        $text = (new SpokenCurrency)->apply($text);
+
+        // 7. Drop horizontal whitespace left *before* end-of-token punctuation
         //    ("editor ." -> "editor."). Restricted to horizontal whitespace
         //    ([^\S\n]) so newlines / block boundaries survive; the (?=\s|$) guard
         //    leaves dot-prefixed tokens (".NET", ".gitignore") untouched.
         $text = (string) preg_replace('/[^\S\n]+([.,;:!?])(?=\s|$)/u', '$1', $text);
 
-        // 7. Collapse spurious doubled punctuation, again only across horizontal
+        // 8. Collapse spurious doubled punctuation, again only across horizontal
         //    whitespace so paragraph breaks are never bridged:
         //    a) soft punctuation then an appended period -> single period
         //       ("videos:." -> "videos.").

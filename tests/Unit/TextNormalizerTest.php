@@ -42,6 +42,14 @@ class TextNormalizerTest extends TestCase
         $this->assertStringNotContainsString('🎉', $result);
     }
 
+    public function test_expands_monetary_amounts(): void
+    {
+        $this->assertSame(
+            'That run cost eighteen cents, not five dollars.',
+            $this->normalize('That run cost $0.18, not $5.'),
+        );
+    }
+
     public function test_strips_asterisk_bullet_markers_and_ends_each_item(): void
     {
         $list = "After generation, a loop checks for:\n\n* missing or dropped words\n* truncated speech\n* stalls and repetitions";
