@@ -64,6 +64,16 @@ contiguous windows that are loud, **voiced** (clear fundamental), and at/below
 the speech-body level — a louder re-swell swoosh is not folded, and a
 multi-second voiced drone is far too long to be mistaken for a coda.
 
+The fold tolerates brief voicing **flicker**: the autocorrelation pitch check
+dips at phone transitions — a real "…read itself to them." measured ACF 0.480
+against the 0.5 gate on the single vowel→nasal boundary window while the next
+nasal window read voiced again, and stopping the fold there re-clipped the word
+("them" lost its "m" at the seam). Up to `chunk_tail_voiced_coda_flicker_ms` of
+consecutive loud-but-unvoiced windows are bridged, and they only count as coda
+when voicing **resumes** after them — the extension never ends on a flicker
+window, so a sustained unvoiced run (a fricative/hiss tail) still stops the
+fold at the last voiced window, exactly as before.
+
 **Peel.** Any isolated short trailing speech run is then **peeled** off:
 
 - **Why:** Chatterbox sometimes follows the quiet decay tail with a brief
@@ -141,6 +151,7 @@ periodic too, so neither path catches them — that's what the ASR round-trip in
 | `chunk_tail_blip_max_ms` | `TTS_CHUNK_TAIL_BLIP_MAX_MS` | `400` | drop a trailing re-swell blip ≤ this isolated by a long gap (`0` disables the whole peel) |
 | `chunk_tail_tonal_cv_max` | `TTS_CHUNK_TAIL_TONAL_CV_MAX` | `0.35` | also drop a LONGER isolated run whose ZCR coeff-of-variation ≤ this (a sustained tone, not speech); `0` disables the tonal path |
 | `chunk_tail_voiced_coda_max_ms` | `TTS_CHUNK_TAIL_VOICED_CODA_MAX_MS` | `300` | fold a short loud + voiced + at/below-speech-level run (a word-final nasal coda) back into speech before cutting; `0` disables the fold |
+| `chunk_tail_voiced_coda_flicker_ms` | `TTS_CHUNK_TAIL_VOICED_CODA_FLICKER_MS` | `100` | bridge this much consecutive loud-but-unvoiced "flicker" inside a coda (the ACF pitch check dips at phone transitions); only counted when voicing resumes; `0` = stop at the first unvoiced window |
 | `chunk_tail_voicing_enabled` | `TTS_CHUNK_TAIL_VOICING` | `true` | enable the voicing refinement (catches loud, aperiodic hiss tails) |
 | `chunk_tail_voicing_acf_min` | `TTS_CHUNK_TAIL_VOICING_ACF_MIN` | `0.5` | min peak normalized autocorrelation to call a window voiced |
 | `chunk_tail_voicing_f0_min_hz` | `TTS_CHUNK_TAIL_VOICING_F0_MIN_HZ` | `75` | low end of the pitch search |

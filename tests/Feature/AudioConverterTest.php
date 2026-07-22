@@ -295,6 +295,35 @@ class AudioConverterTest extends TestCase
         $this->assertLessThan(1.5, $seconds, 'The trailing silence after the coda must still be trimmed.');
     }
 
+    public function test_coda_fold_survives_a_brief_voicing_flicker_mid_coda(): void
+    {
+        // Regression for the clipped "them" ("…read itself to them."): the ACF
+        // voicing check flickers at phone transitions — the real clip measured ACF
+        // 0.480 vs the 0.5 gate on the single vowel→nasal boundary window, while
+        // the next nasal window read voiced again. The old fold broke at the first
+        // unvoiced window, so the whole nasal counted as trailing artifact and the
+        // word was hard-cut mid-"m". One flicker window inside an otherwise voiced
+        // coda must be bridged. Layout: broadband speech | a voiced coda with ONE
+        // loud low-ZCR UNVOICED (chirp) window in its middle | trailing silence.
+        $converter = new AudioConverter(config('tts.ffmpeg_path', 'ffmpeg'));
+        $chunk = $this->wrapWav(
+            $this->noiseWav(1.0, 15000)             // speech body (high ZCR)
+            .$this->rawTone(0.05, 9000, 120.0)      // voiced coda onset (loud, low ZCR)
+            .$this->chirpTone(0.05, 9000, 100, 400) // the flicker: loud, low-ZCR, NO stable pitch
+            .$this->rawTone(0.15, 9000, 120.0)      // voiced coda remainder
+            .$this->rawTone(0.6, 0, 0.0)            // trailing silence (the word has ended)
+        );
+
+        [$out] = $converter->concatenate([$chunk], 'wav', 'wav', []);
+        $seconds = $this->wavDataBytes($out) / (44100 * 2);
+
+        // ~1.25s preserved (speech + full coda) + guard; the trailing silence is
+        // still trimmed. The bug broke the fold at the flicker and cut at ~1.11s,
+        // clipping the coda's second half.
+        $this->assertGreaterThan(1.2, $seconds, 'A voicing flicker inside a coda must not clip the word.');
+        $this->assertLessThan(1.5, $seconds, 'The trailing silence after the coda must still be trimmed.');
+    }
+
     public function test_coda_fold_keeps_a_stressed_final_word_on_a_pause_heavy_chunk(): void
     {
         // Regression for the clipped "do" ("...to love what you do."): the coda
@@ -504,6 +533,25 @@ class AudioConverterTest extends TestCase
         for ($i = 0; $i < $n; $i++) {
             $value = (int) ($amp * sin(2 * M_PI * $freq * $i / 44100));
             $samples .= pack('v', $value & 0xFFFF);
+        }
+
+        return $samples;
+    }
+
+    /**
+     * Linear-sweep chirp PCM (no header) at 44.1 kHz. Sweeping the frequency
+     * defeats the autocorrelation pitch check (no stable period at any lag) while
+     * staying loud and low-ZCR — the signature of the voicing "flicker" a phone
+     * transition produces inside a real voiced coda.
+     */
+    private function chirpTone(float $seconds, int $amp, float $f0, float $f1): string
+    {
+        $n = (int) (44100 * $seconds);
+        $samples = '';
+        for ($i = 0; $i < $n; $i++) {
+            $t = $i / 44100;
+            $phase = 2 * M_PI * ($f0 * $t + ($f1 - $f0) * $t * $t / (2 * $seconds));
+            $samples .= pack('v', ((int) ($amp * sin($phase))) & 0xFFFF);
         }
 
         return $samples;

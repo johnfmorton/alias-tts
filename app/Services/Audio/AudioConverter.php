@@ -595,10 +595,18 @@ class AudioConverter
      * the diluted mean while sitting BELOW the chunk's own speech peak — and the gate
      * cut the word ("do" clipped at the #5/#6 seam). Nothing tapering off a word can
      * exceed everything the speaker said by over_speech_db; a real appended swoosh can.
-     * Stop folding at the first window that is quiet (the word
-     * ended), too loud (a swoosh), or unvoiced (leave a fricative/hiss tail to the
-     * other paths). If the voiced run runs LONGER than voiced_coda_max_ms it is a
-     * sustained drone, not a coda — don't extend at all, so the drone is still cut.
+     * Stop folding at the first window that is quiet (the word ended) or too loud
+     * (a swoosh). An UNVOICED window does not stop the fold immediately: the ACF
+     * voicing check flickers at phone transitions — a real "…to them." measured
+     * 0.480 vs the 0.5 acf_min on the single vowel→nasal boundary window while the
+     * next nasal window read voiced again, and breaking there re-clipped the word
+     * ("them" lost its "m"). Up to voiced_coda_flicker_ms of consecutive
+     * loud-but-unvoiced windows are tolerated, and folded only when voicing
+     * RESUMES after them ($ext never advances onto a flicker window itself) — so a
+     * sustained fricative/hiss tail still ends the fold at the last voiced window,
+     * exactly as an immediate break did, and stays with the other paths. If the
+     * run goes LONGER than voiced_coda_max_ms it is a sustained drone, not a
+     * coda — don't extend at all, so the drone is still cut.
      * {@see AudioConverterTest}.
      */
     private function voicedCodaEnd(string $pcmWav, int $offset, array $dbWindows, int $lastSpeechWin, int $win, int $rate): int
@@ -610,8 +618,10 @@ class AudioConverter
 
         $floorDb = (float) config('tts.chunk_tail_rms_floor_db', -40);
         $overSpeechDb = (float) config('tts.chunk_tail_voicing_over_speech_db', 6.0);
+        $flickerSec = max(0, (int) config('tts.chunk_tail_voiced_coda_flicker_ms', 100)) / 1000;
         $windowSec = $win / $rate;
         $codaMaxWin = (int) round($codaMaxSec / $windowSec);
+        $flickerMaxWin = (int) round($flickerSec / $windowSec);
         $nWindows = count($dbWindows);
 
         // Speech reference: the loudest window up to the ZCR-path speech end (a
@@ -622,6 +632,7 @@ class AudioConverter
         }
 
         $ext = $lastSpeechWin;
+        $unvoicedStreak = 0;
         for ($w = $lastSpeechWin + 1; $w < $nWindows; $w++) {
             if (($w - $lastSpeechWin) > $codaMaxWin) {
                 return $lastSpeechWin; // voiced run too long for a coda — a drone; cut as before
@@ -633,8 +644,13 @@ class AudioConverter
                 return $lastSpeechWin; // louder than any speech — a re-swell swoosh, not a coda; cut as before
             }
             if (! $this->windowIsVoiced($pcmWav, $offset, $w * $win, $win, $rate)) {
-                break; // loud unvoiced — a fricative/hiss tail; leave it to the other paths
+                if (++$unvoicedStreak > $flickerMaxWin) {
+                    break; // sustained loud unvoiced — a fricative/hiss tail; leave it to the other paths
+                }
+
+                continue; // a brief voicing flicker (phone transition) — folded only if voicing resumes
             }
+            $unvoicedStreak = 0;
             $ext = $w; // fold this voiced coda window into speech
         }
 

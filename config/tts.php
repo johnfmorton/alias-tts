@@ -342,7 +342,17 @@ return [
     // so a sustained voiced drone (multi-second) is NOT mistaken for a coda and is
     // still cut. Purely acoustic (voicing + loudness + duration) — no phoneme/
     // language assumptions; a nasal is voiced + low-ZCR in any language. 0 disables.
+    //
+    // The fold tolerates brief voicing FLICKER: the pure-PHP ACF voicing check
+    // dips at phone transitions (a real "…to them." measured ACF 0.480 vs the 0.5
+    // gate on the single vowel→nasal boundary window, then read voiced again), and
+    // stopping the fold there re-clips the word. Up to flicker_ms of consecutive
+    // loud-but-unvoiced windows are bridged, and only count as coda when voicing
+    // RESUMES after them — a sustained unvoiced run (fricative/hiss tail) still
+    // ends the fold at the last voiced window. flicker_ms 0 restores the old
+    // stop-at-first-unvoiced behavior.
     'chunk_tail_voiced_coda_max_ms' => (int) env('TTS_CHUNK_TAIL_VOICED_CODA_MAX_MS', 300),
+    'chunk_tail_voiced_coda_flicker_ms' => (int) env('TTS_CHUNK_TAIL_VOICED_CODA_FLICKER_MS', 100),
 
     // Voicing refinement of the tail detector. A trailing run that clears the
     // loud + high-ZCR speech gate but has NO fundamental (broadband hiss/noise

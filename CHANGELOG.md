@@ -16,6 +16,17 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   and final alike — now says "failed — press ▶ to retry" in its timecode
   readout, and pressing play again genuinely re-requests the audio. A transient
   network blip now costs one extra click instead of a dead button.
+- **A word ending in m or n no longer loses its final sound at a join.** Two
+  clips could each sound perfect on their own, yet the finished audio clipped
+  the last word at the seam — "…read itself to them." lost its "m" mid-sound.
+  The seam cleanup watches for junk noise after the final word, and it decides
+  where the word ends partly by listening for the voice's pitch. That pitch
+  reading blinks for a split second right where a vowel turns into an m, n, or
+  ng — and the cleanup took the blink as the word being over, so everything
+  after it, the actual end of the word included, was cut as noise. The cleanup
+  now rides through a brief blink and only calls the word finished when the
+  voice genuinely stops. Real tail noise — the swooshes and drones the cleanup
+  exists for — is still removed exactly as before.
 
 ## [0.80.0] - 2026-07-22
 
