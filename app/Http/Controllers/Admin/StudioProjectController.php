@@ -932,9 +932,35 @@ class StudioProjectController extends Controller
         ]);
         $needsRender = $c['update'] + $c['insert'] > 0;
 
+        // Start rendering the changed chunks right away — the same background
+        // run "Generate remaining" books — so Apply lands on a page that is
+        // already working, with live progress, instead of a silent field of
+        // stale chunks that reads as the app hanging. Skipped when nothing
+        // needs audio, when a run raced in, or when the owner is out of
+        // credit — the flash then says what to do by hand.
+        $run = null;
+        if ($needsRender
+            && ! TtsProjectJob::activeFor($project->id)
+            && $this->creditError($project->user) === null) {
+            $outstanding = $project->chunks()
+                ->where('status', '!=', ChunkStatus::Completed->value)
+                ->where('skipped', false)
+                ->with('voice')
+                ->get();
+            if ($outstanding->isNotEmpty()) {
+                $run = $this->dispatchGenerationRun($request, $project, $outstanding);
+            }
+        }
+
+        $followup = match (true) {
+            $run?->isActive() ?? false => ' The changed clips are rendering in the background.',
+            $run !== null => ' The changed clips are rendered — build the final to stitch.',
+            $needsRender => ' Generate the changed chunks, then build the final.',
+            default => ' Build the final to apply the new order.',
+        };
+
         return redirect()->route('admin.studio.projects.show', $project)
-            ->with('success', 'Revision applied — '.implode(', ', $parts).'.'
-                .($needsRender ? ' Generate the changed chunks, then build the final.' : ' Build the final to apply the new order.'));
+            ->with('success', 'Revision applied — '.implode(', ', $parts).'.'.$followup);
     }
 
     /** Insert a new (empty) chunk at a position; the editor reloads to re-render. */
@@ -1258,6 +1284,23 @@ class StudioProjectController extends Controller
             return $error;
         }
 
+        $job = $this->dispatchGenerationRun($request, $project, $outstanding);
+
+        // 202 unless the queue ran it inline (QUEUE_CONNECTION=sync) — then the
+        // run is already over and the payload says so.
+        return response()->json(['ok' => true, 'job' => $job->statusPayload()], $job->isActive() ? 202 : 200);
+    }
+
+    /**
+     * Book and dispatch a background generation run over the given outstanding
+     * chunks — the shared core of "Generate remaining" and the run a Revise
+     * commit auto-starts. Guards (occupancy, credit, empty set) stay with the
+     * callers, which report them differently.
+     *
+     * @param  Collection<int, TtsChunk>  $outstanding
+     */
+    private function dispatchGenerationRun(Request $request, TtsProject $project, Collection $outstanding): TtsProjectJob
+    {
         // Bounded concurrency (docs/GENERATION-CONCURRENCY.md): when enabled,
         // the run is executed by `workers` claim-based jobs instead of the
         // serial loop. Stamped on the row so a flag flip mid-run can't change
@@ -1286,11 +1329,9 @@ class StudioProjectController extends Controller
             GenerateProjectChunksJob::dispatch($job->id);
         }
 
-        // 202 unless the queue ran it inline (QUEUE_CONNECTION=sync) — then the
-        // run is already over and the payload says so.
         $job->refresh();
 
-        return response()->json(['ok' => true, 'job' => $job->statusPayload()], $job->isActive() ? 202 : 200);
+        return $job;
     }
 
     /**

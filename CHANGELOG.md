@@ -4,6 +4,23 @@ All notable changes to this project are documented in this file. The format is
 based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this
 project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Fixed
+- **Applying a revision now starts the re-renders itself.** Revise text
+  marked the changed chunks for re-render but then just dropped you on the
+  project page, where they sat silently as "stale" until you found and
+  clicked Generate remaining — after a big revision that read as the app
+  hanging while nothing visibly happened. Applying a revision now books the
+  same background run Generate remaining uses, automatically: you land on
+  the project page already watching it work — "Revision applied — 5 updated,
+  2 new. The changed clips are rendering in the background." with the live
+  clip-by-clip progress line. Nothing is stitched for you: takes still wait
+  to be auditioned, and Build final stays your call. The run isn't started
+  when there's nothing to render (a reorder or pause-only change), when
+  another run is already working the project, or when the account is out of
+  credit — the message then says what to do instead.
+
 ## [0.78.0] - 2026-07-22
 
 ### Added

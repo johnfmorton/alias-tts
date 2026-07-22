@@ -5,6 +5,7 @@ namespace Tests\Feature;
 use App\Enums\ChunkStatus;
 use App\Enums\ProjectStatus;
 use App\Jobs\DeleteStoredFilesJob;
+use App\Jobs\GenerateProjectChunksJob;
 use App\Models\PronunciationEntry;
 use App\Models\TtsProject;
 use App\Models\TtsProjectJob;
@@ -104,6 +105,7 @@ class ProjectReviseTest extends TestCase
 
     public function test_single_edit_stales_only_that_chunk_and_keeps_its_row(): void
     {
+        Queue::fake(); // hold the auto-started render so the staled state is observable
         $admin = $this->admin();
         $project = $this->generatedProject($admin->id);
         [$c1, $c2, $c3] = $project->chunks()->orderBy('position')->get()->all();
@@ -130,10 +132,16 @@ class ProjectReviseTest extends TestCase
 
         // The built final no longer reflects the document.
         $this->assertSame(ProjectStatus::Stale, $project->refresh()->status);
+
+        // Apply auto-booked the background render over exactly the staled chunk.
+        $run = TtsProjectJob::sole();
+        $this->assertSame(TtsProjectJob::TYPE_GENERATE, $run->type);
+        $this->assertSame([$c2->id], $run->chunk_ids);
     }
 
     public function test_insertion_creates_a_pending_chunk_in_place(): void
     {
+        Queue::fake();
         $admin = $this->admin();
         $project = $this->generatedProject($admin->id);
         $ids = $project->chunks()->orderBy('position')->pluck('id')->all();
@@ -197,6 +205,8 @@ class ProjectReviseTest extends TestCase
         $this->assertNotNull($chunks[0]->audio_path);
         // But the stitched final is out of date — the order changed.
         $this->assertSame(ProjectStatus::Stale, $project->refresh()->status);
+        // Nothing needs audio, so no background run was booked.
+        $this->assertSame(0, TtsProjectJob::count());
     }
 
     public function test_unchanged_paste_with_a_new_pronunciation_flags_only_affected_chunks(): void
@@ -225,6 +235,7 @@ class ProjectReviseTest extends TestCase
         $this->assertStringContainsString('sekkund', $res->json('changes.0.text'));
 
         // Committing the same paste stales exactly the affected chunk.
+        Queue::fake(); // hold the auto-started render so the staled state is observable
         $this->actingAs($admin)
             ->post(route('admin.studio.projects.revise.apply', $project), [
                 'text' => app(ProjectService::class)->canonicalText($project),
@@ -294,6 +305,7 @@ class ProjectReviseTest extends TestCase
         $project = $this->generatedProject($admin->id);
         app(ProjectService::class)->seal($project, $admin);
         $this->assertTrue($project->refresh()->isSealed());
+        Queue::fake();
 
         $this->actingAs($admin)
             ->post(route('admin.studio.projects.revise.apply', $project), [
@@ -302,6 +314,50 @@ class ProjectReviseTest extends TestCase
             ->assertRedirect(route('admin.studio.projects.show', $project));
 
         $this->assertFalse($project->refresh()->isSealed());
+    }
+
+    public function test_apply_auto_starts_the_background_render(): void
+    {
+        Queue::fake();
+        $admin = $this->admin();
+        $project = $this->generatedProject($admin->id);
+
+        $this->actingAs($admin)
+            ->post(route('admin.studio.projects.revise.apply', $project), [
+                'text' => self::P1."\n\nA rewritten middle paragraph that needs fresh audio.\n\n".self::P3,
+            ])
+            ->assertRedirect(route('admin.studio.projects.show', $project))
+            ->assertSessionHas('success', fn (string $msg) => str_contains($msg, 'rendering in the background'));
+
+        // The same run "Generate remaining" books, dispatched without another click.
+        Queue::assertPushed(GenerateProjectChunksJob::class, 1);
+        $run = TtsProjectJob::sole();
+        $this->assertSame(TtsProjectJob::TYPE_GENERATE, $run->type);
+        $this->assertTrue($run->isActive());
+    }
+
+    public function test_apply_skips_the_auto_render_when_the_owner_is_out_of_credit(): void
+    {
+        Queue::fake();
+        $admin = $this->admin();
+        $project = $this->generatedProject($admin->id);
+        $admin->forceFill(['credit_balance_micro' => 0])->save();
+
+        $this->actingAs($admin)
+            ->post(route('admin.studio.projects.revise.apply', $project), [
+                'text' => self::P1."\n\nA rewritten middle paragraph that needs fresh audio.\n\n".self::P3,
+            ])
+            ->assertRedirect(route('admin.studio.projects.show', $project))
+            // The revision itself still lands (it costs nothing); the render is
+            // left to a manual Generate, which will surface the credit message.
+            ->assertSessionHas('success', fn (string $msg) => str_contains($msg, 'Generate the changed chunks'));
+
+        Queue::assertNothingPushed();
+        $this->assertSame(0, TtsProjectJob::count());
+        $this->assertSame(
+            ChunkStatus::Stale,
+            $project->chunks()->orderBy('position')->get()[1]->status,
+        );
     }
 
     public function test_guests_and_other_users_cannot_revise(): void

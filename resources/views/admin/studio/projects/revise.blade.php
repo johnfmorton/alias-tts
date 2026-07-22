@@ -2,7 +2,7 @@
     <div id="revise-root" data-preview-url="{{ route('admin.studio.projects.revise.preview', $project) }}">
         <form method="POST" action="{{ route('admin.studio.projects.revise.apply', $project) }}"
               data-busy data-busy-label="Applying…"
-              data-confirm="{{ ($foreignOwner ? "This is {$foreignOwner}'s project, not yours. " : '') }}Chunks whose text changed are marked for re-render; chunks that disappeared from the text are deleted permanently, audio included. Everything else keeps its audio."
+              data-confirm="{{ ($foreignOwner ? "This is {$foreignOwner}'s project, not yours. " : '') }}Chunks whose text changed start re-rendering in the background; chunks that disappeared from the text are deleted permanently, audio included. Everything else keeps its audio."
               data-confirm-title="Apply this revision?"
               data-confirm-label="Apply revision"
               class="space-y-5 rounded-xl border border-zinc-800 bg-zinc-900/50 p-6">
@@ -17,7 +17,8 @@
             <div class="rounded-lg border border-cyan-500/20 bg-cyan-500/5 px-4 py-3 text-sm text-zinc-300">
                 This is the project's current <strong>spoken</strong> text — pronunciations already applied — rebuilt from the chunks in order.
                 Edit or paste over it, then <strong>Preview changes</strong> to see exactly which chunks a revision touches before applying it.
-                Chunks whose text is unchanged keep their audio, takes, and tuning. Pasting the text unchanged is useful too: it re-applies your
+                Applying starts re-rendering the changed chunks in the background; everything whose text is unchanged keeps its audio, takes, and
+                tuning. Pasting the text unchanged is useful too: it re-applies your
                 <a href="{{ route('admin.pronunciations.index') }}" class="text-cyan-300 hover:underline">pronunciation dictionary</a> and text settings, flagging only the chunks they now affect.
             </div>
 
