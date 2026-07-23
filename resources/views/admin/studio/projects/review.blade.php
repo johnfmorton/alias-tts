@@ -65,6 +65,22 @@
             @endforeach
         </div>
 
+        {{-- Engine scope for everything approved in this batch: engines differ in
+             what they mispronounce (qwen handles many terms Chatterbox needs help
+             with), so a respelling can be limited to the engines that need it.
+             All checked (the default) stores as "applies everywhere". --}}
+        @php($reviewEngines = \App\Services\Tts\ModelCatalog::all())
+        <div class="flex flex-wrap items-center gap-x-4 gap-y-2 rounded-lg border border-zinc-800 bg-zinc-950/50 p-3">
+            <span class="text-xs font-medium text-zinc-400" title="Engines pronounce differently — apply these respellings only where they're needed">Apply these for</span>
+            @foreach($reviewEngines as $engineKey => $engineEntry)
+                <label class="inline-flex items-center gap-1.5 text-xs text-zinc-300">
+                    <input type="checkbox" name="engines[]" value="{{ $engineKey }}" checked
+                           class="rounded border-zinc-700 bg-zinc-900 text-cyan-500 focus:ring-cyan-500/30">
+                    {{ $engineEntry['label'] ?? $engineKey }}
+                </label>
+            @endforeach
+        </div>
+
         <p class="text-xs text-zinc-500"><span class="text-zinc-400">Apply</span> teaches the respelling to your dictionary and uses it now. <span class="text-zinc-400">Skip</span> leaves the term as written and remembers not to pre-check it again. Edit a respelling before applying if it reads wrong, and use <span class="text-zinc-400">&#9654; Test</span> to hear it first.</p>
         <p id="pron-test-status" role="status" aria-live="polite" class="text-sm text-zinc-400"></p>
 

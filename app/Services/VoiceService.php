@@ -3,11 +3,15 @@
 namespace App\Services;
 
 use App\Models\Voice;
+use App\Services\Asr\AsrClient;
 use App\Services\Audio\AudioConverter;
 use App\Services\Tts\ModelCatalog;
+use App\Services\Tts\Qwen3TtsTuning;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
 use RuntimeException;
+use Throwable;
 use ZipArchive;
 
 /**
@@ -102,6 +106,9 @@ class VoiceService
             ['seed' => $seed, 'stability' => $stability, 'style' => $style, 'preset_voice' => $presetVoice],
             fn ($value) => $value !== null,
         );
+        if ($audioBytes !== null) {
+            $settings = $this->maybeTranscribeReference($engine, $bytes, $extension, $settings);
+        }
         if ($settings !== []) {
             $attributes['settings'] = $settings;
         }
@@ -140,6 +147,41 @@ class VoiceService
                 $this->assertReferenceLongEnough($engine, (string) $disk->get($voice->reference_audio_path));
             }
         }
+    }
+
+    /**
+     * Best-effort transcript for a freshly stored reference clip, via the
+     * Whisper sidecar — only for engines whose clone mode reads along
+     * (qwen's reference_text), only when no transcript is set, and never
+     * blocking the save: any failure just leaves the field empty for the
+     * user to fill by hand on the edit page.
+     *
+     * @param  array<string, mixed>  $settings
+     * @return array<string, mixed>
+     */
+    private function maybeTranscribeReference(string $engine, string $clipBytes, string $extension, array $settings): array
+    {
+        if (! ModelCatalog::acceptsReferenceText($engine)
+            || trim((string) ($settings['reference_text'] ?? '')) !== '') {
+            return $settings;
+        }
+
+        $asr = app(AsrClient::class);
+        if (! $asr->enabled()) {
+            return $settings;
+        }
+
+        try {
+            $wav = $extension === 'wav' ? $clipBytes : $this->converter->decodeToWav($clipBytes);
+            $text = trim((string) ($asr->transcribe($wav, 'reference.wav')['text'] ?? ''));
+            if ($text !== '') {
+                $settings['reference_text'] = mb_substr($text, 0, 2000);
+            }
+        } catch (Throwable $e) {
+            Log::info('Reference-clip auto-transcription skipped', ['error' => $e->getMessage()]);
+        }
+
+        return $settings;
     }
 
     /** A voice must be able to speak: a reference clip, or a built-in preset. */
@@ -194,6 +236,9 @@ class VoiceService
         ?float $topP = null,
         ?int $topK = null,
         ?float $repetitionPenalty = null,
+        ?string $language = null,
+        ?string $styleInstruction = null,
+        ?string $referenceText = null,
     ): Voice {
         $disk = Storage::disk(config('tts.storage_disk'));
         $referencePath = $voice->reference_audio_path;
@@ -266,12 +311,44 @@ class VoiceService
             }
         }
 
-        // The built-in voice a clip-less turbo voice speaks through. An engine
-        // without presets (classic chatterbox) always clears it.
+        // Qwen's string knobs — null-clears like every other knob. `auto` is
+        // the language default, so it stores as a clear too.
+        $language = $language !== null ? Qwen3TtsTuning::clampLanguage($language) : null;
+        if ($language !== null && $language !== Qwen3TtsTuning::LANGUAGE_DEFAULT) {
+            $settings['language'] = $language;
+        } else {
+            unset($settings['language']);
+        }
+        $styleInstruction = Qwen3TtsTuning::cleanStyleInstruction($styleInstruction);
+        if ($styleInstruction !== null) {
+            $settings['style_instruction'] = $styleInstruction;
+        } else {
+            unset($settings['style_instruction']);
+        }
+
+        // The reference clip's transcript (qwen's voice_clone rides it along
+        // for better fidelity — see ModelCatalog::stamp). Not a resolver knob:
+        // it describes the CLIP, not the delivery.
+        $referenceText = trim((string) $referenceText);
+        if ($referenceText !== '') {
+            $settings['reference_text'] = mb_substr($referenceText, 0, 2000);
+        } else {
+            unset($settings['reference_text']);
+        }
+
+        // The built-in voice a clip-less voice speaks through, for engines
+        // that ship them. An engine without presets always clears it.
         if ($presetVoice !== null) {
             $settings['preset_voice'] = $presetVoice;
         } else {
             unset($settings['preset_voice']);
+        }
+
+        // A NEW clip with no transcript typed → best-effort ASR auto-fill
+        // (deliberately after the form's own reference_text landed above, so a
+        // typed transcript always wins).
+        if ($audioBytes !== null) {
+            $settings = $this->maybeTranscribeReference($engine, $bytes, $extension, $settings);
         }
 
         $this->assertVoiceHasASource($engine, hasClip: (bool) $referencePath, presetVoice: $presetVoice);

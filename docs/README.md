@@ -16,15 +16,17 @@ Start with the group that matches what you're doing.
   scoring and automatic re-roll/trim of flawed takes.
 - **[CHATTERBOX-LOCAL.md](CHATTERBOX-LOCAL.md)** — dev-only: run the Chatterbox
   engines on your own machine (`TTS_PROVIDER=local`) instead of Replicate — no
-  credits, works offline; macOS/Linux/Windows setup.
+  credits, works offline; macOS/Linux/Windows setup. Qwen3 TTS voices still
+  route to Replicate under `local` (the sidecar can't run qwen).
 - **[SSO-SETUP.md](SSO-SETUP.md)** — optional Google / GitHub sign-in for the
   dashboard (invite-only account linking).
 
 ## Using the app
 
 - **[VOICES.md](VOICES.md)** — voices: creating one (record / upload /
-  built-in), the two engines (Chatterbox and Chatterbox Turbo, chosen per
-  voice), sound tags, reference clips, ownership, duplicate/export/import.
+  built-in), the three engines (Chatterbox, Chatterbox Turbo, and Qwen3 TTS,
+  chosen per voice), sound tags, reference clips, ownership,
+  duplicate/export/import.
 - **[STUDIO-TUNING.md](STUDIO-TUNING.md)** — voice tuning: the one
   settings-resolution chain, each engine's knobs, the ElevenLabs mapping, and
   the tuning surfaces (voice dials, the Tune-by-ear bench, presets, per-chunk
@@ -53,9 +55,9 @@ Start with the group that matches what you're doing.
 - **[GENBLAZE-BACKEND-SWAP.md](GENBLAZE-BACKEND-SWAP.md)** — *future feature,
   not built yet:* swap the whole TTS engine per render at the Genblaze provider
   layer — cheap to add because published adapters share one API; parked on
-  priority, not merit. (The per-voice Chatterbox/Turbo model catalog already
-  covers Replicate-level model choice; this note is about entirely different
-  engines, e.g. LMNT.)
+  priority, not merit. (The per-voice model catalog — Chatterbox, Turbo,
+  Qwen3 TTS — already covers Replicate-level model choice; this note is about
+  swapping providers entirely, e.g. LMNT.)
 - **[GENERATION-CONCURRENCY.md](GENERATION-CONCURRENCY.md)** — bounded
   concurrency for multi-chunk renders: a few chunks in flight (claim-based
   per-chunk queued jobs, capped by worker count) to cut wall-clock. Implemented

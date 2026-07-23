@@ -8,6 +8,7 @@ use App\Services\Enhance\FakeEnhanceProvider;
 use App\Services\Enhance\ReplicateEnhanceProvider;
 use App\Services\Health\HealthReport;
 use App\Services\Tts\FakeTtsProvider;
+use App\Services\Tts\HybridTtsProvider;
 use App\Services\Tts\LocalChatterboxProvider;
 use App\Services\Tts\ReplicateChatterboxProvider;
 use App\Services\Tts\TtsProvider;
@@ -47,10 +48,21 @@ class AppServiceProvider extends ServiceProvider
                     (int) config('tts.request_timeout', 300),
                     config('tts.models', []),
                 ),
-                'local' => new LocalChatterboxProvider(
-                    config('tts.providers.local', []),
-                    (int) config('tts.providers.local.timeout', 300),
-                    config('tts.models', []),
+                // "local" is really a hybrid: Chatterbox engines run on the
+                // sidecar, engines it can't serve (qwen, local_capable=false)
+                // route to Replicate per call.
+                'local' => new HybridTtsProvider(
+                    local: new LocalChatterboxProvider(
+                        config('tts.providers.local', []),
+                        (int) config('tts.providers.local.timeout', 300),
+                        config('tts.models', []),
+                    ),
+                    remote: new ReplicateChatterboxProvider(
+                        config('tts.providers.replicate', []),
+                        (int) config('tts.request_timeout', 300),
+                        config('tts.models', []),
+                    ),
+                    models: config('tts.models', []),
                 ),
                 default => throw new InvalidArgumentException(
                     'Unknown TTS provider: '.config('tts.provider'),

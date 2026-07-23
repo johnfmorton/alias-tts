@@ -92,6 +92,28 @@ final class ModelCatalog
         return (bool) (self::get($key)['supports_tags'] ?? false);
     }
 
+    /** Whether the engine's input schema has a seed field (qwen has none). */
+    public static function supportsSeed(?string $key): bool
+    {
+        return (bool) (self::get($key)['supports_seed'] ?? true);
+    }
+
+    /**
+     * Whether the local Chatterbox sidecar can run this engine. Engines that
+     * can't (qwen) render via Replicate even under TTS_PROVIDER=local — see
+     * {@see HybridTtsProvider}.
+     */
+    public static function localCapable(?string $key): bool
+    {
+        return (bool) (self::get($key)['local_capable'] ?? true);
+    }
+
+    /** Whether the engine's clone mode accepts the clip's transcript. */
+    public static function acceptsReferenceText(?string $key): bool
+    {
+        return (bool) (self::get($key)['accepts_reference_text'] ?? false);
+    }
+
     /**
      * Stamp the resolved settings map with the effective engine for this
      * voice (or an explicit per-request override, e.g. the OpenAI dialect's
@@ -111,11 +133,23 @@ final class ModelCatalog
 
         $settings['model'] = $key;
 
-        // A clip-less turbo voice speaks through one of the model's built-in
-        // voices; the provider ignores this whenever a reference clip exists.
+        // A clip-less voice on a preset-bearing engine speaks through one of
+        // the model's built-in voices; the provider ignores this whenever a
+        // reference clip exists.
         $preset = $voice?->settings['preset_voice'] ?? null;
         if (is_string($preset) && $preset !== '' && in_array($preset, self::presetVoices($key), true)) {
             $settings['voice_preset'] = $preset;
+        }
+
+        // A cloning engine that accepts the clip's transcript (qwen's
+        // reference_text) gets it stamped so it reaches the provider through
+        // every chokepoint — and enters the cache hash, so editing the
+        // transcript regenerates.
+        if (self::acceptsReferenceText($key) && $voice?->reference_audio_path) {
+            $referenceText = trim((string) ($voice->settings['reference_text'] ?? ''));
+            if ($referenceText !== '') {
+                $settings['reference_text'] = $referenceText;
+            }
         }
 
         return $settings;

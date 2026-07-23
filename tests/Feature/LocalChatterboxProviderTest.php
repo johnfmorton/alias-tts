@@ -2,6 +2,7 @@
 
 namespace Tests\Feature;
 
+use App\Services\Tts\HybridTtsProvider;
 use App\Services\Tts\LocalChatterboxProvider;
 use App\Services\Tts\TtsProvider;
 use Illuminate\Http\Client\ConnectionException;
@@ -34,6 +35,11 @@ class LocalChatterboxProviderTest extends TestCase
                 'max_input_chars' => 500,
                 'knobs' => 'turbo',
                 'supports_tags' => true,
+            ],
+            'qwen3-tts' => [
+                'label' => 'Qwen3 TTS',
+                'max_input_chars' => 0,
+                'knobs' => 'qwen3-tts',
             ],
         ]);
     }
@@ -232,10 +238,28 @@ class LocalChatterboxProviderTest extends TestCase
         $this->assertSame('wav', $provider->outputContainer('chatterbox-turbo'));
     }
 
-    public function test_the_container_binds_the_local_provider(): void
+    public function test_the_container_binds_the_hybrid_for_provider_local(): void
     {
+        // "local" binds the hybrid router: chatterbox → sidecar, qwen →
+        // Replicate (see HybridProviderTest for the routing itself).
         config(['tts.provider' => 'local']);
 
-        $this->assertInstanceOf(LocalChatterboxProvider::class, app(TtsProvider::class));
+        $this->assertInstanceOf(HybridTtsProvider::class, app(TtsProvider::class));
+    }
+
+    public function test_a_qwen_voice_fails_loudly_before_any_http_call(): void
+    {
+        // The sidecar only runs Chatterbox weights; rendering a qwen voice
+        // through it would speak the wrong voice with no error.
+        Http::fake();
+
+        try {
+            $this->provider()->synthesize('Hi.', null, ['model' => 'qwen3-tts']);
+            $this->fail('Expected a RuntimeException for the qwen engine.');
+        } catch (RuntimeException $e) {
+            $this->assertStringContainsString('Replicate provider', $e->getMessage());
+        }
+
+        Http::assertNothingSent();
     }
 }

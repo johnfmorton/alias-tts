@@ -40,7 +40,15 @@
                                         class="inline-flex items-center rounded-md border border-zinc-700 px-2 py-0.5 text-xs text-zinc-400 hover:bg-zinc-800 hover:text-zinc-200">▶</button>
                             </div>
                         </td>
-                        <td class="px-4 py-3 text-zinc-400">{{ $entry->match_mode === 'case_insensitive' ? 'any case' : 'exact case' }}</td>
+                        <td class="px-4 py-3 text-zinc-400">
+                            {{ $entry->match_mode === 'case_insensitive' ? 'any case' : 'exact case' }}
+                            @if($entry->engines)
+                                {{-- Scoped entry: only these engines get the respelling. --}}
+                                <span class="mt-1 block text-xs text-cyan-500/80" title="Other engines read the term as written">
+                                    {{ collect($entry->engines)->map(fn ($k) => \App\Services\Tts\ModelCatalog::label($k))->implode(' · ') }} only
+                                </span>
+                            @endif
+                        </td>
                         <td class="px-4 py-3 text-zinc-400">{{ $entry->category ? str_replace('_', ' ', $entry->category) : '—' }}</td>
                         <td class="px-4 py-3 text-zinc-400">{{ $entry->source }}</td>
                         <td class="px-4 py-3">

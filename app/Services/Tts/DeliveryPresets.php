@@ -69,6 +69,12 @@ class DeliveryPresets
      */
     public static function forEngine(string $model): array
     {
+        // Qwen3 TTS has no numeric knob dialect (language + a free-text style
+        // note only) — there are no archetypes to offer, and the chips hide.
+        if ($model === 'qwen3-tts') {
+            return [];
+        }
+
         $balanced = $model === 'chatterbox-turbo'
             ? ChatterboxTurboTuning::resolveNative([])          // top_p/top_k/repetition_penalty/temperature
             : ChatterboxTuning::resolveNative([]) + [           // exaggeration/cfg_weight …
@@ -98,9 +104,12 @@ class DeliveryPresets
      */
     public static function all(): array
     {
+        // Explicit keys, not ModelCatalog::keys() — this class stays
+        // container-free (config() needs the app) so it unit-tests bare.
         return [
             'chatterbox' => self::forEngine('chatterbox'),
             'chatterbox-turbo' => self::forEngine('chatterbox-turbo'),
+            'qwen3-tts' => self::forEngine('qwen3-tts'),
         ];
     }
 }

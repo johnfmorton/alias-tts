@@ -21,6 +21,7 @@ use App\Services\TextNormalizer;
 use App\Services\Tts\ChunkGaps;
 use App\Services\Tts\ModelCatalog;
 use App\Services\Tts\ParalinguisticTags;
+use App\Services\Tts\Qwen3TtsTuning;
 use App\Services\Tts\TtsProvider;
 use App\Services\Tts\VoiceReference;
 use App\Services\Tts\VoiceSettingsResolver;
@@ -201,7 +202,7 @@ class StudioController extends Controller
             return $error;
         }
 
-        $prepared = $this->prepareText((string) $request->input('text'), $request->user()->id);
+        $prepared = $this->prepareText((string) $request->input('text'), $request->user()->id, ModelCatalog::forVoice($this->resolveVoice($request)));
         $segments = $this->segment($prepared['text']);
 
         $chunks = [];
@@ -235,9 +236,9 @@ class StudioController extends Controller
      *
      * @return array{text: string, applied: list<array{term: string, phonetic: string}>, quotes: int}
      */
-    private function prepareText(string $text, ?int $userId): array
+    private function prepareText(string $text, ?int $userId, ?string $engine = null): array
     {
-        $map = $this->dictionary->approvedMap($userId);
+        $map = $this->dictionary->approvedMap($userId, $engine);
 
         $substituted = $this->substituter->apply($this->normalizer->normalize($text), $map);
         $quoted = $this->quotes->apply(
@@ -517,7 +518,7 @@ class StudioController extends Controller
 
         // Same text pipeline as preview(), so the stitched render speaks the
         // exact chunks the breakdown showed (respellings and quotes included).
-        $segments = $this->segment($this->prepareText((string) $request->input('text'), $request->user()->id)['text']);
+        $segments = $this->segment($this->prepareText((string) $request->input('text'), $request->user()->id, ModelCatalog::forVoice($voice))['text']);
         if ($segments === []) {
             return response()->json(['message' => 'Nothing to synthesize.'], 422);
         }
@@ -703,6 +704,8 @@ class StudioController extends Controller
             'top_p' => ['nullable', 'numeric', 'between:0.5,1'],
             'top_k' => ['nullable', 'integer', 'between:1,2000'],
             'repetition_penalty' => ['nullable', 'numeric', 'between:1,2'],
+            'language' => ['nullable', 'string', Rule::in(Qwen3TtsTuning::LANGUAGES)],
+            'style_instruction' => ['nullable', 'string', 'max:'.Qwen3TtsTuning::STYLE_INSTRUCTION_MAX],
         ])) {
             return $error;
         }
@@ -772,6 +775,13 @@ class StudioController extends Controller
             $overrides['top_k'] = (int) $request->input('top_k');
         }
 
+        // Qwen's string knobs (Qwen3TtsTuning clamps/caps them downstream).
+        foreach (['language', 'style_instruction'] as $knob) {
+            if ($request->filled($knob)) {
+                $overrides[$knob] = (string) $request->input($knob);
+            }
+        }
+
         return $overrides;
     }
 
@@ -816,7 +826,7 @@ class StudioController extends Controller
             // settings snapshot shows (same key set as ProjectService::tuningOnly()).
             'settings' => array_intersect_key($settings, array_flip([
                 'stability', 'style', 'exaggeration', 'cfg_weight', 'temperature',
-                'top_p', 'top_k', 'repetition_penalty',
+                'top_p', 'top_k', 'repetition_penalty', 'language', 'style_instruction',
             ])),
             // Chatterbox convention: seed <= 0 means "the provider picked one"
             // — recorded as null so the take never fakes a reproducible pin.

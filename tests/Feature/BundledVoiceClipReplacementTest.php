@@ -31,7 +31,7 @@ class BundledVoiceClipReplacementTest extends TestCase
      */
     private function rerunReplacementMigration(): void
     {
-        Artisan::call('migrate:rollback', ['--step' => 16]);
+        Artisan::call('migrate:rollback', ['--step' => 17]);
         Artisan::call('migrate', ['--force' => true]);
     }
 

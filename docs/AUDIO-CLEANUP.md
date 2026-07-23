@@ -5,7 +5,10 @@ Chatterbox (via Replicate) reliably produces clean speech but adds noise at the
 stitched, so each generated chunk is cleaned before concatenation. All of this
 lives in `App\Services\Audio\AudioConverter::trimChunk()` and runs on every
 delivery path (the `/v1` speech API, Studio previews/stitch, and project final
-builds — everything flows through `concatenate()`).
+builds — everything flows through `concatenate()`). Qwen3 TTS chunks run
+through the identical pipeline — the artifact shapes below are Chatterbox
+observations, but the edge trims and detectors are engine-agnostic and safe on
+clean audio.
 
 > **Chatterbox Turbo** output runs through the same pipeline, with one
 > per-chunk exception: a chunk whose text ENDS in a rendered sound tag

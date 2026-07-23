@@ -468,24 +468,33 @@ function initTuningKnobs(scope) {
     });
 }
 
-// Which engine each engine-specific tuning knob belongs to. Temperature and
-// the seed pin are shared by both engines, so they're absent here. Mirrors
-// the knob sets in ChatterboxTuning / ChatterboxTurboTuning (PHP owns the
-// formulas; this map only decides which controls SHOW).
+// Which engines each tuning control belongs to. Temperature and the seed pin
+// are shared by both chatterbox engines but absent from qwen (its schema has
+// neither); qwen's controls are the string pair language/style_instruction.
+// Mirrors the knob sets in ChatterboxTuning / ChatterboxTurboTuning /
+// Qwen3TtsTuning (PHP owns the formulas; this map only decides which
+// controls SHOW).
 const KNOB_ENGINES = {
-    exaggeration: 'chatterbox',
-    cfg_weight: 'chatterbox',
-    top_p: 'chatterbox-turbo',
-    top_k: 'chatterbox-turbo',
-    repetition_penalty: 'chatterbox-turbo',
+    exaggeration: ['chatterbox'],
+    cfg_weight: ['chatterbox'],
+    top_p: ['chatterbox-turbo'],
+    top_k: ['chatterbox-turbo'],
+    repetition_penalty: ['chatterbox-turbo'],
+    temperature: ['chatterbox', 'chatterbox-turbo'],
+    language: ['qwen3-tts'],
+    style_instruction: ['qwen3-tts'],
+    seed: ['chatterbox', 'chatterbox-turbo'],
 };
+
+// The knobs whose values are text, not numbers (never cast through Number()).
+const STRING_KNOBS = new Set(['language', 'style_instruction']);
 
 // The engine behind a voice <select>: its selected option's data-model
 // (stamped server-side from voices.model; absent = classic chatterbox).
 const modelOfSelect = (select) => select?.selectedOptions[0]?.dataset.model || 'chatterbox';
 
 // Every chunk-card tuning input, read via chunkKnobVal so only the active
-// engine's set is ever sent; temperature is shared by both engines.
+// engine's set is ever sent.
 const KNOB_INPUTS = [
     ['exaggeration', '.chunk-exaggeration'],
     ['cfg_weight', '.chunk-cfg'],
@@ -493,6 +502,8 @@ const KNOB_INPUTS = [
     ['top_p', '.chunk-top-p'],
     ['top_k', '.chunk-top-k'],
     ['repetition_penalty', '.chunk-repetition-penalty'],
+    ['language', '.chunk-language'],
+    ['style_instruction', '.chunk-style-instruction'],
 ];
 
 // The value of one chunk knob input, or '' while its knob is hidden (the
@@ -507,11 +518,13 @@ const chunkKnobVal = (card, sel) => {
 // (null = inherit/clear) + the seed pin. Rides on Generate/queue so the server
 // persists exactly what's on screen before rendering.
 const chunkTuningPayload = (card) => {
-    const seed = card.querySelector('.chunk-seed')?.value ?? '';
+    // The seed row is engine-scoped (qwen has no seed input) — a leftover
+    // value in the hidden row must not ride along.
+    const seed = chunkKnobVal(card, '.chunk-seed');
     const payload = { seed: seed === '' ? null : Number(seed) };
     KNOB_INPUTS.forEach(([key, sel]) => {
         const value = chunkKnobVal(card, sel);
-        payload[key] = value === '' ? null : Number(value);
+        payload[key] = value === '' ? null : (STRING_KNOBS.has(key) ? value : Number(value));
     });
     // The voice rides along only when the user actually changed the picker —
     // an untouched picker sends nothing, so a chunk that inherits the project
@@ -547,9 +560,9 @@ const applyTuningSnapshot = (card, tuning, seed) => {
 // are plain inline elements; `hidden` alone is safe there.)
 function syncKnobEngines(scope, model) {
     scope.querySelectorAll('.tuning-knob[data-knob]').forEach((knob) => {
-        const engine = KNOB_ENGINES[knob.dataset.knob];
-        if (!engine) return;
-        const hide = engine !== model;
+        const engines = KNOB_ENGINES[knob.dataset.knob];
+        if (!engines) return;
+        const hide = !engines.includes(model);
         knob.classList.toggle('hidden', hide);
         knob.classList.toggle('flex', !hide);
     });
@@ -587,6 +600,8 @@ function initStudio() {
         topP: root.querySelector('.studio-top-p'),
         topK: root.querySelector('.studio-top-k'),
         repetitionPenalty: root.querySelector('.studio-repetition-penalty'),
+        language: root.querySelector('.studio-language'),
+        styleInstruction: root.querySelector('.studio-style-instruction'),
         knobs: document.getElementById('studio-knobs'),
         status: document.getElementById('studio-status'),
         results: document.getElementById('studio-results'),
@@ -638,6 +653,8 @@ function initStudio() {
         if (knobValue(els.topP) !== '') body.top_p = els.topP.value;
         if (knobValue(els.topK) !== '') body.top_k = els.topK.value;
         if (knobValue(els.repetitionPenalty) !== '') body.repetition_penalty = els.repetitionPenalty.value;
+        if (knobValue(els.language) !== '') body.language = els.language.value;
+        if (knobValue(els.styleInstruction) !== '') body.style_instruction = els.styleInstruction.value;
         return body;
     };
     const params = (text) => new URLSearchParams(paramsObject(text));
@@ -1159,12 +1176,17 @@ const BENCH_KNOBS = {
         { param: 'repetition_penalty', data: 'repetitionPenalty', ph: '1.2', min: '1', max: '2', step: '0.05' },
         { param: 'temperature', data: 'temperature', ph: '0.8', min: '0.5', max: '1.5', step: '0.05' },
     ],
+    // Qwen's only knob is a free-text style note — its rows audition wordings.
+    'qwen3-tts': [
+        { param: 'style_instruction', data: 'styleInstruction', type: 'text', ph: 'e.g. speak slowly and calmly' },
+    ],
 };
 
 // Row two of the bench: a more-expressive contrast to row one's defaults.
 const BENCH_CONTRAST = {
     'chatterbox': { exaggeration: '0.95', cfg_weight: '0.8', temperature: '0.9' },
     'chatterbox-turbo': { top_p: '0.85', top_k: '300', repetition_penalty: '1.35', temperature: '1' },
+    'qwen3-tts': { style_instruction: 'excited tone, upbeat and lively' },
 };
 
 function initTuningBench(bench) {
@@ -1175,9 +1197,12 @@ function initTuningBench(bench) {
     // matching header). An unsaved engine change retunes the bench after save.
     const model = bench.dataset.model || 'chatterbox';
     const knobDefs = BENCH_KNOBS[model] || BENCH_KNOBS.chatterbox;
+    // Must match $benchGrid in _tuning_bench.blade.php (the header row).
     const rowGrid = model === 'chatterbox-turbo'
         ? 'grid-cols-[44px_1fr_1fr_1fr_1fr_0.8fr_1.5fr_40px]'
-        : 'grid-cols-[44px_1.1fr_1.1fr_1.1fr_0.8fr_1.5fr_40px]';
+        : (model === 'qwen3-tts'
+            ? 'grid-cols-[44px_2fr_0.8fr_1.5fr_40px]'
+            : 'grid-cols-[44px_1.1fr_1.1fr_1.1fr_0.8fr_1.5fr_40px]');
     const els = {
         text: bench.querySelector('.bench-text'),
         rows: bench.querySelector('.bench-rows'),
@@ -1191,9 +1216,14 @@ function initTuningBench(bench) {
 
     const knob = (value, def) => {
         const input = document.createElement('input');
-        Object.assign(input, { type: 'number', step: def.step, min: def.min, max: def.max, placeholder: def.ph });
+        if (def.type === 'text') {
+            Object.assign(input, { type: 'text', placeholder: def.ph });
+        } else {
+            Object.assign(input, { type: 'number', step: def.step, min: def.min, max: def.max, placeholder: def.ph });
+        }
         if (value !== null && value !== '' && value !== undefined) input.value = value;
-        input.className = 'w-[74px] rounded-[8px] border border-edge bg-inset px-2.5 py-2 text-[15px] text-zinc-100 focus:border-accent focus:outline-none focus:ring-2 focus:ring-accent/30';
+        input.className = (def.type === 'text' ? 'w-full' : 'w-[74px]')
+            + ' rounded-[8px] border border-edge bg-inset px-2.5 py-2 text-[15px] text-zinc-100 focus:border-accent focus:outline-none focus:ring-2 focus:ring-accent/30';
         return input;
     };
 
@@ -3023,7 +3053,12 @@ function initStudioProject() {
 
         const markDelivery = (key) => deliveryChips.forEach((chip) =>
             chip.classList.toggle('is-active', chip.dataset.delivery === key));
-        const refreshDelivery = () => markDelivery(matchedDelivery());
+        const refreshDelivery = () => {
+            // An engine with no archetypes (qwen) has no Delivery to offer —
+            // the whole block (chips + saved-preset picker) hides.
+            card.querySelector('.chunk-delivery-wrap')?.classList.toggle('hidden', activeDeliveryTable().length === 0);
+            markDelivery(matchedDelivery());
+        };
 
         const applyDelivery = (key) => {
             const preset = activeDeliveryTable().find((p) => p.key === key);
@@ -5093,9 +5128,20 @@ function initVoiceEngineToggle() {
     if (!select) return;
 
     const sync = () => {
+        // data-engine-only holds one engine key or a space-separated list.
         document.querySelectorAll('[data-engine-only]').forEach((el) => {
-            el.classList.toggle('hidden', el.dataset.engineOnly !== select.value);
+            el.classList.toggle('hidden', !el.dataset.engineOnly.split(' ').includes(select.value));
         });
+        // The shared preset select only offers the selected engine's built-in
+        // voices; a now-foreign pick clears rather than riding along invisibly.
+        const preset = document.getElementById('preset-voice');
+        if (preset) {
+            preset.querySelectorAll('option[data-model]').forEach((opt) => {
+                opt.classList.toggle('hidden', opt.dataset.model !== select.value);
+            });
+            const picked = preset.selectedOptions[0];
+            if (picked?.dataset.model && picked.dataset.model !== select.value) preset.value = '';
+        }
         document.dispatchEvent(new CustomEvent('voice-engine-changed', { detail: { model: select.value } }));
     };
 

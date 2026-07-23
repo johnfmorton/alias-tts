@@ -82,13 +82,28 @@
                     <x-voice.tuning-dial name="repetition_penalty" label="Repetition penalty" hint="1–2 · neutral 1.2"
                                          min="1" max="2" neutral="1.2" step="0.05" :value="old('repetition_penalty', $repPenaltyValue)" />
                 </div>
-                <div>
+                <div data-engine-only="chatterbox chatterbox-turbo" @class(['hidden' => $engineModel === 'qwen3-tts'])>
                     <x-voice.tuning-dial name="temperature" label="Temperature" hint="0.5–1.5 · neutral 0.8"
                                          min="0.5" max="1.5" neutral="0.8" :value="old('temperature', $temperatureValue)" />
+                </div>
+                <div data-engine-only="qwen3-tts" @class(['hidden' => $engineModel !== 'qwen3-tts'])>
+                    <label for="voice-language" class="mb-2 block text-[13px] font-semibold text-zinc-300">Language</label>
+                    <select id="voice-language" name="language" class="{{ $inputClass }}">
+                        @foreach(\App\Services\Tts\Qwen3TtsTuning::LANGUAGES as $lang)
+                            <option value="{{ $lang }}" @selected(old('language', $tuning['language'] ?? 'auto') === $lang)>{{ $lang === 'auto' ? 'Auto-detect' : $lang }}</option>
+                        @endforeach
+                    </select>
+                </div>
+                <div class="sm:col-span-2" data-engine-only="qwen3-tts" @class(['hidden' => $engineModel !== 'qwen3-tts'])>
+                    <label for="voice-style-instruction" class="mb-2 block text-[13px] font-semibold text-zinc-300">Style note <span class="font-normal text-zinc-500">(free text)</span></label>
+                    <input id="voice-style-instruction" name="style_instruction" maxlength="{{ \App\Services\Tts\Qwen3TtsTuning::STYLE_INSTRUCTION_MAX }}"
+                           value="{{ old('style_instruction', $tuning['style_instruction'] ?? '') }}"
+                           placeholder="e.g. speak slowly and calmly" class="{{ $inputClass }}">
                 </div>
             </div>
             <p data-engine-only="chatterbox" @class(['mt-4 text-[12.5px] leading-relaxed text-zinc-500', 'hidden' => $engineModel !== 'chatterbox'])>Used when a request doesn't set its own. Higher exaggeration = more animated delivery; lower CFG/Pace = quicker, looser pacing; higher temperature = livelier but less predictable. Blank uses the system defaults.</p>
             <p data-engine-only="chatterbox-turbo" @class(['mt-4 text-[12.5px] leading-relaxed text-zinc-500', 'hidden' => $engineModel !== 'chatterbox-turbo'])>Used when a request doesn't set its own. Lower top-p/top-k = more focused, predictable delivery; higher repetition penalty = fewer repeated sounds; higher temperature = livelier but less predictable. Blank uses the model's defaults.</p>
+            <p data-engine-only="qwen3-tts" @class(['mt-4 text-[12.5px] leading-relaxed text-zinc-500', 'hidden' => $engineModel !== 'qwen3-tts'])>Used when a request doesn't set its own. Auto-detect handles mixed or unknown text; the style note steers delivery in plain words — "excited tone", "speak slowly and calmly". Qwen has no numeric knobs.</p>
         </x-voice.section>
 
         @include('admin.voices._clip_source', [
@@ -96,6 +111,18 @@
             'hint' => 'optional, but recommended · '.($voice->reference_audio_path ? 'current clip present' : 'no clip yet'),
             'fileHelp' => 'Leave empty to keep the current clip ('.($voice->reference_audio_path ? 'present' : 'none').').',
         ])
+
+        {{-- Qwen's voice_clone mode reads better when it knows what the clip
+             says — the transcript rides along with every render of this voice.
+             Engine-scoped like the dials; other engines ignore it. --}}
+        <div data-engine-only="qwen3-tts" @class(['hidden' => $engineModel !== 'qwen3-tts'])>
+            <x-voice.section label="Clip transcript" hint="optional, improves the clone">
+                <textarea id="reference-text" name="reference_text" rows="3" maxlength="2000"
+                          placeholder="Type exactly what's said in the reference clip…"
+                          class="{{ $inputClass }}">{{ old('reference_text', $tuning['reference_text'] ?? '') }}</textarea>
+                <p class="mt-3 text-[12.5px] leading-relaxed text-zinc-500">Qwen3 TTS clones more faithfully when it can read along with the clip. Leave blank to let it listen unaided.</p>
+            </x-voice.section>
+        </div>
 
         {{-- The bench lives inside the form so the sticky header's containing block
              spans the whole page (keeping it pinned past the clip section). It's safe:

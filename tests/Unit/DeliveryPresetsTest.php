@@ -19,10 +19,12 @@ class DeliveryPresetsTest extends TestCase
     {
         $all = DeliveryPresets::all();
 
-        $this->assertSame(['chatterbox', 'chatterbox-turbo'], array_keys($all));
-        foreach ($all as $table) {
-            $this->assertSame(['steady', 'balanced', 'expressive'], array_column($table, 'key'));
+        $this->assertSame(['chatterbox', 'chatterbox-turbo', 'qwen3-tts'], array_keys($all));
+        foreach (['chatterbox', 'chatterbox-turbo'] as $engine) {
+            $this->assertSame(['steady', 'balanced', 'expressive'], array_column($all[$engine], 'key'));
         }
+        // Qwen has no numeric knobs — no archetypes to offer (the chips hide).
+        $this->assertSame([], $all['qwen3-tts']);
     }
 
     public function test_classic_archetypes_carry_the_classic_knob_set(): void

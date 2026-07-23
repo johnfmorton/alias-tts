@@ -93,4 +93,25 @@ class VoiceSettingsResolverTest extends TestCase
         $this->assertSame(0.7, $resolved['stability']);
         $this->assertFalse($resolved['use_speaker_boost']);
     }
+
+    public function test_qwen_knobs_pass_through_as_strings(): void
+    {
+        // Qwen's dialect is string-valued: voice defaults resolve, overrides win.
+        $resolved = $this->resolve(
+            ['language' => 'Japanese', 'style_instruction' => 'calm and slow'],
+            ['language' => 'English'],
+        );
+
+        $this->assertSame('English', $resolved['language']);
+        $this->assertSame('calm and slow', $resolved['style_instruction']);
+    }
+
+    public function test_reference_text_is_not_a_resolver_key(): void
+    {
+        // reference_text is a RESERVED key ModelCatalog::stamp adds AFTER
+        // resolution (like model/voice_preset) — the resolver must drop it.
+        $resolved = $this->resolve(['reference_text' => 'clip words'], []);
+
+        $this->assertArrayNotHasKey('reference_text', $resolved);
+    }
 }

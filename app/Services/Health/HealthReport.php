@@ -265,6 +265,19 @@ class HealthReport
 
         $this->checkModelCatalog();
 
+        // Engines the sidecar can't run (local_capable=false, e.g. qwen)
+        // route to Replicate even under TTS_PROVIDER=local — that leg still
+        // needs the token, so surface a missing one before a render fails.
+        $remoteOnly = array_filter(ModelCatalog::keys(), fn ($key) => ! ModelCatalog::localCapable($key));
+        if ($remoteOnly !== []) {
+            $labels = implode(', ', array_map(fn ($key) => ModelCatalog::label($key), $remoteOnly));
+            config('tts.providers.replicate.token')
+                ? $this->add('provider_remote_models', HealthStatus::Pass, 'Provider [local]',
+                    "{$labels} renders via Replicate (the sidecar can't run it) — token set")
+                : $this->add('provider_remote_models', HealthStatus::Warn, 'Provider [local]',
+                    "{$labels} renders via Replicate (the sidecar can't run it) but REPLICATE_API_TOKEN is not set — those voices will fail");
+        }
+
         try {
             $response = Http::timeout(5)->connectTimeout(3)->get($url.'/health');
         } catch (Throwable $e) {

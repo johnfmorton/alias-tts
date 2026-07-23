@@ -12,6 +12,7 @@ use App\Models\Voice;
 use App\Services\Pronunciation\ApiPronunciation;
 use App\Services\SpeechProgressStore;
 use App\Services\SpeechService;
+use App\Services\Tts\ModelCatalog;
 use App\Services\Tts\VoiceSettingsResolver;
 use App\Support\VoiceAliases;
 use Illuminate\Http\Request;
@@ -62,8 +63,9 @@ class TextToSpeechController extends Controller
                 apiKey: $apiKey,
                 voice: $voice,
                 // Respell dictionary terms only when the key owner opted the API
-                // surface in (default off = verbatim passthrough). See ApiPronunciation.
-                text: $this->pronunciation->apply($apiKey?->user_id, (string) $request->input('text')),
+                // surface in (default off = verbatim passthrough), narrowed to
+                // entries scoped to this voice's engine. See ApiPronunciation.
+                text: $this->pronunciation->apply($apiKey?->user_id, (string) $request->input('text'), ModelCatalog::forVoice($voice)),
                 settings: $this->settingsResolver->resolve($voice, $request->voiceSettingOverrides()),
                 modelId: $request->modelId(),
                 outputFormat: $request->outputFormat(),
@@ -104,7 +106,7 @@ class TextToSpeechController extends Controller
                 apiKey: $apiKey,
                 voice: $voice,
                 // See store(): respell only when the key owner opted the API surface in.
-                text: $this->pronunciation->apply($apiKey?->user_id, (string) $request->input('text')),
+                text: $this->pronunciation->apply($apiKey?->user_id, (string) $request->input('text'), ModelCatalog::forVoice($voice)),
                 settings: $this->settingsResolver->resolve($voice, $request->voiceSettingOverrides()),
                 modelId: $request->modelId(),
                 outputFormat: $request->outputFormat(),

@@ -268,7 +268,7 @@
   --output alias-speech.mp3</code></pre>
             <button data-copy-from="#connect-example-openai" class="rounded-[9px] border border-white/[0.14] px-4.5 py-3 text-sm text-zinc-300 transition hover:bg-white/[0.04]">Copy</button>
         </div>
-        <p class="mt-2 text-[12.5px] text-zinc-500"><code class="font-mono text-zinc-400">model</code> accepts <code class="font-mono text-zinc-400">chatterbox</code> or <code class="font-mono text-zinc-400">chatterbox-turbo</code> to pick the engine for that request; any other value (like <code class="font-mono text-zinc-400">gpt-4o-mini-tts</code>) is accepted for compatibility and the voice's own engine decides.</p>
+        <p class="mt-2 text-[12.5px] text-zinc-500"><code class="font-mono text-zinc-400">model</code> accepts <code class="font-mono text-zinc-400">chatterbox</code>, <code class="font-mono text-zinc-400">chatterbox-turbo</code>, or <code class="font-mono text-zinc-400">qwen3-tts</code> to pick the engine for that request; any other value (like <code class="font-mono text-zinc-400">gpt-4o-mini-tts</code>) is accepted for compatibility and the voice's own engine decides.</p>
     </div>
 
     {{-- System --}}

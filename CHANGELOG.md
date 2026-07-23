@@ -4,6 +4,47 @@ All notable changes to this project are documented in this file. The format is
 based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this
 project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+- **Qwen3 TTS joins the engine catalog.** Every voice can now pick a third
+  engine on its edit page: Alibaba's [Qwen3 TTS](https://replicate.com/qwen/qwen3-tts)
+  (Apache-2.0, $0.02 per 1,000 characters — the cheapest of the three). It
+  speaks ten languages, ships nine built-in voices (Serena, Aiden, …) a
+  clip-less voice can speak through, and clones from as little as three
+  seconds of reference audio. Its tuning is unlike the Chatterbox pair: no
+  numeric knobs and no seed pin — instead a language picker and a free-text
+  **style note** ("speak slowly and calmly", "excited tone") steer delivery,
+  in voice defaults, the Tune-by-ear bench, the Inspector, and per-chunk
+  Takes & tuning alike. Every tuning surface swaps its controls live when a
+  voice or chunk lands on a qwen engine.
+- **A clip transcript sharpens qwen clones.** Qwen's clone mode can read
+  along with the reference clip: a new "Clip transcript" field on the voice
+  edit page rides with every render of that voice. With the Whisper ASR
+  sidecar enabled, a newly saved clip is transcribed into the field
+  automatically when it's empty — anything typed by hand always wins.
+- **Pronunciations can now be scoped per engine.** Engines mispronounce
+  different things — Qwen reads "Alias TTS" correctly, while Chatterbox needs
+  "Aileus tee tee ess" — so each dictionary entry now carries an "Applies to"
+  engine list (all engines by default, exactly the old behavior). Scoped
+  entries respell only for the engines that need the help; everyone else gets
+  the text as written. The review screen sets the scope for a whole batch of
+  approvals in one row, the lexicon list badges scoped entries, and the
+  `/v1/pronunciations` sync API exposes the scope for clients.
+
+### Changed
+- **`TTS_PROVIDER=local` is now a hybrid.** The dev-only local driver keeps
+  running both Chatterbox engines on the sidecar, but voices on engines the
+  sidecar can't serve (Qwen3 TTS) now route to Replicate automatically, per
+  call — a project can mix local chatterbox chunks with qwen chunks. Without
+  a Replicate token only the qwen voices fail (with a clear message), and the
+  Health page says so before a render ever does.
+- **Respellings keep their capital letters.** The respelling guidance (form
+  help and the pre-processor spec) now says to preserve a brand name's
+  leading capital ("Aileus", not "aileus") — lone-capital caution now applies
+  mid-word only. Hand-typed respellings were always stored verbatim; this
+  aligns the guidance and the LLM suggestions with that.
+
 ## [0.81.0] - 2026-07-22
 
 ### Added

@@ -127,6 +127,27 @@ class ReplicateChatterboxProvider implements TtsProvider
             if ($referenceAudio === null) {
                 $input['voice'] = (string) ($settings['voice_preset'] ?? 'Andy');
             }
+        } elseif (($model['knobs'] ?? 'chatterbox') === 'qwen3-tts') {
+            // Qwen validates its input, so the payload holds schema keys ONLY:
+            // Qwen3TtsTuning emits just language/style_instruction (defaults by
+            // omission), and none of the chatterbox numeric knobs apply.
+            $input += Qwen3TtsTuning::resolveNative($settings);
+
+            if ($referenceAudio !== null) {
+                // NAMING TRAP: qwen's 'voice_clone' clones from the clip;
+                // 'custom_voice' is its PRESET-speaker mode, not cloning.
+                $input['mode'] = 'voice_clone';
+
+                // The clip's transcript (stamped from voices.settings by
+                // ModelCatalog::stamp) sharpens clone fidelity when present.
+                $referenceText = trim((string) ($settings['reference_text'] ?? ''));
+                if ($referenceText !== '') {
+                    $input['reference_text'] = $referenceText;
+                }
+            } else {
+                $input['mode'] = 'custom_voice';
+                $input['speaker'] = (string) ($settings['voice_preset'] ?? 'Serena');
+            }
         } else {
             // Resolve Chatterbox's native knobs. Native keys (cfg_weight/exaggeration)
             // win when present (the Studio speaks native); otherwise they're derived
@@ -147,10 +168,12 @@ class ReplicateChatterboxProvider implements TtsProvider
         // Pin the seed when provided so a saved take can name the exact seed it
         // rendered at; otherwise the model draws a fresh random seed each call
         // (classic treats 0 as random, turbo treats absent as random — omitting
-        // when unpinned satisfies both). NOTE: even a pinned seed is NOT
-        // bit-reproducible on Replicate's shared GPUs — it biases the draw, it
-        // doesn't freeze it (see docs/STUDIO-TUNING.md).
-        if (isset($settings['seed'])) {
+        // when unpinned satisfies both). Engines whose schema has no seed input
+        // (qwen) never receive one — an unknown key fails input validation.
+        // NOTE: even a pinned seed is NOT bit-reproducible on Replicate's
+        // shared GPUs — it biases the draw, it doesn't freeze it (see
+        // docs/STUDIO-TUNING.md).
+        if (isset($settings['seed']) && ($model['supports_seed'] ?? true)) {
             $input['seed'] = (int) $settings['seed'];
         }
 

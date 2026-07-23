@@ -9,6 +9,7 @@ use App\Models\PronunciationEntry;
 use App\Models\Voice;
 use App\Services\Pronunciation\PronunciationDictionary;
 use App\Services\SpeechService;
+use App\Services\Tts\ModelCatalog;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -180,7 +181,7 @@ class PronunciationController extends Controller
      */
     private function validateEntry(Request $request, int $userId, ?string $ignoreId = null): array
     {
-        return $request->validate([
+        $data = $request->validate([
             'term' => [
                 'required', 'string', 'max:255',
                 Rule::unique('pronunciation_entries', 'term')->where('user_id', $userId)->ignore($ignoreId),
@@ -189,7 +190,15 @@ class PronunciationController extends Controller
             'match_mode' => ['required', Rule::in(['case_sensitive', 'case_insensitive'])],
             'category' => ['nullable', Rule::in(self::CATEGORIES)],
             'confidence' => ['nullable', Rule::in(self::CONFIDENCES)],
+            'engines' => ['nullable', 'array'],
+            'engines.*' => [Rule::in(ModelCatalog::keys())],
             'note' => ['nullable', 'string', 'max:1000'],
         ]);
+
+        // Checkboxes submit nothing when all are unchecked; always carry the key
+        // so an edit can't silently keep a stale scope ([] normalizes to "all").
+        $data['engines'] = $request->input('engines', []);
+
+        return $data;
     }
 }

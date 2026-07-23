@@ -82,8 +82,14 @@ Flag a term only if a typical TTS voice would likely get it wrong:
   -> "DDEV" => "dee dev",  "SQL" => "ess cue ell"
 - Word-style terms: respell with spaces/hyphens to guide syllables
   -> "nginx" => "engine ex",  "kubectl" => "cube control",  "Caddy" => "kaddy"
-- Avoid gratuitous capitals: Chatterbox reads a lone capital as emphasis, so
-  prefer "engine ex" over "engine X".
+- Preserve the term's leading capitalization: a brand or proper noun keeps its
+  capital in the respelling ("Alias" => "Aileus", not "aileus") — sentence
+  starts and brand names must not come out lowercased.
+  > **Prompt sync pending:** the live detection prompt (in the Genblaze runner)
+  > still says lowercase-everything; update it to match this rule. Manually
+  > entered/edited respellings are already stored verbatim, capitals intact.
+- Avoid gratuitous capitals mid-word: Chatterbox reads a lone capital as
+  emphasis, so prefer "engine ex" over "engine X".
 - Change only what is needed for correct pronunciation; keep it minimal.
 - Copy the `term` field VERBATIM from the input (exact casing and characters)
   so a literal match succeeds downstream.
@@ -213,6 +219,34 @@ Order and boundary handling matter:
   before copying the pattern above.
 
 ---
+
+## 5b. Engine scoping (`engines` column)
+
+Engines differ in what they mispronounce: Qwen3 TTS reads many terms correctly
+("Alias TTS") that Chatterbox needs respelled ("Aileus tee tee ess"). Each
+entry therefore carries an optional engine scope:
+
+- `pronunciation_entries.engines` — JSON list of catalog keys (e.g.
+  `["chatterbox","chatterbox-turbo"]`), or NULL = applies to every engine (the
+  default; all pre-scoping rows behave unchanged). "All engines selected"
+  normalizes to NULL on save.
+- **Apply-time filtering:** every server-side apply site passes the render's
+  effective engine — Studio project create/reset/revise and the Inspector use
+  the project/chosen voice's engine, the `/v1` opt-in surface uses the request
+  voice's engine (including the OpenAI dialect's per-request `model` override)
+  — via `PronunciationDictionary::approvedMap($userId, $engine)`. Entries
+  scoped to other engines leave the text verbatim.
+- **UI:** "Applies to" engine checkboxes on the lexicon create/edit form; the
+  review screen has one batch-level "Apply these for" row covering everything
+  approved on that screen. The lexicon list shows a "<engine> only" badge on
+  scoped entries.
+- **Known limitation:** respellings bake into chunk text at project creation
+  using the project voice's engine; switching one chunk's voice across engine
+  families afterwards keeps the baked text (chunk text is editable, and
+  Revise/Start-over re-run the pipeline against the current voice).
+- **Plugin:** `GET /v1/pronunciations` now returns each entry's `engines`
+  (null = all). The Bespoken plugin substitutes upstream without engine
+  knowledge today, so the field is advisory until the plugin learns to filter.
 
 ## 6. Persistent dictionary schema
 

@@ -3,6 +3,7 @@
 namespace App\Services\Pronunciation;
 
 use App\Models\PronunciationEntry;
+use App\Services\Tts\ModelCatalog;
 use Illuminate\Support\Collection;
 
 /**
@@ -36,17 +37,23 @@ class PronunciationDictionary
 
     /**
      * The writer's approved entries as substitution-map rows for
-     * {@see PronunciationSubstituter::apply()}.
+     * {@see PronunciationSubstituter::apply()}. With an $engine, only the
+     * entries that apply to that engine (unscoped entries apply everywhere);
+     * without one, the full lexicon — the plugin-sync and management surfaces.
      *
      * @return list<array{term: string, phonetic: string, match_mode: string}>
      */
-    public function approvedMap(?int $userId): array
+    public function approvedMap(?int $userId, ?string $engine = null): array
     {
         return PronunciationEntry::query()
             ->ownedBy($userId)
             ->approved()
             ->get()
+            ->when($engine !== null, fn ($entries) => $entries->filter(
+                fn (PronunciationEntry $e) => $e->appliesTo($engine),
+            ))
             ->map(fn (PronunciationEntry $e) => $e->toMapEntry())
+            ->values()
             ->all();
     }
 
@@ -57,10 +64,10 @@ class PronunciationDictionary
      * @param  list<array<string, mixed>>  $suggestions
      * @return Collection<int, PronunciationEntry>
      */
-    public function approveSuggestions(?int $userId, array $suggestions): Collection
+    public function approveSuggestions(?int $userId, array $suggestions, ?array $engines = null): Collection
     {
         return collect($suggestions)
-            ->map(fn (array $s) => $this->upsert($userId, $s, approved: true))
+            ->map(fn (array $s) => $this->upsert($userId, ['engines' => $engines] + $s, approved: true))
             ->filter()
             ->values();
     }
@@ -145,10 +152,33 @@ class PronunciationDictionary
             'match_mode' => in_array($data['match_mode'] ?? null, ['case_sensitive', 'case_insensitive'], true)
                 ? $data['match_mode']
                 : $entry->match_mode,
+            'engines' => array_key_exists('engines', $data)
+                ? self::normalizeEngines($data['engines'])
+                : $entry->engines,
             'approved' => array_key_exists('approved', $data) ? (bool) $data['approved'] : $entry->approved,
         ]);
 
         return $entry;
+    }
+
+    /**
+     * Canonicalize an engine-scope list: keep only known catalog keys in
+     * catalog order, and collapse "all engines" (or nothing valid) to NULL —
+     * the applies-everywhere default, so unscoped stays the common shape.
+     *
+     * @return list<string>|null
+     */
+    public static function normalizeEngines(mixed $engines): ?array
+    {
+        if (! is_array($engines)) {
+            return null;
+        }
+
+        $known = array_values(array_intersect(ModelCatalog::keys(), $engines));
+
+        return ($known === [] || count($known) === count(ModelCatalog::keys()))
+            ? null
+            : $known;
     }
 
     public function forget(PronunciationEntry $entry): void
@@ -190,6 +220,7 @@ class PronunciationDictionary
                 'match_mode' => in_array($data['match_mode'] ?? null, ['case_sensitive', 'case_insensitive'], true)
                     ? $data['match_mode']
                     : 'case_sensitive',
+                'engines' => self::normalizeEngines($data['engines'] ?? null),
                 'source' => in_array($data['source'] ?? null, ['user', 'llm'], true)
                     ? $data['source']
                     : 'llm',

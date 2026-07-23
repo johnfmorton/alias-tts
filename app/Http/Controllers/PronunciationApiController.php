@@ -48,6 +48,10 @@ class PronunciationApiController extends Controller
                 'phonetic' => $e->phonetic,
                 'match' => $e->match_mode,
                 'category' => $e->category,
+                // Catalog engines this entry is limited to; null = every engine.
+                // The plugin substitutes upstream without engine knowledge today,
+                // so this is advisory until it learns to filter.
+                'engines' => $e->engines,
                 'source' => $e->source,
                 'approved' => $e->approved,
                 'added' => optional($e->updated_at)->toDateString(),

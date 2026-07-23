@@ -1999,7 +1999,7 @@ class StudioProjectTest extends TestCase
         // per-model spend counters, the per-chunk skip flag, the credit
         // system, the project-jobs table, the generation-timings table, the
         // voice-clip status column, and the take-voice column).
-        Artisan::call('migrate:rollback', ['--step' => 29]);
+        Artisan::call('migrate:rollback', ['--step' => 30]);
         Artisan::call('migrate', ['--force' => true]);
 
         $takes = $chunk->refresh()->takes()->get();

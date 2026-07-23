@@ -26,14 +26,15 @@ class ApiPronunciation
      * The approved substitution map to apply on the API path, or [] when the
      * toggle is off — for callers that take a map and apply it themselves (e.g.
      * {@see ProjectService::createFromText}, which respells the chunks while
-     * keeping `source_text` verbatim).
+     * keeping `source_text` verbatim). $engine narrows the map to entries that
+     * apply to the request's effective render engine.
      *
      * @return list<array{term: string, phonetic: string, match_mode: string}>
      */
-    public function mapFor(?int $userId): array
+    public function mapFor(?int $userId, ?string $engine = null): array
     {
         return config('tts.pronunciation.apply_to_api', false)
-            ? $this->dictionary->approvedMap($userId)
+            ? $this->dictionary->approvedMap($userId, $engine)
             : [];
     }
 
@@ -42,9 +43,9 @@ class ApiPronunciation
      * which hand raw text straight to the provider (no createFromText map hook).
      * A no-op when the toggle is off or the writer has no approved terms.
      */
-    public function apply(?int $userId, string $text): string
+    public function apply(?int $userId, string $text, ?string $engine = null): string
     {
-        $map = $this->mapFor($userId);
+        $map = $this->mapFor($userId, $engine);
 
         return $map === [] ? $text : $this->substituter->apply($text, $map)['text'];
     }

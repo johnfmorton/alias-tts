@@ -33,12 +33,26 @@ class PronunciationEntry extends Model
         'source',
         'approved',
         'match_mode',
+        'engines',
         'note',
     ];
 
     protected $casts = [
         'approved' => 'boolean',
+        'engines' => 'array',
     ];
+
+    /**
+     * Whether this entry applies when rendering with $engine. NULL/empty
+     * `engines` = every engine (the historical behavior and the default);
+     * a list limits the respelling to engines that need the help.
+     */
+    public function appliesTo(string $engine): bool
+    {
+        return $this->engines === null
+            || $this->engines === []
+            || in_array($engine, $this->engines, true);
+    }
 
     public function user(): BelongsTo
     {

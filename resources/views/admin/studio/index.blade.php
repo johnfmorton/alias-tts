@@ -228,7 +228,25 @@
                         <x-tuning-knob knob="repetition_penalty" label="Rep. penalty" hint="neutral 1.2"
                                        :min="1" :max="2" :step="0.05" placeholder="1.20" inputClass="studio-repetition-penalty" class="w-48" :hidden="$inspectorModel !== 'chatterbox-turbo'" />
                         <x-tuning-knob knob="temperature" label="Temperature" hint="neutral 0.8"
-                                       :min="0.5" :max="1.5" :step="0.05" placeholder="0.80" inputClass="studio-temperature" class="w-48" />
+                                       :min="0.5" :max="1.5" :step="0.05" placeholder="0.80" inputClass="studio-temperature" class="w-48" :hidden="$inspectorModel === 'qwen3-tts'" />
+                        {{-- Qwen's string controls (it has no numeric knobs); same
+                             .tuning-knob/data-knob contract so syncKnobEngines swaps
+                             them with the voice's engine. --}}
+                        <div class="tuning-knob relative min-w-[11rem] w-48 flex-col gap-1 {{ $inspectorModel === 'qwen3-tts' ? 'flex' : 'hidden' }}" data-knob="language">
+                            <span class="text-sm font-semibold text-zinc-300">Language</span>
+                            <select class="studio-language rounded-lg border border-edge bg-zinc-950 px-2 py-1.5 text-sm text-zinc-200">
+                                <option value="">Auto-detect</option>
+                                @foreach(\App\Services\Tts\Qwen3TtsTuning::LANGUAGES as $lang)
+                                    @continue($lang === 'auto')
+                                    <option value="{{ $lang }}">{{ $lang }}</option>
+                                @endforeach
+                            </select>
+                        </div>
+                        <div class="tuning-knob relative min-w-[16rem] flex-col gap-1 {{ $inspectorModel === 'qwen3-tts' ? 'flex' : 'hidden' }}" data-knob="style_instruction">
+                            <span class="text-sm font-semibold text-zinc-300">Style note</span>
+                            <input type="text" maxlength="{{ \App\Services\Tts\Qwen3TtsTuning::STYLE_INSTRUCTION_MAX }}" placeholder="e.g. speak slowly and calmly"
+                                   class="studio-style-instruction rounded-lg border border-edge bg-zinc-950 px-2 py-1.5 text-sm text-zinc-200">
+                        </div>
                     </div>
                     <p class="mt-2 text-xs text-zinc-500">
                         These knobs shape this preview only — nothing is saved. Like what you hear?

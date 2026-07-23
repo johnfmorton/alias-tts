@@ -14,8 +14,23 @@
                 title="Hear this respelling spoken by your default voice"
                 class="inline-flex shrink-0 items-center gap-1.5 rounded-lg border border-zinc-700 px-3 py-2 text-sm text-zinc-300 hover:bg-zinc-800">▶ Test</button>
     </div>
-    <p class="mt-1 text-xs text-zinc-500">Plain ASCII the voice reads correctly. Avoid stray capitals — the voice reads a lone capital as emphasis.</p>
+    <p class="mt-1 text-xs text-zinc-500">Plain ASCII the voice reads correctly. Keep a brand name's leading capital ("Aileus" for "Alias"); avoid lone capitals mid-word — the voice reads those as emphasis.</p>
     <p id="pron-test-status" role="status" aria-live="polite" class="mt-1 text-sm text-zinc-400"></p>
+</div>
+<div>
+    <span class="mb-1.5 block text-sm font-medium">Applies to</span>
+    @php($entryEngines = $entry->engines ?? null)
+    <div class="flex flex-wrap items-center gap-x-4 gap-y-2 rounded-lg border border-edge bg-zinc-900 px-3 py-2.5">
+        @foreach(\App\Services\Tts\ModelCatalog::all() as $engineKey => $engineEntry)
+            <label class="inline-flex items-center gap-1.5 text-sm text-zinc-300">
+                <input type="checkbox" name="engines[]" value="{{ $engineKey }}"
+                       @checked(in_array($engineKey, old('engines', $entryEngines ?? array_keys(\App\Services\Tts\ModelCatalog::all())), true))
+                       class="rounded border-zinc-700 bg-zinc-950 text-cyan-500 focus:ring-cyan-500/30">
+                {{ $engineEntry['label'] ?? $engineKey }}
+            </label>
+        @endforeach
+    </div>
+    <p class="mt-1 text-xs text-zinc-500">Engines pronounce differently — limit a respelling to the engines that need it (Qwen often reads terms correctly that Chatterbox can't). All checked = applies everywhere.</p>
 </div>
 <div>
     <label for="match_mode" class="mb-1.5 block text-sm font-medium">Match</label>

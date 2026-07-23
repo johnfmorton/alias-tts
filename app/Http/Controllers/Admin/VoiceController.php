@@ -211,6 +211,9 @@ class VoiceController extends Controller
                 topP: $request->filled('top_p') ? (float) $request->input('top_p') : null,
                 topK: $request->filled('top_k') ? (int) $request->input('top_k') : null,
                 repetitionPenalty: $request->filled('repetition_penalty') ? (float) $request->input('repetition_penalty') : null,
+                language: $request->input('language') ?: null,
+                styleInstruction: $request->input('style_instruction') ?: null,
+                referenceText: $request->input('reference_text') ?: null,
             );
         } catch (Throwable $e) {
             return redirect()->route('admin.voices.edit', $voice)

@@ -26,14 +26,15 @@ class VoiceSettingsResolver
 {
     /**
      * The tunable keys this resolver owns. `seed` is handled outside it, and so
-     * are the RESERVED engine keys (`model`, `voice_preset`) ModelCatalog::stamp
-     * adds AFTER resolution. Both the ElevenLabs-style knobs (stability/style)
-     * the public /v1 API speaks AND the native knobs the Studio speaks pass
-     * through: exaggeration/cfg_weight/temperature for classic Chatterbox,
-     * top_p/top_k/repetition_penalty for Chatterbox Turbo. Each engine's tuning
-     * class simply ignores the other dialect's keys.
+     * are the RESERVED engine keys (`model`, `voice_preset`, `reference_text`)
+     * ModelCatalog::stamp adds AFTER resolution. Both the ElevenLabs-style
+     * knobs (stability/style) the public /v1 API speaks AND the native knobs
+     * the Studio speaks pass through: exaggeration/cfg_weight/temperature for
+     * classic Chatterbox, top_p/top_k/repetition_penalty for Chatterbox Turbo,
+     * language/style_instruction for Qwen3 TTS. Each engine's tuning class
+     * simply ignores the other dialects' keys.
      */
-    private const KEYS = ['stability', 'similarity_boost', 'style', 'use_speaker_boost', 'exaggeration', 'cfg_weight', 'temperature', 'top_p', 'top_k', 'repetition_penalty'];
+    private const KEYS = ['stability', 'similarity_boost', 'style', 'use_speaker_boost', 'exaggeration', 'cfg_weight', 'temperature', 'top_p', 'top_k', 'repetition_penalty', 'language', 'style_instruction'];
 
     /**
      * @param  array<string, mixed>  $overrides  values the caller explicitly set; only known keys apply
@@ -78,6 +79,12 @@ class VoiceSettingsResolver
 
         if (isset($settings['top_k'])) {
             $settings['top_k'] = (int) $settings['top_k'];
+        }
+
+        foreach (['language', 'style_instruction'] as $key) {
+            if (isset($settings[$key])) {
+                $settings[$key] = (string) $settings[$key];
+            }
         }
 
         if (isset($settings['use_speaker_boost'])) {

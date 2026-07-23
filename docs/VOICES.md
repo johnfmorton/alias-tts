@@ -80,28 +80,34 @@ real ElevenLabs voice IDs work with zero client-side changes:
 
 ## Engines
 
-Each voice generates with one of the two catalog engines
+Each voice generates with one of the three catalog engines
 (`config('tts.models')`), chosen in the **Engine** section of the voice form:
 
-| | **Chatterbox** (classic, the default) | **Chatterbox Turbo** |
-|---|---|---|
-| character | the expressive original | faster and cheaper per run |
-| reference clip | optional — without one it speaks in the model's own voice | optional, but must be **longer than 5 seconds** (validated at save) |
-| built-in voices | — | 20 presets (Andy, Laura, …) a clip-less voice can speak through |
-| sound tags | stripped from payloads (they'd be read aloud) | renders `[laugh]`-style tags as actual sounds |
-| per-call cap | none | 500 characters per chunk (the chunker respects it automatically) |
-| tuning knobs | exaggeration · CFG/pace · temperature | top-p · top-k · repetition penalty · temperature |
+| | **Chatterbox** (classic, the default) | **Chatterbox Turbo** | **Qwen3 TTS** |
+|---|---|---|---|
+| character | the expressive original | faster and cheaper per run | ten languages, style steered in plain words |
+| reference clip | optional — without one it speaks in the model's own voice | optional, but must be **longer than 5 seconds** (validated at save) | optional, at least **3 seconds** — and it can read along with a clip transcript for a closer clone |
+| built-in voices | — | 20 presets (Andy, Laura, …) a clip-less voice can speak through | 9 presets (Serena, Aiden, …) |
+| sound tags | stripped from payloads (they'd be read aloud) | renders `[laugh]`-style tags as actual sounds | stripped from payloads |
+| per-call cap | none | 500 characters per chunk (the chunker respects it automatically) | none |
+| tuning knobs | exaggeration · CFG/pace · temperature | top-p · top-k · repetition penalty · temperature | language · free-text style note (no numeric knobs, no seed pin) |
 
 Everything downstream follows the voice's engine automatically: projects
 inherit it, a per-chunk voice override switches engines mid-project, spend is
 metered per engine at its own rate (`TTS_COST_PER_1K_CHARS` /
-`TTS_COST_PER_1K_CHARS_TURBO`), and every tuning surface shows that engine's
-knobs (see [STUDIO-TUNING.md](STUDIO-TUNING.md)). Switching an existing
-voice's engine re-validates its clip against the new engine's rules.
+`TTS_COST_PER_1K_CHARS_TURBO` / `TTS_COST_PER_1K_CHARS_QWEN3`), and every
+tuning surface shows that engine's knobs (see
+[STUDIO-TUNING.md](STUDIO-TUNING.md)). Switching an existing voice's engine
+re-validates its clip against the new engine's rules.
 
-Both engines normally run on Replicate; developers can serve them from their
-own machine instead with `TTS_PROVIDER=local` (see
-[CHATTERBOX-LOCAL.md](CHATTERBOX-LOCAL.md)).
+A Qwen3 TTS voice with a clip can also carry a **clip transcript** (the voice
+edit page's "Clip transcript" section): qwen's clone mode reads along with the
+clip for better fidelity. With the ASR sidecar enabled, a newly saved clip is
+transcribed automatically when the field is empty; anything you type wins.
+
+All engines normally run on Replicate; developers can serve the Chatterbox
+pair from their own machine with `TTS_PROVIDER=local` — qwen voices then
+route to Replicate per call (see [CHATTERBOX-LOCAL.md](CHATTERBOX-LOCAL.md)).
 
 ### Sound tags (Chatterbox Turbo)
 
@@ -125,8 +131,8 @@ the engine, and the reference clip from one of three sources:
    (~20–25 s each) right in the browser; review the take before using it.
 2. **Upload a file** — WAV/MP3/M4A/AAC/OGG/FLAC up to 20 MB. A clean, quiet
    ~15–20 s sample works best.
-3. **Built-in voice** (turbo only) — pick one of the 20 presets instead of
-   providing a clip.
+3. **Built-in voice** (Turbo and Qwen3 TTS) — pick one of the engine's
+   presets instead of providing a clip.
 
 **Clip cleanup** (on by default, `TTS_ENHANCE_ENABLED`): the clip is denoised
 and de-reverbed via resemble-enhance on Replicate, and you A/B the *Cleaned

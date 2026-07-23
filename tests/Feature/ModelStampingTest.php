@@ -128,6 +128,61 @@ class ModelStampingTest extends TestCase
         $this->assertArrayNotHasKey('voice_preset', $provider->lastSettings);
     }
 
+    public function test_a_qwen_voice_stamps_the_engine_and_preset_speaker(): void
+    {
+        $provider = $this->capturingProvider();
+        $voice = Voice::create([
+            'slug' => 'qwen-v',
+            'name' => 'Qwen V',
+            'model' => 'qwen3-tts',
+            'settings' => ['preset_voice' => 'Vivian', 'reference_text' => 'Ignored without a clip.'],
+        ]);
+
+        $chunk = $this->projectFor($voice)->chunks()->first();
+        app(ProjectService::class)->generateChunk($chunk);
+
+        $this->assertSame('qwen3-tts', $provider->lastSettings['model']);
+        $this->assertSame('Vivian', $provider->lastSettings['voice_preset']);
+        // reference_text only matters (and only stamps) when a clip exists.
+        $this->assertArrayNotHasKey('reference_text', $provider->lastSettings);
+    }
+
+    public function test_a_qwen_voice_with_a_clip_stamps_its_reference_text(): void
+    {
+        $provider = $this->capturingProvider();
+        Storage::disk('local')->put('voices/qwen-clip.wav', 'RIFFfake');
+        $voice = Voice::create([
+            'slug' => 'qwen-clip-v',
+            'name' => 'Qwen Clip V',
+            'model' => 'qwen3-tts',
+            'reference_audio_path' => 'voices/qwen-clip.wav',
+            'settings' => ['reference_text' => 'What the clip says.'],
+        ]);
+
+        $chunk = $this->projectFor($voice)->chunks()->first();
+        app(ProjectService::class)->generateChunk($chunk);
+
+        $this->assertSame('What the clip says.', $provider->lastSettings['reference_text']);
+    }
+
+    public function test_a_classic_voice_never_stamps_reference_text(): void
+    {
+        $provider = $this->capturingProvider();
+        Storage::disk('local')->put('voices/classic-clip.wav', 'RIFFfake');
+        $voice = Voice::create([
+            'slug' => 'classic-clip-v',
+            'name' => 'Classic Clip V',
+            'reference_audio_path' => 'voices/classic-clip.wav',
+            'settings' => ['reference_text' => 'Chatterbox has no such input.'],
+        ]);
+
+        $chunk = $this->projectFor($voice)->chunks()->first();
+        app(ProjectService::class)->generateChunk($chunk);
+
+        // The settings map must stay byte-identical for classic voices.
+        $this->assertArrayNotHasKey('reference_text', $provider->lastSettings);
+    }
+
     public function test_a_per_chunk_voice_override_switches_the_engine_for_that_chunk(): void
     {
         $provider = $this->capturingProvider();

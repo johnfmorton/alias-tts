@@ -6,6 +6,7 @@ use App\Models\User;
 use App\Models\Voice;
 use App\Services\VoiceService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Storage;
 use RuntimeException;
 use Tests\TestCase;
@@ -214,5 +215,155 @@ class VoiceModelTest extends TestCase
                 'model' => 'gpt-voice-9000',
             ])
             ->assertSessionHasErrors('model');
+    }
+
+    public function test_a_qwen_voice_with_a_preset_speaker_needs_no_clip(): void
+    {
+        $voice = app(VoiceService::class)->register(
+            name: 'Qwen Preset', slug: 'qwen-preset', audioBytes: null, ext: null,
+            normalize: false, seed: null, model: 'qwen3-tts', presetVoice: 'Vivian',
+        );
+
+        $this->assertSame('qwen3-tts', $voice->model);
+        $this->assertSame('replicate', $voice->provider);
+        $this->assertSame('Vivian', $voice->settings['preset_voice']);
+        $this->assertNull($voice->reference_audio_path);
+    }
+
+    public function test_a_qwen_voice_without_clip_or_preset_is_refused(): void
+    {
+        $this->expectException(RuntimeException::class);
+        $this->expectExceptionMessage('built-in');
+
+        app(VoiceService::class)->register(
+            name: 'Qwen Empty', slug: 'qwen-empty', audioBytes: null, ext: null,
+            normalize: false, seed: null, model: 'qwen3-tts',
+        );
+    }
+
+    public function test_update_writes_and_clears_qwen_defaults_and_transcript(): void
+    {
+        $service = app(VoiceService::class);
+        $voice = $service->register(
+            name: 'Qwen Tunable', slug: 'qwen-tunable', audioBytes: null, ext: null,
+            normalize: false, seed: null, model: 'qwen3-tts', presetVoice: 'Serena',
+        );
+
+        $voice = $service->update(
+            voice: $voice, name: 'Qwen Tunable', slug: 'qwen-tunable', audioBytes: null, ext: null,
+            normalize: false, seed: null, model: 'qwen3-tts', presetVoice: 'Serena',
+            language: 'English', styleInstruction: '  speak slowly  ', referenceText: 'What the clip says.',
+        );
+
+        $this->assertSame('English', $voice->settings['language']);
+        $this->assertSame('speak slowly', $voice->settings['style_instruction']);
+        $this->assertSame('What the clip says.', $voice->settings['reference_text']);
+
+        // `auto` language and blank strings clear back to inherit.
+        $voice = $service->update(
+            voice: $voice, name: 'Qwen Tunable', slug: 'qwen-tunable', audioBytes: null, ext: null,
+            normalize: false, seed: null, model: 'qwen3-tts', presetVoice: 'Serena',
+            language: 'auto', styleInstruction: '   ', referenceText: null,
+        );
+
+        $this->assertArrayNotHasKey('language', $voice->settings);
+        $this->assertArrayNotHasKey('style_instruction', $voice->settings);
+        $this->assertArrayNotHasKey('reference_text', $voice->settings);
+    }
+
+    public function test_a_new_qwen_clip_auto_fills_the_transcript_via_asr(): void
+    {
+        config(['tts.asr.enabled' => true, 'tts.asr.url' => 'http://asr.test']);
+        Http::fake(['asr.test/transcribe' => Http::response([
+            'duration' => 4.0, 'text' => '  Hello from the clip.  ', 'words' => [], 'transcribe_ms' => 9,
+        ])]);
+
+        $voice = app(VoiceService::class)->register(
+            name: 'Qwen Auto', slug: 'qwen-auto', audioBytes: $this->silentWav(4.0), ext: 'wav',
+            normalize: false, seed: null, model: 'qwen3-tts',
+        );
+
+        $this->assertSame('Hello from the clip.', $voice->settings['reference_text']);
+    }
+
+    public function test_a_typed_transcript_beats_the_asr_auto_fill(): void
+    {
+        config(['tts.asr.enabled' => true, 'tts.asr.url' => 'http://asr.test']);
+        Http::fake(['asr.test/transcribe' => Http::response([
+            'duration' => 4.0, 'text' => 'Machine words.', 'words' => [], 'transcribe_ms' => 9,
+        ])]);
+
+        $service = app(VoiceService::class);
+        $voice = $service->register(
+            name: 'Qwen Typed', slug: 'qwen-typed', audioBytes: null, ext: null,
+            normalize: false, seed: null, model: 'qwen3-tts', presetVoice: 'Serena',
+        );
+
+        $voice = $service->update(
+            voice: $voice, name: 'Qwen Typed', slug: 'qwen-typed',
+            audioBytes: $this->silentWav(4.0), ext: 'wav',
+            normalize: false, seed: null, model: 'qwen3-tts', presetVoice: 'Serena',
+            referenceText: 'Human words.',
+        );
+
+        $this->assertSame('Human words.', $voice->settings['reference_text']);
+        Http::assertNothingSent();
+    }
+
+    public function test_no_auto_fill_when_asr_is_disabled_or_engine_is_chatterbox(): void
+    {
+        config(['tts.asr.enabled' => false]);
+        Http::fake();
+
+        $qwen = app(VoiceService::class)->register(
+            name: 'Qwen NoAsr', slug: 'qwen-noasr', audioBytes: $this->silentWav(4.0), ext: 'wav',
+            normalize: false, seed: null, model: 'qwen3-tts',
+        );
+        $this->assertArrayNotHasKey('reference_text', $qwen->settings ?? []);
+
+        config(['tts.asr.enabled' => true, 'tts.asr.url' => 'http://asr.test']);
+        $classic = app(VoiceService::class)->register(
+            name: 'Classic NoFill', slug: 'classic-nofill', audioBytes: $this->silentWav(4.0), ext: 'wav',
+            normalize: false, seed: null,
+        );
+        $this->assertArrayNotHasKey('reference_text', $classic->settings ?? []);
+        Http::assertNothingSent();
+    }
+
+    public function test_presets_are_validated_against_the_selected_engine(): void
+    {
+        // A turbo preset name on a qwen voice — and vice versa — must fail:
+        // each engine only accepts its OWN built-in list.
+        $this->actingAs($this->admin())
+            ->from(route('admin.voices.create'))
+            ->post(route('admin.voices.store'), [
+                'name' => 'Cross Preset',
+                'model' => 'qwen3-tts',
+                'preset_voice' => 'Laura',
+            ])
+            ->assertSessionHasErrors('preset_voice');
+
+        $this->actingAs($this->admin())
+            ->from(route('admin.voices.create'))
+            ->post(route('admin.voices.store'), [
+                'name' => 'Cross Preset 2',
+                'model' => 'chatterbox-turbo',
+                'preset_voice' => 'Vivian',
+            ])
+            ->assertSessionHasErrors('preset_voice');
+
+        // The matching pair sails through.
+        $this->actingAs($this->admin())
+            ->post(route('admin.voices.store'), [
+                'name' => 'Qwen Form',
+                'model' => 'qwen3-tts',
+                'preset_voice' => 'Serena',
+            ])
+            ->assertSessionHasNoErrors()
+            ->assertRedirect();
+
+        $voice = Voice::where('name', 'Qwen Form')->firstOrFail();
+        $this->assertSame('qwen3-tts', $voice->model);
+        $this->assertSame('Serena', $voice->settings['preset_voice']);
     }
 }

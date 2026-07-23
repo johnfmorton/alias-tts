@@ -31,7 +31,7 @@ column, a per-chunk pin, a voice-default fallback). See [Seed](#seed) below.
 
 ## The knobs
 
-Each voice runs one of two engines (`voices.model` — see
+Each voice runs one of three engines (`voices.model` — see
 [VOICES.md](VOICES.md#engines)), and each engine has its own knob dialect.
 Every tuning surface shows exactly the effective voice's set; a per-chunk
 voice override swaps the visible knobs (and their help text) live.
@@ -42,11 +42,19 @@ voice override swaps the visible knobs (and their help text) live.
 | shared | `temperature` 0.5–1.5 (neutral 0.8) — sampling randomness: lower is flatter and steadier, higher is livelier but less predictable. The band is deliberately narrower than turbo's native 0.05–2 so both engines share one dial. Plus the [seed pin](#seed). |
 | extras | — | 500-char per-call cap · `[laugh]`-style sound tags · built-in preset voices · clips must be >5 s |
 
+**`qwen3-tts` has no numeric knobs at all** — its dialect is `language` (an
+exact enum, auto-detect by default) plus a free-text `style_instruction`
+("speak slowly and calmly"). No temperature, no seed pin (its schema has no
+seed input — the Studio hides the pin), no Delivery archetype chips, and no
+named tuning presets. The Tune-by-ear bench on a qwen voice auditions style
+notes instead of slider values.
+
 Single sources of truth:
 
-- **Clamps and formulas** — `App\Services\Tts\ChatterboxTuning` (classic) and
-  `App\Services\Tts\ChatterboxTurboTuning` (turbo). The formulas exist ONLY in
-  PHP; there is no JS mirror.
+- **Clamps and formulas** — `App\Services\Tts\ChatterboxTuning` (classic),
+  `App\Services\Tts\ChatterboxTurboTuning` (turbo), and
+  `App\Services\Tts\Qwen3TtsTuning` (qwen: language enum + style-note
+  trimming). The formulas exist ONLY in PHP; there is no JS mirror.
 - **Which engine gets which knobs** — the `knobs` entry per model in
   `config('tts.models')`, surfaced to JS via `KNOB_ENGINES` in `app.js`
   (visibility only, no math).
@@ -70,6 +78,9 @@ engine at the provider; requests never error over a knob mismatch:
   EL default 0.5 lands exactly on the 0.8 temperature default, 1 = steadiest,
   0 = most varied. `style` is accepted and ignored (turbo has no
   expressiveness knob).
+- **Qwen3 TTS** (`Qwen3TtsTuning::resolveNative`): every EL knob — and both
+  chatterbox dialects' numeric knobs — is accepted and ignored; only
+  `language` and `style_instruction` reach the model.
 - **Both engines**: an explicit native key always wins over its EL twin, and
   when the Studio writes a native knob it drops the stale EL twin so a
   settings map never carries both (`ProjectService::EL_TWIN`).

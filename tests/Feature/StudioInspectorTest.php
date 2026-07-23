@@ -127,7 +127,7 @@ class StudioInspectorTest extends TestCase
 
     public function test_preview_estimate_is_absent_when_no_rates_are_configured(): void
     {
-        config(['tts.models.chatterbox.cost_per_1k_chars' => 0, 'tts.models.chatterbox-turbo.cost_per_1k_chars' => 0]);
+        config(['tts.models.chatterbox.cost_per_1k_chars' => 0, 'tts.models.chatterbox-turbo.cost_per_1k_chars' => 0, 'tts.models.qwen3-tts.cost_per_1k_chars' => 0]);
 
         $this->actingAs($this->user())
             ->postJson(route('admin.studio.preview'), ['text' => 'Free install.'])

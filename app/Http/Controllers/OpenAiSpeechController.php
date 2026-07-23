@@ -79,17 +79,21 @@ class OpenAiSpeechController extends Controller
             );
         }
 
+        // The request's `model` may override the voice's engine — pronunciation
+        // scoping must follow the engine that actually renders.
+        $engine = $this->engineOverride($request->modelName());
+
         try {
             $speech = $this->speechService->synthesize(
                 apiKey: $apiKey,
                 voice: $voice,
                 // Respell only when the key owner opted the API surface in
                 // (default off = verbatim passthrough). See ApiPronunciation.
-                text: $this->pronunciation->apply($apiKey?->user_id, $request->text()),
+                text: $this->pronunciation->apply($apiKey?->user_id, $request->text(), $engine ?? ModelCatalog::forVoice($voice)),
                 settings: $this->settingsResolver->resolve($voice),
                 modelId: (string) config('tts.default_model_id'),
                 outputFormat: self::FORMAT_MAP[$request->responseFormat()],
-                engine: $this->engineOverride($request->modelName()),
+                engine: $engine,
             );
         } catch (Throwable $e) {
             report($e);

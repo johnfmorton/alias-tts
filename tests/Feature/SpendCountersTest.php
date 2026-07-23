@@ -102,7 +102,7 @@ class SpendCountersTest extends TestCase
         // Seven steps: the per-chunk skip flag, the credit system, the project-jobs
         // table, the generation-timings table, the voice-clip status column, and
         // the take-voice column sit on top of it.
-        Artisan::call('migrate:rollback', ['--step' => 9]);
+        Artisan::call('migrate:rollback', ['--step' => 10]);
         $this->assertFalse(DB::getSchemaBuilder()->hasTable('tts_spend_counters'));
         Artisan::call('migrate', ['--force' => true]);
 
@@ -156,6 +156,7 @@ class SpendCountersTest extends TestCase
         config([
             'tts.models.chatterbox.cost_per_1k_chars' => 0,
             'tts.models.chatterbox-turbo.cost_per_1k_chars' => 0,
+            'tts.models.qwen3-tts.cost_per_1k_chars' => 0,
         ]);
         $this->assertFalse(GenerationCost::enabled());
 

@@ -63,6 +63,16 @@ class LocalChatterboxProvider implements TtsProvider
         $modelKey = isset($settings['model']) ? (string) $settings['model'] : ModelCatalog::DEFAULT;
         $model = $this->modelConfig($modelKey);
 
+        // The sidecar only runs Chatterbox weights. Rendering a qwen voice
+        // through it would speak the wrong voice with no error — fail loudly
+        // instead (wrong-voice output must never be silent).
+        if (($model['knobs'] ?? 'chatterbox') === 'qwen3-tts') {
+            throw new RuntimeException(
+                'Qwen3 TTS requires the Replicate provider — the local Chatterbox sidecar cannot run it. '
+                .'Set TTS_PROVIDER=replicate or switch this voice to a Chatterbox engine.',
+            );
+        }
+
         // Fail fast on a per-model input cap (turbo: 500 chars) BEFORE any HTTP
         // call — same guarantee as the Replicate driver.
         $maxChars = max(0, (int) ($model['max_input_chars'] ?? 0));

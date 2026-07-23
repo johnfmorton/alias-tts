@@ -810,6 +810,37 @@ return [
             // Replicate rejects reference clips of 5 seconds or less.
             'min_reference_seconds' => 5.0,
         ],
+        'qwen3-tts' => [
+            'label' => 'Qwen3 TTS',
+            'model' => env('REPLICATE_QWEN3_TTS_MODEL', 'qwen/qwen3-tts'),
+            'version' => env('REPLICATE_QWEN3_TTS_VERSION', 'd490a561cf1171a8dc3d96d1e57efffea7dd34607148bb641f3d9de4e38c472e'),
+            'text_field' => 'text',
+            'reference_field' => 'reference_audio',
+            'output_container' => env('REPLICATE_QWEN3_TTS_OUTPUT_CONTAINER', 'wav'),
+            'max_input_chars' => (int) env('TTS_QWEN3_MAX_INPUT_CHARS', 0),
+            'cost_per_1k_chars' => (float) env('TTS_COST_PER_1K_CHARS_QWEN3', 0.02),
+            // 'qwen3-tts' = language + style_instruction; no numeric knobs.
+            'knobs' => 'qwen3-tts',
+            // Built-in speakers; sent as `speaker` (mode custom_voice — qwen's
+            // name for its PRESET mode) when the voice has no reference clip.
+            'preset_voices' => [
+                'Aiden', 'Dylan', 'Eric', 'Ono_anna', 'Ryan', 'Serena', 'Sohee',
+                'Uncle_fu', 'Vivian',
+            ],
+            'supports_tags' => false,
+            // Qwen clones from ~3s of clean audio (UI copy still recommends 15–20s).
+            'min_reference_seconds' => 3.0,
+            // The qwen input schema has NO seed field — sending one would fail
+            // Replicate's input validation.
+            'supports_seed' => false,
+            // The local Chatterbox sidecar can't run qwen — under
+            // TTS_PROVIDER=local these voices route to Replicate instead
+            // (HybridTtsProvider), so the token must still be set.
+            'local_capable' => false,
+            // voice_clone mode accepts the clip's transcript (reference_text)
+            // for better clone fidelity; stamped from voices.settings.
+            'accepts_reference_text' => true,
+        ],
     ],
 
     /*

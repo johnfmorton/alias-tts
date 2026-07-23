@@ -1729,7 +1729,7 @@ class ProjectService
     {
         return array_intersect_key($settings, array_flip([
             'stability', 'style', 'exaggeration', 'cfg_weight', 'temperature',
-            'top_p', 'top_k', 'repetition_penalty',
+            'top_p', 'top_k', 'repetition_penalty', 'language', 'style_instruction',
         ]));
     }
 

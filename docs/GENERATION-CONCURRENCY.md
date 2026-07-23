@@ -20,15 +20,18 @@ latency benefit remains clear and errors remain flat.
 
 ## 1. Verified provider assumptions
 
-These assumptions are specific to the two endpoints used by the application:
+These assumptions are specific to the endpoints used by the application:
 
 - `resemble-ai/chatterbox`
 - `resemble-ai/chatterbox-turbo`
+- `qwen/qwen3-tts` (added 2026-07-23)
 
-As of 2026-07-19, both are **official Replicate models**. Replicate documents
+As of 2026-07-19, all are **official Replicate models**. Replicate documents
 official models as always on and warm, with stable APIs and predictable
 pricing. Both Chatterbox endpoints are currently priced at **$0.025 per 1,000
-input characters**.
+input characters**; qwen3-tts at **$0.02 per 1,000**. The concurrency design
+below applies unchanged to qwen renders — same prediction API, same retry
+paths.
 
 Consequences for this design:
 
@@ -53,6 +56,7 @@ Primary sources:
 - [Rate limits](https://replicate.com/docs/topics/predictions/rate-limits)
 - [Chatterbox model and pricing](https://replicate.com/resemble-ai/chatterbox)
 - [Chatterbox Turbo model and pricing](https://replicate.com/resemble-ai/chatterbox-turbo)
+- [Qwen3 TTS model and pricing](https://replicate.com/qwen/qwen3-tts)
 - [Synchronous and asynchronous predictions](https://replicate.com/docs/topics/predictions/create-a-prediction)
 
 Provider status, pricing, and rate limits are external facts and must be

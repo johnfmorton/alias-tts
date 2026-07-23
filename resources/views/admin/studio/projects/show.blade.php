@@ -469,7 +469,7 @@
                              sliders below; dragging a slider off an archetype flips this to an
                              implicit Custom (no chip lit). JS applies + matches against
                              data-delivery-presets on #studio-project, per the active engine. --}}
-                        <div class="mt-3">
+                        <div @class(['chunk-delivery-wrap mt-3', 'hidden' => $chunkModel === 'qwen3-tts'])>
                             <span class="text-[11px] font-semibold uppercase tracking-wide text-zinc-400">Delivery</span>
                             <div class="chunk-delivery mt-1.5 flex flex-wrap gap-2">
                                 @foreach(['steady' => ['Steady', 'focused, consistent'], 'balanced' => ['Balanced', 'neutral default'], 'expressive' => ['Expressive', 'varied, lively']] as $key => $meta)
@@ -496,11 +496,13 @@
                             @endif
                         </div>
 
-                        {{-- Seed pin — always visible. Not a knob (integer, no slider, no
-                             neutral). Blank inherits the project seed (or rolls random), so a
-                             blank-seed Regenerate IS the fresh-take re-roll. A pin only biases
-                             the draw; Chatterbox is not bit-reproducible even so. --}}
-                        <div class="mt-4 flex flex-wrap items-center gap-x-3 gap-y-1.5">
+                        {{-- Seed pin — for engines whose schema has one (qwen's doesn't, so
+                             the row is engine-scoped via data-knob like the sliders). Not a
+                             slider knob (integer, no neutral). Blank inherits the project seed
+                             (or rolls random), so a blank-seed Regenerate IS the fresh-take
+                             re-roll. A pin only biases the draw; Chatterbox is not
+                             bit-reproducible even so. --}}
+                        <div class="tuning-knob mt-4 {{ $chunkModel === 'qwen3-tts' ? 'hidden' : 'flex' }} flex-wrap items-center gap-x-3 gap-y-1.5" data-knob="seed">
                             <span class="text-sm text-zinc-300">Seed</span>
                             <input type="number" min="0" step="1"
                                    value="{{ $chunk->settings['seed'] ?? '' }}" placeholder="{{ $inheritSeedText }}"
@@ -562,7 +564,30 @@
                                                help="Sampling randomness — lower is flatter and steadier, higher is livelier but less predictable."
                                                :min="0.5" :max="1.5" :step="0.05"
                                                :value="$chunk->settings['temperature'] ?? ''" :placeholder="$inheritTemperature"
-                                               inputClass="chunk-temperature" :reset="false" :rail="false" class="w-full" />
+                                               inputClass="chunk-temperature" :reset="false" :rail="false" class="w-full" :hidden="$chunkModel === 'qwen3-tts'" />
+                                {{-- Qwen's string controls (it has no numeric knobs); same
+                                     .tuning-knob/data-knob contract so syncKnobEngines swaps
+                                     them with the chunk's engine. --}}
+                                <div class="tuning-knob relative w-full {{ $chunkModel === 'qwen3-tts' ? 'flex' : 'hidden' }} flex-col gap-1" data-knob="language">
+                                    <div class="flex items-center gap-2">
+                                        <span class="text-sm font-semibold text-zinc-300">Language</span>
+                                        <select class="chunk-language ml-auto rounded-lg border border-edge bg-zinc-950 px-2 py-1 text-sm text-zinc-200">
+                                            <option value="">Inherit ({{ $project->settings['language'] ?? 'auto' }})</option>
+                                            @foreach(\App\Services\Tts\Qwen3TtsTuning::LANGUAGES as $lang)
+                                                <option value="{{ $lang }}" @selected(($chunk->settings['language'] ?? '') === $lang)>{{ $lang === 'auto' ? 'Auto-detect' : $lang }}</option>
+                                            @endforeach
+                                        </select>
+                                    </div>
+                                    <div class="text-[11.5px] text-zinc-500">which language the text is read as · auto detects</div>
+                                </div>
+                                <div class="tuning-knob relative w-full {{ $chunkModel === 'qwen3-tts' ? 'flex' : 'hidden' }} flex-col gap-1" data-knob="style_instruction">
+                                    <span class="text-sm font-semibold text-zinc-300">Style note</span>
+                                    <input type="text" maxlength="{{ \App\Services\Tts\Qwen3TtsTuning::STYLE_INSTRUCTION_MAX }}"
+                                           value="{{ $chunk->settings['style_instruction'] ?? '' }}"
+                                           placeholder="{{ $project->settings['style_instruction'] ?? 'e.g. speak slowly and calmly' }}"
+                                           class="chunk-style-instruction w-full rounded-lg border border-edge bg-zinc-950 px-2 py-1 text-sm text-zinc-200">
+                                    <div class="text-[11.5px] text-zinc-500">plain-words delivery steer · blank inherits</div>
+                                </div>
                             </div>
                         </div>
 

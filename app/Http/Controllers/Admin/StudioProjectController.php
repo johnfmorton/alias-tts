@@ -32,6 +32,7 @@ use App\Services\Tts\ChatterboxTuning;
 use App\Services\Tts\ChatterboxTurboTuning;
 use App\Services\Tts\DeliveryPresets;
 use App\Services\Tts\ModelCatalog;
+use App\Services\Tts\Qwen3TtsTuning;
 use App\Services\Tts\VoiceSettingsResolver;
 use App\Support\GenerationCost;
 use App\Support\GenerationEstimator;
@@ -98,7 +99,7 @@ class StudioProjectController extends Controller
             return back()->withInput()->with('error', 'Unknown voice.');
         }
 
-        $project = $this->persist($request, $data, $voice, $data['text'], $this->dictionary->approvedMap($request->user()?->id));
+        $project = $this->persist($request, $data, $voice, $data['text'], $this->dictionary->approvedMap($request->user()?->id, ModelCatalog::forVoice($voice)));
 
         return redirect()->route('admin.studio.projects.show', $project)
             ->with('success', 'Project created — generate the chunks below.');
@@ -137,7 +138,7 @@ class StudioProjectController extends Controller
             $data['title'] = trim(mb_substr($data['text'], 0, 40));
         }
 
-        $project = $this->persist($request, $data, $voice, $data['text'], $this->dictionary->approvedMap($request->user()->id));
+        $project = $this->persist($request, $data, $voice, $data['text'], $this->dictionary->approvedMap($request->user()->id, ModelCatalog::forVoice($voice)));
 
         $attached = $this->attachInspectorTakes($request, $project, $voice, (array) ($data['takes'] ?? []));
 
@@ -387,6 +388,10 @@ class StudioProjectController extends Controller
             'substitutions.*.confidence' => ['nullable', 'string'],
             'substitutions.*.note' => ['nullable', 'string'],
             'substitutions.*.match_mode' => ['nullable', 'in:case_sensitive,case_insensitive'],
+            // Batch engine scope for everything approved on this screen
+            // (absent/all = applies everywhere, the historical behavior).
+            'engines' => ['nullable', 'array'],
+            'engines.*' => [Rule::in(ModelCatalog::keys())],
         ]);
 
         $voice = Voice::resolveFor($data['voice'], $request->user()->id);
@@ -402,7 +407,7 @@ class StudioProjectController extends Controller
         $approved = array_values(array_intersect_key($data['substitutions'] ?? [], $approvedIdx));
         $declined = array_values(array_diff_key($data['substitutions'] ?? [], $approvedIdx));
         if ($approved !== []) {
-            $this->dictionary->approveSuggestions($userId, $approved);
+            $this->dictionary->approveSuggestions($userId, $approved, $data['engines'] ?? null);
         }
         if ($declined !== []) {
             $this->dictionary->rejectSuggestions($userId, $declined);
@@ -421,7 +426,7 @@ class StudioProjectController extends Controller
      */
     private function persistWithDictionary(Request $request, array $data, Voice $voice, ?int $userId): TtsProject
     {
-        return $this->persist($request, $data, $voice, $data['text'], $this->dictionary->approvedMap($userId));
+        return $this->persist($request, $data, $voice, $data['text'], $this->dictionary->approvedMap($userId, ModelCatalog::forVoice($voice)));
     }
 
     /**
@@ -806,7 +811,7 @@ class StudioProjectController extends Controller
         $this->projects->resetFromText(
             $project,
             $data['text'],
-            $this->dictionary->approvedMap($this->projectOwnerId($request, $project)),
+            $this->dictionary->approvedMap($this->projectOwnerId($request, $project), ModelCatalog::forVoice($project->voice)),
             (string) config('tts.spoken_quotes', SpokenQuotes::MODE_OFF),
         );
 
@@ -850,7 +855,7 @@ class StudioProjectController extends Controller
             $revision = $this->projects->planRevision(
                 $project,
                 (string) $request->input('text'),
-                $this->dictionary->approvedMap($ownerId),
+                $this->dictionary->approvedMap($ownerId, ModelCatalog::forVoice($project->voice)),
                 (string) config('tts.spoken_quotes', SpokenQuotes::MODE_OFF),
             );
         } catch (RuntimeException $e) {
@@ -909,7 +914,7 @@ class StudioProjectController extends Controller
             $result = $this->projects->reviseFromText(
                 $project,
                 $data['text'],
-                $this->dictionary->approvedMap($ownerId),
+                $this->dictionary->approvedMap($ownerId, ModelCatalog::forVoice($project->voice)),
                 (string) config('tts.spoken_quotes', SpokenQuotes::MODE_OFF),
             );
         } catch (RuntimeException $e) {
@@ -2304,6 +2309,10 @@ class StudioProjectController extends Controller
      */
     private function takeEngine(array $settings, string $chunkEngine): string
     {
+        if (array_intersect_key($settings, array_flip(['language', 'style_instruction'])) !== []) {
+            return 'qwen3-tts';
+        }
+
         if (array_intersect_key($settings, array_flip(['top_p', 'top_k', 'repetition_penalty'])) !== []) {
             return 'chatterbox-turbo';
         }
@@ -2321,10 +2330,23 @@ class StudioProjectController extends Controller
      * archetype match can compare every knob.
      *
      * @param  array<string, mixed>  $settings
-     * @return array<string, float|int>
+     * @return array<string, float|int|string>
      */
     private function nativeTuning(array $settings, string $engine): array
     {
+        if ($engine === 'qwen3-tts') {
+            // Qwen's knobs are strings; the effective values (not omissions)
+            // so the Custom readout can name them.
+            return [
+                'language' => Qwen3TtsTuning::clampLanguage(
+                    isset($settings['language']) ? (string) $settings['language'] : null,
+                ),
+                'style_instruction' => Qwen3TtsTuning::cleanStyleInstruction(
+                    isset($settings['style_instruction']) ? (string) $settings['style_instruction'] : null,
+                ) ?? '',
+            ];
+        }
+
         if ($engine === 'chatterbox-turbo') {
             return ChatterboxTurboTuning::resolveNative($settings);
         }
@@ -2366,10 +2388,20 @@ class StudioProjectController extends Controller
      * The "Custom" knob readout for a resolved native map, worded to match the
      * fine-tune sliders the user sees for that engine.
      *
-     * @param  array<string, float|int>  $native
+     * @param  array<string, float|int|string>  $native
      */
     private function customTuning(array $native, string $engine): string
     {
+        if ($engine === 'qwen3-tts') {
+            $style = (string) $native['style_instruction'];
+
+            return sprintf(
+                'language %s · %s',
+                $native['language'],
+                $style === '' ? 'no style note' : 'style “'.Str::limit($style, 40).'”',
+            );
+        }
+
         if ($engine === 'chatterbox-turbo') {
             return sprintf(
                 'top-p %.2f · top-k %d · rep. penalty %.2f · temp %.2f',
@@ -2399,6 +2431,8 @@ class StudioProjectController extends Controller
             'top_p' => ['nullable', 'numeric', 'between:0.5,1'],
             'top_k' => ['nullable', 'integer', 'between:1,2000'],
             'repetition_penalty' => ['nullable', 'numeric', 'between:1,2'],
+            'language' => ['nullable', 'string', Rule::in(Qwen3TtsTuning::LANGUAGES)],
+            'style_instruction' => ['nullable', 'string', 'max:'.Qwen3TtsTuning::STYLE_INSTRUCTION_MAX],
             'seed' => ['nullable', 'integer', 'min:0'],
         ];
     }
@@ -2415,9 +2449,17 @@ class StudioProjectController extends Controller
     {
         $knobs = [];
         foreach (array_keys($this->knobRules()) as $knob) {
-            $knobs[$knob] = $request->filled($knob)
-                ? (in_array($knob, ['seed', 'top_k'], true) ? (int) $request->input($knob) : (float) $request->input($knob))
-                : null;
+            if (! $request->filled($knob)) {
+                $knobs[$knob] = null;
+
+                continue;
+            }
+
+            $knobs[$knob] = match (true) {
+                in_array($knob, ['seed', 'top_k'], true) => (int) $request->input($knob),
+                in_array($knob, ['language', 'style_instruction'], true) => (string) $request->input($knob),
+                default => (float) $request->input($knob),
+            };
         }
 
         return $knobs;

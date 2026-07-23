@@ -8,9 +8,16 @@ credits, no rate limits, and no network round-trip; it works offline once the
 models are downloaded. Unset the variable and you're back on Replicate,
 untouched.
 
-Both engines are served: classic `chatterbox` and `chatterbox-turbo`, chosen
-per voice exactly as on Replicate (see [VOICES.md](VOICES.md)). Each model is
-lazy-loaded on first use and stays warm in memory afterwards.
+Both Chatterbox engines are served: classic `chatterbox` and
+`chatterbox-turbo`, chosen per voice exactly as on Replicate (see
+[VOICES.md](VOICES.md)). Each model is lazy-loaded on first use and stays warm
+in memory afterwards.
+
+`TTS_PROVIDER=local` is really a **hybrid**: engines the sidecar can't run
+(`qwen3-tts`) automatically render via Replicate per call, so a project can
+mix local chatterbox voices with qwen voices. Keep `REPLICATE_API_TOKEN` set
+if you use qwen voices — without it only those voices fail (chatterbox keeps
+rendering locally), and the Health page warns.
 
 > This is a developer convenience, not a production deployment path. The
 > sidecar has no auth, serves one request at a time, and is meant to listen on
