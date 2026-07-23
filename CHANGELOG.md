@@ -20,6 +20,26 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   in `.env.example` and `docs/DEPLOYMENT.md`: a non-empty root on the
   developer side makes the collision above impossible in the first place,
   and it costs nothing on the `local` disk.
+- **`db:backup` — database dumps to the storage disk.** Dumps the database
+  to the same disk the app already uses for audio (local, or S3/B2 in
+  production) under a top-level `db_backup/YYYY/MM/DD/` prefix — a sibling
+  of `speech/` and `voices/`, deliberately outside `storage_path` so
+  `speech:cleanup --orphans` never touches a dump. Files are named
+  `backup-DDMONYYYY-N.sql` with `N` incrementing per day; `--compress`
+  writes `.sql.gz`. mysql/mariadb dump through `mysqldump`/`mariadb-dump`
+  (credentials passed via a `0600` defaults-file, never the process list),
+  pgsql through `pg_dump`, sqlite through a consistent file snapshot; the
+  dump streams to disk so a large database never loads into memory. Set an
+  absolute `TTS_MYSQLDUMP_PATH` in production, where cron and PHP-FPM run
+  with a stripped `PATH`.
+- **`db:prune-backups` — sliding backup retention.** Thins old dumps on a
+  curve that keeps recent history dense and old history sparse: everything
+  from the last 30 days is kept; from 30–90 days only the oldest dump per
+  day survives; from 90 days to 12 months only the oldest per month; older
+  than 12 months is deleted. A dump's date comes from its directory, so the
+  policy reads the same on a local disk or on S3/B2. Both commands are
+  wired into the scheduler (nightly, ahead of `speech:cleanup`), and
+  `db:prune-backups` supports `--dry-run` and a `--before` cutoff.
 
 ### Fixed
 - **The health-report tests no longer depend on the developer's

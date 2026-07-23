@@ -552,6 +552,33 @@ return [
 
     /*
     |--------------------------------------------------------------------------
+    | Database backups
+    |--------------------------------------------------------------------------
+    |
+    | `db:backup` dumps the database to the configured storage disk (local or
+    | s3/B2) under this top-level prefix, a sibling of speech/ and voices/.
+    | Kept OUTSIDE storage_path on purpose so `speech:cleanup --orphans` never
+    | treats a dump as an orphan. `db:prune-backups` thins old dumps.
+    |
+    */
+    'backup' => [
+        'path' => trim((string) env('TTS_BACKUP_PATH', 'db_backup'), '/'),
+
+        // Absolute path to the mysql/mariadb dump binary. Leave blank to search
+        // PATH + common bin dirs. SET THIS IN PRODUCTION: cron and PHP-FPM run
+        // with a stripped PATH, so a bare `mysqldump` may not resolve — the same
+        // gotcha that bit ffmpeg (TTS_FFMPEG_PATH).
+        'mysqldump_path' => env('TTS_MYSQLDUMP_PATH'),
+
+        // Absolute path to pg_dump, for Postgres connections.
+        'pg_dump_path' => env('TTS_PG_DUMP_PATH'),
+
+        // Seconds a single dump may run before it is killed.
+        'timeout' => (int) env('TTS_BACKUP_TIMEOUT', 3600),
+    ],
+
+    /*
+    |--------------------------------------------------------------------------
     | ffmpeg
     |--------------------------------------------------------------------------
     */

@@ -10,6 +10,16 @@ Artisan::command('inspire', function () {
     $this->comment(Inspiring::quote());
 })->purpose('Display an inspiring quote');
 
+// Nightly database dump to the configured storage disk (local or S3/B2), under
+// db_backup/YYYY/MM/DD/. Runs before the audio cleanups. Bump the frequency
+// (e.g. ->twiceDaily() or ->hourly()) for finer-grained restore points — the
+// retention thinning below is built to handle several dumps per day.
+Schedule::command('db:backup')->dailyAt('02:30');
+
+// Thin old dumps: keep everything < 30 days, the oldest per day for 30–90 days,
+// the oldest per month for 90 days–12 months, and drop anything older.
+Schedule::command('db:prune-backups')->dailyAt('02:40');
+
 // Daily TTL cleanup of expired generated audio (rows + files on the configured
 // disk, local or S3). Requires the OS scheduler to run `php artisan schedule:run`
 // every minute — see docs/DEPLOYMENT.md. Verify with `php artisan schedule:list`.
