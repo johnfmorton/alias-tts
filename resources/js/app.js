@@ -2520,6 +2520,35 @@ function initStudioProject() {
         stitchTimer = setTimeout(tick, 800); // first read right away-ish
     }
 
+    // A "Duplicate project" run copies clips off the request cycle (object
+    // storage has no batch copy, so a long project's deep copy outlived the
+    // gateway timeout the way the old synchronous duplicate did). Booked on THIS
+    // (source) project, the page follows it and navigates to the fresh copy when
+    // it lands. No-op while already following.
+    let duplicateTimer = null;
+    function followDuplicate() {
+        if (duplicateTimer) return;
+        const tick = async () => {
+            try {
+                const res = await fetch(generationStatusUrl, { headers: { 'Accept': 'application/json' } });
+                if (res.ok) {
+                    const data = await res.json();
+                    if (data.job) setStatus(finalStatus, data.job.message, data.job.tone || undefined);
+                    if (data.job && !data.job.active) {
+                        duplicateTimer = null;
+                        // Completed → open the copy; failed → leave the reason on screen.
+                        if (data.job.status === 'completed' && data.job.redirect_url) {
+                            window.location.assign(data.job.redirect_url);
+                        }
+                        return;
+                    }
+                }
+            } catch { /* transient — keep polling */ }
+            duplicateTimer = setTimeout(tick, RUN_POLL_MS);
+        };
+        duplicateTimer = setTimeout(tick, 800); // first read right away-ish
+    }
+
     async function rebuild() {
         startBusy(rebuildBtn, 'Rebuilding…');
         setStatus(finalStatus, 'Stitching chunks…');
@@ -3296,8 +3325,10 @@ function initStudioProject() {
     // whole point of the background run: leaving the page no longer kills it.)
     if (root.dataset.activeRun === '1') {
         // A stitch run resumes as a Build final follow (busy Build button +
-        // status line), not a generate follow.
+        // status line); a duplicate run resumes as a copy-and-open follow; every
+        // other type is a generate follow.
         if (root.dataset.activeRunType === 'stitch') followStitch(false);
+        else if (root.dataset.activeRunType === 'duplicate') followDuplicate();
         else followRun();
     }
 

@@ -4,6 +4,28 @@ All notable changes to this project are documented in this file. The format is
 based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this
 project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Fixed
+- **Duplicating a long project no longer times out.** The deep copy —
+  every selected clip byte-copied into the new project's own tree — ran
+  inside the web request, and object storage has no batch copy: it is one
+  round-trip per clip. A long project's copy outran the gateway timeout and
+  returned a 504 with no copy to show for it. Duplicate now books a
+  background run (`DuplicateProjectJob`, the same pattern as Build final):
+  the project page shows a live progress bar as the clips copy and opens the
+  finished copy automatically when the run lands. On a synchronous queue
+  (and for a copy that finishes inline) it still redirects straight to the
+  copy, exactly as before.
+
+### Changed
+- **Sealing a final streams its hash and snapshots it server-side.** The
+  seal step used to load the entire final into memory and re-upload it to
+  the sealed path; on a long project's large final that both risked
+  exhausting memory and transferred the file twice. It now hashes the final
+  in a streamed pass and copies it to the sealed path server-side, with
+  identical results (same SHA-256, byte count, and stored snapshot).
+
 ## [0.84.0] - 2026-07-23
 
 ### Added

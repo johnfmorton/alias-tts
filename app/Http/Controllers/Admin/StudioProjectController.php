@@ -8,6 +8,7 @@ use App\Enums\ProjectJobStatus;
 use App\Http\Controllers\Concerns\ChecksCredit;
 use App\Http\Controllers\Concerns\ServesRangedAudio;
 use App\Http\Controllers\Controller;
+use App\Jobs\DuplicateProjectJob;
 use App\Jobs\GenerateProjectChunksJob;
 use App\Jobs\GenerateProjectChunkWorkerJob;
 use App\Jobs\StitchProjectJob;
@@ -477,6 +478,20 @@ class StudioProjectController extends Controller
         $chunks = $project->chunks()->with(['takes', 'voice'])->get();
         $activeRun = TtsProjectJob::activeFor($project->id);
 
+        // A background duplicate that produced THIS project left a one-time notice
+        // (the copy's title + any voices it cloned to the duplicator). Surface it
+        // on the copy's first view — whether we arrived by the sync redirect or
+        // the async follow's navigation — and consume it so a refresh won't repeat.
+        if ($notice = TtsProjectJob::query()
+            ->where('type', TtsProjectJob::TYPE_DUPLICATE)
+            ->where('result_project_id', $project->id)
+            ->whereNotNull('result_message')
+            ->latest('finished_at')
+            ->first()) {
+            session()->now('success', $notice->result_message);
+            $notice->update(['result_message' => null]);
+        }
+
         return view('admin.studio.projects.show', [
             'project' => $project,
             // A background "Generate remaining" run is queued/working — the page
@@ -694,41 +709,53 @@ class StudioProjectController extends Controller
      */
     public function duplicate(Request $request, TtsProject $project): RedirectResponse
     {
-        // Snapshot before duplicating: only voices minted BY the copy are
-        // announced below. A pre-existing voice the copy was matched to is
-        // not news to its owner.
-        $preexisting = Voice::pluck('id');
-
-        $copy = $this->projects->duplicate($project, $request->user());
-
-        $message = 'Project duplicated — you are now viewing the copy.';
-        // Duplicating another user's project may clone voices to the
-        // duplicator (voices are per user); say so, or the new rows on their
-        // Voices page appear out of nowhere.
-        $adopted = $this->adoptedVoiceNames($project, $copy, $preexisting);
-        if ($adopted->isNotEmpty()) {
-            $names = $adopted->map(fn (string $name) => "“{$name}”")->join(', ', ' and ');
-            $message .= $adopted->count() === 1
-                ? " Its voice {$names} was also copied to your voices."
-                : " Its voices {$names} were also copied to your voices.";
+        // Duplicating reads every chunk's selected take; a run mutating those
+        // mid-copy would make an inconsistent copy — same occupancy guard as
+        // rebuild()/cleanup(), phrased for a redirect.
+        if (TtsProjectJob::activeFor($project->id)) {
+            return redirect()->route('admin.studio.projects.show', $project)
+                ->with('error', 'A background run is working on this project — wait for it to finish or stop it first.');
         }
 
-        return redirect()->route('admin.studio.projects.show', $copy)
-            ->with('success', $message);
-    }
+        // The deep copy is one storage round-trip per clip and object storage has
+        // no batch copy, so a long project's duplicate outlives the gateway
+        // timeout (it 504'd in production). Book the run on the queue worker; the
+        // source page follows it and opens the copy when it lands. The run
+        // occupies the source like a stitch.
+        $job = TtsProjectJob::create([
+            'tts_project_id' => $project->id,
+            'user_id' => $project->user_id,
+            'created_by_id' => $request->user()?->id,
+            'type' => TtsProjectJob::TYPE_DUPLICATE,
+            'chunk_ids' => [],
+            'chunks_total' => $project->chunks()->count(),
+        ]);
 
-    /**
-     * Names of the voice clones {@see ProjectService::duplicate()} just minted
-     * for the duplicator: the voices the copy references that the source does
-     * not and that did not exist before the call. Empty for the everyday case
-     * of duplicating your own project, and for a foreign voice matched to an
-     * identical one the duplicator already had.
-     */
-    private function adoptedVoiceNames(TtsProject $source, TtsProject $copy, Collection $preexisting): Collection
-    {
-        $refs = fn (TtsProject $p) => $p->chunks()->pluck('voice_id')->push($p->voice_id)->filter()->unique();
+        // Same interactive lane as Build final: a Duplicate click is someone
+        // waiting at the page, so it may jump bulk runs. Dispatched as an instance
+        // so the queue is pinned before dispatch() fires.
+        $dup = new DuplicateProjectJob($job->id);
+        if ($queue = config('tts.generation.interactive_queue')) {
+            $dup->onQueue($queue);
+        }
+        dispatch($dup);
 
-        return Voice::whereIn('id', $refs($copy)->diff($refs($source))->diff($preexisting))->pluck('name');
+        // Under QUEUE_CONNECTION=sync the copy already ran inline — land straight
+        // on it, exactly as the old synchronous duplicate did, carrying the
+        // "duplicated / voices adopted" notice the job composed on the redirect
+        // itself (and consuming it so the copy's show() won't repeat it).
+        if ($copyId = $job->refresh()->result_project_id) {
+            $message = $job->result_message ?: 'Project duplicated — you are now viewing the copy.';
+            $job->update(['result_message' => null]);
+
+            return redirect()->route('admin.studio.projects.show', TtsProject::findOrFail($copyId))
+                ->with('success', $message);
+        }
+
+        // Async: stay on the source, which resumes-follows the run and navigates
+        // to the copy on completion.
+        return redirect()->route('admin.studio.projects.show', $project)
+            ->with('success', "Duplicating “{$project->title}” — you'll land on the copy when it's ready. A long project can take a moment.");
     }
 
     /**

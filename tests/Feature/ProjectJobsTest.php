@@ -5,6 +5,7 @@ namespace Tests\Feature;
 use App\Enums\ChunkStatus;
 use App\Enums\ProjectJobStatus;
 use App\Enums\ProjectStatus;
+use App\Jobs\DuplicateProjectJob;
 use App\Jobs\GenerateProjectChunksJob;
 use App\Jobs\StitchProjectJob;
 use App\Models\TtsChunk;
@@ -1059,6 +1060,99 @@ class ProjectJobsTest extends TestCase
         $this->assertNotNull($job->statusPayload()['cancel_url']);
 
         // Running: one ffmpeg pass, no seam to stop at — Stop disappears.
+        $job->update(['status' => ProjectJobStatus::Running, 'started_at' => now()]);
+        $this->assertNull($job->refresh()->statusPayload()['cancel_url']);
+    }
+
+    /** A queued duplicate run row (no worker involved). */
+    private function queuedDuplicate(TtsProject $project, ?int $createdById = null): TtsProjectJob
+    {
+        return TtsProjectJob::create([
+            'tts_project_id' => $project->id,
+            'user_id' => $project->user_id,
+            'created_by_id' => $createdById ?? $project->user_id,
+            'type' => TtsProjectJob::TYPE_DUPLICATE,
+            'chunk_ids' => [],
+            'chunks_total' => $project->chunks()->count(),
+        ])->refresh(); // pull the DB-default status
+    }
+
+    public function test_duplicate_books_a_background_run_and_stays_on_the_source(): void
+    {
+        Queue::fake();
+        $admin = $this->admin();
+        $project = $this->generatedProject();
+
+        // A full-page form POST. With the worker faked the copy can't exist yet,
+        // so the page stays on the source and follows the run (the old inline
+        // path 504'd on long projects: one storage round-trip per clip).
+        $this->actingAs($admin)
+            ->post(route('admin.studio.projects.duplicate', $project))
+            ->assertRedirect(route('admin.studio.projects.show', $project));
+
+        Queue::assertPushed(DuplicateProjectJob::class, 1);
+
+        $job = TtsProjectJob::sole();
+        $this->assertTrue($job->isDuplicate());
+        $this->assertSame(ProjectJobStatus::Queued, $job->status);
+        $this->assertSame([], $job->chunk_ids);
+        $this->assertSame(2, $job->chunks_total);
+        $this->assertNull($job->result_project_id);
+
+        // Nothing copied yet — the source is still the only project.
+        $this->assertSame(1, TtsProject::count());
+    }
+
+    public function test_duplicate_run_is_refused_while_another_run_is_active(): void
+    {
+        Queue::fake();
+        $project = $this->generatedProject();
+        $this->queuedStitch($project); // occupies the project
+
+        $this->actingAs($this->admin())
+            ->post(route('admin.studio.projects.duplicate', $project))
+            ->assertRedirect(route('admin.studio.projects.show', $project))
+            ->assertSessionHas('error');
+
+        // Only the stitch row exists — no duplicate was booked.
+        Queue::assertNothingPushed();
+        $this->assertSame(0, TtsProjectJob::where('type', TtsProjectJob::TYPE_DUPLICATE)->count());
+    }
+
+    public function test_duplicate_job_creates_the_copy_and_carries_the_redirect_url(): void
+    {
+        $admin = $this->admin();
+        $project = $this->generatedProject($admin->id);
+        $job = $this->queuedDuplicate($project, $admin->id);
+
+        (new DuplicateProjectJob($job->id))->handle(app(ProjectService::class));
+
+        $job->refresh();
+        $this->assertSame(ProjectJobStatus::Completed, $job->status);
+        // The per-clip progress counter reaches full so the Jobs page reads 100%.
+        $this->assertSame($job->chunks_total, $job->chunks_done);
+
+        // The copy is a real, independent project the run points the page at.
+        $copy = TtsProject::findOrFail($job->result_project_id);
+        $this->assertNotSame($project->id, $copy->id);
+        $this->assertSame($admin->id, $copy->user_id);
+        $this->assertSame($project->chunks()->count(), $copy->chunks()->count());
+
+        $payload = $job->statusPayload();
+        $this->assertSame('completed', $payload['status']);
+        $this->assertSame(route('admin.studio.projects.show', $copy->id), $payload['redirect_url']);
+        $this->assertStringContainsString('opening the copy', $payload['message']);
+    }
+
+    public function test_duplicate_run_offers_no_cancel_while_running(): void
+    {
+        $project = $this->generatedProject();
+        $job = $this->queuedDuplicate($project);
+
+        // Queued: still cancellable (no clip copied yet).
+        $this->assertNotNull($job->statusPayload()['cancel_url']);
+
+        // Running: a single copy sweep, no seam to stop at — Stop disappears.
         $job->update(['status' => ProjectJobStatus::Running, 'started_at' => now()]);
         $this->assertNull($job->refresh()->statusPayload()['cancel_url']);
     }

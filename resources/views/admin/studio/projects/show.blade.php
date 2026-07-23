@@ -157,7 +157,8 @@
                                class="block rounded-lg px-3 py-2 text-sm text-zinc-300 hover:bg-white/[0.04]">✎ Revise text</a>
                             <a href="{{ route('admin.studio.projects.edit', $project) }}"
                                class="block rounded-lg px-3 py-2 text-sm text-zinc-300 hover:bg-white/[0.04]">↺ Start over</a>
-                            <form method="POST" action="{{ route('admin.studio.projects.duplicate', $project) }}" id="project-duplicate-form">
+                            <form method="POST" action="{{ route('admin.studio.projects.duplicate', $project) }}" id="project-duplicate-form"
+                                  data-busy data-busy-label="Duplicating…">
                                 @csrf
                                 <button type="submit" id="project-duplicate"
                                         title="Make an independent copy of this project — its own text, chunks, and audio. Changes to either project never affect the other."

@@ -3,6 +3,7 @@
 namespace App\Models;
 
 use App\Enums\ProjectJobStatus;
+use App\Jobs\DuplicateProjectJob;
 use App\Jobs\GenerateProjectChunksJob;
 use App\Jobs\StitchProjectJob;
 use App\Support\GenerationEstimator;
@@ -30,6 +31,14 @@ class TtsProjectJob extends Model
     /** A "Build final" stitch run — executed by {@see StitchProjectJob}. */
     public const TYPE_STITCH = 'stitch';
 
+    /**
+     * A "Duplicate project" run — executed by {@see DuplicateProjectJob}.
+     * Booked on the SOURCE project (it occupies it like a stitch), but its work
+     * is a deep copy into a NEW project recorded in `result_project_id`; the
+     * page follows it and opens the copy when it finishes.
+     */
+    public const TYPE_DUPLICATE = 'duplicate';
+
     protected $fillable = [
         'tts_project_id',
         'user_id',
@@ -44,6 +53,8 @@ class TtsProjectJob extends Model
         'chunks_claimed',
         'cancel_requested',
         'error',
+        'result_project_id',
+        'result_message',
         'started_at',
         'finished_at',
         'estimated_ms',
@@ -94,6 +105,16 @@ class TtsProjectJob extends Model
     }
 
     /**
+     * A "Duplicate project" run. Like a stitch it occupies the source and carries
+     * no chunk line to join, but unlike either other type it mints a NEW project
+     * (`result_project_id`) the page opens when the run completes.
+     */
+    public function isDuplicate(): bool
+    {
+        return $this->type === self::TYPE_DUPLICATE;
+    }
+
+    /**
      * Executed by claim-based worker jobs (bounded concurrency) rather than the
      * legacy serial loop. The claim cursor `chunks_claimed` is only meaningful
      * for these runs; the serial loop's cursor stays chunks_done+chunks_failed.
@@ -133,23 +154,24 @@ class TtsProjectJob extends Model
         $processed = $this->chunks_done + $this->chunks_failed;
         $total = max(1, $this->chunks_total);
 
-        [$message, $tone] = $this->isStitch() ? $this->stitchMessage() : match (true) {
-            $this->status === ProjectJobStatus::Queued && $this->cancel_requested,
-            $this->status === ProjectJobStatus::Running && $this->cancel_requested => ['Stopping after the current clip…', null],
-            $this->status === ProjectJobStatus::Queued => ['Waiting for a queue worker…', null],
-            // Several clips are in flight on a concurrent run — a sequential
-            // "Creating clip N" would be a lie there, so count landings instead.
-            $this->status === ProjectJobStatus::Running && $this->concurrency > 1 => [sprintf('Creating clips — %d of %d done', $processed, $this->chunks_total), null],
-            $this->status === ProjectJobStatus::Running => [sprintf('Creating clip %d of %d', min($processed + 1, $total), $this->chunks_total), null],
-            $this->status === ProjectJobStatus::Completed && $this->chunks_failed > 0 => [sprintf('✗ %d chunk(s) failed — retry them, then build the final.', $this->chunks_failed), 'error'],
-            // A single-chunk run (per-chunk Regenerate): "All 1 chunk(s)
-            // generated" reads as project-wide on a 30-chunk project — name
-            // the one clip that landed instead.
-            $this->status === ProjectJobStatus::Completed && $this->chunks_total === 1 => ['✓ '.$this->singleClipLabel().' generated — build the final to include it.', 'ok'],
-            $this->status === ProjectJobStatus::Completed => [sprintf('✓ All %d chunk(s) generated — build the final to stitch.', $this->chunks_done), 'ok'],
-            $this->status === ProjectJobStatus::Failed => ['✗ '.($this->error ?: 'The run failed.'), 'error'],
-            default => [sprintf('Stopped — %d of %d generated.', $this->chunks_done, $this->chunks_total), null],
-        };
+        [$message, $tone] = $this->isStitch() ? $this->stitchMessage()
+            : ($this->isDuplicate() ? $this->duplicateMessage() : match (true) {
+                $this->status === ProjectJobStatus::Queued && $this->cancel_requested,
+                $this->status === ProjectJobStatus::Running && $this->cancel_requested => ['Stopping after the current clip…', null],
+                $this->status === ProjectJobStatus::Queued => ['Waiting for a queue worker…', null],
+                // Several clips are in flight on a concurrent run — a sequential
+                // "Creating clip N" would be a lie there, so count landings instead.
+                $this->status === ProjectJobStatus::Running && $this->concurrency > 1 => [sprintf('Creating clips — %d of %d done', $processed, $this->chunks_total), null],
+                $this->status === ProjectJobStatus::Running => [sprintf('Creating clip %d of %d', min($processed + 1, $total), $this->chunks_total), null],
+                $this->status === ProjectJobStatus::Completed && $this->chunks_failed > 0 => [sprintf('✗ %d chunk(s) failed — retry them, then build the final.', $this->chunks_failed), 'error'],
+                // A single-chunk run (per-chunk Regenerate): "All 1 chunk(s)
+                // generated" reads as project-wide on a 30-chunk project — name
+                // the one clip that landed instead.
+                $this->status === ProjectJobStatus::Completed && $this->chunks_total === 1 => ['✓ '.$this->singleClipLabel().' generated — build the final to include it.', 'ok'],
+                $this->status === ProjectJobStatus::Completed => [sprintf('✓ All %d chunk(s) generated — build the final to stitch.', $this->chunks_done), 'ok'],
+                $this->status === ProjectJobStatus::Failed => ['✗ '.($this->error ?: 'The run failed.'), 'error'],
+                default => [sprintf('Stopped — %d of %d generated.', $this->chunks_done, $this->chunks_total), null],
+            });
 
         // Estimated time left — only while actually rendering, and folded into
         // the same message string so every poller (project page, Jobs page)
@@ -174,13 +196,19 @@ class TtsProjectJob extends Model
             'message' => $message,
             'tone' => $tone,
             'error' => $this->error,
+            // Where the page navigates once a duplicate run finishes: the fresh
+            // copy. Null for every other type and until a duplicate completes.
+            'redirect_url' => $this->isDuplicate() && $this->status === ProjectJobStatus::Completed && $this->result_project_id
+                ? route('admin.studio.projects.show', $this->result_project_id)
+                : null,
             'created_human' => $this->created_at?->diffForHumans(),
             'finished_human' => $this->finished_at?->diffForHumans(),
             'eta_seconds' => $eta['eta_seconds'],
             'eta_human' => $eta['eta_human'],
-            // A running stitch is one ffmpeg pass — there is no between-chunks
-            // seam to stop at, so Stop is only offered while it still waits.
-            'cancel_url' => $this->isActive() && ! ($this->isStitch() && $this->status === ProjectJobStatus::Running)
+            // A running stitch is one ffmpeg pass, and a running duplicate is a
+            // single copy sweep — neither has a between-chunks seam to stop at,
+            // so Stop is only offered while they still wait for a worker.
+            'cancel_url' => $this->isActive() && ! (($this->isStitch() || $this->isDuplicate()) && $this->status === ProjectJobStatus::Running)
                 ? route('admin.jobs.cancel', $this)
                 : null,
         ];
@@ -208,6 +236,28 @@ class TtsProjectJob extends Model
     }
 
     /**
+     * [message, tone] for a duplicate run. It copies one file per chunk, so
+     * `chunks_done` climbs as clips are copied and the progress column reads N/M
+     * like a generate run; the terminal line points the page at the copy (the
+     * URL rides in the payload's `redirect_url`).
+     *
+     * @return array{0: string, 1: ?string}
+     */
+    private function duplicateMessage(): array
+    {
+        $total = max(1, $this->chunks_total);
+
+        return match (true) {
+            $this->status === ProjectJobStatus::Queued && $this->cancel_requested => ['Stopping…', null],
+            $this->status === ProjectJobStatus::Queued => ['Waiting for a queue worker…', null],
+            $this->status === ProjectJobStatus::Running => [sprintf('Duplicating — copying clip %d of %d…', min($this->chunks_done + 1, $total), $this->chunks_total), null],
+            $this->status === ProjectJobStatus::Completed => ['✓ Duplicated — opening the copy…', 'ok'],
+            $this->status === ProjectJobStatus::Failed => ['✗ '.($this->error ?: 'The duplicate failed.'), 'error'],
+            default => ['Stopped before it finished.', null],
+        };
+    }
+
+    /**
      * "Clip 29" for a single-chunk run's messages. Looked up live — cheap,
      * since only terminal single-chunk payloads ask — and just "Clip" when
      * the chunk was deleted after the run.
@@ -229,8 +279,9 @@ class TtsProjectJob extends Model
      */
     private function etaMs(int $processed): ?int
     {
-        // A stitch has no per-chunk cadence to extrapolate from.
-        if ($this->isStitch() || $this->status !== ProjectJobStatus::Running) {
+        // A stitch has no per-chunk cadence to extrapolate from, and a duplicate's
+        // per-clip copy time isn't the learned synthesis cadence — skip both.
+        if ($this->isStitch() || $this->isDuplicate() || $this->status !== ProjectJobStatus::Running) {
             return null;
         }
 

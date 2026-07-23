@@ -5,6 +5,7 @@ namespace App\Services;
 use App\Enums\ChunkStatus;
 use App\Enums\ProjectStatus;
 use App\Jobs\DeleteStoredFilesJob;
+use App\Jobs\DuplicateProjectJob;
 use App\Models\ApiKey;
 use App\Models\Speech;
 use App\Models\TtsChunk;
@@ -25,6 +26,7 @@ use App\Services\Tts\TtsProvider;
 use App\Services\Tts\VoiceReference;
 use App\Support\GenerationTimings;
 use App\Support\SpendCounters;
+use Illuminate\Contracts\Filesystem\Filesystem;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
@@ -1280,12 +1282,17 @@ class ProjectService
             throw new RuntimeException('Only a ready project can be sealed — rebuild the final first.');
         }
 
-        $bytes = $this->finalAudioBytes($project);
-        if ($bytes === null) {
+        $disk = Storage::disk($this->disk());
+        $finalPath = (string) $project->final_audio_path;
+        if ($finalPath === '' || ! $disk->exists($finalPath)) {
             throw new RuntimeException('This project has no final audio to seal.');
         }
 
-        $sha = hash('sha256', $bytes);
+        // Hash the final by STREAMING it (bounded memory) and snapshot it with a
+        // server-side copy — never pull the whole file into memory or download it
+        // just to re-upload the same bytes. A long project's final can be tens to
+        // hundreds of MB, and the old get()+put() both OOM'd and double-transferred.
+        $sha = $this->hashFile($disk, $finalPath);
 
         // Idempotent: re-sealing the same bytes just re-stamps who/when.
         if ($project->isSealed() && $project->final_sha256 === $sha) {
@@ -1302,13 +1309,15 @@ class ProjectService
         // Clear any prior seal (and its snapshot) before writing the new one.
         $this->clearSeal($project);
 
-        $ext = pathinfo((string) $project->final_audio_path, PATHINFO_EXTENSION) ?: 'mp3';
+        $ext = pathinfo($finalPath, PATHINFO_EXTENSION) ?: 'mp3';
         $path = config('tts.storage_path').'/projects/'.$project->id.'/sealed/'.$sha.'.'.$ext;
-        Storage::disk($this->disk())->put($path, $bytes);
+        if (! $disk->copy($finalPath, $path)) {
+            throw new RuntimeException('Could not snapshot the final audio to seal it.');
+        }
 
         $project->update([
             'final_sha256' => $sha,
-            'final_bytes' => strlen($bytes),
+            'final_bytes' => $disk->size($finalPath),
             'sealed_audio_path' => $path,
             'sealed_at' => now(),
             'sealed_by_id' => $approver->id,
@@ -1358,6 +1367,31 @@ class ProjectService
     }
 
     /**
+     * SHA-256 of a stored file, read in a streamed pass so an arbitrarily large
+     * final never sits in memory all at once. Falls back to a single get() only
+     * when the disk can't hand back a stream.
+     */
+    private function hashFile(Filesystem $disk, string $path): string
+    {
+        $stream = $disk->readStream($path);
+        if (! is_resource($stream)) {
+            return hash('sha256', (string) $disk->get($path));
+        }
+
+        $ctx = hash_init('sha256');
+        while (! feof($stream)) {
+            $buffer = fread($stream, 1 << 20); // 1 MiB
+            if ($buffer === false) {
+                break;
+            }
+            hash_update($ctx, $buffer);
+        }
+        fclose($stream);
+
+        return hash_final($ctx);
+    }
+
+    /**
      * Deep-copy a project into a fully independent duplicate owned by $user:
      * new project/chunk/take rows AND byte-copied audio under the copy's own
      * projects/{id}/ tree. Nothing is shared, because deleteProject/deleteChunk
@@ -1382,8 +1416,12 @@ class ProjectService
      * cloned into their account verbatim (see {@see VoiceService::cloneTo()};
      * an already-used voice_id gets a "-2" suffix), and the copy is pointed
      * at the stand-ins, keeping it fully editable.
+     *
+     * $onChunk, when given, is called once per source chunk as its clip is
+     * copied — the async {@see DuplicateProjectJob} uses it to advance
+     * the run's progress counter (N of M) while the sweep runs off-request.
      */
-    public function duplicate(TtsProject $source, User $user): TtsProject
+    public function duplicate(TtsProject $source, User $user, ?callable $onChunk = null): TtsProject
     {
         $disk = Storage::disk($this->disk());
         $base = config('tts.storage_path').'/projects/';
@@ -1478,6 +1516,12 @@ class ProjectService
                 }
 
                 $plans[] = $plan;
+
+                // One tick per chunk copied (the async runner advances its N-of-M
+                // progress counter here; the synchronous callers pass nothing).
+                if ($onChunk) {
+                    $onChunk();
+                }
             }
 
             // The copy starts Draft with no final; a copied final keeps the
