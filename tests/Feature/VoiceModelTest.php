@@ -6,8 +6,10 @@ use App\Models\User;
 use App\Models\Voice;
 use App\Services\VoiceService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Storage;
+use Illuminate\Testing\TestResponse;
 use RuntimeException;
 use Tests\TestCase;
 
@@ -308,6 +310,81 @@ class VoiceModelTest extends TestCase
 
         $this->assertSame('Human words.', $voice->settings['reference_text']);
         Http::assertNothingSent();
+    }
+
+    /** A qwen voice with a clip and a transcript, ready to have its clip swapped. */
+    private function qwenVoiceWithTranscript(User $owner): Voice
+    {
+        // No ASR (nothing auto-fills the transcript) and no loudness pass
+        // (ffmpeg isn't a given in tests) — this is about the transcript.
+        config(['tts.asr.enabled' => false, 'tts.normalize_reference' => false]);
+
+        $service = app(VoiceService::class);
+        $voice = $service->register(
+            name: 'Qwen Swap', slug: 'qwen-swap', audioBytes: $this->silentWav(6.0), ext: 'wav',
+            normalize: false, seed: null, ownerId: $owner->id, model: 'qwen3-tts',
+        );
+
+        return $service->update(
+            voice: $voice, name: 'Qwen Swap', slug: 'qwen-swap', audioBytes: null, ext: null,
+            normalize: false, seed: null, model: 'qwen3-tts',
+            referenceText: 'What the OLD clip said.',
+        );
+    }
+
+    private function replaceClip(User $admin, Voice $voice, array $extra = []): TestResponse
+    {
+        return $this->actingAs($admin)->put(route('admin.voices.update', $voice), array_merge([
+            'name' => 'Qwen Swap',
+            'slug' => 'qwen-swap',
+            'model' => 'qwen3-tts',
+            'reference_text' => 'What the OLD clip said.',
+            'audio' => UploadedFile::fake()->createWithContent('new.wav', $this->silentWav(6.0)),
+        ], $extra));
+    }
+
+    public function test_replacing_a_qwen_clip_warns_that_the_transcript_now_describes_the_old_take(): void
+    {
+        $admin = $this->admin();
+        $voice = $this->qwenVoiceWithTranscript($admin);
+
+        $this->replaceClip($admin, $voice)
+            ->assertSessionHasNoErrors()
+            ->assertSessionMissing('error')
+            ->assertSessionHas('warning', fn (?string $w) => str_contains((string) $w, 'still describes the old clip'));
+
+        // Warned, not rewritten — the new take may well say the same words,
+        // and the text is the user's.
+        $this->assertSame('What the OLD clip said.', $voice->fresh()->settings['reference_text']);
+    }
+
+    public function test_no_warning_when_the_transcript_is_updated_in_the_same_save(): void
+    {
+        $admin = $this->admin();
+        $voice = $this->qwenVoiceWithTranscript($admin);
+
+        $this->replaceClip($admin, $voice, ['reference_text' => 'What the NEW clip says.'])
+            ->assertSessionHasNoErrors()
+            ->assertSessionMissing('warning');
+
+        $this->assertSame('What the NEW clip says.', $voice->fresh()->settings['reference_text']);
+    }
+
+    public function test_no_warning_without_a_clip_replacement_or_on_a_chatterbox_voice(): void
+    {
+        $admin = $this->admin();
+        $voice = $this->qwenVoiceWithTranscript($admin);
+
+        // Same transcript, no new clip: nothing has drifted.
+        $this->actingAs($admin)->put(route('admin.voices.update', $voice), [
+            'name' => 'Qwen Swap', 'slug' => 'qwen-swap', 'model' => 'qwen3-tts',
+            'reference_text' => 'What the OLD clip said.',
+        ])->assertSessionMissing('warning');
+
+        // Turbo never sends a transcript, so a swapped clip can't strand one.
+        $this->replaceClip($admin, $voice->fresh(), ['model' => 'chatterbox-turbo'])
+            ->assertSessionHasNoErrors()
+            ->assertSessionMissing('warning');
     }
 
     public function test_no_auto_fill_when_asr_is_disabled_or_engine_is_chatterbox(): void

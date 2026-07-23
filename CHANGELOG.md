@@ -7,6 +7,15 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 ## [Unreleased]
 
 ### Changed
+- **Replacing a Qwen3 voice's clip warns when its transcript is left
+  behind.** Qwen's clone mode sends the Clip transcript along with the
+  audio, so a transcript kept from the previous take asks the model to read
+  words the new clip may not contain — and nothing else catches it. Saving
+  a new clip without touching the transcript now says so in an amber notice
+  naming the voice. It doesn't rewrite the text: the new take may say the
+  same words, and the transcript is yours. Silent when you edit the
+  transcript in the same save, when it's empty (a new clip auto-transcribes
+  into an empty field), or on the Chatterbox engines, which never send one.
 - **The "unsaved edits" warning now links to the chunks it names.** Each
   chunk number in the Studio header's amber hint ("Chunks #3, #5 have
   unsaved edits…") is a jump link: clicking one scrolls the page so that
@@ -23,6 +32,22 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   byte-for-byte untouched, and a missing clip file only warns (built-ins
   self-heal from seed assets). Each trimmed voice's cached API audio
   regenerates on its next request; Studio project takes are unaffected.
+  Trimming a qwen voice also re-reads its clip transcript from the trimmed
+  audio — qwen's clone mode sends that transcript along with the clip, so a
+  transcript written against the untrimmed take would ask the model to hear
+  words that are no longer there. When the ASR sidecar is off or the read
+  fails, the command says so per voice and leaves the text for a human
+  rather than guessing. `--retranscribe` refreshes transcripts for voices
+  an earlier run already trimmed. An empty transcript stays empty.
+
+### Fixed
+- **The voice create/edit pages no longer break out of their column.** A
+  missing `>` on the reference-clip widget's opening tag (introduced with
+  the save-time clip trim in 0.82.0) let the browser swallow the panel
+  `<div>` that followed it as attribute text, so a later `</div>` closed
+  the page container instead. Everything after the Reference clip section —
+  Clip transcript, Tune by ear — rendered full-bleed against the window
+  edge. Most visible on a Qwen3 voice, where both of those sections show.
 
 ## [0.82.0] - 2026-07-23
 

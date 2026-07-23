@@ -104,6 +104,11 @@ A Qwen3 TTS voice with a clip can also carry a **clip transcript** (the voice
 edit page's "Clip transcript" section): qwen's clone mode reads along with the
 clip for better fidelity. With the ASR sidecar enabled, a newly saved clip is
 transcribed automatically when the field is empty; anything you type wins.
+Keep the two in step: a transcript that claims words the clip doesn't contain
+asks the model to hear something that isn't there. `voices:trim-references`
+re-reads the transcript of any clip it trims for exactly that reason, but
+replacing a clip by hand leaves an existing transcript untouched — update it
+yourself when the new take says something different.
 
 All engines normally run on Replicate; developers can serve the Chatterbox
 pair from their own machine with `TTS_PROVIDER=local` — qwen voices then

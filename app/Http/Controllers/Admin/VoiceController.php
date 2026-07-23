@@ -11,6 +11,7 @@ use App\Models\TuningPreset;
 use App\Models\User;
 use App\Models\Voice;
 use App\Services\SpeechService;
+use App\Services\Tts\ModelCatalog;
 use App\Services\VoiceClipService;
 use App\Services\VoiceService;
 use Illuminate\Http\JsonResponse;
@@ -191,6 +192,7 @@ class VoiceController extends Controller
         $file = $request->file('audio');
         $token = $request->input('clip_token');
         $warning = null;
+        $transcriptBefore = trim((string) (((array) $voice->settings)['reference_text'] ?? ''));
 
         try {
             [$audioBytes, $ext, $warning] = $this->resolveClip($request, $file, $token);
@@ -225,9 +227,38 @@ class VoiceController extends Controller
             $this->voiceClips->discard($token);
         }
 
+        $warning = $this->appendStaleTranscriptWarning($warning, $voice, $audioBytes !== null, $transcriptBefore);
+
         return redirect()->route('admin.voices.index')
             ->with('success', "Voice '{$voice->slug}' updated.")
             ->with($warning ? ['warning' => $warning] : []);
+    }
+
+    /**
+     * A replaced clip can leave the voice's transcript describing the take
+     * that's gone. Qwen's clone mode sends `reference_text` ALONG with the
+     * clip, so a stale one asks the model to hear words that aren't in the
+     * audio — and unlike the clip itself, nothing else will catch it.
+     *
+     * We don't rewrite it: the transcript is the user's text (typed, or
+     * ASR-filled and then kept), and the new clip may well say the same
+     * words. So say so and let them decide. Silent when they updated the
+     * transcript in the same save, or when it was empty (save-time
+     * auto-transcription fills that case from the new clip).
+     */
+    private function appendStaleTranscriptWarning(?string $warning, Voice $voice, bool $clipReplaced, string $transcriptBefore): ?string
+    {
+        if (! $clipReplaced || $transcriptBefore === '' || ! ModelCatalog::acceptsReferenceText(ModelCatalog::forVoice($voice))) {
+            return $warning;
+        }
+
+        if (trim((string) (((array) $voice->settings)['reference_text'] ?? '')) !== $transcriptBefore) {
+            return $warning; // Changed in this same save — already in step.
+        }
+
+        $note = "The clip transcript still describes the old clip. Qwen reads it along with the audio, so update or clear it on {$voice->name}'s edit page.";
+
+        return $warning ? $warning.' '.$note : $note;
     }
 
     /**

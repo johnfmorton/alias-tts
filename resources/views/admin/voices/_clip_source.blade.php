@@ -31,7 +31,7 @@
     @php($refMax = (float) config('tts.reference_max_seconds', 25))
     <div id="voice-clip-widget" data-prepare-url="{{ route('admin.voices.clips.store') }}"
          data-enhance-enabled="{{ $enhanceOn ? '1' : '' }}" data-normalize-enabled="{{ config('tts.normalize_reference') ? '1' : '' }}"
-         data-target-min="15" data-target-max="25" data-max-seconds="{{ $refMax > 0 ? (int) ceil($refMax + 5) : 60 }}"
+         data-target-min="15" data-target-max="25" data-max-seconds="{{ $refMax > 0 ? (int) ceil($refMax + 5) : 60 }}">
         @if($enhanceOn)
             <div class="rounded-[14px] border border-white/8 bg-panel p-2">
                 {{-- Segmented control + Upload/Record bodies. Hidden once the A/B chooser is up. --}}

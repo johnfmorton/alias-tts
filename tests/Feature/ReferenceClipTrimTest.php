@@ -8,6 +8,7 @@ use App\Services\Audio\AudioConverter;
 use App\Services\VoiceClipService;
 use App\Services\VoiceService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Storage;
 use Tests\TestCase;
 
@@ -221,5 +222,103 @@ class ReferenceClipTrimTest extends TestCase
         // Only the named voice was touched.
         $this->assertLessThan(5.5, app(AudioConverter::class)->wavDurationSeconds(Storage::disk('local')->get('voices/other.wav')));
         $this->assertEqualsWithDelta(12.0, app(AudioConverter::class)->wavDurationSeconds(Storage::disk('local')->get('voices/long.wav')), 0.2);
+    }
+
+    // ---- transcripts stay in sync with the trimmed clip ---------------------
+
+    /** A qwen voice whose stored transcript describes the FULL 12s take. */
+    private function qwenVoiceWithTranscript(): Voice
+    {
+        Storage::disk('local')->put('voices/q.wav', $this->speechWithPauseWav());
+
+        return Voice::create([
+            'slug' => 'q-v',
+            'name' => 'Q V',
+            'model' => 'qwen3-tts',
+            'reference_audio_path' => 'voices/q.wav',
+            'settings' => ['reference_text' => 'Every word of the untrimmed take, all twelve seconds of it.'],
+        ]);
+    }
+
+    private function fakeAsr(string $text): void
+    {
+        config(['tts.asr.enabled' => true, 'tts.asr.url' => 'http://asr.test']);
+        Http::fake(['asr.test/transcribe' => Http::response(['duration' => 3.5, 'text' => $text, 'words' => []])]);
+    }
+
+    public function test_trimming_re_reads_the_clips_transcript(): void
+    {
+        config(['tts.reference_max_seconds' => 5.0]);
+        $this->fakeAsr('Only what survives the trim.');
+        $voice = $this->qwenVoiceWithTranscript();
+
+        $this->artisan('voices:trim-references', ['--voice' => ['q-v']])
+            ->expectsOutputToContain('transcript re-read')
+            ->assertSuccessful();
+
+        // qwen reads the transcript ALONG with the clip — a stale one asks the
+        // model to hear words that are no longer in the audio.
+        $this->assertSame('Only what survives the trim.', $voice->fresh()->settings['reference_text']);
+    }
+
+    public function test_a_transcript_that_cannot_be_re_read_is_reported_not_silently_left(): void
+    {
+        config(['tts.reference_max_seconds' => 5.0, 'tts.asr.enabled' => false]);
+        $voice = $this->qwenVoiceWithTranscript();
+        $original = $voice->settings['reference_text'];
+
+        $this->artisan('voices:trim-references', ['--voice' => ['q-v']])
+            ->expectsOutputToContain('still describes the untrimmed clip')
+            ->expectsOutputToContain('1 left stale')
+            ->assertSuccessful();
+
+        // The clip is trimmed either way; the transcript is left for a human.
+        $this->assertLessThan(5.5, app(AudioConverter::class)->wavDurationSeconds(Storage::disk('local')->get('voices/q.wav')));
+        $this->assertSame($original, $voice->fresh()->settings['reference_text']);
+    }
+
+    public function test_retranscribe_repairs_a_voice_trimmed_before_transcripts_were_refreshed(): void
+    {
+        // Already within the cap: nothing to trim, but the transcript is stale
+        // from an earlier trim run.
+        config(['tts.reference_max_seconds' => 30.0]);
+        $this->fakeAsr('The already-trimmed clip, read back.');
+        $voice = $this->qwenVoiceWithTranscript();
+
+        $this->artisan('voices:trim-references', ['--voice' => ['q-v'], '--retranscribe' => true])
+            ->expectsOutputToContain('0 trimmed')
+            ->assertSuccessful();
+
+        $this->assertSame('The already-trimmed clip, read back.', $voice->fresh()->settings['reference_text']);
+    }
+
+    public function test_the_dry_run_does_not_touch_the_transcript(): void
+    {
+        config(['tts.reference_max_seconds' => 5.0]);
+        $this->fakeAsr('Should never be written.');
+        $voice = $this->qwenVoiceWithTranscript();
+        $original = $voice->settings['reference_text'];
+
+        $this->artisan('voices:trim-references', ['--voice' => ['q-v'], '--dry-run' => true])
+            ->expectsOutputToContain('transcript would be re-read')
+            ->assertSuccessful();
+
+        $this->assertSame($original, $voice->fresh()->settings['reference_text']);
+        Http::assertNothingSent();
+    }
+
+    public function test_an_empty_transcript_is_left_empty(): void
+    {
+        config(['tts.reference_max_seconds' => 5.0]);
+        $this->fakeAsr('Unasked-for transcript.');
+        $voice = $this->qwenVoiceWithTranscript();
+        $voice->update(['settings' => []]);
+
+        $this->artisan('voices:trim-references', ['--voice' => ['q-v']])->assertSuccessful();
+
+        // Save-time auto-transcription owns the empty case; a user who cleared
+        // the field shouldn't get one back from a maintenance command.
+        $this->assertArrayNotHasKey('reference_text', (array) $voice->fresh()->settings);
+        Http::assertNothingSent();
     }
 }
