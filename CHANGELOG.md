@@ -6,6 +6,14 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Changed
+- **The "unsaved edits" warning now links to the chunks it names.** Each
+  chunk number in the Studio header's amber hint ("Chunks #3, #5 have
+  unsaved edits…") is a jump link: clicking one scrolls the page so that
+  chunk lands just below the sticky player header — whatever the header's
+  current height — and pulses a ring around the card so the eye lands on
+  the right one. Honors reduced-motion preferences.
+
 ### Added
 - **`voices:trim-references` backfills the clip-length cap.** The save-time
   trim only protects clips stored from v0.82.0 on; this artisan command

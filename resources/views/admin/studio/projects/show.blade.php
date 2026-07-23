@@ -83,7 +83,7 @@
              cluster on the right. Every element id and data hook is unchanged —
              initStudioProject()/reflectActionState()/renderSpend() drive looks,
              text, and visibility exactly as before; this is a layout + skin pass. --}}
-        <div class="sticky top-0 z-30 mb-6 rounded-2xl border border-white/[0.09] bg-sticky px-5 py-4 shadow-[0_16px_40px_-10px_rgba(0,0,0,0.7)] sm:px-6 sm:py-5">
+        <div id="project-sticky-header" class="sticky top-0 z-30 mb-6 rounded-2xl border border-white/[0.09] bg-sticky px-5 py-4 shadow-[0_16px_40px_-10px_rgba(0,0,0,0.7)] sm:px-6 sm:py-5">
             {{-- Row 1: identity + economics chips + project-scope menu --}}
             <div class="flex flex-wrap items-center gap-x-3 gap-y-2">
                 <a href="{{ route('admin.studio.index') }}" class="inline-flex items-center gap-1.5 text-sm text-zinc-400 hover:text-zinc-200">← Projects</a>

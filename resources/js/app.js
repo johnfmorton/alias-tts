@@ -1660,6 +1660,7 @@ function initStudioProject() {
     const finalStatus = document.getElementById('project-final-status');
     const estimateEl = document.getElementById('project-generate-estimate');
     const dirtyHint = document.getElementById('project-dirty-hint');
+    const stickyHeader = document.getElementById('project-sticky-header');
     const estimateUrl = root.dataset.estimateUrl;
     const projectStatus = document.getElementById('project-status');
     const downloadLink = document.getElementById('project-download');
@@ -1863,6 +1864,22 @@ function initStudioProject() {
         }, 300);
     }
 
+    // Jump to a chunk card from a header hint. scrollIntoView would tuck the
+    // card's top under the sticky header, so offset by the header's live height
+    // (it wraps on narrow screens and grows when the rename form opens). The
+    // inserted-chunk ring marks the landing spot; the class is removed and
+    // re-added (with a reflow between) so a second click flashes again.
+    function scrollToChunk(card) {
+        const offset = (stickyHeader?.offsetHeight ?? 0) + 12;
+        window.scrollTo({
+            top: card.getBoundingClientRect().top + window.scrollY - offset,
+            behavior: window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth',
+        });
+        card.classList.remove('chunk-inserted-flash');
+        void card.offsetWidth;
+        card.classList.add('chunk-inserted-flash');
+    }
+
     function reflectActionState() {
         const status = projectStatus.textContent.trim();
         // Skipped chunks don't count as outstanding work: they're excluded from
@@ -1910,9 +1927,25 @@ function initStudioProject() {
         if (dirtyHint) {
             const blocked = ! runActive && allCompleted && dirtyCards.length > 0;
             if (blocked) {
-                const nos = dirtyCards.map((c) => c.querySelector('.chunk-no')?.textContent).filter(Boolean);
-                dirtyHint.textContent = (nos.length === 1 ? `Chunk ${nos[0]} has` : `Chunks ${nos.join(', ')} have`)
-                    + ' unsaved edits — Regenerate or Revert before building the final.';
+                // Each number is a jump link to its card — with several dirty
+                // chunks the reader shouldn't have to hunt for them by eye.
+                const links = dirtyCards.map((c) => {
+                    const no = c.querySelector('.chunk-no')?.textContent;
+                    if (!no) return null;
+                    const link = document.createElement('button');
+                    link.type = 'button';
+                    link.className = 'underline underline-offset-2 hover:text-amber-300';
+                    link.textContent = no;
+                    link.setAttribute('aria-label', `Go to chunk ${no}`);
+                    link.addEventListener('click', () => scrollToChunk(c));
+                    return link;
+                }).filter(Boolean);
+                dirtyHint.replaceChildren(
+                    links.length === 1 ? 'Chunk ' : 'Chunks ',
+                    ...links.flatMap((link, i) => (i ? [', ', link] : [link])),
+                    (links.length === 1 ? ' has' : ' have')
+                        + ' unsaved edits — Regenerate or Revert before building the final.',
+                );
             }
             showEl(dirtyHint, blocked);
         }
