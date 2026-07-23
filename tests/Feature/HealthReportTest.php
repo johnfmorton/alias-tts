@@ -24,7 +24,10 @@ class HealthReportTest extends TestCase
     {
         parent::setUp();
 
-        config(['tts.provider' => 'fake', 'tts.storage_disk' => 'local']);
+        // The Genblaze checks compare the app's storage root against the
+        // runner's, so pin it: otherwise a developer's own TTS_STORAGE_ROOT
+        // decides the outcome and the suite passes or fails per machine.
+        config(['tts.provider' => 'fake', 'tts.storage_disk' => 'local', 'filesystems.disks.s3.root' => '']);
         Storage::fake('local');
     }
 

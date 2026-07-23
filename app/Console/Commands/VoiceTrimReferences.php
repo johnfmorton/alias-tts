@@ -2,6 +2,7 @@
 
 namespace App\Console\Commands;
 
+use App\Console\Concerns\GuardsSharedStorage;
 use App\Models\Voice;
 use App\Services\Asr\AsrClient;
 use App\Services\Audio\AudioConverter;
@@ -30,9 +31,12 @@ use Throwable;
  */
 class VoiceTrimReferences extends Command
 {
+    use GuardsSharedStorage;
+
     protected $signature = 'voices:trim-references
                             {--dry-run : Report what would be trimmed without writing anything}
                             {--retranscribe : Re-read the stored clip transcript even for clips already within the cap (for voices trimmed before this command refreshed transcripts)}
+                            {--force : Allow the run when tts.storage_disk is a remote bucket (see GuardsSharedStorage)}
                             {--voice=* : Only these voices (slug or UUID); default is every voice with a clip}';
 
     protected $description = 'Trim stored reference clips over TTS_REFERENCE_MAX_SECONDS at a natural pause (clips ship with every render; engines only read the head)';
@@ -48,6 +52,11 @@ class VoiceTrimReferences extends Command
 
         $dryRun = (bool) $this->option('dry-run');
         $retranscribe = (bool) $this->option('retranscribe');
+
+        // A dry run reads only, so it's always allowed to look.
+        if (! $dryRun && $this->sharedStorageBlocked('rewrite reference clips')) {
+            return self::FAILURE;
+        }
         $disk = Storage::disk(config('tts.storage_disk'));
 
         $voices = Voice::whereNotNull('reference_audio_path')->orderBy('slug')->get();

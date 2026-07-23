@@ -4,6 +4,29 @@ All notable changes to this project are documented in this file. The format is
 based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this
 project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+- **`voices:trim-references` refuses to rewrite a remote bucket without
+  `--force`.** The command rewrites clip objects in place, which is safe on
+  a developer's local disk and not on shared object storage: a laptop
+  holding production's `AWS_*` credentials reaches production's objects at
+  identical paths while its own database says something else. When
+  `TTS_STORAGE_DISK` names a non-local disk the run now stops, naming the
+  disk and bucket, unless `--force` says this is the machine that owns that
+  storage. `--dry-run` still reads freely. The guard lives in a
+  `GuardsSharedStorage` trait so other destructive commands can adopt it.
+- **Guidance to give development its own `TTS_STORAGE_ROOT`.** Documented
+  in `.env.example` and `docs/DEPLOYMENT.md`: a non-empty root on the
+  developer side makes the collision above impossible in the first place,
+  and it costs nothing on the `local` disk.
+
+### Fixed
+- **The health-report tests no longer depend on the developer's
+  `TTS_STORAGE_ROOT`.** The Genblaze checks compare the app's storage root
+  against the runner's, and the suite read the real value from `.env` — so
+  setting a root locally failed four tests that have nothing to do with it.
+
 ## [0.83.0] - 2026-07-23
 
 ### Changed

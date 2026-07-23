@@ -335,6 +335,17 @@ process environment — the `run-genblaze.sh` wrapper in
 and an S3 **lifecycle rule** you may have on `speech/` should move to
 `myapp/speech/`.
 
+**Give development its own root, too.** A root is worth setting even when the
+only install is this one, and even on the `local` disk: the day a developer
+copies the production `AWS_*` block into a laptop `.env` to reproduce
+something, an empty `TTS_STORAGE_ROOT` points that laptop at production's
+object paths exactly. Its database says something else entirely, so a
+maintenance command run "locally" reads production's files, rewrites them in
+place, and records the result in the laptop's own rows. `TTS_STORAGE_ROOT=local-dev`
+on the developer side makes that collision impossible. As a backstop,
+`voices:trim-references` refuses to run against a non-local `TTS_STORAGE_DISK`
+unless you pass `--force` — a `--dry-run` always reads freely.
+
 **Cleanup works the same on S3.** All storage goes through Laravel's disk
 abstraction, so `speech:cleanup` (and the daily schedule) delete expired audio
 straight from the bucket — there are **no separate "temp" files on S3** to clean

@@ -224,6 +224,54 @@ class ReferenceClipTrimTest extends TestCase
         $this->assertEqualsWithDelta(12.0, app(AudioConverter::class)->wavDurationSeconds(Storage::disk('local')->get('voices/long.wav')), 0.2);
     }
 
+    // ---- shared-storage guard -----------------------------------------------
+
+    /**
+     * Point tts.storage_disk at a disk the CONFIG calls s3 while the faked
+     * disk behind it stays local — the guard reads config, so this exercises
+     * it without reaching a real bucket.
+     */
+    private function pretendRemoteDisk(): void
+    {
+        config(['filesystems.disks.local.driver' => 's3', 'filesystems.disks.local.bucket' => 'shared-bucket']);
+    }
+
+    public function test_a_remote_storage_disk_stops_the_run_without_force(): void
+    {
+        config(['tts.reference_max_seconds' => 5.0]);
+        $this->backfillVoices();
+        $before = Storage::disk('local')->get('voices/long.wav');
+        $this->pretendRemoteDisk();
+
+        // A dev machine holding production's credentials reaches production's
+        // objects at the same paths — the command can't tell, so it asks.
+        // One expectation per output line (the harness matches a line once).
+        $this->artisan('voices:trim-references')
+            ->expectsOutputToContain('Refusing to rewrite reference clips on the "local" disk (bucket shared-bucket)')
+            ->expectsOutputToContain('Run it on the machine that owns that storage')
+            ->assertFailed();
+
+        $this->assertSame($before, Storage::disk('local')->get('voices/long.wav'));
+    }
+
+    public function test_force_allows_the_run_and_a_dry_run_never_needs_it(): void
+    {
+        config(['tts.reference_max_seconds' => 5.0]);
+        $this->backfillVoices();
+        $this->pretendRemoteDisk();
+
+        // Reading is always allowed; only writes are gated.
+        $this->artisan('voices:trim-references', ['--dry-run' => true])
+            ->expectsOutputToContain('would trim')
+            ->assertSuccessful();
+
+        $this->artisan('voices:trim-references', ['--force' => true])
+            ->expectsOutputToContain('trimmed')
+            ->assertSuccessful();
+
+        $this->assertLessThan(5.5, app(AudioConverter::class)->wavDurationSeconds(Storage::disk('local')->get('voices/long.wav')));
+    }
+
     // ---- transcripts stay in sync with the trimmed clip ---------------------
 
     /** A qwen voice whose stored transcript describes the FULL 12s take. */
