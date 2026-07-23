@@ -3,6 +3,7 @@
 namespace Tests\Feature;
 
 use App\Models\User;
+use App\Models\Voice;
 use App\Services\Audio\AudioConverter;
 use App\Services\VoiceClipService;
 use App\Services\VoiceService;
@@ -157,5 +158,68 @@ class ReferenceClipTrimTest extends TestCase
 
         $this->assertEqualsWithDelta(12.0, $clip->original_duration, 0.2);
         $this->assertNull($clip->trimmedFromSeconds);
+    }
+
+    // ---- voices:trim-references (backfill for pre-cap clips) ----------------
+
+    /** @return array{0: Voice, 1: Voice} [long, short] */
+    private function backfillVoices(): array
+    {
+        Storage::disk('local')->put('voices/long.wav', $this->speechWithPauseWav());
+        Storage::disk('local')->put('voices/short.wav', $this->wrapWav($this->noise(4.0)));
+
+        return [
+            Voice::create(['slug' => 'long-v', 'name' => 'Long V', 'reference_audio_path' => 'voices/long.wav']),
+            Voice::create(['slug' => 'short-v', 'name' => 'Short V', 'reference_audio_path' => 'voices/short.wav']),
+        ];
+    }
+
+    public function test_the_backfill_command_trims_only_over_cap_clips_in_place(): void
+    {
+        config(['tts.reference_max_seconds' => 5.0]);
+        [$long, $short] = $this->backfillVoices();
+
+        // One expectation for the whole summary line (the harness lets a line
+        // satisfy only one expectation). "2 missing" = the seeded built-in
+        // voices, whose clips don't exist on the fake disk.
+        $this->artisan('voices:trim-references')
+            ->expectsOutputToContain('long-v')
+            ->expectsOutputToContain('1 trimmed · 1 already within the 5s cap · 2 missing · 0 failed')
+            ->assertSuccessful();
+
+        $converter = app(AudioConverter::class);
+        $this->assertLessThan(5.5, $converter->wavDurationSeconds(Storage::disk('local')->get('voices/long.wav')));
+        $this->assertEqualsWithDelta(4.0, $converter->wavDurationSeconds(Storage::disk('local')->get('voices/short.wav')), 0.1);
+        // WAV in, WAV out — the stored path never changes for WAV clips.
+        $this->assertSame('voices/long.wav', $long->fresh()->reference_audio_path);
+    }
+
+    public function test_the_backfill_dry_run_writes_nothing(): void
+    {
+        config(['tts.reference_max_seconds' => 5.0]);
+        $this->backfillVoices();
+        $before = Storage::disk('local')->get('voices/long.wav');
+
+        $this->artisan('voices:trim-references', ['--dry-run' => true])
+            ->expectsOutputToContain('would trim')
+            ->assertSuccessful();
+
+        $this->assertSame($before, Storage::disk('local')->get('voices/long.wav'));
+    }
+
+    public function test_the_backfill_voice_filter_scopes_the_run(): void
+    {
+        config(['tts.reference_max_seconds' => 5.0]);
+        Storage::disk('local')->put('voices/other.wav', $this->speechWithPauseWav());
+        Voice::create(['slug' => 'other-v', 'name' => 'Other V', 'reference_audio_path' => 'voices/other.wav']);
+        $this->backfillVoices();
+
+        $this->artisan('voices:trim-references', ['--voice' => ['other-v']])
+            ->expectsOutputToContain('1 trimmed')
+            ->assertSuccessful();
+
+        // Only the named voice was touched.
+        $this->assertLessThan(5.5, app(AudioConverter::class)->wavDurationSeconds(Storage::disk('local')->get('voices/other.wav')));
+        $this->assertEqualsWithDelta(12.0, app(AudioConverter::class)->wavDurationSeconds(Storage::disk('local')->get('voices/long.wav')), 0.2);
     }
 }

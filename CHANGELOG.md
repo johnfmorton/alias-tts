@@ -4,6 +4,18 @@ All notable changes to this project are documented in this file. The format is
 based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this
 project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+- **`voices:trim-references` backfills the clip-length cap.** The save-time
+  trim only protects clips stored from v0.82.0 on; this artisan command
+  applies the same pause-aware trim to reference clips saved before it
+  existed. `--dry-run` previews every cut ("would trim 76.0s → 24.5s"),
+  `--voice=slug` scopes the run, clips already within the cap are left
+  byte-for-byte untouched, and a missing clip file only warns (built-ins
+  self-heal from seed assets). Each trimmed voice's cached API audio
+  regenerates on its next request; Studio project takes are unaffected.
+
 ## [0.82.0] - 2026-07-23
 
 ### Added
