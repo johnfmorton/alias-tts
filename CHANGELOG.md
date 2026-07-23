@@ -4,6 +4,19 @@ All notable changes to this project are documented in this file. The format is
 based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this
 project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.86.0] - 2026-07-23
+
+### Added
+- **Lifetime spend per user in the SuperAdmin Users list.** The list already
+  showed each user's remaining balance; a new **Spend** column (between
+  Balance and Gens) shows what they have spent over their lifetime, so a
+  SuperAdmin can scan who is costing what without opening each user's drawer.
+  The figure is the marked-up amount the user was billed — a muted em dash
+  when there is no spend — and, when a credit markup is in effect, the real
+  provider cost is revealed on hover. Spend is metered per engine, so the
+  total correctly blends the different Chatterbox and Qwen3 per-character
+  rates.
+
 ## [0.85.0] - 2026-07-23
 
 ### Fixed
