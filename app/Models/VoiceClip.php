@@ -28,6 +28,13 @@ class VoiceClip extends Model
     /** The enhanced take (or the degrade-safe original) is staged and ready to A/B. */
     public const STATUS_READY = 'ready';
 
+    /**
+     * Pre-trim duration when staging shortened an over-long take (a DECLARED
+     * property, deliberately not an Eloquent attribute/column — it only rides
+     * the in-memory instance from stage() so the prepare response can say so).
+     */
+    public ?float $trimmedFromSeconds = null;
+
     protected $fillable = [
         'user_id', 'token', 'original_path', 'enhanced_path',
         'original_duration', 'enhanced_duration', 'enhance_error', 'status', 'expires_at',

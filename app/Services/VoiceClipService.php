@@ -41,6 +41,23 @@ class VoiceClipService
         $wav = $this->converter->decodeToWav($rawBytes);
 
         $duration = $this->converter->wavDurationSeconds($wav);
+
+        // Over-long takes are trimmed here, ONCE — before storage and before
+        // the (paid) enhance run — at a natural pause, never mid-word. The
+        // whole stored clip ships with every chunk render, yet the engines
+        // only read its head, so extra length is pure per-render payload.
+        $trimmedFrom = null;
+        $capSeconds = (float) config('tts.reference_max_seconds', 25);
+        if ($duration !== null && $capSeconds > 0 && $duration > $capSeconds + 0.5) {
+            $trimmed = $this->converter->trimReference($wav, $capSeconds);
+            if ($trimmed !== null) {
+                $trimmedFrom = $duration;
+                $wav = $trimmed;
+                $duration = $this->converter->wavDurationSeconds($wav);
+            }
+        }
+
+        // Absurdity ceiling (mainly for installs that disable the trim).
         $max = (int) config('tts.enhance.max_clip_seconds', 120);
         if ($duration !== null && $duration > $max) {
             throw new RuntimeException('That clip is too long ('.round($duration).'s) — keep it under '.$max.'s.');
@@ -57,7 +74,7 @@ class VoiceClipService
         $originalPath = config('tts.voice_clip_path').'/'.$token.'/original.wav';
         $disk->put($originalPath, $wav);
 
-        return VoiceClip::create([
+        $clip = VoiceClip::create([
             'user_id' => $userId,
             'token' => $token,
             'original_path' => $originalPath,
@@ -68,6 +85,9 @@ class VoiceClipService
             'status' => $willEnhance ? VoiceClip::STATUS_PROCESSING : VoiceClip::STATUS_READY,
             'expires_at' => now()->addHours((int) config('tts.enhance.clip_ttl_hours', 24)),
         ]);
+        $clip->trimmedFromSeconds = $trimmedFrom;
+
+        return $clip;
     }
 
     /**

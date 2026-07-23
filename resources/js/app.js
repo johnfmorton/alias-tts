@@ -4749,12 +4749,15 @@ function initVoiceRecorder() {
             });
             if (!res.ok) throw new Error(await errorMessage(res));
             let data = await res.json();
+            // An over-long take is trimmed server-side at staging; only the FIRST
+            // response knows, so carry the notice across the poll below.
+            const notice = data.notice;
             // Cleanup now runs off the request in a queued job — the upload returns
             // right away as "processing" so a long clip can't hold the POST open
             // until a gateway 504s it. Poll the status URL until the take is staged.
             if (data.status === 'processing' && data.status_url) data = await pollClipReady(data.status_url);
             renderAB(data);
-            say('', 'muted');
+            say(notice || '', 'muted');
         } catch (err) {
             say(`✗ ${err.message}`, 'error');
         } finally {

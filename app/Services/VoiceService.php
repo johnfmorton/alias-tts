@@ -77,11 +77,12 @@ class VoiceService
         }
 
         if ($audioBytes !== null) {
-            $bytes = $audioBytes;
-            $extension = strtolower($ext ?: 'wav');
+            // Cap length FIRST (a pause-aware one-time trim), then normalize,
+            // so loudness is measured on the content that actually ships.
+            [$bytes, $extension] = $this->capReferenceLength($audioBytes, strtolower($ext ?: 'wav'));
 
             if ($normalize) {
-                $bytes = $this->converter->normalizeReference($audioBytes);
+                $bytes = $this->converter->normalizeReference($bytes);
                 $extension = 'wav';
             }
 
@@ -147,6 +148,37 @@ class VoiceService
                 $this->assertReferenceLongEnough($engine, (string) $disk->get($voice->reference_audio_path));
             }
         }
+    }
+
+    /**
+     * Cap an incoming reference clip at `tts.reference_max_seconds` — the
+     * whole stored clip ships with every chunk render, yet the engines only
+     * read its head, so extra length is pure per-render payload. Trimming is
+     * pause-aware ({@see AudioConverter::trimReference}) and degrade-safe: an
+     * unparseable/undecodable clip is kept as-is. Within-cap clips keep their
+     * original bytes AND container; an over-long non-WAV upload comes back as
+     * WAV (length matters more than container, and only over-long clips are
+     * ever touched).
+     *
+     * @return array{0: string, 1: string} [bytes, extension]
+     */
+    private function capReferenceLength(string $bytes, string $extension): array
+    {
+        $max = (float) config('tts.reference_max_seconds', 25);
+        if ($max <= 0) {
+            return [$bytes, $extension];
+        }
+
+        try {
+            $wav = strncmp($bytes, 'RIFF', 4) === 0 ? $bytes : $this->converter->decodeToWav($bytes);
+            $trimmed = $this->converter->trimReference($wav, $max);
+        } catch (Throwable $e) {
+            Log::info('Reference length cap skipped', ['error' => $e->getMessage()]);
+
+            return [$bytes, $extension];
+        }
+
+        return $trimmed === null ? [$bytes, $extension] : [$trimmed, 'wav'];
     }
 
     /**
@@ -251,10 +283,10 @@ class VoiceService
         $presetVoice = in_array($presetVoice, ModelCatalog::presetVoices($engine), true) ? $presetVoice : null;
 
         if ($audioBytes !== null) {
-            $bytes = $audioBytes;
-            $extension = strtolower($ext ?: 'wav');
+            // Cap length first, then normalize — see register().
+            [$bytes, $extension] = $this->capReferenceLength($audioBytes, strtolower($ext ?: 'wav'));
             if ($normalize) {
-                $bytes = $this->converter->normalizeReference($audioBytes);
+                $bytes = $this->converter->normalizeReference($bytes);
                 $extension = 'wav';
             }
             $this->assertReferenceLongEnough($engine, $bytes);

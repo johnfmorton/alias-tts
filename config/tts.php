@@ -582,6 +582,12 @@ return [
     'reference_loudness' => env('TTS_REFERENCE_LOUDNESS', '-20'),    // integrated LUFS target
     'reference_true_peak' => env('TTS_REFERENCE_TRUE_PEAK', '-1.5'), // dBTP ceiling (headroom, no clipping)
     'reference_sample_rate' => (int) env('TTS_REFERENCE_SAMPLE_RATE', 44100),
+    // Longest reference clip that is ever STORED (0 = no cap). The whole clip
+    // ships as a base64 data URI with EVERY chunk render, yet the engines only
+    // read its head (~15s turbo, less for classic, ~3s qwen) — so anything
+    // longer is trimmed once at save, at a natural pause with a short fade,
+    // never mid-word (see AudioConverter::trimReference).
+    'reference_max_seconds' => (float) env('TTS_REFERENCE_MAX_SECONDS', 25),
 
     /*
     |--------------------------------------------------------------------------

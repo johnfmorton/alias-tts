@@ -32,6 +32,23 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   approvals in one row, the lexicon list badges scoped entries, and the
   `/v1/pronunciations` sync API exposes the scope for clients.
 
+### Added
+- **Over-long reference clips are trimmed at save — at a pause, never
+  mid-word.** The entire stored reference clip travels with every single
+  chunk render, yet the engines only listen to its head (~15 seconds for
+  Turbo, less for classic, ~3 for Qwen) — so a one-minute clip was pure
+  freight, megabytes of upload repeated per chunk. Clips longer than
+  `TTS_REFERENCE_MAX_SECONDS` (default 25, 0 disables) are now shortened
+  once at save time. The cut is chosen with care: the trimmer scans the last
+  five seconds before the cap for a natural pause — a sustained dip well
+  below the take's own speech level — and cuts mid-silence with a short
+  fade, because a hard mid-word cut leaves a clipped phoneme and a click in
+  the very audio the clone conditions on. Continuous speech with no pause
+  falls back to a faded cut at the cap. The A/B chooser says when a take was
+  trimmed ("Trimmed from 48s to 24s at a natural pause"), the recorder now
+  stops at the cap plus a little headroom, and enhancement runs on the
+  trimmed take — so cleanup gets cheaper too.
+
 ### Changed
 - **`TTS_PROVIDER=local` is now a hybrid.** The dev-only local driver keeps
   running both Chatterbox engines on the sidecar, but voices on engines the

@@ -113,6 +113,16 @@ class VoiceClipController extends Controller
      */
     private function payload(VoiceClip $clip): array
     {
+        // Set only on the freshly staged instance (store()) — polls won't have
+        // it, so the JS carries it across from the first response.
+        $notice = $clip->trimmedFromSeconds !== null
+            ? sprintf(
+                'Trimmed from %ds to %ds at a natural pause — the engines only read the first ~15 seconds.',
+                (int) round($clip->trimmedFromSeconds),
+                (int) round((float) $clip->original_duration),
+            )
+            : null;
+
         if ($clip->status === VoiceClip::STATUS_PROCESSING) {
             return [
                 'ok' => true,
@@ -120,6 +130,7 @@ class VoiceClipController extends Controller
                 'status' => VoiceClip::STATUS_PROCESSING,
                 'status_url' => route('admin.voices.clips.status', ['clip' => $clip->token]),
                 'expires_at' => $clip->expires_at->toIso8601String(),
+                'notice' => $notice,
             ];
         }
 
@@ -128,6 +139,7 @@ class VoiceClipController extends Controller
             'token' => $clip->token,
             'status' => VoiceClip::STATUS_READY,
             'expires_at' => $clip->expires_at->toIso8601String(),
+            'notice' => $notice,
             'original' => [
                 'url' => route('admin.voices.clips.audio', ['clip' => $clip->token, 'variant' => 'original']),
                 'duration' => $clip->original_duration,

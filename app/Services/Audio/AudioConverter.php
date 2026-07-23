@@ -1165,6 +1165,171 @@ class AudioConverter
     }
 
     /**
+     * Trim an over-long reference clip down to ~$maxSeconds — at a natural
+     * pause, never mid-word. The engines condition their clone on this audio
+     * and demonstrably imitate recording artifacts, so a hard cut (a truncated
+     * phoneme + a click transient) is exactly what must not enter the clip.
+     *
+     * The cut point is the LAST sustained energy dip (≥120ms below the
+     * window's speech level − 20dB) in the final 5 seconds before the cap —
+     * an inter-word or sentence pause — cut mid-silence with a 40ms fade-out.
+     * Continuous speech with no such dip (rare) falls back to a fade at the
+     * cap itself. Runs once at save time; renders always ship the stored
+     * bytes untouched.
+     *
+     * Returns the trimmed 16-bit PCM WAV, or null when no trim is needed or
+     * the input isn't parseable 16-bit PCM (degrade-safe: caller keeps the
+     * original).
+     */
+    public function trimReference(string $wav, float $maxSeconds): ?string
+    {
+        if ($maxSeconds <= 0) {
+            return null;
+        }
+
+        $info = $this->wavPcmInfo($wav);
+        if ($info === null) {
+            return null;
+        }
+
+        [$channels, $rate, $dataOffset] = [$info['channels'], $info['rate'], $info['dataOffset']];
+        $frameBytes = $channels * 2;
+        $totalFrames = intdiv($info['dataSize'], $frameBytes);
+        if ($totalFrames <= 0 || $totalFrames / $rate <= $maxSeconds + 0.5) {
+            return null; // within the cap (plus a hair of tolerance) — keep as-is
+        }
+
+        // Energy profile of the last 5s before the cap, in 20ms frames,
+        // channel-agnostic (interleaved RMS — a pause is quiet on every channel).
+        $chunkSec = 0.02;
+        $chunkFrames = max(1, (int) round($rate * $chunkSec));
+        $startChunk = (int) floor(max(1.0, $maxSeconds - 5.0) / $chunkSec);
+        $endChunk = (int) floor($maxSeconds / $chunkSec);
+        $dbs = [];
+        for ($c = $startChunk; $c < $endChunk; $c++) {
+            $raw = substr($wav, $dataOffset + $c * $chunkFrames * $frameBytes, $chunkFrames * $frameBytes);
+            if (strlen($raw) < $frameBytes) {
+                break;
+            }
+            $samples = unpack('s*', $raw) ?: [];
+            $sumSq = 0.0;
+            foreach ($samples as $s) {
+                $sumSq += $s * $s;
+            }
+            $rms = $samples === [] ? 0.0 : sqrt($sumSq / count($samples));
+            $dbs[$c] = $rms > 0 ? 20 * log10($rms / 32768) : -120.0;
+        }
+        if ($dbs === []) {
+            return null;
+        }
+
+        // "Silence" is relative to the take's own speech level (a too-quiet
+        // recording must not read as one long pause): 20dB under the window's
+        // 90th-percentile energy, floored at -60dBFS.
+        $sorted = array_values($dbs);
+        sort($sorted);
+        $speechRef = $sorted[(int) floor(0.9 * (count($sorted) - 1))];
+        $silence = max($speechRef - 20.0, -60.0);
+        $minRun = max(1, (int) ceil(0.12 / $chunkSec));
+
+        // The latest qualifying dip wins — it keeps the most audio. Cut at the
+        // middle of the run, squarely inside the pause.
+        $cutChunk = null;
+        $runStart = null;
+        $runLen = 0;
+        foreach ($dbs as $c => $db) {
+            if ($db <= $silence) {
+                $runStart ??= $c;
+                if (++$runLen >= $minRun) {
+                    $cutChunk = $runStart + intdiv($runLen, 2);
+                }
+            } else {
+                $runStart = null;
+                $runLen = 0;
+            }
+        }
+
+        $cutFrame = min($totalFrames, $cutChunk !== null
+            ? $cutChunk * $chunkFrames
+            : (int) floor($maxSeconds * $rate));
+
+        $data = substr($wav, $dataOffset, $cutFrame * $frameBytes);
+
+        // 40ms linear fade-out: even the fallback cut lands soft, never a click.
+        $fadeFrames = min($cutFrame, (int) round(0.04 * $rate));
+        if ($fadeFrames > 0) {
+            $tailBytes = $fadeFrames * $frameBytes;
+            $tail = unpack('s*', substr($data, -$tailBytes)) ?: [];
+            $faded = '';
+            $i = 0;
+            foreach ($tail as $s) {
+                $gain = max(0.0, 1.0 - (intdiv($i, $channels) + 1) / $fadeFrames);
+                $faded .= pack('s', (int) round($s * $gain));
+                $i++;
+            }
+            $data = substr($data, 0, -$tailBytes).$faded;
+        }
+
+        return $this->packPcmWav($data, $channels, $rate);
+    }
+
+    /**
+     * Parse a 16-bit PCM WAV's format + data location, or null when it isn't
+     * one (compressed/float WAVs are left to callers untouched).
+     *
+     * @return array{channels: int, rate: int, dataOffset: int, dataSize: int}|null
+     */
+    private function wavPcmInfo(string $wav): ?array
+    {
+        $pos = 12; // skip 'RIFF' <size> 'WAVE'
+        $len = strlen($wav);
+        $fmt = null;
+        $dataOffset = null;
+        $dataSize = null;
+
+        while ($pos + 8 <= $len) {
+            $id = substr($wav, $pos, 4);
+            $size = unpack('V', substr($wav, $pos + 4, 4))[1];
+
+            if ($id === 'fmt ' && $pos + 8 + 16 <= $len) {
+                // fmt body: audioFormat(2) channels(2) sampleRate(4) byteRate(4) blockAlign(2) bits(2)
+                $f = unpack('vformat/vchannels/Vrate/VbyteRate/vblockAlign/vbits', substr($wav, $pos + 8, 16));
+                $fmt = $f ?: null;
+            } elseif ($id === 'data') {
+                $dataOffset = $pos + 8;
+                $dataSize = min($size, $len - $dataOffset); // tolerate a truncated tail
+            }
+
+            $pos += 8 + $size + ($size & 1); // chunks are word-aligned
+        }
+
+        if ($fmt === null || $dataOffset === null || $dataSize === null
+            || $fmt['format'] !== 1 || $fmt['bits'] !== 16
+            || $fmt['channels'] < 1 || $fmt['rate'] <= 0) {
+            return null;
+        }
+
+        return [
+            'channels' => (int) $fmt['channels'],
+            'rate' => (int) $fmt['rate'],
+            'dataOffset' => $dataOffset,
+            'dataSize' => $dataSize,
+        ];
+    }
+
+    /** Wrap raw 16-bit PCM sample data in a canonical 44-byte WAV header. */
+    private function packPcmWav(string $data, int $channels, int $rate): string
+    {
+        $blockAlign = $channels * 2;
+
+        return 'RIFF'.pack('V', 36 + strlen($data)).'WAVE'
+            .'fmt '.pack('V', 16).pack('v', 1).pack('v', $channels)
+            .pack('V', $rate).pack('V', $rate * $blockAlign)
+            .pack('v', $blockAlign).pack('v', 16)
+            .'data'.pack('V', strlen($data)).$data;
+    }
+
+    /**
      * Normalize a reference voice clip for zero-shot cloning: downmix to mono,
      * trim leading/trailing silence, loudness-normalize, and cap the true peak
      * so the result can never clip. Returns 16-bit PCM WAV bytes.

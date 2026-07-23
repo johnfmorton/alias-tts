@@ -130,7 +130,11 @@ the engine, and the reference clip from one of three sources:
 1. **Record with mic** — read one of the built-in teleprompter scripts
    (~20–25 s each) right in the browser; review the take before using it.
 2. **Upload a file** — WAV/MP3/M4A/AAC/OGG/FLAC up to 20 MB. A clean, quiet
-   ~15–20 s sample works best.
+   ~15–20 s sample works best. Longer clips are trimmed to
+   `TTS_REFERENCE_MAX_SECONDS` (default 25 s) once at save — at a natural
+   pause with a short fade, never mid-word — because the whole stored clip
+   ships with every chunk render while the engines only read its head
+   (~15 s for Turbo, less for classic, ~3 s for Qwen).
 3. **Built-in voice** (Turbo and Qwen3 TTS) — pick one of the engine's
    presets instead of providing a clip.
 
