@@ -124,6 +124,23 @@ class UsersCreditAdminTest extends TestCase
             ->assertSee('cost you');
     }
 
+    public function test_the_users_list_shows_lifetime_spend_per_user(): void
+    {
+        $admin = $this->admin();
+        $user = $this->limitedUser(20_000_000); // $20.00 balance
+        // 280,000 chars of classic chatterbox @ $0.025/1k = $7.00 spend, which
+        // also drops the balance to $13.00 — three distinct figures on the row.
+        app(CreditService::class)->charge($user->id, 280_000, 'chatterbox', 'api');
+
+        // No ?user= — the spend must be visible in the LIST, not just the drawer.
+        $this->actingAs($admin)
+            ->get(route('admin.users.index'))
+            ->assertStatus(200)
+            ->assertSee('Spend')      // column header
+            ->assertSee('$7.00')      // lifetime spend
+            ->assertSee('$13.00');    // remaining balance
+    }
+
     public function test_the_account_page_shows_the_card_only_to_limited_users(): void
     {
         $limited = $this->limitedUser(2_500_000);

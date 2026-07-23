@@ -49,6 +49,17 @@ class UserController extends Controller
             ->selectRaw('user_id as uid, count(*) as c')
             ->pluck('c', 'uid');
 
+        // Lifetime spend per user in ONE grouped query (the list version of
+        // chargedTotals): `billed` = marked-up micro the user was charged,
+        // `actual` = the provider cost to the owner. Keyed by user id.
+        $spend = CreditTransaction::query()
+            ->where('type', CreditTransaction::TYPE_CHARGE)
+            ->whereNotNull('user_id')
+            ->groupBy('user_id')
+            ->selectRaw('user_id as uid, COALESCE(SUM(-amount_micro), 0) as billed, COALESCE(SUM(actual_cost_micro), 0) as actual')
+            ->get()
+            ->keyBy('uid');
+
         $selected = $request->filled('user')
             ? $users->firstWhere('id', $request->integer('user'))
             : null;
@@ -57,6 +68,7 @@ class UserController extends Controller
             'users' => $users,
             'gens' => $gens,
             'keyCounts' => $keyCounts,
+            'spend' => $spend,
             'selected' => $selected,
             'activeCount' => $users->where('status', User::STATUS_ACTIVE)->count(),
             'invitedCount' => $users->where('status', User::STATUS_INVITED)->count(),
