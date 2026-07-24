@@ -38,6 +38,6 @@
             @endforeach
         @endforeach
     </select>
-    <p data-engine-only="chatterbox-turbo" @class(['mt-2 text-[12.5px] leading-relaxed text-zinc-500', 'hidden' => $currentModel !== 'chatterbox-turbo'])>Turbo needs a reference clip <strong>longer than 5 seconds</strong> — or one of these built-ins instead of a clip.</p>
-    <p data-engine-only="qwen3-tts" @class(['mt-2 text-[12.5px] leading-relaxed text-zinc-500', 'hidden' => $currentModel !== 'qwen3-tts'])>Qwen clones from a reference clip of <strong>at least 3 seconds</strong> (aim for 15–20s) — or speaks through one of these built-ins instead.</p>
+    <p data-clip-path-hint data-engine-only="chatterbox-turbo" @class(['mt-2 text-[12.5px] leading-relaxed text-zinc-500', 'hidden' => $currentModel !== 'chatterbox-turbo'])>Turbo needs a reference clip <strong>longer than 5 seconds</strong> — or one of these built-ins instead of a clip.</p>
+    <p data-clip-path-hint data-engine-only="qwen3-tts" @class(['mt-2 text-[12.5px] leading-relaxed text-zinc-500', 'hidden' => $currentModel !== 'qwen3-tts'])>Qwen clones from a reference clip of <strong>at least 3 seconds</strong> (aim for 15–20s) — or speaks through one of these built-ins instead.</p>
 </div>

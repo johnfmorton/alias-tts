@@ -182,6 +182,37 @@ class VoiceFlowTest extends TestCase
         $this->actingAs($other)->get(route('admin.voices.clip', $mine))->assertNotFound();
     }
 
+    // ── a built-in voice and a clip are alternative sources ─────────────────
+
+    public function test_the_clip_widget_is_addressable_so_a_builtin_can_replace_it(): void
+    {
+        // The provider sends `voice`/`speaker` ONLY when there is no reference
+        // audio, so a clip silently overrides a chosen built-in. initVoiceFlow()
+        // shows one or the other — these are the hooks it drives.
+        $this->actingAs($this->admin())->get(route('admin.voices.create'))
+            ->assertOk()
+            ->assertSee('data-clip-section', false)
+            ->assertSee('data-clip-built-in-note', false)
+            // The per-engine clip-length rules are clip-path guidance only.
+            ->assertSee('data-clip-path-hint', false);
+    }
+
+    public function test_the_edit_page_declares_whether_a_clip_is_already_stored(): void
+    {
+        // Drives the honest warning: on a voice that HAS a clip, picking a
+        // built-in stores it but changes nothing about what is heard.
+        $admin = $this->admin();
+
+        $this->actingAs($admin)->get(route('admin.voices.edit', $this->voiceWithClip($admin)))
+            ->assertOk()
+            ->assertSee('data-has-clip="1"', false);
+
+        $bare = Voice::create(['user_id' => $admin->id, 'slug' => 'bare', 'name' => 'Bare']);
+        $this->actingAs($admin)->get(route('admin.voices.edit', $bare))
+            ->assertOk()
+            ->assertSee('data-has-clip=""', false);
+    }
+
     // ── recording tips ──────────────────────────────────────────────────────
 
     public function test_recording_tips_sit_behind_a_disclosure_rather_than_greeting_everyone(): void

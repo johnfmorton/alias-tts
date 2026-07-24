@@ -10,8 +10,14 @@
 {{-- Record / Upload. Lives inside the Voice source step on both voice pages, so
      it carries no heading of its own. Recording guidance is folded into the
      Record body behind a disclosure — it's essential when you're about to speak
-     and pure noise when you're uploading a file you already have. --}}
-<div>
+     and pure noise when you're uploading a file you already have.
+
+     A clip and a built-in voice are ALTERNATIVE sources, and the provider gives
+     the clip absolute precedence (ReplicateChatterboxProvider sends `voice` /
+     `speaker` only when there is no reference audio). So initVoiceFlow() hides
+     this whole section while a built-in is chosen — leaving it up would offer a
+     control that silently overrides that choice. --}}
+<div data-clip-section>
     @php($refMax = (float) config('tts.reference_max_seconds', 25))
     <div id="voice-clip-widget" data-prepare-url="{{ route('admin.voices.clips.store') }}"
          data-enhance-enabled="{{ $enhanceOn ? '1' : '' }}" data-normalize-enabled="{{ config('tts.normalize_reference') ? '1' : '' }}"
@@ -169,3 +175,9 @@
         @endif
     </div>
 </div>
+
+{{-- Stands in for the recorder when a built-in voice is the chosen source.
+     Filled by initVoiceFlow(), which also decides the tone: plain when the
+     built-in really is what will be heard, warning when a stored clip would
+     override it. --}}
+<p data-clip-built-in-note class="hidden rounded-[12px] px-5 py-4 text-[13px] leading-relaxed"></p>

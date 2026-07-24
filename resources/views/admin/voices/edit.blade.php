@@ -65,7 +65,7 @@
          separate save paths — the takes table writes its pick into the hidden
          delivery fields and the save bar reports it like any other edit. --}}
     <form id="voice-form" method="POST" action="{{ route('admin.voices.update', $voice) }}" enctype="multipart/form-data"
-          data-voice-flow="edit" data-dirty-guard
+          data-voice-flow="edit" data-dirty-guard data-has-clip="{{ $voice->reference_audio_path ? '1' : '' }}"
           data-busy data-busy-label="Saving changes…"
           data-busy-message="Cleaning up and normalizing a replacement clip can take up to a minute — keep this page open.">
         @csrf

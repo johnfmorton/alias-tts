@@ -5507,6 +5507,75 @@ function initVoiceFlow() {
                     : `No clip — ${engineLabel()} will speak in its own generic voice`));
     }
 
+    // ── built-in voice vs reference clip: one source, not two ──────────────
+    // The provider gives a clip absolute precedence — `voice` (turbo) and
+    // `speaker` (qwen) are sent ONLY when there is no reference audio. So a
+    // recorder sitting next to a chosen built-in is not just noise: taking it
+    // would silently override the built-in with no feedback anywhere. Show one
+    // or the other, and say which is actually going to be heard.
+    const presetSelect = form.querySelector('#preset-voice');
+    const clipSection = form.querySelector('[data-clip-section]');
+    const clipNote = form.querySelector('[data-clip-built-in-note]');
+    const storedClip = form.dataset.hasClip === '1';
+    let lastPreset = presetSelect?.value ?? '';
+
+    const fileInput = form.querySelector('input[name="audio"]');
+    const tokenInput = form.querySelector('[data-clip-token]');
+    const clipStaged = () => (fileInput?.files?.length ?? 0) > 0 || (tokenInput?.value ?? '') !== '';
+    const clearStagedClip = () => {
+        if (fileInput) { fileInput.value = ''; fileInput.dispatchEvent(new Event('change', { bubbles: true })); }
+        if (tokenInput) { tokenInput.value = ''; tokenInput.dispatchEvent(new Event('change', { bubbles: true })); }
+        // Put the widget back in its default state so switching away and back
+        // doesn't land on a stale A/B chooser for a clip that's gone.
+        form.querySelector('[data-clip-reset]')?.click();
+    };
+
+    const NOTE_PLAIN = 'rounded-[12px] border border-white/9 bg-inset px-5 py-4 text-[13px] leading-relaxed text-zinc-400';
+    const NOTE_WARN = 'rounded-[12px] border border-warn/30 bg-warn/[0.05] px-5 py-4 text-[13px] leading-relaxed text-zinc-300';
+
+    function refreshSourceChoice() {
+        if (!clipSection) return;
+        const preset = presetSelect && !presetSelect.closest('[data-engine-only]')?.classList.contains('hidden')
+            ? presetSelect.value
+            : '';
+        // A stored clip still wins on save, so Edit keeps the clip on screen and
+        // says so rather than hiding it behind a built-in that won't be used.
+        const overridden = preset !== '' && storedClip;
+        clipSection.classList.toggle('hidden', preset !== '' && !overridden);
+        // "Turbo needs a clip longer than 5 seconds" is guidance for the CLIP
+        // path; it only muddies the picture once a built-in is the source.
+        form.querySelectorAll('[data-clip-path-hint]').forEach((hint) => {
+            hint.classList.toggle('hidden', preset !== ''
+                || !hint.dataset.engineOnly.split(' ').includes(engineValue()));
+        });
+        if (clipNote) {
+            clipNote.className = overridden ? NOTE_WARN : NOTE_PLAIN;
+            clipNote.classList.toggle('hidden', preset === '');
+            clipNote.textContent = preset === ''
+                ? ''
+                : (overridden
+                    ? `This voice has a reference clip, and a clip always wins — ${engineLabel()} will keep cloning it. The built-in ${preset} voice is saved, but nothing will speak through it while a clip is present.`
+                    : `${engineLabel()} will speak through its built-in ${preset} voice, so there's no clip to record or upload. Choose “none” above to clone from a clip instead.`);
+        }
+    }
+
+    presetSelect?.addEventListener('change', async () => {
+        const preset = presetSelect.value;
+        // Never drop a clip they just recorded on the strength of a dropdown.
+        if (preset !== '' && clipStaged()) {
+            const ok = await confirmDialog({
+                title: 'Use the built-in voice instead?',
+                message: `A voice has one source. Switching to ${preset} discards the clip you just added — it would override the built-in anyway.`,
+                label: 'Use ' + preset,
+                tone: 'warn',
+            });
+            if (!ok) { presetSelect.value = lastPreset; refresh(); return; }
+            clearStagedClip();
+        }
+        lastPreset = preset;
+        refresh();
+    });
+
     // ── Edit: the engine gate, and step 3's engine-owned contents ───────────
     const gate = form.querySelector('[data-engine-gate]');
     const picker = form.querySelector('[data-engine-picker]');
@@ -5586,6 +5655,7 @@ function initVoiceFlow() {
         form.querySelectorAll('[data-engine-label]').forEach((el) => { el.textContent = engineLabel(); });
 
         refreshDelivery();
+        refreshSourceChoice();
         refreshSaveBar(groups);
         refreshCreate();
     }

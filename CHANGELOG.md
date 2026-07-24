@@ -4,6 +4,19 @@ All notable changes to this project are documented in this file. The format is
 based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this
 project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Fixed
+- **A built-in voice and a reference clip no longer contradict each other.**
+  Choosing one of an engine's built-in voices still left the Record / Upload
+  controls on screen, and taking them silently won: the provider sends the
+  built-in only when there is no reference audio, so a clip always overrides
+  it with no feedback anywhere. Picking a built-in now replaces the recorder
+  with a line naming the voice that will actually speak, and switching to one
+  after staging a clip asks before discarding it. On a voice that already has
+  a stored clip, the clip stays on screen and says plainly that it wins — the
+  built-in is saved but nothing will speak through it while a clip is present.
+
 ## [0.87.0] - 2026-07-24
 
 ### Added
