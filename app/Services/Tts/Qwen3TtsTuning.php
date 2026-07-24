@@ -29,6 +29,17 @@ class Qwen3TtsTuning
     /** No documented schema cap; bounds the payload and the UI field alike. */
     public const STYLE_INSTRUCTION_MAX = 500;
 
+    /**
+     * Upper bound on natural speaking rate, characters per second (spaces
+     * included). Real Qwen renders run slower (~12–14 c/s); the generous 17
+     * biases the fit guard toward KEEPING a transcript — we drop only one the
+     * clip plainly can't contain. See {@see referenceTextFitsClip()}.
+     */
+    public const MAX_CHARS_PER_SECOND = 17.0;
+
+    /** Estimation cushion so a clip-matching transcript is never dropped for rounding. */
+    public const CLIP_FIT_MARGIN = 1.1;
+
     /** Exact enum match or the auto default — qwen rejects unknown values. */
     public static function clampLanguage(?string $language): string
     {
@@ -45,6 +56,28 @@ class Qwen3TtsTuning
         }
 
         return mb_substr($instruction, 0, self::STYLE_INSTRUCTION_MAX);
+    }
+
+    /**
+     * Whether a clip transcript (reference_text) plausibly fits within the
+     * reference clip's spoken duration. Qwen's voice_clone SPEAKS any transcript
+     * text its audio doesn't cover, so a transcript longer than the clip leaks
+     * aloud before the target text (e.g. a 572-char transcript stamped on a
+     * 24.6s clip reads its uncovered tail out loud). We keep the transcript only
+     * when its estimated spoken length fits the clip; an unknown clip duration
+     * (null — a non-WAV or unreadable clip) keeps it, since we can't prove it
+     * overruns.
+     */
+    public static function referenceTextFitsClip(string $referenceText, ?float $clipSeconds): bool
+    {
+        $referenceText = trim($referenceText);
+        if ($referenceText === '' || $clipSeconds === null || $clipSeconds <= 0.0) {
+            return true;
+        }
+
+        $allowedChars = $clipSeconds * self::MAX_CHARS_PER_SECOND * self::CLIP_FIT_MARGIN;
+
+        return mb_strlen($referenceText) <= $allowedChars;
     }
 
     /**

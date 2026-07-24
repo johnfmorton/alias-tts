@@ -91,6 +91,25 @@ class ReplicateQwenProviderTest extends TestCase
         return $clip;
     }
 
+    /**
+     * A minimal but VALID PCM WAV of $seconds, so wavDurationSeconds parses a
+     * real duration (byteRate 100 B/s → tiny files). @return string temp path.
+     */
+    private function wavClip(float $seconds): string
+    {
+        $byteRate = 100;
+        $dataSize = (int) round($seconds * $byteRate);
+        $wav = 'RIFF'.pack('V', 36 + $dataSize).'WAVE'
+            .'fmt '.pack('V', 16).pack('v', 1).pack('v', 1)
+            .pack('V', $byteRate).pack('V', $byteRate).pack('v', 1).pack('v', 8)
+            .'data'.pack('V', $dataSize).str_repeat("\x00", $dataSize);
+
+        $clip = tempnam(sys_get_temp_dir(), 'wav').'.wav';
+        file_put_contents($clip, $wav);
+
+        return $clip;
+    }
+
     public function test_clipless_qwen_speaks_a_preset_speaker(): void
     {
         $this->fakeSuccess();
@@ -142,6 +161,47 @@ class ReplicateQwenProviderTest extends TestCase
         $this->assertSame('What the clip says.', $sent['input']['reference_text']);
         // A clip always wins: the preset speaker must not ride along.
         $this->assertArrayNotHasKey('speaker', $sent['input']);
+    }
+
+    public function test_a_transcript_that_overruns_the_clip_is_dropped(): void
+    {
+        // qwen speaks any reference_text its audio doesn't cover, so a
+        // transcript longer than the clip would leak aloud. A 300-char note on
+        // a 3s clip plainly overruns — it must not ride along.
+        $this->fakeSuccess();
+
+        $clip = $this->wavClip(3.0);
+        try {
+            $this->provider()->synthesize('Hi.', $clip, [
+                'model' => 'qwen3-tts',
+                'reference_text' => str_repeat('word ', 60), // 300 chars ≫ 3s of speech
+            ]);
+        } finally {
+            @unlink($clip);
+        }
+
+        $sent = $this->sentInput();
+        $this->assertSame('voice_clone', $sent['input']['mode']);
+        $this->assertStringStartsWith('data:audio/wav;base64,', $sent['input']['reference_audio']);
+        $this->assertArrayNotHasKey('reference_text', $sent['input']);
+    }
+
+    public function test_a_transcript_that_fits_the_clip_is_kept(): void
+    {
+        // A transcript the clip can plausibly contain still sharpens the clone.
+        $this->fakeSuccess();
+
+        $clip = $this->wavClip(6.0); // ~102 chars of headroom
+        try {
+            $this->provider()->synthesize('Hi.', $clip, [
+                'model' => 'qwen3-tts',
+                'reference_text' => 'What the clip actually says.',
+            ]);
+        } finally {
+            @unlink($clip);
+        }
+
+        $this->assertSame('What the clip actually says.', $this->sentInput()['input']['reference_text']);
     }
 
     public function test_blank_reference_text_is_omitted(): void

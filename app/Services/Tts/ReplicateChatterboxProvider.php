@@ -2,6 +2,7 @@
 
 namespace App\Services\Tts;
 
+use App\Services\Audio\AudioConverter;
 use Illuminate\Http\Client\Response;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Sleep;
@@ -46,6 +47,10 @@ class ReplicateChatterboxProvider implements TtsProvider
         private array $config,
         private int $timeout = 300,
         private array $models = [],
+        // Measures the reference clip's duration for the qwen reference_text
+        // fit guard. Nullable for direct construction in tests; resolved from
+        // the container on demand when omitted.
+        private ?AudioConverter $audio = null,
     ) {}
 
     public function outputContainer(?string $model = null): string
@@ -139,9 +144,14 @@ class ReplicateChatterboxProvider implements TtsProvider
                 $input['mode'] = 'voice_clone';
 
                 // The clip's transcript (stamped from voices.settings by
-                // ModelCatalog::stamp) sharpens clone fidelity when present.
+                // ModelCatalog::stamp) sharpens clone fidelity — BUT qwen SPEAKS
+                // any transcript text its audio doesn't cover, so one that
+                // overruns the clip leaks the uncovered tail aloud before the
+                // target text. Send it only when it plausibly fits the clip's
+                // measured duration.
                 $referenceText = trim((string) ($settings['reference_text'] ?? ''));
-                if ($referenceText !== '') {
+                if ($referenceText !== ''
+                    && Qwen3TtsTuning::referenceTextFitsClip($referenceText, $this->clipSeconds($referenceAudio))) {
                     $input['reference_text'] = $referenceText;
                 }
             } else {
@@ -400,6 +410,22 @@ class ReplicateChatterboxProvider implements TtsProvider
         }
 
         $this->lastPredictionAt = microtime(true);
+    }
+
+    /**
+     * The reference clip's spoken duration in seconds, or null when it can't be
+     * measured — unreadable, or not a PCM WAV (wavDurationSeconds is a header
+     * parse, no ffmpeg). Best-effort input to the qwen reference_text fit guard;
+     * a null just leaves the transcript in place.
+     */
+    private function clipSeconds(string $path): ?float
+    {
+        $bytes = @file_get_contents($path);
+        if ($bytes === false) {
+            return null;
+        }
+
+        return ($this->audio ?? app(AudioConverter::class))->wavDurationSeconds($bytes);
     }
 
     private function toDataUri(string $path): string

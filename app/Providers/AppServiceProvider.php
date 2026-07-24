@@ -47,6 +47,7 @@ class AppServiceProvider extends ServiceProvider
                     config('tts.providers.replicate', []),
                     (int) config('tts.request_timeout', 300),
                     config('tts.models', []),
+                    $this->app->make(AudioConverter::class),
                 ),
                 // "local" is really a hybrid: Chatterbox engines run on the
                 // sidecar, engines it can't serve (qwen, local_capable=false)
@@ -61,6 +62,7 @@ class AppServiceProvider extends ServiceProvider
                         config('tts.providers.replicate', []),
                         (int) config('tts.request_timeout', 300),
                         config('tts.models', []),
+                        $this->app->make(AudioConverter::class),
                     ),
                     models: config('tts.models', []),
                 ),
