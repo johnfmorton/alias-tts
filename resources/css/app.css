@@ -643,3 +643,119 @@
 .qa-popover--reviewed .qa-popover__head {
     color: var(--color-zinc-500);
 }
+
+/*
+ * ---------------------------------------------------------------------------
+ * Voice flow — the Add / Edit voice step rail (design handoff "Option 2A").
+ * ---------------------------------------------------------------------------
+ * Both pages run the same pipeline: Identity → Voice source → Delivery
+ * defaults. Every visual difference between a step's states (done / current /
+ * to-do / locked) is driven by ONE `data-state` attribute, so the rail, the
+ * step cards and the takes-table rows have a single source of truth that
+ * initVoiceFlow() flips by attribute rather than by juggling class lists.
+ * These rules are unlayered, so they beat the Tailwind utilities on the same
+ * elements (the same trick .aplayer uses).
+ */
+.vrail__item {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    width: 100%;
+    padding: 11px 12px;
+    text-align: left;
+    border: 1px solid transparent;
+    border-radius: 10px;
+    transition:
+        background 0.12s ease,
+        border-color 0.12s ease;
+}
+.vrail__item:not([data-state='locked']):hover {
+    background: rgba(255, 255, 255, 0.03);
+}
+.vrail__item[data-state='current'] {
+    background: rgba(34, 211, 238, 0.07);
+    border-color: rgba(34, 211, 238, 0.3);
+}
+.vrail__item[data-state='locked'] {
+    opacity: 0.45;
+    cursor: default;
+}
+.vrail__mark {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+    width: 26px;
+    height: 26px;
+    border-radius: 50%;
+    border: 1px solid rgba(255, 255, 255, 0.2);
+    font-size: 13px;
+    font-weight: 700;
+    color: var(--color-zinc-500);
+}
+.vrail__item[data-state='done'] .vrail__mark {
+    background: rgba(52, 211, 153, 0.15);
+    border-color: rgba(52, 211, 153, 0.4);
+    color: var(--color-ok);
+}
+.vrail__item[data-state='current'] .vrail__mark {
+    background: var(--color-accent);
+    border-color: var(--color-accent);
+    color: var(--color-accent-on);
+}
+/* Exactly one glyph per state — the mark carries all three. */
+.vrail__check,
+.vrail__num,
+.vrail__lock {
+    display: none;
+}
+.vrail__item[data-state='done'] .vrail__check,
+.vrail__item[data-state='current'] .vrail__num,
+.vrail__item[data-state='todo'] .vrail__num,
+.vrail__item[data-state='locked'] .vrail__lock {
+    display: inline;
+}
+.vrail__item[data-state='current'] .vrail__name {
+    color: #f4f4f5;
+}
+.vrail__meta[data-tone='warn'] {
+    color: var(--color-warn);
+}
+
+/* The current step's card is outlined in brand cyan; the rest sit on hairlines. */
+[data-voice-step][data-state='current'] > [data-step-body] {
+    border-color: rgba(34, 211, 238, 0.25);
+}
+
+/*
+ * Takes table — the row IS the knob editor. Row one mirrors the voice's saved
+ * defaults; the picked row is the pending new default and reads as such.
+ */
+.vtake-row[data-state='picked'] {
+    background: rgba(52, 211, 153, 0.04);
+}
+
+/* Save bar: warning-tinted only while something is actually unsaved. */
+.vsave-bar[data-state='dirty'] {
+    border-top-color: rgba(245, 196, 81, 0.3);
+    background: rgba(245, 196, 81, 0.05);
+}
+.vsave-bar[data-state='dirty'] .vsave-bar__dot {
+    background: var(--color-warn);
+}
+
+/*
+ * The takes table's Take cell is a narrow grid track, so its player fits the
+ * column rather than spilling across the delete button: tighter gap, and no
+ * time readout — the row is for comparing and picking, not scrubbing.
+ */
+.vtake-row .aplayer {
+    gap: 8px;
+    min-width: 0;
+}
+.vtake-row .aplayer__track {
+    min-width: 0;
+}
+.vtake-row .aplayer__time {
+    display: none;
+}

@@ -63,6 +63,15 @@ final class ModelCatalog
         return (string) (self::get($key)['label'] ?? ucfirst((string) $key));
     }
 
+    /**
+     * One line naming what an engine trades — shown under its name in the
+     * voice-source engine picker. Blank when the catalog entry omits it.
+     */
+    public static function tagline(?string $key): string
+    {
+        return (string) (self::get($key)['tagline'] ?? '');
+    }
+
     /** Per-call input cap in characters; 0 = uncapped. */
     public static function maxInputChars(?string $key): int
     {

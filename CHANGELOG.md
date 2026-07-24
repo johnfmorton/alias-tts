@@ -4,6 +4,60 @@ All notable changes to this project are documented in this file. The format is
 based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this
 project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+- **Add a voice and Edit voice are one guided pipeline.** Both pages now run
+  the same three-step rail — **Identity → Voice source → Delivery defaults** —
+  instead of interleaving four jobs down one long column. The rail never
+  changes; what changes is step 3, whose controls belong to the engine:
+  Chatterbox-family engines get their numeric knobs, Qwen3 gets a language and
+  a plain-words style note. Each step shows its own state (done, current, or
+  holding an unsaved change), and clicking one opens and scrolls to it.
+- **The reference clip is playable and inspectable.** The Voice source step
+  plays the stored clip inline and describes it — `14.7s · mono · 44.1 kHz ·
+  WAV` — with every fact read from the file's own header rather than inferred.
+  The clip can also be downloaded. The new route answers range requests, so
+  iOS Safari can scrub it instead of reporting a live broadcast.
+- **One Save that names what changed.** The Edit page has a single save bar
+  that stays neutral until something actually differs from what was loaded,
+  then reads e.g. *"1 unsaved change — delivery defaults → 0.95 / 0.8 / 0.9"*.
+  Discard reverts everything in one step. Nothing is sent to the engines until
+  you save.
+
+### Changed
+- **The takes table is now the knob editor.** The Edit page used to carry a
+  "Default tuning" section of dials AND a separate "Tune by ear" bench, each
+  with its own way to save — so the same three numbers lived in two places and
+  it was never obvious which one had won. They are one loop now: each row is a
+  candidate default, row one mirrors what is saved, and the row you pick flows
+  into the page's single Save. The standalone dials are gone.
+- **Changing a voice's engine is a deliberate step.** The engine now sits
+  behind a "Change engine…" gate that confirms first, because switching it
+  changes results dramatically, swaps step 3's controls, and does not carry
+  the current tuning over. Until the change is saved, step 3 says so rather
+  than showing knobs that do not apply yet.
+- **Recording tips appear where you would act on them.** The five-point
+  guidance panel used to greet everyone who opened either voice page,
+  including people uploading a file they already had. It now sits behind a
+  "Recording tips ▾" disclosure inside the Record flow. On Add a voice, Record
+  leads the Record/Upload control when the browser supports it — the common
+  case on that page is needing to make a clip, not having one.
+- **Add a voice states what it still needs.** Delivery defaults is visibly
+  locked ("after the voice exists") because you tune by ear and there is
+  nothing to hear yet, and Create names what is missing — a name, or a clip or
+  built-in voice for engines that require one, matching the rule the server
+  already enforces.
+
+### Fixed
+- **A clip transcript longer than its clip no longer leaks aloud.** Qwen3's
+  clone mode speaks whatever part of the transcript the reference audio does
+  not cover, so an over-long one read its leftovers out loud before the
+  requested text. The transcript is now sent only when its estimated spoken
+  length plausibly fits the clip's measured duration. The estimate is
+  deliberately generous, and a clip whose duration cannot be measured keeps
+  its transcript — there is no proof that one overruns.
+
 ## [0.86.0] - 2026-07-23
 
 ### Added

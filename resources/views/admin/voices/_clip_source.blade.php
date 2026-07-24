@@ -1,6 +1,5 @@
 @php($replace = $replace ?? false)
 @php($enhanceOn = config('tts.enhance.enabled'))
-@php($hint = $hint ?? 'optional')
 @php($scripts = [
     ['title' => 'The Harbor', 'tagline' => 'calm narration · ~20s', 'text' => "The old harbor wakes slowly on a gray Thursday morning. Gulls wheel over the fishing boats while the tide pushes little waves against the wooden pier. By nine o'clock the market stalls are busy: bright oranges, fresh bread, and silver mackerel on beds of ice. It's an ordinary day, and that's exactly why I love it."],
     ['title' => 'The Plan', 'tagline' => 'conversational · ~20s', 'text' => "Would you believe it finally stopped raining? After six soggy days, the sky turned a brilliant, cloudless blue this afternoon. So here's the plan: we'll drive up the coast road, grab sandwiches at that little bakery in Rockport, and reach the lighthouse before sunset. Bring a jacket, though — the wind off the water gets sharp around seven. Oh, and don't forget your camera; last time the photos were spectacular!"],
@@ -8,42 +7,28 @@
 ])
 @php($fileInputClass = 'block w-full text-sm text-zinc-400 file:mr-3 file:rounded-lg file:border-0 file:bg-white/8 file:px-3 file:py-2 file:text-sm file:text-zinc-200 hover:file:bg-white/12')
 
-<section class="mb-[26px]">
-    <div class="mb-3.5 flex items-center gap-2">
-        <span class="text-xs font-bold uppercase tracking-[0.1em] text-accent">Reference clip</span>
-        <span class="text-xs text-zinc-500">{{ $hint }}</span>
-    </div>
-
-    {{-- Recording-quality guidance — always shown: the clone can only ever sound
-         as good as this clip, and the most common failure is speaking too softly. --}}
-    <div class="mb-4 rounded-[12px] border border-accent/30 bg-accent/5 px-5 py-4">
-        <div class="text-[13px] font-bold text-zinc-100">Get a great recording</div>
-        <p class="mt-1 max-w-[760px] text-[12.5px] leading-relaxed text-zinc-400">Your voice will only ever sound as good as this clip. The most common mistake: speaking too softly.</p>
-        <ul class="mt-2.5 grid max-w-[760px] grid-cols-1 gap-x-6 gap-y-1.5 text-[12.5px] leading-relaxed text-zinc-400 sm:grid-cols-2">
-            <li class="flex gap-2"><span class="text-accent" aria-hidden="true">•</span>Speak at full conversational volume — as if the listener is across the room.</li>
-            <li class="flex gap-2"><span class="text-accent" aria-hidden="true">•</span>Stay 6–12 inches from the microphone.</li>
-            <li class="flex gap-2"><span class="text-accent" aria-hidden="true">•</span>Quiet room, no echo — soft furnishings beat bare walls.</li>
-            <li class="flex gap-2"><span class="text-accent" aria-hidden="true">•</span>Steady, natural pacing — read, don't perform.</li>
-            <li class="flex gap-2 sm:col-span-2"><span class="text-accent" aria-hidden="true">•</span>Aim for 15–20 seconds of clean speech — longer clips are trimmed automatically at a natural pause (the engines only listen to the first ~15 seconds).</li>
-        </ul>
-    </div>
-
+{{-- Record / Upload. Lives inside the Voice source step on both voice pages, so
+     it carries no heading of its own. Recording guidance is folded into the
+     Record body behind a disclosure — it's essential when you're about to speak
+     and pure noise when you're uploading a file you already have. --}}
+<div>
     @php($refMax = (float) config('tts.reference_max_seconds', 25))
     <div id="voice-clip-widget" data-prepare-url="{{ route('admin.voices.clips.store') }}"
          data-enhance-enabled="{{ $enhanceOn ? '1' : '' }}" data-normalize-enabled="{{ config('tts.normalize_reference') ? '1' : '' }}"
          data-target-min="15" data-target-max="25" data-max-seconds="{{ $refMax > 0 ? (int) ceil($refMax + 5) : 60 }}">
         @if($enhanceOn)
-            <div class="rounded-[14px] border border-white/8 bg-panel p-2">
+            <div class="rounded-[14px] border border-white/8 bg-inset p-2">
                 {{-- Segmented control + Upload/Record bodies. Hidden once the A/B chooser is up. --}}
                 <div data-clip-panel>
                     <div class="m-4 mb-2 flex gap-1.5 rounded-[11px] border border-white/8 bg-inset p-1.5">
-                        <button type="button" data-clip-mode="upload" class="flex-1 rounded-[8px] py-2.5 text-center text-sm text-zinc-400 transition">↑ Upload a file</button>
                         <button type="button" data-clip-mode="record" class="flex-1 rounded-[8px] py-2.5 text-center text-sm text-zinc-400 transition">● Record with mic</button>
+                        <button type="button" data-clip-mode="upload" class="flex-1 rounded-[8px] py-2.5 text-center text-sm text-zinc-400 transition">↑ Upload a file</button>
                     </div>
 
                     {{-- Upload body — visible by default so it works without JS. --}}
                     <div data-clip-body="upload" class="px-4 pb-4 pt-2">
-                        <input id="audio" name="audio" type="file" accept=".wav,.mp3,.m4a,.aac,.ogg,.flac" data-clip-file class="{{ $fileInputClass }}">
+                        <input id="audio" name="audio" type="file" accept=".wav,.mp3,.m4a,.aac,.ogg,.flac" data-clip-file
+                               data-dirty-group="reference clip" data-voice-source class="{{ $fileInputClass }}">
                         <p class="mt-2 text-[12.5px] leading-relaxed text-zinc-500">{{ $fileHelp }}</p>
                         <button type="button" data-clip-preview class="mt-3 hidden rounded-[9px] border border-accent/40 px-3.5 py-2 text-sm text-accent transition hover:bg-accent/10">Preview cleanup</button>
                     </div>
@@ -82,6 +67,7 @@
                                 <p data-recorder-passage class="m-0 max-w-[60ch] text-[23px] font-normal leading-[1.75] tracking-[0.01em] text-zinc-100">{{ $scripts[0]['text'] }}</p>
 
                                 <div class="mt-6 border-t border-white/8 pt-5">
+                                    @include('admin.voices._recording_tips')
                                     <div class="flex flex-wrap items-center gap-3">
                                         <button type="button" data-recorder-enable class="inline-flex items-center gap-2.5 rounded-[10px] bg-accent px-5 py-3 text-[15px] font-semibold text-accent-on transition hover:brightness-110"><span class="h-[11px] w-[11px] rounded-full bg-accent-on"></span>Enable microphone</button>
                                         <button type="button" data-recorder-record class="hidden items-center gap-2 rounded-[10px] bg-bad px-5 py-3 text-[15px] font-semibold text-zinc-950 transition hover:brightness-110"><span class="h-2.5 w-2.5 rounded-full bg-zinc-950"></span>Record</button>
@@ -120,7 +106,7 @@
                     <p data-clip-ab-warning class="hidden text-xs text-amber-300"></p>
 
                     <label data-clip-row="enhanced" class="flex items-center gap-3">
-                        <input type="radio" name="clip_choice" value="enhanced" data-clip-choice class="text-accent focus:ring-accent/30">
+                        <input type="radio" name="clip_choice" value="enhanced" data-clip-choice data-dirty-group="reference clip" class="text-accent focus:ring-accent/30">
                         <span class="w-28 shrink-0 text-sm text-zinc-200">Cleaned up <span aria-hidden="true">✨</span></span>
                         <span class="aplayer aplayer--chunk flex-1" data-clip-player="enhanced">
                             <button type="button" class="aplayer__btn"><span class="aplayer__icon"></span></button>
@@ -130,7 +116,7 @@
                         </span>
                     </label>
                     <label data-clip-row="original" class="flex items-center gap-3">
-                        <input type="radio" name="clip_choice" value="original" data-clip-choice class="text-accent focus:ring-accent/30">
+                        <input type="radio" name="clip_choice" value="original" data-clip-choice data-dirty-group="reference clip" class="text-accent focus:ring-accent/30">
                         <span class="w-28 shrink-0 text-sm text-zinc-200">Original</span>
                         <span class="aplayer aplayer--chunk flex-1" data-clip-player="original">
                             <button type="button" class="aplayer__btn"><span class="aplayer__icon"></span></button>
@@ -152,7 +138,7 @@
                 <label class="flex items-start gap-3 text-sm text-zinc-300">
                     {{-- On a validation-failure redisplay, default to unchecked so an
                          unchecked box (which posts nothing) isn't silently re-checked. --}}
-                    <input type="checkbox" name="enhance" value="1" data-clip-enhance
+                    <input type="checkbox" name="enhance" value="1" data-clip-enhance data-dirty-group="reference clip"
                            {{ old('enhance', $errors->any() ? 0 : config('tts.enhance.default_on')) ? 'checked' : '' }}
                            class="mt-0.5 rounded-[5px] border-white/25 bg-inset text-accent focus:ring-accent/30">
                     <span>Clean up the {{ $replace ? 'replacement ' : '' }}clip before saving <span class="text-zinc-500">(recommended)</span>
@@ -160,23 +146,26 @@
                     </span>
                 </label>
                 <label class="flex items-start gap-3 text-sm text-zinc-300">
-                    <input type="checkbox" name="raw" value="1" data-clip-raw {{ old('raw') ? 'checked' : '' }} class="mt-0.5 rounded-[5px] border-edge bg-inset text-accent focus:ring-accent/30">
+                    <input type="checkbox" name="raw" value="1" data-clip-raw data-dirty-group="reference clip" {{ old('raw') ? 'checked' : '' }} class="mt-0.5 rounded-[5px] border-edge bg-inset text-accent focus:ring-accent/30">
                     <span>Store raw <span class="text-zinc-500">(skip auto-normalization){{ $replace ? ' — only applies when replacing the clip' : '' }}</span></span>
                 </label>
             </div>
 
             {{-- Submitted with the form when a previewed clip is chosen; the radios above supply clip_choice. --}}
-            <input type="hidden" name="clip_token" data-clip-token value="">
+            <input type="hidden" name="clip_token" data-clip-token data-dirty-group="reference clip" data-dirty-value="new clip ready" data-voice-source value="">
         @else
-            {{-- Cleanup disabled — plain upload, no recorder/preview. --}}
-            <div class="rounded-[14px] border border-white/8 bg-panel p-6">
-                <input id="audio" name="audio" type="file" accept=".wav,.mp3,.m4a,.aac,.ogg,.flac" class="{{ $fileInputClass }}">
+            {{-- Cleanup disabled — plain upload, no recorder/preview. The tips
+                 still belong here: whatever you record elsewhere lands in this box. --}}
+            <div class="rounded-[14px] border border-white/8 bg-inset p-6">
+                @include('admin.voices._recording_tips', ['tipsId' => 'recording-tips-plain'])
+                <input id="audio" name="audio" type="file" accept=".wav,.mp3,.m4a,.aac,.ogg,.flac"
+                       data-dirty-group="reference clip" data-voice-source class="{{ $fileInputClass }}">
                 <p class="mt-2 text-[12.5px] leading-relaxed text-zinc-500">{{ $fileHelp }}</p>
             </div>
             <label class="mt-4 flex items-start gap-3 px-1 text-sm text-zinc-300">
-                <input type="checkbox" name="raw" value="1" {{ old('raw') ? 'checked' : '' }} class="mt-0.5 rounded-[5px] border-edge bg-inset text-accent focus:ring-accent/30">
+                <input type="checkbox" name="raw" value="1" data-dirty-group="reference clip" {{ old('raw') ? 'checked' : '' }} class="mt-0.5 rounded-[5px] border-edge bg-inset text-accent focus:ring-accent/30">
                 <span>Store raw <span class="text-zinc-500">(skip auto-normalization){{ $replace ? ' — only applies when replacing the clip' : '' }}</span></span>
             </label>
         @endif
     </div>
-</section>
+</div>

@@ -59,10 +59,12 @@ Single sources of truth:
   `config('tts.models')`, surfaced to JS via `KNOB_ENGINES` in `app.js`
   (visibility only, no math).
 - **What IS duplicated** (keep in sync when a range changes): the knob
-  ranges/defaults in the `x-tuning-knob` / `x-voice.tuning-dial` Blade
-  components, the `app.js` bench rows (`BENCH_KNOBS`), and the `between:`
-  validation in `StudioController`, `StudioProjectController`, and the voice
-  form requests.
+  ranges/defaults in the `x-tuning-knob` Blade component, the `app.js` bench
+  rows (`BENCH_KNOBS`), and the `between:` validation in `StudioController`,
+  `StudioProjectController`, and the voice form requests. On the voice edit
+  page the knobs live ONLY in the takes table (`_tuning_bench.blade.php`),
+  whose picked row writes the step-3 `[data-delivery-field]` inputs — the
+  page's single save path.
 
 ## ElevenLabs compatibility
 

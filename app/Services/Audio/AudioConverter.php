@@ -1137,18 +1137,39 @@ class AudioConverter
      */
     public function wavDurationSeconds(string $wav): ?float
     {
+        return $this->wavInfo($wav)['seconds'] ?? null;
+    }
+
+    /**
+     * Everything the WAV header alone can tell us: duration, channel count,
+     * sample rate and bit depth. Header-only (no ffmpeg), so it's cheap enough
+     * to run while rendering a page — the Voice source step reads it to describe
+     * the stored reference clip. Returns null when the header can't be parsed
+     * (a non-PCM container, or bytes that aren't a WAV at all).
+     *
+     * @return array{seconds: float, channels: int, sample_rate: int, bits: int}|null
+     */
+    public function wavInfo(string $wav): ?array
+    {
         $pos = 12; // skip 'RIFF' <size> 'WAVE'
         $len = strlen($wav);
         $byteRate = null;
+        $channels = null;
+        $sampleRate = null;
+        $bits = null;
         $dataSize = null;
 
         while ($pos + 8 <= $len) {
             $id = substr($wav, $pos, 4);
             $size = unpack('V', substr($wav, $pos + 4, 4))[1];
 
-            if ($id === 'fmt ' && $pos + 20 <= $len) {
-                // fmt body: audioFormat(2) channels(2) sampleRate(4) byteRate(4) …
+            if ($id === 'fmt ' && $pos + 24 <= $len) {
+                // fmt body: audioFormat(2) channels(2) sampleRate(4) byteRate(4)
+                //           blockAlign(2) bitsPerSample(2)
+                $channels = (int) unpack('v', substr($wav, $pos + 8 + 2, 2))[1];
+                $sampleRate = (int) unpack('V', substr($wav, $pos + 8 + 4, 4))[1];
                 $byteRate = (int) unpack('V', substr($wav, $pos + 8 + 8, 4))[1];
+                $bits = $pos + 24 <= $len ? (int) unpack('v', substr($wav, $pos + 8 + 14, 2))[1] : 0;
             } elseif ($id === 'data') {
                 // Clamp to the bytes actually present (tolerate a truncated tail).
                 $dataSize = min($size, $len - ($pos + 8));
@@ -1161,7 +1182,12 @@ class AudioConverter
             return null;
         }
 
-        return $dataSize / $byteRate;
+        return [
+            'seconds' => $dataSize / $byteRate,
+            'channels' => (int) $channels,
+            'sample_rate' => (int) $sampleRate,
+            'bits' => (int) $bits,
+        ];
     }
 
     /**

@@ -220,6 +220,9 @@ Route::get('/voices/clips/{clip:token}/status', [VoiceClipController::class, 'st
 Route::get('/voices/clips/{clip:token}/{variant}', [VoiceClipController::class, 'audio'])
     ->whereIn('variant', ['original', 'enhanced'])->name('voices.clips.audio');
 Route::get('/voices/{voice}/edit', [VoiceController::class, 'edit'])->name('voices.edit');
+// The stored reference clip itself — the Voice source step plays it inline and
+// offers it as a download (ranged, so iOS Safari can scrub it).
+Route::get('/voices/{voice}/clip', [VoiceController::class, 'clip'])->name('voices.clip');
 Route::put('/voices/{voice}', [VoiceController::class, 'update'])->name('voices.update');
 Route::post('/voices/{voice}/duplicate', [VoiceController::class, 'duplicate'])->name('voices.duplicate');
 Route::get('/voices/{voice}/export', [VoiceController::class, 'export'])->name('voices.export');

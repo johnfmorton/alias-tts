@@ -1,133 +1,138 @@
 @php
+    use App\Services\Tts\ChatterboxTuning;
+    use App\Services\Tts\ModelCatalog;
+
     // The form speaks Chatterbox's native knobs. A voice saved before v0.15.0 may
     // still carry the ElevenLabs-style pair — show its native equivalent (saving
     // rewrites it in native form); show blank when the voice has no default for
     // that knob at all.
     $tuning = is_array($voice->settings) ? $voice->settings : [];
-    $native = \App\Services\Tts\ChatterboxTuning::resolveNative($tuning);
+    $native = ChatterboxTuning::resolveNative($tuning);
     $exagValue = isset($tuning['exaggeration']) || isset($tuning['style']) ? $native['exaggeration'] : '';
     $cfgValue = isset($tuning['cfg_weight']) || isset($tuning['stability']) ? $native['cfg_weight'] : '';
     // Temperature is native-only (no ElevenLabs twin); blank when unset.
     $temperatureValue = isset($tuning['temperature'])
-        ? \App\Services\Tts\ChatterboxTuning::clampTemperature((float) $tuning['temperature'])
+        ? ChatterboxTuning::clampTemperature((float) $tuning['temperature'])
         : '';
     // Turbo's sampling knobs (blank = the model's own defaults).
     $topPValue = $tuning['top_p'] ?? '';
     $topKValue = $tuning['top_k'] ?? '';
     $repPenaltyValue = $tuning['repetition_penalty'] ?? '';
-    $engineModel = old('model', \App\Services\Tts\ModelCatalog::forVoice($voice));
+
+    $engineModel = old('model', ModelCatalog::forVoice($voice));
+    $engineLabel = ModelCatalog::label($engineModel);
+    $presetVoice = old('preset_voice', $tuning['preset_voice'] ?? '');
+    $isQwen = $engineModel === 'qwen3-tts';
+
+    // Everything said about the stored clip is read from its own header
+    // (VoiceController::clipMeta) — duration, channels, rate, container. We
+    // never claim a loudness we didn't measure.
+    $clipSeconds = $clipMeta['seconds'] ?? null;
+    $clipFacts = array_values(array_filter([
+        $clipSeconds ? rtrim(rtrim(number_format($clipSeconds, 1), '0'), '.').'s' : null,
+        match ($clipMeta['channels'] ?? 0) { 1 => 'mono', 0 => null, default => 'stereo' },
+        ($clipMeta['sample_rate'] ?? 0) > 0
+            ? rtrim(rtrim(number_format($clipMeta['sample_rate'] / 1000, 1), '0'), '.').' kHz'
+            : null,
+        $clipMeta ? strtoupper($clipMeta['ext']) : null,
+    ]));
+    $clipLine = $clipFacts ? implode(' · ', $clipFacts) : 'stored clip';
+
+    // Rail metas. Step 2 says what the voice is MADE FROM; step 3 what it
+    // currently sounds like by default.
+    // Same rounding as $clipLine, so the rail and the step never disagree by a
+    // tenth of a second about the same file.
+    $clipLength = $clipSeconds ? rtrim(rtrim(number_format($clipSeconds, 1), '0'), '.').'s' : null;
+    $sourceMeta = $engineLabel.' · '.match (true) {
+        (bool) $voice->reference_audio_path => $clipLength ? $clipLength.' clip' : 'reference clip',
+        $presetVoice !== '' => 'built-in '.$presetVoice,
+        default => 'no clip yet',
+    };
+    $knobTriple = array_values(array_filter(
+        $engineModel === 'chatterbox-turbo'
+            ? [$topPValue, $topKValue, $repPenaltyValue, $temperatureValue]
+            : [$exagValue, $cfgValue, $temperatureValue],
+        fn ($v) => $v !== '' && $v !== null,
+    ));
+    $deliveryMeta = $isQwen
+        ? 'style note · language'
+        : ($knobTriple ? implode(' / ', $knobTriple) : 'system defaults');
+
     $inputClass = 'w-full rounded-[9px] border border-edge bg-inset px-3.5 py-3 text-[15px] text-zinc-100 placeholder:text-zinc-600 focus:border-accent focus:outline-none focus:ring-2 focus:ring-accent/30';
 @endphp
-<x-layout title="Edit voice" :heading="false" contentWidth="max-w-[1060px]">
+<x-layout title="Edit voice" :heading="false" contentWidth="max-w-[1100px]">
+    {{-- One form, one Save. The step cards below are views onto it, never
+         separate save paths — the takes table writes its pick into the hidden
+         delivery fields and the save bar reports it like any other edit. --}}
     <form id="voice-form" method="POST" action="{{ route('admin.voices.update', $voice) }}" enctype="multipart/form-data"
+          data-voice-flow="edit" data-dirty-guard
           data-busy data-busy-label="Saving changes…"
           data-busy-message="Cleaning up and normalizing a replacement clip can take up to a minute — keep this page open.">
         @csrf
         @method('PUT')
 
-        {{-- Header: pinned like the Studio command bar so Save/Cancel stay reachable
-             no matter how far the form is scrolled. --}}
-        <div class="sticky top-0 z-30 -mx-4 mb-8 border-b border-white/[0.09] bg-sticky px-4 py-4 shadow-[0_12px_26px_-14px_rgba(0,0,0,0.85)]">
-            <div class="flex flex-wrap items-end justify-between gap-5">
-                <div>
-                    <h1 class="text-[27px] font-bold tracking-[-0.015em] text-zinc-100">Edit voice</h1>
-                    <p class="mt-1.5 text-sm text-zinc-500">Rename the voice_id, set default tuning, or replace the reference clip.</p>
-                </div>
-                <div class="flex flex-shrink-0 items-center gap-2">
-                    <a href="{{ route('admin.voices.index') }}" class="px-3.5 py-2.5 text-sm text-zinc-400 transition hover:text-zinc-200">Cancel</a>
-                    <button type="submit" class="rounded-[9px] bg-accent px-5 py-2.5 text-sm font-semibold text-accent-on transition hover:brightness-110">Save changes</button>
-                </div>
-            </div>
+        <div class="mb-7">
+            <h1 class="text-[26px] font-bold tracking-[-0.015em] text-zinc-100">Edit voice — {{ $voice->name }}</h1>
+            <p class="mt-1.5 text-sm text-zinc-500">Changes apply when you save. Nothing is sent to the engines until then.</p>
         </div>
 
         {{-- Preserve any existing seed without surfacing it (a fixed seed doesn't
              guarantee an identical take). --}}
         <input type="hidden" name="seed" value="{{ old('seed', $voice->settings['seed'] ?? '') }}">
 
-        <x-voice.section label="Identity">
-            <div class="grid grid-cols-1 gap-5 sm:grid-cols-2">
-                <div>
-                    <label for="name" class="mb-2 block text-[13px] font-semibold text-zinc-300">Name</label>
-                    <input id="name" name="name" value="{{ old('name', $voice->name) }}" required class="{{ $inputClass }}">
-                </div>
-                <div>
-                    <label for="slug" class="mb-2 block text-[13px] font-semibold text-zinc-300">voice_id</label>
-                    <input id="slug" name="slug" value="{{ old('slug', $voice->slug) }}" required class="{{ $inputClass }} font-mono">
-                </div>
+        <div class="grid grid-cols-1 items-start gap-9 pb-28 lg:grid-cols-[230px_minmax(0,1fr)]">
+            <x-voice.rail
+                :steps="[
+                    ['key' => 'identity', 'number' => 1, 'name' => 'Identity', 'meta' => $voice->slug, 'state' => 'done'],
+                    ['key' => 'source', 'number' => 2, 'name' => 'Voice source', 'meta' => $sourceMeta, 'state' => 'done'],
+                    ['key' => 'delivery', 'number' => 3, 'name' => 'Delivery defaults', 'meta' => $deliveryMeta, 'state' => 'current'],
+                ]"
+                note="Step 3's controls belong to the engine. {{ $isQwen ? 'Qwen3 = language plus a plain-words style note, set by ear below.' : 'Chatterbox-family engines = numeric knobs, set by ear below.' }}" />
+
+            <div class="flex flex-col gap-[22px]">
+                {{-- ── 1 · Identity ─────────────────────────────────────────── --}}
+                <x-voice.step step="identity" number="1" title="Identity" hint="what clients ask for" state="done">
+                    <div class="grid grid-cols-1 gap-5 sm:grid-cols-2">
+                        <div>
+                            <label for="name" class="mb-2 block text-[13px] font-semibold text-zinc-300">Name</label>
+                            <input id="name" name="name" value="{{ old('name', $voice->name) }}" required
+                                   data-dirty-group="name" class="{{ $inputClass }}">
+                        </div>
+                        <div>
+                            <label for="slug" class="mb-2 block text-[13px] font-semibold text-zinc-300">voice_id</label>
+                            <input id="slug" name="slug" value="{{ old('slug', $voice->slug) }}" required
+                                   data-dirty-group="voice_id" data-rail-source="identity" class="{{ $inputClass }} font-mono">
+                        </div>
+                    </div>
+                    <p class="mt-3 text-[12.5px] leading-relaxed text-zinc-500">Used in the API path and by clients (e.g. the Bespoken plugin). Renaming it also moves the stored reference clip.</p>
+                </x-voice.step>
+
+                {{-- ── 2 · Voice source ─────────────────────────────────────── --}}
+                @include('admin.voices._step_source', [
+                    'voice' => $voice,
+                    'engineModel' => $engineModel,
+                    'engineLabel' => $engineLabel,
+                    'clipLine' => $clipLine,
+                    'inputClass' => $inputClass,
+                ])
+
+                {{-- ── 3 · Delivery defaults ────────────────────────────────── --}}
+                @include('admin.voices._step_delivery', [
+                    'voice' => $voice,
+                    'presets' => $presets,
+                    'engineModel' => $engineModel,
+                    'engineLabel' => $engineLabel,
+                    'inputClass' => $inputClass,
+                    'exagValue' => $exagValue,
+                    'cfgValue' => $cfgValue,
+                    'temperatureValue' => $temperatureValue,
+                    'topPValue' => $topPValue,
+                    'topKValue' => $topKValue,
+                    'repPenaltyValue' => $repPenaltyValue,
+                ])
             </div>
-            <p class="mt-3 text-[12.5px] leading-relaxed text-zinc-500">Used in the API path and by clients (e.g. the Bespoken plugin). Renaming it also moves the stored reference clip.</p>
-        </x-voice.section>
-
-        @include('admin.voices._engine', ['voice' => $voice])
-
-        <x-voice.section label="Default tuning" hint="optional">
-            <div class="grid grid-cols-1 gap-7 sm:grid-cols-3">
-                <div data-engine-only="chatterbox" @class(['hidden' => $engineModel !== 'chatterbox'])>
-                    <x-voice.tuning-dial name="exaggeration" label="Exaggeration" hint="0.25–2 · neutral 0.5"
-                                         min="0.25" max="2" :value="old('exaggeration', $exagValue)" />
-                </div>
-                <div data-engine-only="chatterbox" @class(['hidden' => $engineModel !== 'chatterbox'])>
-                    <x-voice.tuning-dial name="cfg_weight" label="CFG / Pace" hint="0.2–1 · neutral 0.5"
-                                         min="0.2" max="1" :value="old('cfg_weight', $cfgValue)" />
-                </div>
-                <div data-engine-only="chatterbox-turbo" @class(['hidden' => $engineModel !== 'chatterbox-turbo'])>
-                    <x-voice.tuning-dial name="top_p" label="Top-p" hint="0.5–1 · neutral 0.95"
-                                         min="0.5" max="1" neutral="0.95" step="0.01" :value="old('top_p', $topPValue)" />
-                </div>
-                <div data-engine-only="chatterbox-turbo" @class(['hidden' => $engineModel !== 'chatterbox-turbo'])>
-                    <x-voice.tuning-dial name="top_k" label="Top-k" hint="1–2000 · neutral 1000"
-                                         min="1" max="2000" neutral="1000" step="1" :value="old('top_k', $topKValue)" />
-                </div>
-                <div data-engine-only="chatterbox-turbo" @class(['hidden' => $engineModel !== 'chatterbox-turbo'])>
-                    <x-voice.tuning-dial name="repetition_penalty" label="Repetition penalty" hint="1–2 · neutral 1.2"
-                                         min="1" max="2" neutral="1.2" step="0.05" :value="old('repetition_penalty', $repPenaltyValue)" />
-                </div>
-                <div data-engine-only="chatterbox chatterbox-turbo" @class(['hidden' => $engineModel === 'qwen3-tts'])>
-                    <x-voice.tuning-dial name="temperature" label="Temperature" hint="0.5–1.5 · neutral 0.8"
-                                         min="0.5" max="1.5" neutral="0.8" :value="old('temperature', $temperatureValue)" />
-                </div>
-                <div data-engine-only="qwen3-tts" @class(['hidden' => $engineModel !== 'qwen3-tts'])>
-                    <label for="voice-language" class="mb-2 block text-[13px] font-semibold text-zinc-300">Language</label>
-                    <select id="voice-language" name="language" class="{{ $inputClass }}">
-                        @foreach(\App\Services\Tts\Qwen3TtsTuning::LANGUAGES as $lang)
-                            <option value="{{ $lang }}" @selected(old('language', $tuning['language'] ?? 'auto') === $lang)>{{ $lang === 'auto' ? 'Auto-detect' : $lang }}</option>
-                        @endforeach
-                    </select>
-                </div>
-                <div class="sm:col-span-2" data-engine-only="qwen3-tts" @class(['hidden' => $engineModel !== 'qwen3-tts'])>
-                    <label for="voice-style-instruction" class="mb-2 block text-[13px] font-semibold text-zinc-300">Style note <span class="font-normal text-zinc-500">(free text)</span></label>
-                    <input id="voice-style-instruction" name="style_instruction" maxlength="{{ \App\Services\Tts\Qwen3TtsTuning::STYLE_INSTRUCTION_MAX }}"
-                           value="{{ old('style_instruction', $tuning['style_instruction'] ?? '') }}"
-                           placeholder="e.g. speak slowly and calmly" class="{{ $inputClass }}">
-                </div>
-            </div>
-            <p data-engine-only="chatterbox" @class(['mt-4 text-[12.5px] leading-relaxed text-zinc-500', 'hidden' => $engineModel !== 'chatterbox'])>Used when a request doesn't set its own. Higher exaggeration = more animated delivery; lower CFG/Pace = quicker, looser pacing; higher temperature = livelier but less predictable. Blank uses the system defaults.</p>
-            <p data-engine-only="chatterbox-turbo" @class(['mt-4 text-[12.5px] leading-relaxed text-zinc-500', 'hidden' => $engineModel !== 'chatterbox-turbo'])>Used when a request doesn't set its own. Lower top-p/top-k = more focused, predictable delivery; higher repetition penalty = fewer repeated sounds; higher temperature = livelier but less predictable. Blank uses the model's defaults.</p>
-            <p data-engine-only="qwen3-tts" @class(['mt-4 text-[12.5px] leading-relaxed text-zinc-500', 'hidden' => $engineModel !== 'qwen3-tts'])>Used when a request doesn't set its own. Auto-detect handles mixed or unknown text; the style note steers delivery in plain words — "excited tone", "speak slowly and calmly". Qwen has no numeric knobs.</p>
-        </x-voice.section>
-
-        @include('admin.voices._clip_source', [
-            'replace' => true,
-            'hint' => 'optional, but recommended · '.($voice->reference_audio_path ? 'current clip present' : 'no clip yet'),
-            'fileHelp' => 'Leave empty to keep the current clip ('.($voice->reference_audio_path ? 'present' : 'none').').',
-        ])
-
-        {{-- Qwen's voice_clone mode reads better when it knows what the clip
-             says — the transcript rides along with every render of this voice.
-             Engine-scoped like the dials; other engines ignore it. --}}
-        <div data-engine-only="qwen3-tts" @class(['hidden' => $engineModel !== 'qwen3-tts'])>
-            <x-voice.section label="Clip transcript" hint="optional, improves the clone">
-                <textarea id="reference-text" name="reference_text" rows="3" maxlength="2000"
-                          placeholder="Type exactly what's said in the reference clip…"
-                          class="{{ $inputClass }}">{{ old('reference_text', $tuning['reference_text'] ?? '') }}</textarea>
-                <p class="mt-3 text-[12.5px] leading-relaxed text-zinc-500">Qwen3 TTS clones more faithfully when it can read along with the clip. Leave blank to let it listen unaided.</p>
-            </x-voice.section>
         </div>
 
-        {{-- The bench lives inside the form so the sticky header's containing block
-             spans the whole page (keeping it pinned past the clip section). It's safe:
-             every control is type=button and it has no named inputs, so nothing here
-             is submitted with the voice form. --}}
-        @include('admin.voices._tuning_bench', ['voice' => $voice, 'presets' => $presets])
+        <x-voice.save-bar />
     </form>
 </x-layout>

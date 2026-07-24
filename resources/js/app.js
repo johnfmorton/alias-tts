@@ -1183,15 +1183,25 @@ const BENCH_KNOBS = {
 };
 
 // Row two of the bench: a more-expressive contrast to row one's defaults.
+// (Qwen seeds its own fixed style menu instead — see BENCH_QWEN_STYLES.)
 const BENCH_CONTRAST = {
     'chatterbox': { exaggeration: '0.95', cfg_weight: '0.8', temperature: '0.9' },
     'chatterbox-turbo': { top_p: '0.85', top_k: '300', repetition_penalty: '1.35', temperature: '1' },
-    'qwen3-tts': { style_instruction: 'excited tone, upbeat and lively' },
 };
+
+// Qwen has no numeric knobs — its bench auditions plain-words style notes.
+// A fixed four-delivery menu every Qwen voice starts from; "Save pick as
+// voice defaults" writes the chosen note to the voice's Style note WITHOUT
+// changing this menu, so a reload always shows the same four options.
+const BENCH_QWEN_STYLES = [
+    'speak clearly in a confident and steady delivery like a newscaster',
+    'speak clearly with an animated, upbeat and lively delivery',
+    'speak clearly with an excited and overjoyed delivery',
+    'speak clearly but seriously and with gravitas',
+];
 
 function initTuningBench(bench) {
     const synthUrl = bench.dataset.synthesizeUrl;
-    const saveUrl = bench.dataset.voiceDefaultsUrl;
     const voice = bench.dataset.voice;
     // The voice's SAVED engine decides the knob columns (the blade renders the
     // matching header). An unsaved engine change retunes the bench after save.
@@ -1199,20 +1209,26 @@ function initTuningBench(bench) {
     const knobDefs = BENCH_KNOBS[model] || BENCH_KNOBS.chatterbox;
     // Must match $benchGrid in _tuning_bench.blade.php (the header row).
     const rowGrid = model === 'chatterbox-turbo'
-        ? 'grid-cols-[44px_1fr_1fr_1fr_1fr_0.8fr_1.5fr_40px]'
+        ? 'grid-cols-[44px_repeat(4,minmax(0,1fr))_56px_minmax(110px,150px)_32px]'
         : (model === 'qwen3-tts'
-            ? 'grid-cols-[44px_2fr_0.8fr_1.5fr_40px]'
-            : 'grid-cols-[44px_1.1fr_1.1fr_1.1fr_0.8fr_1.5fr_40px]');
+            ? 'grid-cols-[44px_minmax(0,1fr)_56px_minmax(110px,150px)_32px]'
+            : 'grid-cols-[44px_repeat(3,minmax(0,1fr))_56px_minmax(110px,150px)_32px]');
     const els = {
         text: bench.querySelector('.bench-text'),
         rows: bench.querySelector('.bench-rows'),
         addBtn: bench.querySelector('.bench-add'),
         genBtn: bench.querySelector('.bench-generate'),
-        saveBtn: bench.querySelector('.bench-save'),
         status: bench.querySelector('.bench-status'),
     };
 
     const rows = [];
+
+    // The step-3 delivery fields the picked row writes into. This is the bench's
+    // ONLY save path: values land in the page form, the save bar names them, and
+    // the form's single Save persists them. (Voices whose page has no such
+    // fields — none today — degrade to an audition-only bench.)
+    const form = bench.closest('form');
+    const deliveryField = (param) => form?.querySelector(`[data-delivery-field="${param}"]`);
 
     const knob = (value, def) => {
         const input = document.createElement('input');
@@ -1237,24 +1253,66 @@ function initTuningBench(bench) {
         return values;
     };
 
-    // The bench body for one candidate row: the sample line, the bench's voice,
-    // and this row's native knobs. Returns null when there's no text to synthesize.
-    const rowBody = (state) => {
-        const text = els.text.value.trim();
-        if (!text) return null;
-        const body = new URLSearchParams({ text, voice });
-        Object.entries(rowValues(state)).forEach(([param, value]) => body.set(param, value));
-        return body;
+    // The delivery fields' CURRENT values — what the voice would save as right
+    // now. Row one is seeded from these, and the audition button reads them.
+    const deliveryValues = () => {
+        const values = {};
+        knobDefs.forEach((def) => {
+            const v = deliveryField(def.param)?.value ?? '';
+            if (v !== '') values[def.param] = v;
+        });
+        return values;
     };
+
+    // Push a row's values into the delivery fields. `input` + `change` so the
+    // save bar and the rail pick the edit up like any typed one.
+    const writeDelivery = (values) => {
+        knobDefs.forEach((def) => {
+            const field = deliveryField(def.param);
+            if (!field) return;
+            field.value = values[def.param] ?? '';
+            field.dispatchEvent(new Event('input', { bubbles: true }));
+            field.dispatchEvent(new Event('change', { bubbles: true }));
+        });
+    };
+
+    // Row one always mirrors the voice's saved defaults, so the table reads as
+    // "here's what you have, here's what you're considering".
+    const labelFor = (state) => {
+        if (state.saved) return 'current defaults';
+        if (state.pick.checked) return '★ your pick';
+        return state.generated ? 'take ready' : 'not generated';
+    };
+    const labelToneFor = (state) => state.saved
+        ? 'text-ok'
+        : (state.pick.checked ? 'text-zinc-200' : 'text-zinc-600');
+
+    function syncRows() {
+        rows.forEach((state) => {
+            state.li.dataset.state = state.pick.checked ? 'picked' : 'candidate';
+            state.label.textContent = labelFor(state);
+            state.label.className = `block text-[12px] ${labelToneFor(state)}`;
+            // A generated row's play button turns green like the saved row's —
+            // "this one you've heard".
+            state.playBtn.classList.toggle('border-ok/60', state.generated || state.saved);
+            state.playBtn.classList.toggle('text-ok', state.generated || state.saved);
+            state.playBtn.classList.toggle('border-accent/50', !(state.generated || state.saved));
+            state.playBtn.classList.toggle('text-accent', !(state.generated || state.saved));
+        });
+    }
 
     const loadAudio = (audio, blob) => {
         audio.src = URL.createObjectURL(blob);
         (audio.closest('.aplayer') || audio).classList.remove('hidden');
     };
 
-    async function generateRow(state, btn, autoplay = true) {
-        const body = rowBody(state);
-        if (!body) { setStatus(els.status, 'Paste some text first.', 'error'); return; }
+    // One synthesis of the sample line at `values`. Shared by the row ▶ buttons
+    // and (on Qwen) the "Audition this style note" button.
+    async function synthesize(values, btn) {
+        const text = els.text.value.trim();
+        if (!text) { setStatus(els.status, 'Type a sample line first.', 'error'); return null; }
+        const body = new URLSearchParams({ text, voice });
+        Object.entries(values).forEach(([param, value]) => body.set(param, value));
         const t0 = performance.now();
         startBusy(btn, '');
         try {
@@ -1265,22 +1323,30 @@ function initTuningBench(bench) {
             });
             if (!res.ok) throw new Error(await errorMessage(res));
             const blob = await res.blob();
-            autoplay ? playAudio(state.audio, blob) : loadAudio(state.audio, blob);
-            if (state.placeholder) state.placeholder.classList.add('hidden');
             setStatus(els.status, `✓ Generated in ${elapsed(t0)}s.`, 'ok');
+            return blob;
         } catch (err) {
             setStatus(els.status, `✗ ${err.message}`, 'error');
+            return null;
         } finally {
             endBusy(btn);
         }
     }
 
-    function addRow(values = {}) {
+    async function generateRow(state, btn, autoplay = true) {
+        const blob = await synthesize(rowValues(state), btn);
+        if (!blob) return;
+        autoplay ? playAudio(state.audio, blob) : loadAudio(state.audio, blob);
+        state.generated = true;
+        syncRows();
+    }
+
+    function addRow(values = {}, { saved = false, autoPick = true } = {}) {
         const li = document.createElement('li');
-        li.className = `grid ${rowGrid} items-center gap-2 border-b border-white/6 px-4 py-3.5 last:border-b-0`;
+        li.className = `vtake-row grid ${rowGrid} items-center gap-2 border-b border-white/6 px-4 py-3 last:border-b-0`;
 
         const pick = document.createElement('input');
-        Object.assign(pick, { type: 'radio', name: 'bench-pick', title: 'Pick this setting to save' });
+        Object.assign(pick, { type: 'radio', name: 'bench-pick', title: 'Make this row the voice’s new defaults' });
         pick.className = 'accent-emerald-500';
 
         const inputs = {};
@@ -1291,39 +1357,48 @@ function initTuningBench(bench) {
         playBtn.className = 'grid h-[34px] w-[34px] place-items-center rounded-full border border-accent/50 text-accent transition hover:bg-accent/10';
         playBtn.textContent = '▶';
 
-        // Take cell: a "not generated" placeholder swapped for the app's
-        // standard player (take weight) once made.
+        // Take cell: a state label (current defaults / your pick / not generated)
+        // above the app's standard player, which appears once a take is made.
         const take = document.createElement('div');
         take.className = 'min-w-0';
-        const placeholder = document.createElement('span');
-        placeholder.className = 'text-[13px] text-zinc-600';
-        placeholder.textContent = 'not generated';
+        const label = document.createElement('span');
         const player = buildAPlayer('take', { label: 'Play take', hidden: true });
         const audio = player.querySelector('.aplayer__native');
-        take.append(placeholder, player);
+        take.append(label, player);
 
         const remove = document.createElement('button');
         remove.type = 'button';
-        remove.className = 'text-center text-zinc-600 hover:text-zinc-300';
+        remove.className = 'text-center text-zinc-600 hover:text-zinc-300' + (saved ? ' invisible' : '');
         remove.title = 'Remove';
         remove.textContent = '✕';
+        remove.disabled = saved;
 
         li.append(pick, ...knobDefs.map((def) => inputs[def.param]), playBtn, take, remove);
 
-        const state = { inputs, audio, pick, placeholder };
+        const state = { li, inputs, audio, pick, playBtn, label, saved, generated: false };
         rows.push(state);
-        if (rows.length === 1) pick.checked = true;
+        if (autoPick && rows.length === 1) pick.checked = true;
 
         playBtn.addEventListener('click', () => generateRow(state, playBtn));
+        // Picking is what makes a row the pending new default. Programmatic
+        // checks (row one on load) fire no `change`, so they never dirty the form.
+        pick.addEventListener('change', () => { writeDelivery(rowValues(state)); syncRows(); });
+        // Editing the picked row's knobs keeps the delivery fields in step.
+        knobDefs.forEach((def) => inputs[def.param].addEventListener('input', () => {
+            if (pick.checked) writeDelivery(rowValues(state));
+        }));
         remove.addEventListener('click', () => {
             const i = rows.indexOf(state);
             if (i >= 0) rows.splice(i, 1);
             li.remove();
-            if (pick.checked && rows[0]) rows[0].pick.checked = true;
+            if (pick.checked && rows[0]) { rows[0].pick.checked = true; writeDelivery(rowValues(rows[0])); }
+            syncRows();
         });
 
         els.rows.append(li);
         enhanceStudioPlayers(li); // skin the row's take player
+        syncRows();
+        return state;
     }
 
     async function generateAll() {
@@ -1339,42 +1414,48 @@ function initTuningBench(bench) {
         }
     }
 
-    async function savePick() {
-        const picked = rows.find((s) => s.pick.checked);
-        if (!picked) { setStatus(els.status, 'Pick a setting first.', 'error'); return; }
-        const body = new URLSearchParams({ voice });
-        Object.entries(rowValues(picked)).forEach(([param, value]) => body.set(param, value));
-        startBusy(els.saveBtn, 'Saving…');
-        try {
-            const res = await fetch(saveUrl, {
-                method: 'POST',
-                headers: { 'X-CSRF-TOKEN': csrfToken(), 'Accept': 'application/json' },
-                body,
-            });
-            const data = await res.json().catch(() => ({}));
-            if (!res.ok) throw new Error(data.message || `HTTP ${res.status}`);
-            setStatus(els.status, `✓ ${data.message || 'Saved.'}`, 'ok');
-        } catch (err) {
-            setStatus(els.status, `✗ ${err.message}`, 'error');
-        } finally {
-            endBusy(els.saveBtn);
-        }
-    }
-
     els.addBtn.addEventListener('click', () => addRow());
     els.genBtn.addEventListener('click', generateAll);
-    els.saveBtn.addEventListener('click', savePick);
 
-    // --- Named presets (3b): apply adds a pre-filled row; ✕ deletes; save the
-    // picked row's values as a new named preset. ---
+    // "Audition this style note" (Qwen's step 3): hear the delivery fields
+    // exactly as they stand, without adding a row.
+    const auditionBtn = form?.querySelector('[data-bench-audition]');
+    if (auditionBtn) {
+        let auditionAudio = null;
+        auditionBtn.addEventListener('click', async () => {
+            const blob = await synthesize(deliveryValues(), auditionBtn);
+            if (!blob) return;
+            if (!auditionAudio) {
+                auditionAudio = document.createElement('audio');
+                auditionAudio.className = 'hidden';
+                auditionBtn.parentElement.append(auditionAudio);
+            }
+            playAudio(auditionAudio, blob);
+        });
+    }
+
+    // --- Named presets: apply adds a pre-filled row; ✕ deletes; save the picked
+    // row's values as a new named preset. Tucked in a menu off the table footer. ---
     const presetsBar = bench.querySelector('.bench-presets');
     if (presetsBar) {
         const storeUrl = presetsBar.dataset.storeUrl;
         const emptyHint = bench.querySelector('.bench-preset-empty');
+        const presetList = bench.querySelector('.bench-preset-list');
         const presetSaveBtn = bench.querySelector('.bench-preset-save');
+        const presetToggle = bench.querySelector('.bench-presets-toggle');
+        const presetMenu = bench.querySelector('.bench-presets-menu');
+
+        const setMenu = (open) => {
+            presetMenu.classList.toggle('hidden', !open);
+            presetToggle.setAttribute('aria-expanded', String(open));
+        };
+        presetToggle.addEventListener('click', () => setMenu(presetMenu.classList.contains('hidden')));
+        document.addEventListener('click', (e) => {
+            if (!presetsBar.contains(e.target)) setMenu(false);
+        });
 
         const refreshEmpty = () =>
-            emptyHint?.classList.toggle('hidden', presetsBar.querySelectorAll('.bench-preset').length > 0);
+            emptyHint?.classList.toggle('hidden', presetList.querySelectorAll('.bench-preset').length > 0);
 
         // A chip's knob values keyed by request param (this bench's engine only
         // — the blade already filters chips to the bench's engine).
@@ -1387,7 +1468,12 @@ function initTuningBench(bench) {
         };
 
         const wireChip = (chip) => {
-            chip.querySelector('.preset-apply').addEventListener('click', () => addRow(chipValues(chip)));
+            chip.querySelector('.preset-apply').addEventListener('click', () => {
+                // A preset is a candidate, not a decision: it lands as a new row
+                // and only becomes the default once picked and saved.
+                addRow(chipValues(chip));
+                setMenu(false);
+            });
             chip.querySelector('.preset-delete').addEventListener('click', async () => {
                 const name = chip.querySelector('.preset-apply').textContent;
                 if (!(await confirmDialog({
@@ -1411,7 +1497,7 @@ function initTuningBench(bench) {
 
         const addChip = (preset) => {
             const chip = document.createElement('span');
-            chip.className = 'bench-preset inline-flex items-center gap-1 rounded-full border border-zinc-700 bg-zinc-800 py-0.5 pl-2.5 pr-1.5 text-xs';
+            chip.className = 'bench-preset inline-flex items-center gap-1 rounded-full border border-white/12 bg-inset py-0.5 pr-1.5 pl-2.5 text-xs';
             chip.dataset.id = preset.id;
             chip.dataset.exaggeration = preset.exaggeration ?? '';
             chip.dataset.cfg = preset.cfg_weight ?? '';
@@ -1421,20 +1507,20 @@ function initTuningBench(bench) {
             chip.dataset.repetitionPenalty = preset.repetition_penalty ?? '';
             const apply = document.createElement('button');
             apply.type = 'button';
-            apply.className = 'preset-apply text-zinc-200 hover:text-cyan-300';
+            apply.className = 'preset-apply text-zinc-200 hover:text-accent';
             apply.textContent = preset.name;
             const del = document.createElement('button');
             del.type = 'button';
-            del.className = 'preset-delete text-zinc-500 hover:text-red-300';
+            del.className = 'preset-delete text-zinc-500 hover:text-bad';
             del.title = 'Delete preset';
             del.textContent = '✕';
             chip.append(apply, del);
-            presetsBar.insertBefore(chip, emptyHint);
+            presetList.append(chip);
             wireChip(chip);
             refreshEmpty();
         };
 
-        presetsBar.querySelectorAll('.bench-preset').forEach(wireChip);
+        presetList.querySelectorAll('.bench-preset').forEach(wireChip);
 
         presetSaveBtn?.addEventListener('click', async () => {
             const picked = rows.find((s) => s.pick.checked);
@@ -1469,13 +1555,33 @@ function initTuningBench(bench) {
         });
     }
 
-    // Seed row one with the voice's CURRENT defaults (blank = inherit the
-    // system default) and row two with a more-expressive contrast to compare.
+    // Qwen seeds a fixed four-delivery menu that stays put across reloads (a
+    // saved pick writes the voice's Style note, not this menu). The numeric
+    // engines seed row one from the voice's current defaults and row two with
+    // a more-expressive contrast to compare.
+    if (model === 'qwen3-tts') {
+        const saved = bench.dataset.styleInstruction || '';
+        // The four fixed deliveries, led by the voice's own note when that isn't
+        // already one of them — so "current defaults" never labels a row that
+        // isn't. With no note saved yet, nothing is pre-picked: an unpicked
+        // table is the honest reading of "this voice has no style note".
+        const styles = saved && !BENCH_QWEN_STYLES.includes(saved)
+            ? [saved, ...BENCH_QWEN_STYLES]
+            : BENCH_QWEN_STYLES;
+        styles.forEach((style) => {
+            const isSaved = saved !== '' && style === saved;
+            const state = addRow({ style_instruction: style }, { saved: isSaved, autoPick: false });
+            if (isSaved) state.pick.checked = true;
+        });
+        syncRows();
+        return;
+    }
+
     const currentDefaults = {};
     knobDefs.forEach((def) => {
         if (bench.dataset[def.data]) currentDefaults[def.param] = bench.dataset[def.data];
     });
-    addRow(currentDefaults);
+    addRow(currentDefaults, { saved: true });
     addRow(BENCH_CONTRAST[model] || BENCH_CONTRAST.chatterbox);
 }
 document.querySelectorAll('.tuning-bench').forEach(initTuningBench);
@@ -4772,7 +4878,9 @@ function initVoiceRecorder() {
         const recBtn = widget.querySelector('[data-clip-mode="record"]');
         if (recBtn) recBtn.parentElement.classList.add('hidden');
     }
-    setMode('upload'); // default to Upload; the user can switch to Record when available
+    // Record leads when the browser supports it: the common case on this page is
+    // "I need to make a clip", not "I already have a file".
+    setMode(canRecord ? 'record' : 'upload');
 
     function refreshPreviewBtn() {
         const show = !!hasSource() && enhanceBox && enhanceBox.checked && !tokenInput.value;
@@ -5150,72 +5258,344 @@ function initVoiceMicRecorder(widget) {
 }
 initVoiceRecorder();
 
-// Default-tuning dials (voice edit page): a number field and a slider are two
-// views of one value. Editing either updates the other and the slider's cyan
-// fill; a blank number rests the slider at neutral without writing a value.
-function initVoiceTuningDials() {
-    document.querySelectorAll('[data-tuning-dial]').forEach((dial) => {
-        const number = dial.querySelector('[data-tuning-number]');
-        const slider = dial.querySelector('[data-tuning-slider]');
-        if (!number || !slider) return;
-
-        const min = Number(slider.min), max = Number(slider.max);
-        // Resting point when the field is blank (0.5 for exaggeration/cfg, 0.8 for
-        // temperature — the dial declares it via data-neutral).
-        const neutral = Number(dial.dataset.neutral) || 0.5;
-        const fill = (val) => {
-            const pct = Math.max(0, Math.min(100, ((val - min) / (max - min)) * 100));
-            slider.style.setProperty('--fill', pct + '%');
-        };
-
-        const syncFromNumber = () => {
-            const raw = number.value.trim();
-            const val = raw === '' ? neutral : Number(raw);
-            slider.value = val;
-            fill(val);
-        };
-        syncFromNumber();
-
-        number.addEventListener('input', syncFromNumber);
-        slider.addEventListener('input', () => {
-            number.value = slider.value;
-            fill(Number(slider.value));
-        });
-    });
-}
-initVoiceTuningDials();
-
-// Voice pages: the Engine select swaps which controls apply. Every element
+// Voice pages: the chosen engine swaps which controls apply. Every element
 // tagged data-engine-only="<model key>" shows only while that engine is
 // selected (dials, the built-in preset picker, per-engine help text). These
 // wrappers are plain block elements, so `hidden` alone is enough — no
 // competing flex class to out-specificity.
+//
+// Edit voice picks the engine with a <select> (behind the "Change engine…"
+// gate); Add a voice picks it with radio cards, so the tradeoffs read side by
+// side. Both shapes land here.
 function initVoiceEngineToggle() {
     const select = document.getElementById('voice-model');
-    if (!select) return;
+    const radios = Array.from(document.querySelectorAll('input[name="model"][data-engine-input]'));
+    if (!select && !radios.length) return;
+    const chosen = () => (select ? select.value : (radios.find((r) => r.checked)?.value ?? ''));
 
     const sync = () => {
+        const model = chosen();
         // data-engine-only holds one engine key or a space-separated list.
         document.querySelectorAll('[data-engine-only]').forEach((el) => {
-            el.classList.toggle('hidden', !el.dataset.engineOnly.split(' ').includes(select.value));
+            el.classList.toggle('hidden', !el.dataset.engineOnly.split(' ').includes(model));
         });
         // The shared preset select only offers the selected engine's built-in
         // voices; a now-foreign pick clears rather than riding along invisibly.
         const preset = document.getElementById('preset-voice');
         if (preset) {
             preset.querySelectorAll('option[data-model]').forEach((opt) => {
-                opt.classList.toggle('hidden', opt.dataset.model !== select.value);
+                opt.classList.toggle('hidden', opt.dataset.model !== model);
             });
             const picked = preset.selectedOptions[0];
-            if (picked?.dataset.model && picked.dataset.model !== select.value) preset.value = '';
+            if (picked?.dataset.model && picked.dataset.model !== model) preset.value = '';
         }
-        document.dispatchEvent(new CustomEvent('voice-engine-changed', { detail: { model: select.value } }));
+        document.dispatchEvent(new CustomEvent('voice-engine-changed', { detail: { model } }));
     };
 
-    select.addEventListener('change', sync);
+    select?.addEventListener('change', sync);
+    radios.forEach((radio) => radio.addEventListener('change', sync));
     sync();
 }
 initVoiceEngineToggle();
+
+// ---------------------------------------------------------------------------
+// Disclosures — a labelled button that shows/hides one panel.
+// ---------------------------------------------------------------------------
+// Used for the things that are essential exactly once and noise the rest of the
+// time: recording tips (inside the Record flow, not before it), "Replace" on an
+// existing clip, and Qwen's "Compare takes". `hidden` alone is enough — every
+// panel is a plain block, so there's no competing flex class to out-specificity.
+function initDisclosures(scope) {
+    (scope || document).querySelectorAll('[data-disclosure-toggle]').forEach((btn) => {
+        const panel = document.querySelector(`[data-disclosure="${btn.dataset.disclosureToggle}"]`);
+        if (!panel || btn.dataset.wired) return;
+        btn.dataset.wired = '1';
+        const sync = () => {
+            const open = !panel.classList.contains('hidden');
+            btn.setAttribute('aria-expanded', String(open));
+            const label = open ? btn.dataset.closeLabel : btn.dataset.openLabel;
+            if (label) btn.textContent = label;
+        };
+        sync();
+        btn.addEventListener('click', () => { panel.classList.toggle('hidden'); sync(); });
+    });
+}
+initDisclosures();
+
+// ---------------------------------------------------------------------------
+// Voice pages: the step rail, the collapsible steps, and the one save bar.
+// ---------------------------------------------------------------------------
+// Add a voice and Edit voice run the same pipeline — Identity → Voice source →
+// Delivery defaults — and this drives all of it:
+//
+//   • the rail's per-step state (done / current / to-do / locked) and its meta
+//     lines, kept live as fields change;
+//   • opening and closing a step (a saved voice's source collapses to a summary
+//     row until you go looking for it);
+//   • change tracking → the ONE save bar, which names exactly what differs from
+//     what was loaded. Nothing on the page saves on its own;
+//   • the "Change engine…" gate, because switching engines changes results
+//     dramatically AND swaps step 3's controls;
+//   • on Add, whether Create can be pressed yet — mirroring the server's own
+//     "a voice needs a source" rule rather than inventing a stricter one.
+function initVoiceFlow() {
+    const form = document.querySelector('form[data-voice-flow]');
+    if (!form) return;
+    const mode = form.dataset.voiceFlow; // 'edit' | 'create'
+
+    const railItems = new Map();
+    form.querySelectorAll('[data-rail-step]').forEach((btn) => railItems.set(btn.dataset.railStep, btn));
+    const sections = new Map();
+    form.querySelectorAll('[data-voice-step]').forEach((el) => sections.set(el.dataset.voiceStep, el));
+
+    // The rail meta's stable tail: "Chatterbox · 18s clip" keeps "· 18s clip"
+    // while the engine label ahead of it follows the picker.
+    const metaOf = (key) => railItems.get(key)?.querySelector('[data-rail-meta]');
+    const metaTail = new Map();
+    railItems.forEach((btn, key) => {
+        const text = metaOf(key)?.textContent ?? '';
+        metaTail.set(key, text.includes(' · ') ? text.slice(text.indexOf(' · ')) : '');
+    });
+
+    // ── which engine is chosen (a select on Edit, radio cards on Add) ────────
+    const engineSelect = form.querySelector('#voice-model');
+    const engineRadios = Array.from(form.querySelectorAll('input[name="model"][data-engine-input]'));
+    const engineValue = () => engineSelect
+        ? engineSelect.value
+        : (engineRadios.find((r) => r.checked)?.value ?? '');
+    const engineLabel = () => engineSelect
+        ? (engineSelect.selectedOptions[0]?.textContent.trim() ?? '')
+        : (engineRadios.find((r) => r.checked)?.dataset.label ?? '');
+
+    // ── completion, per step ────────────────────────────────────────────────
+    const nameInput = form.querySelector('#name');
+    const sourceInputs = Array.from(form.querySelectorAll('[data-voice-source]'));
+    const hasSource = () => sourceInputs.some((el) =>
+        el.type === 'file' ? (el.files?.length ?? 0) > 0 : el.value.trim() !== '');
+    // A voice whose engine ships built-in voices needs a clip OR a built-in;
+    // one whose engine has none (Chatterbox) speaks with the model's own voice.
+    // Same rule VoiceService::assertVoiceHasASource() enforces on save.
+    const engineNeedsSource = () => form.querySelector(`#preset-voice option[data-model="${engineValue()}"]`) !== null;
+    // ✓ on the rail means "you've done this", not "the server would accept it":
+    // on Add, Voice source is done once a clip or built-in actually exists. The
+    // Create button is deliberately looser — see refreshCreate().
+    const complete = {
+        identity: () => (nameInput?.value.trim() ?? '') !== '',
+        source: () => mode === 'edit' || hasSource(),
+        delivery: () => mode === 'edit',
+    };
+
+    // ── open / close a step ─────────────────────────────────────────────────
+    const openers = new Map();
+    sections.forEach((section, key) => {
+        const summary = section.querySelector('[data-step-summary]');
+        const body = section.querySelector('[data-step-body]');
+        if (!summary || !body) return;
+        // `hidden` loses to a co-present `flex`, so both are toggled together.
+        const setOpen = (open) => {
+            summary.classList.toggle('hidden', open);
+            summary.classList.toggle('flex', !open);
+            body.classList.toggle('hidden', !open);
+        };
+        openers.set(key, setOpen);
+        section.querySelectorAll('[data-step-toggle]').forEach((btn) =>
+            btn.addEventListener('click', () => {
+                const opening = body.classList.contains('hidden');
+                setOpen(opening);
+                if (opening) setActive(key);
+                else refresh();
+            }));
+    });
+
+    // ── which step the rail calls "current" ─────────────────────────────────
+    let active = mode === 'edit' ? 'delivery' : 'identity';
+    function setActive(key) {
+        if (!railItems.has(key) || railItems.get(key).dataset.state === 'locked') return;
+        active = key;
+        refresh();
+    }
+    railItems.forEach((btn, key) => btn.addEventListener('click', () => {
+        openers.get(key)?.(true);
+        setActive(key);
+        sections.get(key)?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }));
+    // Typing in a step makes it the current one — the rail follows the work.
+    form.addEventListener('focusin', (e) => {
+        const key = e.target.closest?.('[data-voice-step]')?.dataset.voiceStep;
+        if (key && key !== active) setActive(key);
+    });
+
+    // ── change tracking ─────────────────────────────────────────────────────
+    const tracked = () => Array.from(form.elements).filter(
+        (el) => el.dataset?.dirtyGroup && !el.disabled && /^(INPUT|SELECT|TEXTAREA)$/.test(el.tagName));
+    const keyOf = (el) => `${el.name}|${el.type === 'radio' || el.type === 'checkbox' ? el.value : ''}`;
+    const valueOf = (el) => {
+        if (el.type === 'file') return Array.from(el.files ?? []).map((f) => f.name).join(',');
+        if (el.type === 'checkbox' || el.type === 'radio') return el.checked ? '1' : '';
+        return el.value;
+    };
+    const snapshot = new Map(tracked().map((el) => [keyOf(el), valueOf(el)]));
+
+    // Changed controls, grouped by the human label each one declares.
+    const changedGroups = () => {
+        const groups = new Map();
+        tracked().forEach((el) => {
+            if (valueOf(el) === (snapshot.get(keyOf(el)) ?? '')) return;
+            const label = el.dataset.dirtyGroup;
+            if (!groups.has(label)) groups.set(label, []);
+            groups.get(label).push(el);
+        });
+        return groups;
+    };
+    const describe = (el) => {
+        if (el.dataset.dirtyValue) return el.dataset.dirtyValue;
+        if (el.type === 'file') return el.files?.[0]?.name ?? '';
+        if (el.type === 'checkbox') return el.checked ? 'on' : 'off';
+        if (el.tagName === 'SELECT') return el.selectedOptions[0]?.textContent.trim() ?? el.value;
+        return el.value.trim() || 'cleared';
+    };
+
+    // ── the save bar ────────────────────────────────────────────────────────
+    const bar = form.querySelector('[data-save-bar]');
+    const barCount = bar?.querySelector('[data-save-count]');
+    const barDetail = bar?.querySelector('[data-save-detail]');
+    const discardBtn = bar?.querySelector('[data-save-discard]');
+
+    discardBtn?.addEventListener('click', async () => {
+        if (!(await confirmDialog({
+            title: 'Discard your changes?',
+            message: 'Everything you changed since this page loaded is dropped, including any clip you recorded or uploaded but haven’t saved.',
+            label: 'Discard changes',
+        }))) return;
+        // The reload IS the revert; release the unsaved-changes guard for it.
+        form.dataset.dirtyGuardOff = '1';
+        window.location.reload();
+    });
+
+    function refreshSaveBar(groups) {
+        if (!bar) return;
+        const n = groups.size;
+        bar.dataset.state = n ? 'dirty' : 'clean';
+        barCount.textContent = n ? `${n} unsaved change${n === 1 ? '' : 's'}` : 'No unsaved changes';
+        if (n === 1) {
+            const [label, els] = [...groups.entries()][0];
+            const values = els.map(describe).filter(Boolean);
+            barDetail.textContent = values.length ? `${label} → ${values.join(' / ')}` : label;
+        } else {
+            barDetail.textContent = n
+                ? [...groups.keys()].join(' · ')
+                : 'Nothing is sent to the engines until you save.';
+        }
+        discardBtn?.classList.toggle('hidden', n === 0);
+    }
+
+    // ── Add a voice: what Create still needs ────────────────────────────────
+    const createBtn = form.querySelector('[data-create-submit]');
+    const createHint = form.querySelector('[data-create-hint]');
+    function refreshCreate() {
+        if (!createBtn) return;
+        const named = complete.identity();
+        const sourced = hasSource() || !engineNeedsSource();
+        createBtn.disabled = !(named && sourced);
+        if (!createHint) return;
+        createHint.textContent = !named
+            ? 'Name the voice to continue'
+            : (!sourced
+                ? `Add a reference clip, or pick a built-in ${engineLabel()} voice`
+                : (hasSource()
+                    ? 'Step 2 of 2 — tuning unlocks once the voice exists'
+                    : `No clip — ${engineLabel()} will speak in its own generic voice`));
+    }
+
+    // ── Edit: the engine gate, and step 3's engine-owned contents ───────────
+    const gate = form.querySelector('[data-engine-gate]');
+    const picker = form.querySelector('[data-engine-picker]');
+    gate?.addEventListener('click', async () => {
+        if (!(await confirmDialog({
+            title: 'Change this voice’s engine?',
+            message: 'Each engine has its own controls, its own reference-clip rules and its own per-character rate — and this voice’s current tuning won’t carry over. Nothing changes until you save.',
+            label: 'Choose an engine',
+            tone: 'warn',
+        }))) return;
+        picker.classList.remove('hidden');
+        picker.classList.add('grid');
+        gate.disabled = true;
+        gate.textContent = 'Choosing…';
+        engineSelect?.focus();
+    });
+
+    // Step 3's controls belong to the engine, and the bench is built for the
+    // SAVED one — so an unsaved engine change stands the card down rather than
+    // showing knobs that don't apply yet.
+    const deliveryBody = form.querySelector('[data-delivery-for]');
+    const deliveryPending = form.querySelector('[data-delivery-pending]');
+    function refreshDelivery() {
+        if (!deliveryBody || !deliveryPending) return;
+        const settled = engineValue() === deliveryBody.dataset.deliveryFor;
+        deliveryBody.classList.toggle('hidden', !settled);
+        deliveryPending.classList.toggle('hidden', settled);
+        const label = deliveryPending.querySelector('[data-delivery-pending-label]');
+        if (label) label.textContent = engineLabel();
+    }
+
+    // ── one pass over everything ────────────────────────────────────────────
+    function refresh() {
+        const groups = changedGroups();
+
+        // How many distinct changes sit inside each step — the rail says so.
+        const perStep = new Map();
+        groups.forEach((els, label) => {
+            const key = els[0].closest('[data-voice-step]')?.dataset.voiceStep;
+            if (key) perStep.set(key, (perStep.get(key) ?? 0) + 1);
+        });
+
+        railItems.forEach((btn, key) => {
+            if (btn.dataset.state !== 'locked') {
+                // A step holding unsaved changes is never ✓ — done means settled,
+                // and this one still has something waiting on the save bar.
+                const unsaved = mode === 'edit' && (perStep.get(key) ?? 0) > 0;
+                btn.dataset.state = key === active
+                    ? 'current'
+                    : (!unsaved && complete[key]?.() ? 'done' : 'todo');
+            }
+            const section = sections.get(key);
+            if (section && section.dataset.state !== 'locked') section.dataset.state = btn.dataset.state;
+
+            const meta = metaOf(key);
+            if (!meta) return;
+            // Add a voice tracks nothing: there's no saved state to be out of
+            // step with, so its rail always shows the live value.
+            const n = mode === 'edit' ? (perStep.get(key) ?? 0) : 0;
+            if (n) {
+                meta.textContent = `${n} unsaved change${n === 1 ? '' : 's'}`;
+                meta.dataset.tone = 'warn';
+                return;
+            }
+            delete meta.dataset.tone;
+            if (key === 'identity') {
+                const slug = form.querySelector('[data-rail-source="identity"]')?.value.trim();
+                meta.textContent = slug || nameInput?.value.trim() || (mode === 'create' ? 'name it' : '');
+            } else if (key === 'source') {
+                meta.textContent = mode === 'create'
+                    ? `${engineLabel()} · ${hasSource() ? 'source ready' : 'clip or built-in'}`
+                    : engineLabel() + metaTail.get(key);
+            }
+        });
+
+        // The step-2 summary row and the engine gate both name the engine.
+        form.querySelectorAll('[data-engine-label]').forEach((el) => { el.textContent = engineLabel(); });
+
+        refreshDelivery();
+        refreshSaveBar(groups);
+        refreshCreate();
+    }
+
+    form.addEventListener('input', refresh);
+    form.addEventListener('change', refresh);
+    document.addEventListener('voice-engine-changed', refresh);
+    refresh();
+}
+initVoiceFlow();
 
 // New Project page: the Delivery preset picker only offers presets authored
 // for the chosen voice's engine; switching to a voice on another engine
@@ -5534,7 +5914,10 @@ function initDirtyGuard() {
         form.addEventListener('submit', () => { submitting = true; });
 
         window.addEventListener('beforeunload', (e) => {
-            if (submitting || serialize() === initial) return;
+            // `data-dirty-guard-off` is the in-app escape hatch: a control that
+            // discards ON PURPOSE (the voice save bar's Discard reloads the page
+            // to revert) sets it, so the user isn't asked to confirm twice.
+            if (submitting || form.dataset.dirtyGuardOff === '1' || serialize() === initial) return;
             e.preventDefault();
             e.returnValue = ''; // Chrome shows the prompt only when returnValue is set.
         });

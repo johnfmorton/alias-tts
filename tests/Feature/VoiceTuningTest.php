@@ -121,12 +121,29 @@ class VoiceTuningTest extends TestCase
         TuningPreset::create(['user_id' => $admin->id, 'name' => 'Calm narration', 'exaggeration' => 0.95, 'cfg_weight' => 0.8]);
         $voice = Voice::create(['slug' => 'john', 'name' => 'John']);
 
+        // The bench IS step 3 now — the takes table is the knob editor, and the
+        // pick rides the page's one save bar rather than a second save path.
         $this->actingAs($admin)
             ->get(route('admin.voices.edit', $voice))
             ->assertOk()
-            ->assertSee('Tune by ear')
-            ->assertSee('Save pick as voice defaults')
-            ->assertSee('Calm narration');
+            ->assertSee('Delivery defaults')
+            ->assertSee('each row is a candidate default')
+            ->assertSee('Calm narration')
+            ->assertDontSee('Save pick as voice defaults');
+    }
+
+    public function test_the_edit_page_has_exactly_one_save_path(): void
+    {
+        $voice = Voice::create(['slug' => 'john', 'name' => 'John']);
+
+        $this->actingAs($this->admin())
+            ->get(route('admin.voices.edit', $voice))
+            ->assertOk()
+            ->assertSee('data-save-bar', false)
+            // The picked row writes into these; nothing else persists tuning.
+            ->assertSee('data-delivery-field="exaggeration"', false)
+            ->assertSee('data-delivery-field="cfg_weight"', false)
+            ->assertSee('data-delivery-field="temperature"', false);
     }
 
     public function test_voice_edit_page_shows_only_your_presets(): void

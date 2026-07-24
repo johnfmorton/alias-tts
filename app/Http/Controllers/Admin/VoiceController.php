@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Admin;
 
 use App\Http\Controllers\Concerns\ChecksCredit;
+use App\Http\Controllers\Concerns\ServesRangedAudio;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\StoreVoiceRequest;
 use App\Http\Requests\UpdateVoiceRequest;
@@ -10,6 +11,7 @@ use App\Models\ApiKey;
 use App\Models\TuningPreset;
 use App\Models\User;
 use App\Models\Voice;
+use App\Services\Audio\AudioConverter;
 use App\Services\SpeechService;
 use App\Services\Tts\ModelCatalog;
 use App\Services\VoiceClipService;
@@ -17,14 +19,16 @@ use App\Services\VoiceService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Storage;
 use Illuminate\View\View;
 use Symfony\Component\HttpFoundation\Response;
 use Throwable;
 
 class VoiceController extends Controller
 {
-    use ChecksCredit;
+    use ChecksCredit, ServesRangedAudio;
 
     public function __construct(
         private VoiceService $voices,
@@ -182,7 +186,83 @@ class VoiceController extends Controller
         return view('admin.voices.edit', [
             'voice' => $voice,
             'presets' => TuningPreset::forUser($request->user()->id)->orderBy('name')->get(),
+            'clipMeta' => $this->clipMeta($voice),
         ]);
+    }
+
+    /**
+     * Stream the voice's stored reference clip so the Voice source step can play
+     * it inline (`?download=1` saves it instead). Ranged — iOS Safari range-probes
+     * any URL it loads into an <audio> and shows "Live Broadcast" without a 206.
+     */
+    public function clip(Request $request, Voice $voice): Response
+    {
+        abort_unless($voice->isVisibleTo($request->user()), 404);
+        abort_unless((bool) $voice->reference_audio_path, 404);
+
+        $disk = Storage::disk(config('tts.storage_disk'));
+        abort_unless($disk->exists($voice->reference_audio_path), 404);
+
+        $ext = strtolower(pathinfo($voice->reference_audio_path, PATHINFO_EXTENSION)) ?: 'wav';
+        $headers = $request->boolean('download')
+            ? ['Content-Disposition' => 'attachment; filename="'.$voice->slug.'-reference.'.$ext.'"']
+            : [];
+
+        return $this->rangedAudio(
+            (string) $disk->get($voice->reference_audio_path),
+            self::CLIP_MIME[$ext] ?? 'application/octet-stream',
+            $request,
+            $headers,
+        );
+    }
+
+    /** Content types for the containers a reference clip can be stored in. */
+    private const CLIP_MIME = [
+        'wav' => 'audio/wav',
+        'mp3' => 'audio/mpeg',
+        'm4a' => 'audio/mp4',
+        'aac' => 'audio/aac',
+        'ogg' => 'audio/ogg',
+        'flac' => 'audio/flac',
+    ];
+
+    /**
+     * What the Voice source step can honestly say about the stored clip:
+     * duration, channels and sample rate, all read straight from the WAV header
+     * (null for a container we can't parse — the step then names the format and
+     * size only). Cached against `updated_at`, which moves whenever the clip is
+     * replaced, so the edit page doesn't re-fetch the clip from object storage
+     * on every render.
+     *
+     * @return array{seconds: float|null, channels: int, sample_rate: int, ext: string, bytes: int}|null
+     */
+    private function clipMeta(Voice $voice): ?array
+    {
+        if (! $voice->reference_audio_path) {
+            return null;
+        }
+
+        return Cache::remember(
+            'voice-clip-meta:'.$voice->id.':'.($voice->updated_at?->getTimestamp() ?? 0),
+            now()->addDay(),
+            function () use ($voice) {
+                $disk = Storage::disk(config('tts.storage_disk'));
+                if (! $disk->exists($voice->reference_audio_path)) {
+                    return null;
+                }
+
+                $bytes = (string) $disk->get($voice->reference_audio_path);
+                $info = app(AudioConverter::class)->wavInfo($bytes);
+
+                return [
+                    'seconds' => $info['seconds'] ?? null,
+                    'channels' => $info['channels'] ?? 0,
+                    'sample_rate' => $info['sample_rate'] ?? 0,
+                    'ext' => strtolower(pathinfo($voice->reference_audio_path, PATHINFO_EXTENSION)) ?: 'wav',
+                    'bytes' => strlen($bytes),
+                ];
+            },
+        );
     }
 
     public function update(UpdateVoiceRequest $request, Voice $voice): RedirectResponse

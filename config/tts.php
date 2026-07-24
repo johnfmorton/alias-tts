@@ -807,6 +807,8 @@ return [
     'models' => [
         'chatterbox' => [
             'label' => 'Chatterbox',
+            // One line for the engine pickers — what you trade by choosing it.
+            'tagline' => 'expressive classic · knob tuning',
             'model' => env('REPLICATE_CHATTERBOX_MODEL', 'resemble-ai/chatterbox'),
             // Pinned to a known-good version; override via env to bump it.
             'version' => env('REPLICATE_CHATTERBOX_VERSION', '1b8422bc49635c20d0a84e387ed20879c0dd09254ecdb4e75dc4bec10ff94e97'),
@@ -821,6 +823,7 @@ return [
         ],
         'chatterbox-turbo' => [
             'label' => 'Chatterbox Turbo',
+            'tagline' => 'fast · sound tags · built-ins',
             'model' => env('REPLICATE_CHATTERBOX_TURBO_MODEL', 'resemble-ai/chatterbox-turbo'),
             'version' => env('REPLICATE_CHATTERBOX_TURBO_VERSION', '95c87b883ff3e842a1643044dff67f9d204f70a80228f24ff64bffe4a4b917d4'),
             'text_field' => env('REPLICATE_TURBO_TEXT_FIELD', 'text'),
@@ -845,6 +848,7 @@ return [
         ],
         'qwen3-tts' => [
             'label' => 'Qwen3 TTS',
+            'tagline' => 'ten languages · style notes',
             'model' => env('REPLICATE_QWEN3_TTS_MODEL', 'qwen/qwen3-tts'),
             'version' => env('REPLICATE_QWEN3_TTS_VERSION', 'd490a561cf1171a8dc3d96d1e57efffea7dd34607148bb641f3d9de4e38c472e'),
             'text_field' => 'text',
