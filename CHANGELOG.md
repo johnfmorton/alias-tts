@@ -6,6 +6,17 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Added
+- **A reference clip can be removed.** Until now a stored clip could only ever
+  be replaced, never dropped — and since a clip always wins over a built-in
+  voice at render time, a voice that had one could never actually speak
+  through a built-in. The Voice source step now offers **Remove** beside Play
+  and Replace. Like every other edit on the page it is a pending change, named
+  on the save bar and undone with "Keep the clip", and it states what the voice
+  will speak with once the clip is gone. Removal that would leave the voice
+  with no source at all is refused — by the save bar before the request, and
+  by the server regardless.
+
 ### Fixed
 - **A built-in voice and a reference clip no longer contradict each other.**
   Choosing one of an engine's built-in voices still left the Record / Upload

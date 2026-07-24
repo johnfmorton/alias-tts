@@ -36,7 +36,7 @@
     {{-- The stored clip, playable and inspectable. Everything in the meta line
          is read from the file's own header — no claimed loudness we didn't measure. --}}
     @if($hasClip)
-        <div class="mb-3.5 flex flex-wrap items-center gap-4 rounded-[12px] border border-ok/30 bg-inset px-[18px] py-3.5">
+        <div data-current-clip class="mb-3.5 flex flex-wrap items-center gap-4 rounded-[12px] border border-ok/30 bg-inset px-[18px] py-3.5">
             <span class="aplayer aplayer--chunk min-w-[220px] flex-1">
                 <button type="button" class="aplayer__btn" aria-label="Play the reference clip"><span class="aplayer__icon"></span></button>
                 <span class="aplayer__track"><span class="aplayer__fill"></span><span class="aplayer__knob"></span></span>
@@ -54,9 +54,23 @@
                 <a href="{{ route('admin.voices.clip', [$voice, 'download' => 1]) }}" download
                    aria-label="Download the reference clip" title="Download the reference clip"
                    class="rounded-[8px] border border-edge px-3 py-2 text-[13px] text-zinc-300 transition hover:bg-white/5">↓</a>
+                {{-- Removing is what lets a built-in voice actually be heard: a
+                     stored clip always wins at render time. Like everything else
+                     here it's a PENDING change until the save bar is used. --}}
+                <button type="button" data-remove-clip
+                        class="rounded-[8px] border border-edge px-3 py-2 text-[13px] text-zinc-300 transition hover:border-bad/50 hover:text-bad">Remove</button>
             </div>
         </div>
-        <p class="mb-[18px] text-[12.5px] leading-relaxed text-zinc-500">Replace opens Record / Upload — recording tips appear there, not before. Cleanup runs on the new clip; you preview before it saves.</p>
+        <input type="hidden" name="remove_clip" value="0" data-remove-clip-field
+               data-dirty-group="reference clip" data-dirty-value="clip removed">
+        <p data-clip-help class="mb-[18px] text-[12.5px] leading-relaxed text-zinc-500">Replace opens Record / Upload — recording tips appear there, not before. Cleanup runs on the new clip; you preview before it saves.</p>
+
+        {{-- Stands in for the card once removal is pending; filled by initVoiceFlow(). --}}
+        <div data-remove-clip-note class="mb-[18px] hidden flex-wrap items-center gap-3 rounded-[12px] border border-warn/30 bg-warn/[0.05] px-[18px] py-3.5">
+            <p class="min-w-0 flex-1 text-[13px] leading-relaxed text-zinc-300" data-remove-clip-text></p>
+            <button type="button" data-keep-clip
+                    class="shrink-0 rounded-[8px] border border-edge px-3.5 py-[7px] text-[13px] text-zinc-300 transition hover:bg-white/5">Keep the clip</button>
+        </div>
     @endif
 
     {{-- Record / Upload. Hidden behind Replace while a clip already exists. --}}
@@ -72,7 +86,7 @@
         <div class="min-w-0 flex-1 text-[13.5px] text-zinc-400">
             <span class="font-semibold text-zinc-300">Engine:</span>
             <span class="text-zinc-200" data-engine-label>{{ $engineLabel }}</span>
-            <span class="text-[12.5px] text-zinc-500">· {{ $hasClip ? 'clones from the clip above' : 'no clip — speaks through a built-in voice' }}</span>
+            <span class="text-[12.5px] text-zinc-500" data-engine-source-note>· {{ $hasClip ? 'clones from the clip above' : 'no clip — speaks through a built-in voice' }}</span>
         </div>
         <button type="button" data-engine-gate
                 class="shrink-0 rounded-[8px] border border-edge px-3.5 py-[7px] text-[13px] text-zinc-300 transition hover:bg-white/5">Change engine…</button>
@@ -111,12 +125,17 @@
 
     {{-- Qwen's voice_clone mode reads better when it knows what the clip says —
          the transcript describes the SOURCE, so it belongs to this step. --}}
+    {{-- Two wrappers, deliberately: the outer one is owned by the engine toggle,
+         the inner by pending removal. Sharing a node would have them fight over
+         the same `hidden` class. --}}
     <div data-engine-only="qwen3-tts" @class(['mt-5', 'hidden' => $engineModel !== 'qwen3-tts'])>
+      <div data-clip-transcript>
         <label for="reference-text" class="mb-2 block text-[13px] font-semibold text-zinc-300">Clip transcript <span class="font-normal text-zinc-500">(optional, improves the clone)</span></label>
         <textarea id="reference-text" name="reference_text" rows="3" maxlength="2000"
                   data-dirty-group="clip transcript"
                   placeholder="Type exactly what's said in the reference clip…"
                   class="{{ $inputClass }}">{{ old('reference_text', $voice->settings['reference_text'] ?? '') }}</textarea>
         <p class="mt-2 text-[12.5px] leading-relaxed text-zinc-500">Qwen3 TTS clones more faithfully when it can read along with the clip. Leave blank to let it listen unaided.</p>
+      </div>
     </div>
 </x-voice.step>

@@ -5,6 +5,7 @@ namespace Tests\Feature;
 use App\Models\User;
 use App\Models\Voice;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\Storage;
 use Tests\TestCase;
 
@@ -211,6 +212,117 @@ class VoiceFlowTest extends TestCase
         $this->actingAs($admin)->get(route('admin.voices.edit', $bare))
             ->assertOk()
             ->assertSee('data-has-clip=""', false);
+    }
+
+    // ── removing the stored clip ────────────────────────────────────────────
+
+    public function test_removing_the_clip_clears_the_row_and_deletes_the_bytes(): void
+    {
+        $admin = $this->admin();
+        $voice = $this->voiceWithClip($admin);
+
+        $this->actingAs($admin)
+            ->put(route('admin.voices.update', $voice), [
+                'name' => 'John',
+                'slug' => 'john',
+                'remove_clip' => '1',
+            ])
+            ->assertRedirect(route('admin.voices.index'));
+
+        $this->assertNull($voice->fresh()->reference_audio_path);
+        Storage::disk('local')->assertMissing('voices/john.wav');
+    }
+
+    public function test_removing_the_clip_takes_its_transcript_with_it(): void
+    {
+        // The transcript describes the clip; qwen reads it ALONGSIDE the audio,
+        // so one left behind describes audio that no longer exists.
+        $admin = $this->admin();
+        $voice = $this->voiceWithClip($admin);
+        $voice->update(['model' => 'qwen3-tts', 'settings' => ['reference_text' => 'the old harbor wakes slowly']]);
+
+        $this->actingAs($admin)->put(route('admin.voices.update', $voice), [
+            'name' => 'John',
+            'slug' => 'john',
+            'model' => 'qwen3-tts',
+            'preset_voice' => 'Serena',
+            'reference_text' => 'the old harbor wakes slowly',
+            'remove_clip' => '1',
+        ])->assertRedirect(route('admin.voices.index'));
+
+        $settings = (array) $voice->fresh()->settings;
+        $this->assertArrayNotHasKey('reference_text', $settings);
+        $this->assertSame('Serena', $settings['preset_voice']);
+    }
+
+    public function test_removing_the_last_source_is_refused_and_keeps_the_clip(): void
+    {
+        // Qwen ships built-in voices, so it needs a clip OR one of those. A
+        // refused save must not have deleted the bytes on the way out.
+        $admin = $this->admin();
+        $voice = $this->voiceWithClip($admin);
+        $voice->update(['model' => 'qwen3-tts']);
+
+        $this->actingAs($admin)
+            ->put(route('admin.voices.update', $voice), [
+                'name' => 'John',
+                'slug' => 'john',
+                'model' => 'qwen3-tts',
+                'remove_clip' => '1',
+            ])
+            ->assertRedirect(route('admin.voices.edit', $voice))
+            ->assertSessionHas('error');
+
+        $this->assertSame('voices/john.wav', $voice->fresh()->reference_audio_path);
+        Storage::disk('local')->assertExists('voices/john.wav');
+    }
+
+    public function test_a_clipless_chatterbox_voice_may_drop_its_clip(): void
+    {
+        // Chatterbox ships no built-ins, so it falls back to the model's own
+        // generic voice — removal is allowed with nothing else picked.
+        $admin = $this->admin();
+        $voice = $this->voiceWithClip($admin);
+
+        $this->actingAs($admin)->put(route('admin.voices.update', $voice), [
+            'name' => 'John',
+            'slug' => 'john',
+            'model' => 'chatterbox',
+            'remove_clip' => '1',
+        ])->assertRedirect(route('admin.voices.index'));
+
+        $this->assertNull($voice->fresh()->reference_audio_path);
+    }
+
+    public function test_a_replacement_clip_beats_a_removal_in_the_same_save(): void
+    {
+        $admin = $this->admin();
+        $voice = $this->voiceWithClip($admin);
+
+        $this->actingAs($admin)->put(route('admin.voices.update', $voice), [
+            'name' => 'John',
+            'slug' => 'john',
+            'remove_clip' => '1',
+            'audio' => UploadedFile::fake()->createWithContent('new.wav', $this->silentWav(9.0)),
+        ])->assertRedirect(route('admin.voices.index'));
+
+        // Replacing is not removing: the voice still has a clip.
+        $this->assertNotNull($voice->fresh()->reference_audio_path);
+    }
+
+    public function test_the_edit_page_offers_removal_only_when_there_is_a_clip(): void
+    {
+        $admin = $this->admin();
+
+        $this->actingAs($admin)->get(route('admin.voices.edit', $this->voiceWithClip($admin)))
+            ->assertOk()
+            ->assertSee('data-remove-clip', false)
+            ->assertSee('name="remove_clip"', false);
+
+        $bare = Voice::create(['user_id' => $admin->id, 'slug' => 'bare', 'name' => 'Bare']);
+        $this->actingAs($admin)->get(route('admin.voices.edit', $bare))
+            ->assertOk()
+            ->assertDontSee('name="remove_clip"', false);
     }
 
     // ── recording tips ──────────────────────────────────────────────────────

@@ -271,6 +271,7 @@ class VoiceService
         ?string $language = null,
         ?string $styleInstruction = null,
         ?string $referenceText = null,
+        bool $removeClip = false,
     ): Voice {
         $disk = Storage::disk(config('tts.storage_disk'));
         $referencePath = $voice->reference_audio_path;
@@ -296,6 +297,14 @@ class VoiceService
                 $disk->delete($referencePath);
             }
             $referencePath = $newPath;
+        } elseif ($removeClip) {
+            // Deliberate removal: the voice falls back to a built-in, or to the
+            // engine's own generic voice for engines that ship none. The stored
+            // object is deleted only once the row is safely updated (below) —
+            // assertVoiceHasASource() can still reject this save, and dropping
+            // the bytes first would leave the voice pointing at nothing.
+            $clipToDelete = $referencePath;
+            $referencePath = null;
         } elseif ($modelChosen && $engine !== ModelCatalog::forVoice($voice)) {
             // Switching engines without a new clip re-checks the stored one.
             $this->assertStoredReferenceLongEnough($engine, $voice);
@@ -383,6 +392,14 @@ class VoiceService
             $settings = $this->maybeTranscribeReference($engine, $bytes, $extension, $settings);
         }
 
+        // The transcript describes the clip, so REMOVING the clip takes it along —
+        // leaving it would hand qwen a description of audio that isn't there.
+        // Scoped to an actual removal: a preset-only voice that never had a clip
+        // may still carry a transcript for a clip added later.
+        if ($removeClip && $audioBytes === null) {
+            unset($settings['reference_text']);
+        }
+
         $this->assertVoiceHasASource($engine, hasClip: (bool) $referencePath, presetVoice: $presetVoice);
 
         $columns = [
@@ -398,6 +415,10 @@ class VoiceService
         }
 
         $voice->update($columns);
+
+        if (isset($clipToDelete) && $clipToDelete) {
+            $disk->delete($clipToDelete);
+        }
 
         return $voice;
     }

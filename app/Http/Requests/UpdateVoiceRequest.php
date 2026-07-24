@@ -58,6 +58,9 @@ class UpdateVoiceRequest extends FormRequest
             // A prepared-clip token + the A/B choice, when saving a previewed clip.
             'clip_token' => ['nullable', 'string', 'size:40', 'required_with:clip_choice'],
             'clip_choice' => ['nullable', 'in:original,enhanced', 'required_with:clip_token'],
+            // Drop the stored reference clip on save. A new clip in the same
+            // submission wins — replacing is not removing.
+            'remove_clip' => ['sometimes', 'boolean'],
         ];
     }
 

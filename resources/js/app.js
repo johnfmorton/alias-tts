@@ -5516,7 +5516,10 @@ function initVoiceFlow() {
     const presetSelect = form.querySelector('#preset-voice');
     const clipSection = form.querySelector('[data-clip-section]');
     const clipNote = form.querySelector('[data-clip-built-in-note]');
-    const storedClip = form.dataset.hasClip === '1';
+    const removeField = form.querySelector('[data-remove-clip-field]');
+    // Follows the PENDING state, not just what's on disk: once removal is queued
+    // the built-in really is what will speak, so the notes below must agree.
+    const storedClip = () => form.dataset.hasClip === '1' && removeField?.value !== '1';
     let lastPreset = presetSelect?.value ?? '';
 
     const fileInput = form.querySelector('input[name="audio"]');
@@ -5540,7 +5543,7 @@ function initVoiceFlow() {
             : '';
         // A stored clip still wins on save, so Edit keeps the clip on screen and
         // says so rather than hiding it behind a built-in that won't be used.
-        const overridden = preset !== '' && storedClip;
+        const overridden = preset !== '' && storedClip();
         clipSection.classList.toggle('hidden', preset !== '' && !overridden);
         // "Turbo needs a clip longer than 5 seconds" is guidance for the CLIP
         // path; it only muddies the picture once a built-in is the source.
@@ -5558,6 +5561,92 @@ function initVoiceFlow() {
                     : `${engineLabel()} will speak through its built-in ${preset} voice, so there's no clip to record or upload. Choose “none” above to clone from a clip instead.`);
         }
     }
+
+    // ── removing the stored clip ────────────────────────────────────────────
+    // A stored clip wins over a built-in at render time, so removing it is what
+    // makes a built-in take effect. Like every other edit here it stays PENDING
+    // until the save bar is used — the bytes are only dropped server-side, once
+    // the row commits.
+    const removeBtn = form.querySelector('[data-remove-clip]');
+    const clipCard = form.querySelector('[data-current-clip]');
+    const clipHelp = form.querySelector('[data-clip-help]');
+    const removeNote = form.querySelector('[data-remove-clip-note]');
+    const removeText = form.querySelector('[data-remove-clip-text]');
+
+    // What the voice would speak with once the clip is gone. Mirrors
+    // VoiceService::assertVoiceHasASource(): engines that ship built-ins need
+    // one, engines that don't fall back to the model's own generic voice.
+    const sourceAfterRemoval = () => {
+        const preset = presetSelect?.value ?? '';
+        if (preset !== '') return { ok: true, text: `the built-in ${preset} voice` };
+        if (!engineNeedsSource()) return { ok: true, text: `${engineLabel()}'s own generic voice` };
+        return { ok: false, text: '' };
+    };
+
+    // "clones from the clip above" stops being true the moment removal is
+    // pending, so the engine row says what the voice will ACTUALLY speak with.
+    const engineSourceNote = form.querySelector('[data-engine-source-note]');
+    function refreshEngineSourceNote() {
+        if (!engineSourceNote) return;
+        const preset = presetSelect?.value ?? '';
+        engineSourceNote.textContent = '· ' + (storedClip()
+            ? 'clones from the clip above'
+            : (preset !== '' ? `speaks through the built-in ${preset} voice` : 'speaks with the model’s own generic voice'));
+    }
+
+    function refreshRemoval() {
+        refreshEngineSourceNote();
+        if (!removeField || !removeNote) return;
+        const pending = removeField.value === '1';
+        // The transcript describes the clip; the service drops it along with the
+        // clip, so don't invite input that's already spoken for.
+        form.querySelector('[data-clip-transcript]')?.classList.toggle('hidden', pending);
+        clipCard?.classList.toggle('hidden', pending);
+        clipHelp?.classList.toggle('hidden', pending);
+        removeNote.classList.toggle('hidden', !pending);
+        removeNote.classList.toggle('flex', pending);
+        if (!pending) return;
+
+        const after = sourceAfterRemoval();
+        removeText.textContent = after.ok
+            ? `The reference clip will be deleted when you save, and this voice will speak with ${after.text}.`
+            : `The reference clip will be deleted when you save — but ${engineLabel()} then has nothing to speak with. Pick a built-in voice above first.`;
+        removeNote.classList.toggle('border-bad/40', !after.ok);
+        removeNote.classList.toggle('border-warn/30', after.ok);
+    }
+
+    removeBtn?.addEventListener('click', async () => {
+        const after = sourceAfterRemoval();
+        if (!(await confirmDialog({
+            title: 'Remove this reference clip?',
+            message: after.ok
+                ? `The clip is deleted when you save, and this voice speaks with ${after.text} instead. This can't be undone — download it first if you want to keep a copy.`
+                : `The clip is deleted when you save. ${engineLabel()} needs a built-in voice to fall back on, so pick one before saving or the save will be refused.`,
+            label: 'Remove on save',
+        }))) return;
+        removeField.value = '1';
+        removeField.dispatchEvent(new Event('change', { bubbles: true }));
+        refresh();
+    });
+
+    form.querySelector('[data-keep-clip]')?.addEventListener('click', () => {
+        removeField.value = '0';
+        removeField.dispatchEvent(new Event('change', { bubbles: true }));
+        refresh();
+    });
+
+    // Last line of defence for the source rule the server enforces: a save that
+    // would strand the voice is stopped here, where the fix is one field away.
+    // Capture phase at the document so this lands BEFORE the form's own
+    // data-busy listener — otherwise a blocked submit leaves the Save button
+    // spinning on a request that was never sent.
+    document.addEventListener('submit', (e) => {
+        if (e.target !== form || removeField?.value !== '1' || sourceAfterRemoval().ok) return;
+        e.preventDefault();
+        e.stopPropagation();
+        removeNote.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        presetSelect?.focus();
+    }, true);
 
     presetSelect?.addEventListener('change', async () => {
         const preset = presetSelect.value;
@@ -5655,6 +5744,7 @@ function initVoiceFlow() {
         form.querySelectorAll('[data-engine-label]').forEach((el) => { el.textContent = engineLabel(); });
 
         refreshDelivery();
+        refreshRemoval();
         refreshSourceChoice();
         refreshSaveBar(groups);
         refreshCreate();

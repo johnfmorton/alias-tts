@@ -296,6 +296,9 @@ class VoiceController extends Controller
                 language: $request->input('language') ?: null,
                 styleInstruction: $request->input('style_instruction') ?: null,
                 referenceText: $request->input('reference_text') ?: null,
+                // Only meaningful without a replacement — the resolveClip above
+                // already turned any new upload/recording into bytes.
+                removeClip: $request->boolean('remove_clip'),
             );
         } catch (Throwable $e) {
             return redirect()->route('admin.voices.edit', $voice)
