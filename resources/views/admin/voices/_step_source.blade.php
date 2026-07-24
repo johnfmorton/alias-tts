@@ -1,9 +1,16 @@
-{{-- Step 2 on the Edit page: "what the voice is made from" — the reference clip
-     and the engine, one decision. The card collapses to a summary row when it
-     isn't what you came for (a saved voice's source rarely is). Replacing the
-     clip and changing the engine both sit behind deliberate gates: the first
-     because the recording flow is long, the second because it changes results
-     dramatically AND swaps step 3's controls. --}}
+{{-- Step 2 on the Edit page: "what the voice is made from" — the source and the
+     engine, one decision. The card collapses to a summary row when it isn't what
+     you came for (a saved voice's source rarely is).
+
+     A voice's SOURCE is either a reference clip or one of the engine's built-in
+     voices, and they are mutually exclusive: the provider sends `voice`/`speaker`
+     only when there is no reference audio, so a clip always wins. Both therefore
+     live here, side by side and always reachable — the built-in picker is NOT an
+     engine setting and must never hide behind the engine gate, or a voice already
+     using a built-in would have no way to change which one.
+
+     Only the engine itself sits behind "Change engine…", because switching it
+     changes results dramatically AND swaps step 3's controls. --}}
 @php
     use App\Services\Tts\ModelCatalog;
 
@@ -27,11 +34,37 @@
                 <audio class="aplayer__native" preload="none" src="{{ route('admin.voices.clip', $voice) }}"></audio>
             </span>
             <span class="font-mono text-[13px] text-zinc-500">{{ $clipLine }}</span>
+        @elseif($currentPreset !== '')
+            <span class="text-[13px] text-zinc-500">built-in {{ $currentPreset }}</span>
         @else
             <span class="text-[13px] text-zinc-500">no reference clip</span>
         @endif
         <span class="text-[13.5px] text-zinc-400">Engine: <strong class="font-semibold text-zinc-200" data-engine-label>{{ $engineLabel }}</strong></span>
     </x-slot:summary>
+
+    {{-- The built-in voice: a source in its own right, so it leads the step and
+         stays reachable whatever else is going on. --}}
+    <div data-engine-only="{{ $presetEngines->implode(' ') }}"
+         @class(['mb-[18px]', 'hidden' => ! $presetEngines->contains($engineModel)])>
+        <label for="preset-voice" class="mb-2 block text-[13px] font-semibold text-zinc-300">Built-in voice</label>
+        <select id="preset-voice" name="preset_voice" data-dirty-group="built-in voice" class="{{ $selectClass }} max-w-[420px]">
+            <option value="">— none, use the reference clip —</option>
+            @foreach($presetEngines as $engineKey)
+                @foreach(ModelCatalog::presetVoices($engineKey) as $preset)
+                    <option value="{{ $preset }}" data-model="{{ $engineKey }}"
+                            @selected($engineModel === $engineKey && $currentPreset === $preset)
+                            @class(['hidden' => $engineModel !== $engineKey])>{{ $preset }}</option>
+                @endforeach
+            @endforeach
+        </select>
+        <p data-clip-path-hint data-engine-only="chatterbox-turbo" @class(['mt-2 text-[12.5px] leading-relaxed text-zinc-500', 'hidden' => $engineModel !== 'chatterbox-turbo'])>Turbo needs a reference clip <strong>longer than 5 seconds</strong> — or one of these built-ins instead of a clip.</p>
+        <p data-clip-path-hint data-engine-only="qwen3-tts" @class(['mt-2 text-[12.5px] leading-relaxed text-zinc-500', 'hidden' => $engineModel !== 'qwen3-tts'])>Qwen clones from a reference clip of <strong>at least 3 seconds</strong> (aim for 15–20s) — or speaks through one of these built-ins instead.</p>
+    </div>
+
+    {{-- Stands in for the clip UI when a built-in is the source. Lives HERE, not
+         inside the Replace disclosure, so it can't be hidden along with it —
+         and it sits directly under the picker its copy points at. --}}
+    <p data-clip-built-in-note class="mb-[18px] hidden rounded-[12px] px-5 py-4 text-[13px] leading-relaxed"></p>
 
     {{-- The stored clip, playable and inspectable. Everything in the meta line
          is read from the file's own header — no claimed loudness we didn't measure. --}}
@@ -93,43 +126,27 @@
     </div>
     <p class="mt-2 text-xs leading-relaxed text-zinc-500">Changing the engine dramatically changes results — each has its own knobs and per-character rate. Your {{ $engineLabel }} tuning won't carry over.</p>
 
-    {{-- The picker itself, revealed only after the gate is acknowledged. It
-         stays in the DOM either way so initVoiceEngineToggle() can drive the
-         engine-scoped controls from it. --}}
-    <div data-engine-picker class="mt-4 hidden grid-cols-1 gap-5 sm:grid-cols-2">
-        <div>
-            <label for="voice-model" class="mb-2 block text-[13px] font-semibold text-zinc-300">Model</label>
-            <select id="voice-model" name="model" data-dirty-group="engine" data-rail-source="source" class="{{ $selectClass }}">
-                @foreach($models as $key => $entry)
-                    <option value="{{ $key }}" @selected($engineModel === $key)>{{ $entry['label'] ?? $key }}</option>
-                @endforeach
-            </select>
-            <p class="mt-2 text-[12.5px] leading-relaxed text-zinc-500">Chatterbox is the expressive classic; Turbo is faster, supports sound tags like [laugh], and offers built-in voices; Qwen3 TTS speaks ten languages, offers built-in voices, and takes a free-text style note.</p>
-        </div>
-        <div data-engine-only="{{ $presetEngines->implode(' ') }}" @class(['hidden' => ! $presetEngines->contains($engineModel)])>
-            <label for="preset-voice" class="mb-2 block text-[13px] font-semibold text-zinc-300">Built-in voice <span class="font-normal text-zinc-500">(used when there's no reference clip)</span></label>
-            <select id="preset-voice" name="preset_voice" data-dirty-group="built-in voice" class="{{ $selectClass }}">
-                <option value="">— none, use the reference clip —</option>
-                @foreach($presetEngines as $engineKey)
-                    @foreach(ModelCatalog::presetVoices($engineKey) as $preset)
-                        <option value="{{ $preset }}" data-model="{{ $engineKey }}"
-                                @selected($engineModel === $engineKey && $currentPreset === $preset)
-                                @class(['hidden' => $engineModel !== $engineKey])>{{ $preset }}</option>
-                    @endforeach
-                @endforeach
-            </select>
-            <p data-clip-path-hint data-engine-only="chatterbox-turbo" @class(['mt-2 text-[12.5px] leading-relaxed text-zinc-500', 'hidden' => $engineModel !== 'chatterbox-turbo'])>Turbo needs a reference clip <strong>longer than 5 seconds</strong> — or one of these built-ins instead of a clip.</p>
-            <p data-clip-path-hint data-engine-only="qwen3-tts" @class(['mt-2 text-[12.5px] leading-relaxed text-zinc-500', 'hidden' => $engineModel !== 'qwen3-tts'])>Qwen clones from a reference clip of <strong>at least 3 seconds</strong> (aim for 15–20s) — or speaks through one of these built-ins instead.</p>
-        </div>
+    {{-- The engine picker itself — ONLY the model. It stays in the DOM whether
+         open or not so initVoiceEngineToggle() can drive the engine-scoped
+         controls from it. --}}
+    <div data-engine-picker class="mt-4 hidden max-w-[420px]">
+        <label for="voice-model" class="mb-2 block text-[13px] font-semibold text-zinc-300">Model</label>
+        <select id="voice-model" name="model" data-dirty-group="engine" data-rail-source="source" class="{{ $selectClass }}">
+            @foreach($models as $key => $entry)
+                <option value="{{ $key }}" @selected($engineModel === $key)>{{ $entry['label'] ?? $key }}</option>
+            @endforeach
+        </select>
+        <p class="mt-2 text-[12.5px] leading-relaxed text-zinc-500">Chatterbox is the expressive classic; Turbo is faster, supports sound tags like [laugh], and offers built-in voices; Qwen3 TTS speaks ten languages, offers built-in voices, and takes a free-text style note.</p>
     </div>
 
-    {{-- Qwen's voice_clone mode reads better when it knows what the clip says —
-         the transcript describes the SOURCE, so it belongs to this step. --}}
-    {{-- Two wrappers, deliberately: the outer one is owned by the engine toggle,
-         the inner by pending removal. Sharing a node would have them fight over
-         the same `hidden` class. --}}
+    {{-- Qwen's voice_clone mode reads better when it knows what the clip says.
+         It describes a CLIP, so it appears only when a clip is what this voice
+         actually speaks from — never beside a built-in voice, where there is no
+         clip for it to transcribe. Two wrappers deliberately: the outer is owned
+         by the engine toggle, the inner by initVoiceFlow(); sharing a node would
+         have them fight over the same `hidden` class. --}}
     <div data-engine-only="qwen3-tts" @class(['mt-5', 'hidden' => $engineModel !== 'qwen3-tts'])>
-      <div data-clip-transcript>
+      <div data-clip-transcript @class(['hidden' => ! $hasClip])>
         <label for="reference-text" class="mb-2 block text-[13px] font-semibold text-zinc-300">Clip transcript <span class="font-normal text-zinc-500">(optional, improves the clone)</span></label>
         <textarea id="reference-text" name="reference_text" rows="3" maxlength="2000"
                   data-dirty-group="clip transcript"

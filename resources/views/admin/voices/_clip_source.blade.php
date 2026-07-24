@@ -175,9 +175,3 @@
         @endif
     </div>
 </div>
-
-{{-- Stands in for the recorder when a built-in voice is the chosen source.
-     Filled by initVoiceFlow(), which also decides the tone: plain when the
-     built-in really is what will be heard, warning when a stored clip would
-     override it. --}}
-<p data-clip-built-in-note class="hidden rounded-[12px] px-5 py-4 text-[13px] leading-relaxed"></p>

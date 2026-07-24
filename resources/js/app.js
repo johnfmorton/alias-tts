@@ -5451,7 +5451,9 @@ function initVoiceFlow() {
         if (el.dataset.dirtyValue) return el.dataset.dirtyValue;
         if (el.type === 'file') return el.files?.[0]?.name ?? '';
         if (el.type === 'checkbox') return el.checked ? 'on' : 'off';
-        if (el.tagName === 'SELECT') return el.selectedOptions[0]?.textContent.trim() ?? el.value;
+        // An empty select is a clearing, not a choice — its placeholder option
+        // ("— none, use the reference clip —") reads as noise in the change list.
+        if (el.tagName === 'SELECT') return el.value === '' ? 'cleared' : (el.selectedOptions[0]?.textContent.trim() ?? el.value);
         return el.value.trim() || 'cleared';
     };
 
@@ -5536,7 +5538,16 @@ function initVoiceFlow() {
     const NOTE_PLAIN = 'rounded-[12px] border border-white/9 bg-inset px-5 py-4 text-[13px] leading-relaxed text-zinc-400';
     const NOTE_WARN = 'rounded-[12px] border border-warn/30 bg-warn/[0.05] px-5 py-4 text-[13px] leading-relaxed text-zinc-300';
 
+    // The transcript describes a CLIP. It has nothing to say beside a built-in
+    // voice, on a voice whose clip is queued for removal, or before one is added
+    // — and VoiceService drops it with the clip anyway.
+    function refreshTranscript() {
+        form.querySelector('[data-clip-transcript]')
+            ?.classList.toggle('hidden', !(storedClip() || clipStaged()));
+    }
+
     function refreshSourceChoice() {
+        refreshTranscript();
         if (!clipSection) return;
         const preset = presetSelect && !presetSelect.closest('[data-engine-only]')?.classList.contains('hidden')
             ? presetSelect.value
@@ -5598,9 +5609,6 @@ function initVoiceFlow() {
         refreshEngineSourceNote();
         if (!removeField || !removeNote) return;
         const pending = removeField.value === '1';
-        // The transcript describes the clip; the service drops it along with the
-        // clip, so don't invite input that's already spoken for.
-        form.querySelector('[data-clip-transcript]')?.classList.toggle('hidden', pending);
         clipCard?.classList.toggle('hidden', pending);
         clipHelp?.classList.toggle('hidden', pending);
         removeNote.classList.toggle('hidden', !pending);

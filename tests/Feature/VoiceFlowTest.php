@@ -214,6 +214,72 @@ class VoiceFlowTest extends TestCase
             ->assertSee('data-has-clip=""', false);
     }
 
+    public function test_the_builtin_picker_is_not_hidden_behind_the_engine_gate(): void
+    {
+        // A built-in voice is a SOURCE, not an engine setting. Filing it inside
+        // the gated engine picker left a voice already using one with no way to
+        // change which one — and the copy pointing at it pointed at nothing.
+        $admin = $this->admin();
+        $voice = Voice::create([
+            'user_id' => $admin->id, 'slug' => 'eric', 'name' => 'Eric',
+            'model' => 'qwen3-tts', 'settings' => ['preset_voice' => 'Eric'],
+        ]);
+
+        $html = $this->actingAs($admin)->get(route('admin.voices.edit', $voice))
+            ->assertOk()->assertSee('id="preset-voice"', false)->getContent();
+
+        // The picker closes over the model select only; the built-in select must
+        // sit outside it, or it inherits the gate's `hidden`.
+        $gateStart = strpos($html, 'data-engine-picker');
+        $presetAt = strpos($html, 'id="preset-voice"');
+        $this->assertLessThan($gateStart, $presetAt, 'The built-in voice select must not sit inside the engine gate.');
+    }
+
+    public function test_the_clip_transcript_only_appears_when_a_clip_is_the_source(): void
+    {
+        // The transcript describes a clip. Beside a built-in voice there is no
+        // clip for it to transcribe, so its help text would be nonsense.
+        $admin = $this->admin();
+
+        $builtIn = Voice::create([
+            'user_id' => $admin->id, 'slug' => 'eric', 'name' => 'Eric',
+            'model' => 'qwen3-tts', 'settings' => ['preset_voice' => 'Eric'],
+        ]);
+        $this->assertTrue(
+            $this->transcriptHidden($this->actingAs($admin)->get(route('admin.voices.edit', $builtIn))->getContent()),
+            'A built-in-voice voice has no clip, so the transcript must start hidden.',
+        );
+
+        $cloned = $this->voiceWithClip($admin);
+        $cloned->update(['model' => 'qwen3-tts']);
+        $this->assertFalse(
+            $this->transcriptHidden($this->actingAs($admin)->get(route('admin.voices.edit', $cloned))->getContent()),
+            'A voice that clones from a clip should offer that clip a transcript.',
+        );
+    }
+
+    /** Whether the rendered transcript wrapper starts hidden, however Blade spells the class. */
+    private function transcriptHidden(string $html): bool
+    {
+        $this->assertSame(1, preg_match('/data-clip-transcript\s*(?:class="([^"]*)")?\s*>/', $html, $m));
+
+        return str_contains($m[1] ?? '', 'hidden');
+    }
+
+    public function test_the_builtin_note_sits_outside_the_replace_disclosure(): void
+    {
+        // Nested inside it, the "a stored clip wins" warning would be hidden by
+        // the collapsed disclosure exactly when it matters.
+        $admin = $this->admin();
+
+        $html = $this->actingAs($admin)->get(route('admin.voices.edit', $this->voiceWithClip($admin)))
+            ->assertOk()->getContent();
+
+        $noteAt = strpos($html, 'data-clip-built-in-note');
+        $disclosureAt = strpos($html, 'data-disclosure="replace-clip"');
+        $this->assertLessThan($disclosureAt, $noteAt, 'The built-in note must not nest inside the Replace disclosure.');
+    }
+
     // ── removing the stored clip ────────────────────────────────────────────
 
     public function test_removing_the_clip_clears_the_row_and_deletes_the_bytes(): void

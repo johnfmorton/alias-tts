@@ -41,3 +41,7 @@
     <p data-clip-path-hint data-engine-only="chatterbox-turbo" @class(['mt-2 text-[12.5px] leading-relaxed text-zinc-500', 'hidden' => $currentModel !== 'chatterbox-turbo'])>Turbo needs a reference clip <strong>longer than 5 seconds</strong> — or one of these built-ins instead of a clip.</p>
     <p data-clip-path-hint data-engine-only="qwen3-tts" @class(['mt-2 text-[12.5px] leading-relaxed text-zinc-500', 'hidden' => $currentModel !== 'qwen3-tts'])>Qwen clones from a reference clip of <strong>at least 3 seconds</strong> (aim for 15–20s) — or speaks through one of these built-ins instead.</p>
 </div>
+
+{{-- Stands in for the recorder when a built-in voice is the chosen source, and
+     sits directly under the picker its copy points at. --}}
+<p data-clip-built-in-note class="mb-[18px] hidden rounded-[12px] px-5 py-4 text-[13px] leading-relaxed"></p>

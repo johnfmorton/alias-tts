@@ -4,6 +4,25 @@ All notable changes to this project are documented in this file. The format is
 based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this
 project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Fixed
+- **The built-in voice picker is reachable again on the Edit voice page.** It
+  had been filed with the engine, behind the "Change engine…" gate — so a voice
+  already speaking through a built-in offered no way to change which one, and
+  the note telling you to "choose none above" pointed at a control that wasn't
+  on screen. A built-in voice is a *source*, not an engine setting, so it now
+  leads the Voice source step and stays visible. Only the engine itself sits
+  behind the gate.
+- **The clip transcript no longer appears when there is no clip.** It asked you
+  to "type exactly what's said in the reference clip" on voices that speak
+  through a built-in voice and have no clip at all. It now shows only when a
+  clip is what the voice actually speaks from.
+- **The "a clip always wins" warning is visible when it matters.** It had been
+  nested inside the collapsed Replace panel, so on a voice that already had a
+  clip — the only case it describes — it never appeared. It now sits directly
+  under the built-in picker, above the clip that overrides it.
+
 ## [0.88.0] - 2026-07-24
 
 ### Added
