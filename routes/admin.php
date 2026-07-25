@@ -54,6 +54,8 @@ Route::middleware(EnsureUserIsSuperAdmin::class)->group(function () {
     Route::get('/users', [UserController::class, 'index'])->name('users.index');
     Route::post('/users', [UserController::class, 'store'])->name('users.store');
     Route::post('/users/invite', [UserController::class, 'invite'])->name('users.invite');
+    // Detail page — the account statement (timeline + control rail).
+    Route::get('/users/{user}', [UserController::class, 'show'])->name('users.show');
     Route::patch('/users/{user}/role', [UserController::class, 'updateRole'])->name('users.role');
     Route::post('/users/{user}/suspend', [UserController::class, 'suspend'])->name('users.suspend');
     Route::post('/users/{user}/force-reset', [UserController::class, 'forceReset'])->name('users.force-reset');

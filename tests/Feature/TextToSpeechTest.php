@@ -58,6 +58,25 @@ class TextToSpeechTest extends TestCase
         $response->assertStatus(401)->assertJsonStructure(['detail' => ['message']]);
     }
 
+    public function test_a_deactivated_owner_takes_their_keys_down_too(): void
+    {
+        $this->makeVoice();
+        $owner = \App\Models\User::factory()->create(['status' => \App\Models\User::STATUS_SUSPENDED]);
+        $key = ApiKey::generate('test', null, $owner->id);
+
+        $this->withHeaders(['xi-api-key' => $key->key])
+            ->postJson('/v1/text-to-speech/my-voice', ['text' => 'Hello'])
+            ->assertStatus(403)
+            ->assertJsonPath('detail.message', 'This API key belongs to a deactivated account.');
+
+        // Reactivating restores the key without touching it.
+        $owner->update(['status' => \App\Models\User::STATUS_ACTIVE]);
+
+        $this->withHeaders(['xi-api-key' => $key->key])
+            ->postJson('/v1/text-to-speech/my-voice', ['text' => 'Hello'])
+            ->assertOk();
+    }
+
     public function test_it_returns_an_el_shaped_error_for_unknown_voice(): void
     {
         $key = $this->makeKey();

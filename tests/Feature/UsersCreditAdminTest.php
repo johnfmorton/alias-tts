@@ -9,9 +9,9 @@ use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
 
 /**
- * The SuperAdmin credit surface on the Users page (grant / adjust / make
- * unlimited, balance column, drawer detail) and the read-only balance card a
- * limited user sees on their own Account page.
+ * The SuperAdmin credit surface on the Users screens (grant / adjust / make
+ * unlimited, balance column, the detail page's statement) and the read-only
+ * balance card a limited user sees on their own Account page.
  */
 class UsersCreditAdminTest extends TestCase
 {
@@ -37,7 +37,7 @@ class UsersCreditAdminTest extends TestCase
 
         $this->actingAs($admin)
             ->post(route('admin.users.credit', $user), ['amount' => '5', 'note' => 'trial credit'])
-            ->assertRedirect(route('admin.users.index', ['user' => $user->id]))
+            ->assertRedirect(route('admin.users.show', $user))
             ->assertSessionHas('success');
 
         $this->assertSame(5_000_000, $user->fresh()->credit_balance_micro);
@@ -105,23 +105,37 @@ class UsersCreditAdminTest extends TestCase
             ->assertStatus(403);
     }
 
-    public function test_the_users_page_shows_balances_and_the_drawer_detail(): void
+    public function test_the_users_list_shows_balances(): void
+    {
+        $admin = $this->admin();
+        $this->limitedUser(5_000_000);
+
+        $this->actingAs($admin)
+            ->get(route('admin.users.index'))
+            ->assertStatus(200)
+            // The admin's own row reads Unlimited; the user's shows dollars.
+            ->assertSee('Unlimited')
+            ->assertSee('$5.00')
+            ->assertSee('Balance');
+    }
+
+    public function test_the_detail_page_shows_credit_and_the_usage_timeline(): void
     {
         $admin = $this->admin();
         $user = $this->limitedUser(5_000_000);
         app(CreditService::class)->charge($user->id, 1000, 'chatterbox', 'api');
 
-        $response = $this->actingAs($admin)
-            ->get(route('admin.users.index', ['user' => $user->id]))
+        $this->actingAs($admin)
+            ->get(route('admin.users.show', $user))
             ->assertStatus(200)
-            // The admin's own row reads Unlimited; the user's shows dollars.
-            ->assertSee('Unlimited')
-            ->assertSee('Balance');
-
-        // Drawer: balance headline, lifetime billed-vs-actual, recent rows.
-        $response->assertSee('Credit')
+            // Rail: the grant card with its escape hatch to unlimited.
+            ->assertSee('Grant credit')
             ->assertSee('Make unlimited')
-            ->assertSee('cost you');
+            // Statement head: lifetime billed-vs-actual next to the balance.
+            ->assertSee('cost you')
+            // The charge shows as a usage event with its metering detail.
+            ->assertSee('api')
+            ->assertSee('chatterbox');
     }
 
     public function test_the_users_list_shows_lifetime_spend_per_user(): void

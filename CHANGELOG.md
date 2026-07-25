@@ -7,6 +7,16 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 ## [Unreleased]
 
 ### Added
+- **Every user now has an account statement.** Clicking a user in the Users
+  table opens a full page instead of a drawer: one filterable timeline where
+  credit grants, per-render usage, role and status changes, and account events
+  interleave — each with who did it and why ("hackathon" · by Admin). The
+  controls sit in a quiet right rail: a simplified grant form, Status and Role
+  switches, and a danger zone reduced to the genuinely irreversible.
+- **Account changes are audited.** Role changes, activations and
+  deactivations, invites, and forced password resets are recorded with the
+  acting admin and land on the user's timeline — the page is its own audit
+  log. (Money already had its ledger; this covers everything else.)
 - **A fourth teleprompter script for expressive voices.** "Good News" packs a
   question, an exclamation, and a warm aside into the ~15 seconds the engines
   actually listen to, for cloning a lively voice rather than a calm one. It is
@@ -14,12 +24,24 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   Qwen's clone-transcript length check.
 
 ### Changed
+- **"Suspend" grew up into a Status switch.** Deactivating an account is a
+  first-class, reversible control now — Active / Inactive in the Account card,
+  not a scary button in the danger zone. Role and Status changes always
+  confirm first, in a dialog that states what the new state means, shows the
+  from → to change, and notes it's logged. Deleting a user now asks you to
+  type their name.
 - **The script picker now says what it decides.** A reference clip captures one
   delivery, not a range — so the picker explains that your voice inherits the
   delivery it hears, and the taglines describe the voice you'll get ("calm,
   even narration", "friendly conversation", "clear explainer") instead of just
   labeling the text. The recording tips warn in both directions now: a flat
   read clones into a flat voice, but over-acting hurts too.
+
+### Security
+- **Deactivating a user now really shuts the door.** An inactive user's API
+  keys stop working alongside their sign-in — previously the keys kept
+  generating (and spending) while the account was suspended. Reactivating
+  restores the keys untouched.
 
 ### Fixed
 - **Previews no longer pile up in Studio.** The voices page Preview button, the

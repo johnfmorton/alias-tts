@@ -33,6 +33,13 @@ class ValidateApiKey
             return $this->error($request, 'This API key has been deactivated.', 403);
         }
 
+        // A deactivated (suspended) account takes its keys down with it — the
+        // Users screen promises "their API keys stop working". Ownerless keys
+        // (user_id NULL) pass; there is no account to deactivate.
+        if ($apiKey->user?->isSuspended()) {
+            return $this->error($request, 'This API key belongs to a deactivated account.', 403);
+        }
+
         $request->attributes->set('api_key', $apiKey);
 
         // The request runs under the key OWNER's saved settings (ASR QA,

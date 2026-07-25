@@ -313,9 +313,19 @@ document.addEventListener('click', async (e) => {
 const CONFIRM_TONES = {
     danger: 'rounded-lg border border-red-500/40 bg-red-500/10 px-3.5 py-2 text-sm font-medium text-red-300 hover:bg-red-500/20',
     warn: 'rounded-lg border border-amber-500/50 bg-amber-500/10 px-3.5 py-2 text-sm font-medium text-amber-300 hover:bg-amber-500/20',
+    // Affirmative state changes (promote a role, reactivate an account) get the
+    // app's primary button rather than a red/amber scare tone.
+    accent: 'rounded-lg bg-accent px-3.5 py-2 text-sm font-semibold text-accent-on hover:bg-accent/90',
 };
 
-function confirmDialog({ title = 'Are you sure?', message = '', label = 'Confirm', tone = 'danger' } = {}) {
+// The from → to pill row's "to" pill, tinted to match the confirm button.
+const CONFIRM_TO_PILLS = {
+    danger: 'rounded-xl border border-bad/50 px-2.5 py-[3px] text-xs font-semibold text-bad',
+    warn: 'rounded-xl border border-warn/50 px-2.5 py-[3px] text-xs font-semibold text-warn',
+    accent: 'rounded-xl border border-accent/40 px-2.5 py-[3px] text-xs font-semibold text-accent',
+};
+
+function confirmDialog({ title = 'Are you sure?', message = '', label = 'Confirm', tone = 'danger', from = '', to = '' } = {}) {
     const dialog = document.getElementById('confirm-dialog');
     if (!dialog || dialog.classList.contains('flex')) {
         return Promise.resolve(window.confirm([title, message].filter(Boolean).join('\n\n')));
@@ -324,6 +334,19 @@ function confirmDialog({ title = 'Are you sure?', message = '', label = 'Confirm
     const messageEl = document.getElementById('confirm-dialog-message');
     messageEl.textContent = message;
     messageEl.classList.toggle('hidden', !message);
+    // The state-change row appears only when both endpoints are given.
+    const metaEl = document.getElementById('confirm-dialog-meta');
+    if (metaEl) {
+        const showMeta = Boolean(from && to);
+        metaEl.classList.toggle('hidden', !showMeta);
+        metaEl.classList.toggle('flex', showMeta);
+        if (showMeta) {
+            document.getElementById('confirm-dialog-from').textContent = from;
+            const toEl = document.getElementById('confirm-dialog-to');
+            toEl.textContent = to;
+            toEl.className = CONFIRM_TO_PILLS[tone] || CONFIRM_TO_PILLS.accent;
+        }
+    }
     const okBtn = document.getElementById('confirm-dialog-confirm');
     okBtn.textContent = label;
     okBtn.className = CONFIRM_TONES[tone] || CONFIRM_TONES.danger;
@@ -424,16 +447,51 @@ document.addEventListener('submit', (e) => {
         return;
     }
     e.preventDefault();
+    // Keep the original submitter so its name/value still ride the re-fire
+    // (a segmented control's buttons carry the payload).
+    const submitter = e.submitter instanceof HTMLElement && form.contains(e.submitter) ? e.submitter : undefined;
     confirmDialog({
         title: form.dataset.confirmTitle,
         message: form.dataset.confirm,
         label: form.dataset.confirmLabel,
         tone: form.dataset.confirmTone,
+        from: form.dataset.confirmFrom,
+        to: form.dataset.confirmTo,
     }).then((ok) => {
         if (!ok) return;
         form.dataset.confirmed = '1';
-        if (form.requestSubmit) form.requestSubmit(); else form.submit();
+        if (form.requestSubmit) form.requestSubmit(submitter); else form.submit();
     });
+});
+
+// Type-to-confirm guard for the truly irreversible: <form data-delete-user="Name">
+// pauses its submit behind the prompt dialog until the user types the name
+// exactly (case-insensitive). Same one-shot `confirmed` re-fire as data-confirm.
+document.addEventListener('submit', (e) => {
+    const form = e.target;
+    if (!(form instanceof HTMLFormElement) || !form.dataset.deleteUser) return;
+    if (form.dataset.confirmed) {
+        delete form.dataset.confirmed;
+        return;
+    }
+    e.preventDefault();
+    (async () => {
+        const name = form.dataset.deleteUser;
+        let message = `This permanently deletes ${name} and everything they own — projects, voices, API keys. It cannot be undone. Type the name to confirm.`;
+        for (;;) {
+            const typed = await promptDialog({
+                title: `Delete ${name}?`,
+                message,
+                label: 'Delete user',
+                placeholder: name,
+            });
+            if (typed === null) return;
+            if (typed.toLowerCase() === name.trim().toLowerCase()) break;
+            message = `That didn't match. Type “${name}” exactly to confirm.`;
+        }
+        form.dataset.confirmed = '1';
+        if (form.requestSubmit) form.requestSubmit(); else form.submit();
+    })();
 });
 
 // ---------------------------------------------------------------------------
@@ -4473,6 +4531,8 @@ function initBusyForms() {
             // phase), after this target-phase listener, so on the re-fire the
             // one-shot `confirmed` flag is already set when we look.
             if (form.dataset.confirm !== undefined && form.dataset.confirmed === undefined) return;
+            // Same deal for the type-to-confirm delete guard.
+            if (form.dataset.deleteUser !== undefined && form.dataset.confirmed === undefined) return;
             if (btn) startBusy(btn, form.dataset.busyLabel || 'Working…');
             if (status && form.dataset.busyMessage) setStatus(status, form.dataset.busyMessage);
         });
@@ -4740,8 +4800,9 @@ function initAccount() {
 }
 initAccount();
 
-// Users admin (2B): reveal the invite/create forms and the drawer's delete confirm,
-// and wire the one-time "copy" button for a temp password / invite link.
+// Users admin: reveal the invite/create forms on the list page. The detail
+// page's guards are declarative (data-confirm + data-delete-user above), and
+// the reveal panel's Copy buttons ride the global delegated copy listener.
 function initUsers() {
     const toggle = (btnId, panelId) => {
         const btn = document.getElementById(btnId);
@@ -4750,10 +4811,6 @@ function initUsers() {
     };
     toggle('invite-toggle', 'invite-form');
     toggle('create-toggle', 'create-form');
-    toggle('user-delete-toggle', 'user-delete-confirm');
-
-    // The reveal panel's Copy buttons carry data-copy="<value>" and are handled by
-    // the global delegated copy listener, so multiple secrets copy independently.
 }
 initUsers();
 

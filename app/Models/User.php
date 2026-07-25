@@ -138,6 +138,12 @@ class User extends Authenticatable
         return $this->hasMany(CreditTransaction::class);
     }
 
+    /** Non-money account events (role/status changes, creation, resets). */
+    public function events(): HasMany
+    {
+        return $this->hasMany(UserEvent::class);
+    }
+
     /** True when this account has a metered credit balance (NULL = unlimited). */
     public function hasLimitedCredit(): bool
     {

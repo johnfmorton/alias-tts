@@ -2000,7 +2000,7 @@ class StudioProjectTest extends TestCase
         // system, the project-jobs table, the generation-timings table, the
         // voice-clip status column, the take-voice column, and the project-jobs
         // result columns).
-        Artisan::call('migrate:rollback', ['--step' => 32]);
+        Artisan::call('migrate:rollback', ['--step' => 33]);
         Artisan::call('migrate', ['--force' => true]);
 
         $takes = $chunk->refresh()->takes()->get();

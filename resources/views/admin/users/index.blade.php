@@ -30,22 +30,7 @@
         </div>
     </div>
 
-    {{-- One-time secrets (set-password link / temp password) surfaced after create/invite/reset --}}
-    @if(session('reveals'))
-        <div class="mb-6 space-y-4 rounded-[12px] border border-accent/30 bg-accent/[0.06] p-4">
-            @foreach(session('reveals') as $reveal)
-                <div>
-                    <div class="mb-2 text-[13px] text-zinc-400">{{ $reveal['label'] }}</div>
-                    <div class="flex items-center gap-2">
-                        <input type="text" readonly value="{{ $reveal['value'] }}" onfocus="this.select()"
-                               class="w-full rounded-[8px] border border-edge bg-inset px-3 py-2 font-mono text-[13px] text-zinc-200 focus:outline-none">
-                        <button type="button" data-copy="{{ $reveal['value'] }}" class="{{ $btnSecondary }} shrink-0">Copy</button>
-                    </div>
-                </div>
-            @endforeach
-            <div class="text-xs text-zinc-500">Shown once — copy what you need now.</div>
-        </div>
-    @endif
+    @include('admin.users._reveals')
 
     {{-- Invite form (revealed) --}}
     <div id="invite-form" class="mb-6 hidden rounded-[14px] border border-white/8 bg-panel p-5">
@@ -97,9 +82,8 @@
         </div>
 
         @foreach($users as $u)
-            @php $isSel = $selected && $selected->is($u); @endphp
-            <a href="{{ route('admin.users.index', ['user' => $u->id]) }}"
-               class="grid {{ $cols }} items-center border-b border-white/[0.06] px-[22px] py-[15px] transition last:border-b-0 hover:bg-white/[0.02] {{ $isSel ? 'border-l-2 border-l-accent bg-accent/[0.06] pl-5' : '' }}">
+            <a href="{{ route('admin.users.show', $u) }}"
+               class="grid {{ $cols }} items-center border-b border-white/[0.06] px-[22px] py-[15px] transition last:border-b-0 hover:bg-white/[0.02]">
                 <div class="flex items-center gap-[11px]">
                     <x-avatar :user="$u" :size="30" :accent="$u->isSuperAdmin()" />
                     <span class="truncate text-sm text-zinc-100">{{ $u->name }}</span>
@@ -128,15 +112,4 @@
         @endforeach
     </div>
 
-    {{-- Detail drawer (server-rendered when ?user= is present) --}}
-    @if($selected)
-        @include('admin.users._drawer', [
-            'u' => $selected,
-            'gens' => $gens[$selected->id] ?? 0,
-            'keys' => $keyCounts[$selected->id] ?? 0,
-            'isSelf' => $selected->is(auth()->user()),
-            'creditTotals' => $creditTotals,
-            'creditRecent' => $creditRecent,
-        ])
-    @endif
 </x-layout>

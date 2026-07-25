@@ -4,6 +4,7 @@ namespace Tests\Feature;
 
 use App\Http\Controllers\InvitationController;
 use App\Models\User;
+use App\Models\UserEvent;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\URL;
@@ -67,13 +68,21 @@ class UsersTest extends TestCase
 
     public function test_role_can_be_promoted(): void
     {
+        $admin = $this->superAdmin();
         $target = User::factory()->create(['is_super_admin' => false]);
 
-        $this->actingAs($this->superAdmin())
+        $this->actingAs($admin)
             ->patch(route('admin.users.role', $target), ['role' => 'SuperAdmin'])
-            ->assertRedirect(route('admin.users.index', ['user' => $target->id]));
+            ->assertRedirect(route('admin.users.show', $target));
 
         $this->assertTrue($target->fresh()->isSuperAdmin());
+
+        // The change is audited for the timeline, with the acting admin.
+        $this->assertDatabaseHas('user_events', [
+            'user_id' => $target->id,
+            'kind' => UserEvent::KIND_ROLE_CHANGE,
+            'actor_id' => $admin->id,
+        ]);
     }
 
     public function test_the_last_superadmin_cannot_be_demoted(): void
@@ -110,9 +119,89 @@ class UsersTest extends TestCase
         $this->actingAs($admin)->post(route('admin.users.suspend', $target));
         $this->assertSame('active', $target->fresh()->status);
 
+        // Both flips were audited with their direction.
+        $events = UserEvent::where('user_id', $target->id)
+            ->where('kind', UserEvent::KIND_STATUS_CHANGE)
+            ->orderBy('id')->get();
+        $this->assertSame(['Inactive', 'Active'], $events->pluck('meta.to')->all());
+        $this->assertSame([$admin->id, $admin->id], $events->pluck('actor_id')->all());
+
         // Can't suspend yourself.
         $this->actingAs($admin)->post(route('admin.users.suspend', $admin))->assertSessionHas('error');
         $this->assertSame('active', $admin->fresh()->status);
+    }
+
+    public function test_the_detail_page_shows_the_account_statement(): void
+    {
+        $admin = $this->superAdmin();
+        $target = User::factory()->create(['name' => 'Amara Okafor', 'status' => 'active']);
+
+        $this->actingAs($admin)
+            ->get(route('admin.users.show', $target))
+            ->assertOk()
+            ->assertSee('Amara Okafor')
+            ->assertSee($target->email)
+            // Filter chips + the three rail cards.
+            ->assertSee('Account events')
+            ->assertSee('Grant credit')
+            ->assertSee('Danger zone')
+            // No audit rows yet — the origin line is derived from created_at.
+            ->assertSee('Account created');
+    }
+
+    public function test_the_detail_page_is_superadmin_only(): void
+    {
+        $target = User::factory()->create();
+
+        $this->actingAs(User::factory()->create(['is_super_admin' => false]))
+            ->get(route('admin.users.show', $target))
+            ->assertForbidden();
+    }
+
+    public function test_old_drawer_links_redirect_to_the_detail_page(): void
+    {
+        $target = User::factory()->create();
+
+        $this->actingAs($this->superAdmin())
+            ->get(route('admin.users.index', ['user' => $target->id]))
+            ->assertRedirect(route('admin.users.show', $target));
+    }
+
+    public function test_role_and_status_changes_land_on_the_timeline(): void
+    {
+        $admin = $this->superAdmin();
+        $target = User::factory()->create(['is_super_admin' => false, 'status' => 'active']);
+
+        $this->actingAs($admin)->patch(route('admin.users.role', $target), ['role' => 'SuperAdmin']);
+        $this->actingAs($admin)->post(route('admin.users.suspend', $target));
+
+        $this->actingAs($admin)
+            ->get(route('admin.users.show', $target))
+            ->assertOk()
+            ->assertSee('Role changed to SuperAdmin')
+            ->assertSee('Account deactivated')
+            ->assertSee('by '.$admin->name);
+    }
+
+    public function test_the_timeline_filter_chips_narrow_the_lanes(): void
+    {
+        $admin = $this->superAdmin();
+        $target = User::factory()->create(['is_super_admin' => false]);
+
+        $this->actingAs($admin)->post(route('admin.users.credit', $target), ['amount' => '5', 'note' => 'hackathon']);
+        $this->actingAs($admin)->patch(route('admin.users.role', $target), ['role' => 'SuperAdmin']);
+
+        $this->actingAs($admin)
+            ->get(route('admin.users.show', ['user' => $target, 'filter' => 'grants']))
+            ->assertOk()
+            ->assertSee('Credit granted')
+            ->assertDontSee('Role changed to SuperAdmin');
+
+        $this->actingAs($admin)
+            ->get(route('admin.users.show', ['user' => $target, 'filter' => 'account']))
+            ->assertOk()
+            ->assertSee('Role changed to SuperAdmin')
+            ->assertDontSee('Credit granted');
     }
 
     public function test_force_reset_invalidates_the_password_and_reveals_a_link(): void

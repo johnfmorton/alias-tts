@@ -10,6 +10,15 @@
     <div class="w-full max-w-md rounded-xl border border-zinc-700 bg-zinc-900 p-6 shadow-[0_24px_48px_-12px_rgba(0,0,0,0.8)]">
         <h2 id="confirm-dialog-title" class="text-base font-semibold text-zinc-100"></h2>
         <p id="confirm-dialog-message" class="mt-2 text-sm leading-relaxed text-zinc-300"></p>
+        {{-- Optional from → to state-change row (role/status switches on the
+             user detail page). Shown only when the call passes from/to; the
+             "to" pill is tinted per tone in JS. --}}
+        <div id="confirm-dialog-meta" class="mt-4 hidden items-center gap-2.5 rounded-[10px] border border-white/8 bg-inset px-3.5 py-3">
+            <span id="confirm-dialog-from" class="rounded-xl border border-white/16 px-2.5 py-[3px] text-xs font-semibold text-zinc-300"></span>
+            <span class="text-[13px] text-zinc-500">→</span>
+            <span id="confirm-dialog-to"></span>
+            <span class="ml-auto text-xs text-zinc-500">logged to the timeline</span>
+        </div>
         <div class="mt-5 flex flex-wrap items-center justify-end gap-2.5">
             <button type="button" id="confirm-dialog-cancel"
                     class="rounded-lg border border-zinc-700 px-3.5 py-2 text-sm text-zinc-300 hover:bg-zinc-800">Cancel</button>

@@ -4,10 +4,10 @@ namespace App\Http\Controllers\Admin;
 
 use App\Http\Controllers\Controller;
 use App\Http\Controllers\InvitationController;
-use App\Models\ApiKey;
 use App\Models\CreditTransaction;
 use App\Models\Speech;
 use App\Models\User;
+use App\Models\UserEvent;
 use App\Services\Credit\CreditService;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -19,17 +19,31 @@ use Illuminate\Validation\Rule;
 use Illuminate\View\View;
 
 /**
- * SuperAdmin-only user management (design 2B). Everything here is gated by
- * EnsureUserIsSuperAdmin at the route level. The screen is a table + a detail
- * drawer; the drawer is server-rendered when `?user=` is present so its actions
- * are plain, robust form POSTs that reopen the drawer on the acted user.
+ * SuperAdmin-only user management. Everything here is gated by
+ * EnsureUserIsSuperAdmin at the route level. The screen is a table; each row
+ * opens a full detail page (design "Ledger-first" 2A) — one filterable
+ * timeline of grants, usage, and account events, with the controls in a
+ * right rail. Actions are plain form POSTs that land back on the detail page.
  */
 class UserController extends Controller
 {
+    /** Timeline page size; "View older" grows the window by this much. */
+    private const TIMELINE_PAGE = 30;
+
     public function __construct(private readonly CreditService $credit) {}
 
-    public function index(Request $request): View
+    public function index(Request $request): View|RedirectResponse
     {
+        // The detail used to be a drawer opened with `?user=`; keep old links
+        // (bookmarks, flashed redirects) working by forwarding to the page.
+        if ($request->filled('user')) {
+            $user = User::find($request->integer('user'));
+
+            if ($user) {
+                return redirect()->route('admin.users.show', $user);
+            }
+        }
+
         $users = User::query()
             ->orderByDesc('is_super_admin')
             ->orderBy('name')
@@ -43,12 +57,6 @@ class UserController extends Controller
             ->selectRaw('api_keys.user_id as uid, count(*) as c')
             ->pluck('c', 'uid');
 
-        $keyCounts = ApiKey::query()
-            ->whereNotNull('user_id')
-            ->groupBy('user_id')
-            ->selectRaw('user_id as uid, count(*) as c')
-            ->pluck('c', 'uid');
-
         // Lifetime spend per user in ONE grouped query (the list version of
         // chargedTotals): `billed` = marked-up micro the user was charged,
         // `actual` = the provider cost to the owner. Keyed by user id.
@@ -60,26 +68,175 @@ class UserController extends Controller
             ->get()
             ->keyBy('uid');
 
-        $selected = $request->filled('user')
-            ? $users->firstWhere('id', $request->integer('user'))
-            : null;
-
         return view('admin.users.index', [
             'users' => $users,
             'gens' => $gens,
-            'keyCounts' => $keyCounts,
             'spend' => $spend,
-            'selected' => $selected,
             'activeCount' => $users->where('status', User::STATUS_ACTIVE)->count(),
             'invitedCount' => $users->where('status', User::STATUS_INVITED)->count(),
-            // Drawer-only credit detail: lifetime charged-vs-actual sums and
-            // the last few ledger rows (this page is SuperAdmin-gated, so the
-            // actual provider cost is fine to show).
-            'creditTotals' => $selected ? $this->credit->chargedTotals($selected) : null,
-            'creditRecent' => $selected
-                ? CreditTransaction::where('user_id', $selected->id)->latest('id')->limit(10)->get()
-                : collect(),
         ]);
+    }
+
+    /**
+     * The user detail page — an account statement (design 2A): every grant,
+     * charge, and account event interleaved into one filterable timeline,
+     * with the three controls (credit / account / danger) in a right rail.
+     */
+    public function show(Request $request, User $user): View
+    {
+        $filter = $request->query('filter');
+        $filter = in_array($filter, ['grants', 'usage', 'account'], true) ? $filter : 'all';
+
+        $limit = max(self::TIMELINE_PAGE, min(1000, $request->integer('limit') ?: self::TIMELINE_PAGE));
+
+        [$events, $total] = $this->timeline($user, $filter, $limit);
+
+        return view('admin.users.show', [
+            'u' => $user,
+            'events' => $events,
+            'filter' => $filter,
+            'limit' => $limit,
+            'total' => $total,
+            'creditTotals' => $this->credit->chargedTotals($user),
+            'isSelf' => $user->is($request->user()),
+            // Guards the rail renders as explanatory disabled states.
+            'lastSuperAdmin' => $user->isSuperAdmin() && $this->superAdminCount() <= 1,
+            'lastActiveSuperAdmin' => $user->isSuperAdmin()
+                && $user->status === User::STATUS_ACTIVE
+                && $this->activeSuperAdminCount() <= 1,
+        ]);
+    }
+
+    /**
+     * Merge the credit ledger and account events into one newest-first list.
+     * Each entry is a display-ready array: kind (grant|usage|account), title,
+     * detail, amount_micro (null for non-money rows), and the timestamp.
+     *
+     * @return array{0: \Illuminate\Support\Collection, 1: int}
+     */
+    private function timeline(User $user, string $filter, int $limit): array
+    {
+        $money = collect();
+        $account = collect();
+
+        if ($filter !== 'account') {
+            $types = match ($filter) {
+                'grants' => [CreditTransaction::TYPE_GRANT, CreditTransaction::TYPE_ADJUSTMENT],
+                'usage' => [CreditTransaction::TYPE_CHARGE],
+                default => null,
+            };
+
+            $money = CreditTransaction::query()
+                ->where('user_id', $user->id)
+                ->when($types, fn ($q) => $q->whereIn('type', $types))
+                ->with('creator:id,name')
+                ->latest('id')
+                ->limit($limit + 1)
+                ->get()
+                ->map(fn (CreditTransaction $tx) => $this->moneyEvent($tx));
+        }
+
+        if ($filter === 'all' || $filter === 'account') {
+            $account = $user->events()
+                ->with('actor:id,name')
+                ->latest('id')
+                ->limit($limit + 1)
+                ->get()
+                ->map(fn (UserEvent $event) => $this->accountEvent($event));
+
+            // Users predating the audit table have no 'created' row — derive
+            // one from the account itself so every statement has a first line.
+            $hasOrigin = $user->events()
+                ->whereIn('kind', [UserEvent::KIND_CREATED, UserEvent::KIND_INVITED])
+                ->exists();
+
+            if (! $hasOrigin) {
+                $account->push([
+                    'kind' => 'account',
+                    'title' => 'Account created',
+                    'detail' => null,
+                    'amount_micro' => null,
+                    'at' => $user->created_at,
+                ]);
+            }
+        }
+
+        $merged = $money->concat($account)->sortByDesc('at')->values();
+
+        return [$merged->take($limit), $merged->count()];
+    }
+
+    /** @return array{kind: string, title: string, detail: ?string, amount_micro: ?int, at: \Carbon\CarbonInterface} */
+    private function moneyEvent(CreditTransaction $tx): array
+    {
+        $by = $tx->creator ? 'by '.$tx->creator->name : null;
+
+        if ($tx->type === CreditTransaction::TYPE_CHARGE) {
+            $detail = collect([
+                $tx->characters ? number_format($tx->characters).' chars' : null,
+                $tx->model,
+            ])->filter()->implode(' · ');
+
+            return [
+                'kind' => 'usage',
+                'title' => $tx->source,
+                'detail' => $detail ?: null,
+                'amount_micro' => $tx->amount_micro,
+                'at' => $tx->created_at,
+            ];
+        }
+
+        // Grants and adjustments. The zero-amount adjustment is the ledger's
+        // "cleared back to unlimited" marker — money-adjacent, so it stays in
+        // the Grants lane but reads as an act, not an amount.
+        if ($tx->type === CreditTransaction::TYPE_ADJUSTMENT && $tx->amount_micro === 0) {
+            return [
+                'kind' => 'grant',
+                'title' => 'Made unlimited',
+                'detail' => $by,
+                'amount_micro' => null,
+                'at' => $tx->created_at,
+            ];
+        }
+
+        $detail = collect([
+            $tx->note ? '"'.$tx->note.'"' : null,
+            $by,
+        ])->filter()->implode(' · ');
+
+        return [
+            'kind' => 'grant',
+            'title' => $tx->amount_micro < 0 ? 'Credit adjusted' : 'Credit granted',
+            'detail' => $detail ?: null,
+            'amount_micro' => $tx->amount_micro,
+            'at' => $tx->created_at,
+        ];
+    }
+
+    /** @return array{kind: string, title: string, detail: ?string, amount_micro: null, at: \Carbon\CarbonInterface} */
+    private function accountEvent(UserEvent $event): array
+    {
+        $meta = $event->meta ?? [];
+
+        [$title, $kind] = match ($event->kind) {
+            UserEvent::KIND_ROLE_CHANGE => ['Role changed to '.($meta['to'] ?? '?'), 'change'],
+            UserEvent::KIND_STATUS_CHANGE => [($meta['to'] ?? '') === 'Inactive' ? 'Account deactivated' : 'Account reactivated', 'change'],
+            UserEvent::KIND_PASSWORD_RESET => ['Password reset forced', 'account'],
+            UserEvent::KIND_INVITED => ['Account created', 'account'],
+            default => ['Account created', 'account'],
+        };
+
+        $detail = $event->kind === UserEvent::KIND_INVITED
+            ? ($event->actor ? 'invited by '.$event->actor->name : 'invited')
+            : ($event->actor ? 'by '.$event->actor->name : null);
+
+        return [
+            'kind' => $kind,
+            'title' => $title,
+            'detail' => $detail,
+            'amount_micro' => null,
+            'at' => $event->created_at,
+        ];
     }
 
     /**
@@ -143,6 +300,8 @@ class UserController extends Controller
             'status' => User::STATUS_ACTIVE,
         ]);
 
+        UserEvent::record($user, UserEvent::KIND_CREATED, $request->user());
+
         // Two ways in: the friend can click the set-password link and choose their
         // own password, or sign in with the temporary password as a fallback.
         return redirect()->route('admin.users.index')
@@ -169,6 +328,8 @@ class UserController extends Controller
             'status' => User::STATUS_INVITED,
         ]);
 
+        UserEvent::record($user, UserEvent::KIND_INVITED, $request->user());
+
         return redirect()->route('admin.users.index')
             ->with('success', "Invited {$data['email']}. Send them this link to set a password.")
             ->with('reveals', [
@@ -189,7 +350,17 @@ class UserController extends Controller
             return $this->backToUser($user, error: 'At least one SuperAdmin must remain.');
         }
 
+        if ($makeSuper === $user->isSuperAdmin()) {
+            return $this->backToUser($user, success: $user->name.' is already a '.$user->roleLabel().'.');
+        }
+
+        $from = $user->roleLabel();
         $user->update(['is_super_admin' => $makeSuper]);
+
+        UserEvent::record($user, UserEvent::KIND_ROLE_CHANGE, $request->user(), [
+            'from' => $from,
+            'to' => $user->roleLabel(),
+        ]);
 
         return $this->backToUser($user, success: $user->name.' is now a '.($makeSuper ? 'SuperAdmin' : 'User').'.');
     }
@@ -204,12 +375,21 @@ class UserController extends Controller
             return $this->backToUser($user, error: 'At least one active SuperAdmin must remain.');
         }
 
+        $wasSuspended = $user->isSuspended();
+
         $user->update([
-            'status' => $user->isSuspended() ? User::STATUS_ACTIVE : User::STATUS_SUSPENDED,
+            'status' => $wasSuspended ? User::STATUS_ACTIVE : User::STATUS_SUSPENDED,
+        ]);
+
+        // The UI vocabulary is Active/Inactive (design 2A); 'suspended' stays
+        // the stored value so existing rows and checks keep working.
+        UserEvent::record($user, UserEvent::KIND_STATUS_CHANGE, $request->user(), [
+            'from' => $wasSuspended ? 'Inactive' : 'Active',
+            'to' => $wasSuspended ? 'Active' : 'Inactive',
         ]);
 
         return $this->backToUser($user, success: $user->isSuspended()
-            ? $user->name.' has been suspended.'
+            ? $user->name.' has been deactivated.'
             : $user->name.' has been reactivated.');
     }
 
@@ -220,6 +400,8 @@ class UserController extends Controller
             'password' => Str::random(40),
             'status' => $user->isSuspended() ? User::STATUS_SUSPENDED : User::STATUS_ACTIVE,
         ]);
+
+        UserEvent::record($user, UserEvent::KIND_PASSWORD_RESET, $request->user());
 
         return $this->backToUser(
             $user,
@@ -303,10 +485,10 @@ class UserController extends Controller
         return User::where('is_super_admin', true)->where('status', User::STATUS_ACTIVE)->count();
     }
 
-    /** Redirect back to the index with the drawer reopened on this user. */
+    /** Redirect back to this user's detail page with the outcome flashed. */
     private function backToUser(User $user, ?string $success = null, ?string $error = null): RedirectResponse
     {
-        $redirect = redirect()->route('admin.users.index', ['user' => $user->id]);
+        $redirect = redirect()->route('admin.users.show', $user);
 
         return $success ? $redirect->with('success', $success) : $redirect->with('error', $error);
     }
