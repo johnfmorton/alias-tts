@@ -372,6 +372,7 @@ class VoiceController extends Controller
                 // stale cached preview (e.g. one captured while the voice briefly
                 // had a different reference) would play back indefinitely.
                 forceRefresh: true,
+                studioProject: false, // a preview is play-once, not a project
             );
         } catch (Throwable $e) {
             report($e);

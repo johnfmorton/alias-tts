@@ -130,6 +130,57 @@ class ApiProjectRecoveryTest extends TestCase
         );
     }
 
+    public function test_internal_previews_create_no_project_even_in_always_mode(): void
+    {
+        config(['tts.api_project_mode' => 'always']);
+
+        app(SpeechService::class)->synthesize(
+            apiKey: ApiKey::generate('test', 100),
+            voice: $this->voice(),
+            text: 'This is a preview of the V voice on my self hosted text to speech service.',
+            settings: [],
+            modelId: config('tts.default_model_id'),
+            outputFormat: config('tts.default_output_format'),
+            studioProject: false,
+        );
+
+        $this->assertSame(0, TtsProject::count(), 'a preview/test render must not hand off to Studio');
+    }
+
+    public function test_a_failed_internal_preview_creates_no_recovery_project(): void
+    {
+        config(['tts.api_project_mode' => 'on_error']);
+        $this->failTheProvider();
+
+        try {
+            app(SpeechService::class)->synthesize(
+                apiKey: ApiKey::generate('test', 100),
+                voice: $this->voice(),
+                text: 'This preview will fail.',
+                settings: [],
+                modelId: config('tts.default_model_id'),
+                outputFormat: config('tts.default_output_format'),
+                studioProject: false,
+            );
+            $this->fail('generation should have thrown');
+        } catch (RuntimeException) {
+        }
+
+        $this->assertSame(0, TtsProject::count(), 'a failed preview surfaces its error inline, not as a recovery project');
+    }
+
+    public function test_the_voice_preview_endpoint_creates_no_project_in_always_mode(): void
+    {
+        config(['tts.api_project_mode' => 'always']);
+        $voice = $this->voice();
+
+        $this->actingAs($this->admin())
+            ->post(route('admin.voices.test', $voice))
+            ->assertOk();
+
+        $this->assertSame(0, TtsProject::count(), 'the voices page Preview button must not mint Studio projects');
+    }
+
     public function test_a_job_retry_does_not_duplicate_the_recovery_project(): void
     {
         config(['tts.api_project_mode' => 'on_error']);

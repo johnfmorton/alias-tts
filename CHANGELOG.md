@@ -21,6 +21,14 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   labeling the text. The recording tips warn in both directions now: a flat
   read clones into a flat voice, but over-acting hurts too.
 
+### Fixed
+- **Previews no longer pile up in Studio.** The voices page Preview button, the
+  pronunciation test, and the health page's provider tests share the API's
+  render pipeline — so with the API → Studio project setting on "always", every
+  play-once preview minted a Studio project. Internal preview and test renders
+  now skip the Studio hand-off entirely (including the recovery project a
+  failed render would create); real API calls keep honoring the setting.
+
 ## [0.89.0] - 2026-07-25
 
 ### Added

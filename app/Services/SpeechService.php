@@ -42,6 +42,10 @@ class SpeechService
      * Synthesize (or return a cached) Speech for the given voice + text + settings.
      * Generation is synchronous so the endpoint can return audio bytes directly,
      * matching the ElevenLabs request/response contract.
+     *
+     * $studioProject false marks an internal preview/test call (voice preview,
+     * pronunciation test, health test): play-once audio that must never hand
+     * off to Studio, regardless of tts.api_project_mode.
      */
     public function synthesize(
         ApiKey $apiKey,
@@ -53,6 +57,7 @@ class SpeechService
         ?int $seed = null,
         bool $forceRefresh = false,
         ?string $engine = null,
+        bool $studioProject = true,
     ): Speech {
         // Stamp the effective engine (voice's model, or a per-request override
         // from the OpenAI dialect) BEFORE hashing/persisting so the cache key
@@ -73,7 +78,7 @@ class SpeechService
         $speech = $this->createRecord($apiKey, $voice, $text, $settings, $modelId, $outputFormat, $cacheHash);
 
         try {
-            $this->process($speech, $seed);
+            $this->process($speech, $seed, $studioProject);
         } catch (Throwable $e) {
             // process() already marked the record Failed and (per api_project_mode)
             // may have created a linked recovery project; carry it so the controller
@@ -99,6 +104,7 @@ class SpeechService
         ?int $seed = null,
         bool $forceRefresh = false,
         ?string $engine = null,
+        bool $studioProject = true,
     ): Speech {
         // Same engine stamp as synthesize() — see there.
         $settings = ModelCatalog::stamp($settings, $voice, $engine);
@@ -118,7 +124,7 @@ class SpeechService
 
         $speech = $this->createRecord($apiKey, $voice, $text, $settings, $modelId, $outputFormat, $cacheHash);
 
-        GenerateSpeechJob::dispatch($speech->id, $seed);
+        GenerateSpeechJob::dispatch($speech->id, $seed, $studioProject);
 
         return $speech;
     }
@@ -128,7 +134,7 @@ class SpeechService
      * part, concatenate, store, and mark the record Completed (or Failed). Shared
      * by the synchronous path and the queued job.
      */
-    public function process(Speech $speech, ?int $seed = null): Speech
+    public function process(Speech $speech, ?int $seed = null, bool $studioProject = true): Speech
     {
         $failingIndex = null;
 
@@ -244,12 +250,14 @@ class SpeechService
 
             $this->progress->clear($speech->id);
 
-            $this->maybeCreateApiProject(
-                $speech,
-                $seed,
-                failed: false,
-                generatedSegments: $this->generatedSegments($segments, $rawParts),
-            );
+            if ($studioProject) {
+                $this->maybeCreateApiProject(
+                    $speech,
+                    $seed,
+                    failed: false,
+                    generatedSegments: $this->generatedSegments($segments, $rawParts),
+                );
+            }
         } catch (Throwable $e) {
             $speech->update([
                 'status' => SpeechStatus::Failed,
@@ -258,7 +266,11 @@ class SpeechService
 
             $this->progress->clear($speech->id);
 
-            $this->maybeCreateApiProject($speech, $seed, failed: true, failureReason: $e->getMessage(), failedChunkIndex: $failingIndex);
+            // A failed preview surfaces its error inline on the page it came
+            // from — a recovery project for a throwaway sentence is noise.
+            if ($studioProject) {
+                $this->maybeCreateApiProject($speech, $seed, failed: true, failureReason: $e->getMessage(), failedChunkIndex: $failingIndex);
+            }
 
             throw $e;
         }

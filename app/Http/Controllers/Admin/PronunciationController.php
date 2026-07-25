@@ -155,6 +155,7 @@ class PronunciationController extends Controller
                 settings: config('tts.default_voice_settings'),
                 modelId: config('tts.default_model_id'),
                 outputFormat: config('tts.default_output_format'),
+                studioProject: false, // a respelling test is play-once, not a project
             );
         } catch (Throwable $e) {
             report($e);

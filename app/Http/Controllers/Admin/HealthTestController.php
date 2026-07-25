@@ -56,6 +56,7 @@ class HealthTestController extends Controller
                 outputFormat: config('tts.default_output_format'),
                 seed: null,
                 forceRefresh: true, // always exercise the provider, never the cache
+                studioProject: false, // a health check is play-once, not a project
             );
         } catch (Throwable $e) {
             report($e);
@@ -96,6 +97,7 @@ class HealthTestController extends Controller
                 outputFormat: config('tts.default_output_format'),
                 seed: null,
                 forceRefresh: true,
+                studioProject: false, // a health check is play-once, not a project
             );
         } catch (Throwable $e) {
             report($e);

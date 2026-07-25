@@ -35,6 +35,7 @@ class GenerateSpeechJob implements ShouldQueue
     public function __construct(
         public string $speechId,
         public ?int $seed = null,
+        public bool $studioProject = true,
     ) {
         // Captured at dispatch time and serialized with the job.
         $this->timeout = (int) config('tts.async_timeout', 1800);
@@ -66,7 +67,7 @@ class GenerateSpeechJob implements ShouldQueue
         // null (keyless record) resets this worker to the .env/config defaults.
         app(SettingsManager::class)->applyForUser($speech->apiKey?->user_id);
 
-        $service->process($speech, $this->seed);
+        $service->process($speech, $this->seed, $this->studioProject);
     }
 
     /**
