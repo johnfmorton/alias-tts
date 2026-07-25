@@ -4,6 +4,27 @@ All notable changes to this project are documented in this file. The format is
 based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this
 project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+- **A staged clip can be taken back.** Recording or picking a clip was a
+  one-way door unless cleanup happened to be on: the A/B chooser's "Start over"
+  was the only undo, and a file picked with cleanup switched off never reaches
+  that chooser — leaving no way to un-pick it short of reloading the page. Both
+  voice pages now show the staged clip with a button to drop it: **Remove clip**
+  on Add a voice, where it is the voice's only source, and **Discard
+  replacement** on Edit voice, where the stored clip stays put. It appears only
+  when the A/B chooser isn't already offering its own undo, so there is never
+  more than one way to take the same thing back.
+
+### Fixed
+- **A clip landing no longer goes unannounced.** The staged-clip token was set
+  without telling the rest of the page, so the save bar could still read "no
+  unsaved changes" moments after a recording was prepared.
+- **Checkbox changes name themselves in the save bar.** A change list reading
+  "sample.wav / off" left you guessing what was off; it now reads "sample.wav /
+  cleanup off".
+
 ## [0.88.1] - 2026-07-24
 
 ### Fixed

@@ -4887,8 +4887,13 @@ function initVoiceRecorder() {
         previewBtn.classList.toggle('hidden', !show);
     }
 
+    // The token is the staged-clip state; anything watching the form (the save
+    // bar, the staged-clip row) learns about it only if the change is announced.
+    const announceToken = () => tokenInput.dispatchEvent(new Event('change', { bubbles: true }));
+
     function clearPreview() {
         tokenInput.value = '';
+        announceToken();
         choices.forEach((r) => { r.checked = false; });
         abPanel.classList.add('hidden');
         panel.classList.remove('hidden');
@@ -4960,6 +4965,7 @@ function initVoiceRecorder() {
 
     function renderAB(data) {
         tokenInput.value = data.token || '';
+        announceToken();
 
         const hasEnhanced = !!data.enhanced;
         rowOf('enhanced').classList.toggle('hidden', !hasEnhanced);
@@ -4982,6 +4988,7 @@ function initVoiceRecorder() {
         previewBtn.classList.add('hidden');
         if (rerecordBtn) rerecordBtn.classList.toggle('hidden', !recordedBlob); // mic takes can be rejected in place
         if (fileInput) fileInput.disabled = true; // the token supersedes a raw upload
+        announceToken(); // the panel swap changes which undo affordance applies
     }
 
     // Hook the mic recorder uses to route a recording through the same preview path.
@@ -5448,9 +5455,14 @@ function initVoiceFlow() {
         return groups;
     };
     const describe = (el) => {
+        // A bare "on"/"off" says nothing once a group holds more than one
+        // control ("sample.wav / off" — off what?), so a checkbox names itself.
+        if (el.type === 'checkbox') {
+            const state = el.checked ? 'on' : 'off';
+            return el.dataset.dirtyValue ? `${el.dataset.dirtyValue} ${state}` : state;
+        }
         if (el.dataset.dirtyValue) return el.dataset.dirtyValue;
         if (el.type === 'file') return el.files?.[0]?.name ?? '';
-        if (el.type === 'checkbox') return el.checked ? 'on' : 'off';
         // An empty select is a clearing, not a choice — its placeholder option
         // ("— none, use the reference clip —") reads as noise in the change list.
         if (el.tagName === 'SELECT') return el.value === '' ? 'cleared' : (el.selectedOptions[0]?.textContent.trim() ?? el.value);
@@ -5572,6 +5584,45 @@ function initVoiceFlow() {
                     : `${engineLabel()} will speak through its built-in ${preset} voice, so there's no clip to record or upload. Choose “none” above to clone from a clip instead.`);
         }
     }
+
+    // ── discarding a STAGED clip ────────────────────────────────────────────
+    // Distinct from removing a stored one: this drops the clip you just recorded
+    // or picked, before it has ever been saved. On Add it clears the voice's only
+    // source; on Edit it abandons a replacement and leaves the stored clip alone.
+    const stagedRow = form.querySelector('[data-staged-clip]');
+    const stagedText = form.querySelector('[data-staged-clip-text]');
+    const clearStagedBtn = form.querySelector('[data-clear-staged-clip]');
+    const abPanel = form.querySelector('[data-clip-ab]');
+    const isReplace = clipSection?.dataset.clipReplace === '1';
+
+    const stagedName = () => fileInput?.files?.[0]?.name || 'Your recording';
+
+    function refreshStagedClip() {
+        if (!stagedRow) return;
+        // The A/B chooser carries its own "Start over" — two ways to undo the
+        // same thing, side by side, is worse than one.
+        const chooserUp = !!abPanel && !abPanel.classList.contains('hidden');
+        const show = clipStaged() && !chooserUp;
+        stagedRow.classList.toggle('hidden', !show);
+        stagedRow.classList.toggle('flex', show);
+        if (!show) return;
+        stagedText.textContent = isReplace
+            ? `${stagedName()} — replaces the current clip when you save.`
+            : `${stagedName()} — this is the voice's source.`;
+        clearStagedBtn.textContent = isReplace ? 'Discard replacement' : 'Remove clip';
+    }
+
+    clearStagedBtn?.addEventListener('click', async () => {
+        if (!(await confirmDialog({
+            title: isReplace ? 'Discard this replacement?' : 'Remove this clip?',
+            message: isReplace
+                ? 'The clip you just added is dropped and this voice keeps the reference clip it already has.'
+                : `${stagedName()} is dropped and this voice goes back to having no source. Nothing has been saved yet, so there is nothing to undo it from.`,
+            label: isReplace ? 'Discard it' : 'Remove clip',
+        }))) return;
+        clearStagedClip();
+        refresh();
+    });
 
     // ── removing the stored clip ────────────────────────────────────────────
     // A stored clip wins over a built-in at render time, so removing it is what
@@ -5754,6 +5805,7 @@ function initVoiceFlow() {
         refreshDelivery();
         refreshRemoval();
         refreshSourceChoice();
+        refreshStagedClip();
         refreshSaveBar(groups);
         refreshCreate();
     }

@@ -280,6 +280,26 @@ class VoiceFlowTest extends TestCase
         $this->assertLessThan($disclosureAt, $noteAt, 'The built-in note must not nest inside the Replace disclosure.');
     }
 
+    public function test_a_staged_clip_can_be_discarded_on_both_pages(): void
+    {
+        // The A/B chooser's "Start over" only covers the cleanup path; a file
+        // picked with cleanup off never reaches it, leaving no way to un-pick.
+        $admin = $this->admin();
+
+        $this->actingAs($admin)->get(route('admin.voices.create'))
+            ->assertOk()
+            ->assertSee('data-staged-clip', false)
+            ->assertSee('data-clear-staged-clip', false)
+            // Add has no stored clip to replace, so the copy is the plain form.
+            ->assertSee('data-clip-replace=""', false);
+
+        $this->actingAs($admin)->get(route('admin.voices.edit', $this->voiceWithClip($admin)))
+            ->assertOk()
+            ->assertSee('data-clear-staged-clip', false)
+            // On Edit the same control abandons a REPLACEMENT, keeping the stored clip.
+            ->assertSee('data-clip-replace="1"', false);
+    }
+
     // ── removing the stored clip ────────────────────────────────────────────
 
     public function test_removing_the_clip_clears_the_row_and_deletes_the_bytes(): void

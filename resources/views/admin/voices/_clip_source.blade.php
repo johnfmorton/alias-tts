@@ -17,7 +17,7 @@
      `speaker` only when there is no reference audio). So initVoiceFlow() hides
      this whole section while a built-in is chosen — leaving it up would offer a
      control that silently overrides that choice. --}}
-<div data-clip-section>
+<div data-clip-section data-clip-replace="{{ $replace ? '1' : '' }}">
     @php($refMax = (float) config('tts.reference_max_seconds', 25))
     <div id="voice-clip-widget" data-prepare-url="{{ route('admin.voices.clips.store') }}"
          data-enhance-enabled="{{ $enhanceOn ? '1' : '' }}" data-normalize-enabled="{{ config('tts.normalize_reference') ? '1' : '' }}"
@@ -144,7 +144,7 @@
                 <label class="flex items-start gap-3 text-sm text-zinc-300">
                     {{-- On a validation-failure redisplay, default to unchecked so an
                          unchecked box (which posts nothing) isn't silently re-checked. --}}
-                    <input type="checkbox" name="enhance" value="1" data-clip-enhance data-dirty-group="reference clip"
+                    <input type="checkbox" name="enhance" value="1" data-clip-enhance data-dirty-group="reference clip" data-dirty-value="cleanup"
                            {{ old('enhance', $errors->any() ? 0 : config('tts.enhance.default_on')) ? 'checked' : '' }}
                            class="mt-0.5 rounded-[5px] border-white/25 bg-inset text-accent focus:ring-accent/30">
                     <span>Clean up the {{ $replace ? 'replacement ' : '' }}clip before saving <span class="text-zinc-500">(recommended)</span>
@@ -152,7 +152,7 @@
                     </span>
                 </label>
                 <label class="flex items-start gap-3 text-sm text-zinc-300">
-                    <input type="checkbox" name="raw" value="1" data-clip-raw data-dirty-group="reference clip" {{ old('raw') ? 'checked' : '' }} class="mt-0.5 rounded-[5px] border-edge bg-inset text-accent focus:ring-accent/30">
+                    <input type="checkbox" name="raw" value="1" data-clip-raw data-dirty-group="reference clip" data-dirty-value="store raw" {{ old('raw') ? 'checked' : '' }} class="mt-0.5 rounded-[5px] border-edge bg-inset text-accent focus:ring-accent/30">
                     <span>Store raw <span class="text-zinc-500">(skip auto-normalization){{ $replace ? ' — only applies when replacing the clip' : '' }}</span></span>
                 </label>
             </div>
@@ -169,9 +169,19 @@
                 <p class="mt-2 text-[12.5px] leading-relaxed text-zinc-500">{{ $fileHelp }}</p>
             </div>
             <label class="mt-4 flex items-start gap-3 px-1 text-sm text-zinc-300">
-                <input type="checkbox" name="raw" value="1" data-dirty-group="reference clip" {{ old('raw') ? 'checked' : '' }} class="mt-0.5 rounded-[5px] border-edge bg-inset text-accent focus:ring-accent/30">
+                <input type="checkbox" name="raw" value="1" data-dirty-group="reference clip" data-dirty-value="store raw" {{ old('raw') ? 'checked' : '' }} class="mt-0.5 rounded-[5px] border-edge bg-inset text-accent focus:ring-accent/30">
                 <span>Store raw <span class="text-zinc-500">(skip auto-normalization){{ $replace ? ' — only applies when replacing the clip' : '' }}</span></span>
             </label>
         @endif
+    </div>
+
+    {{-- A staged clip is a decision you can take back. The A/B chooser carries
+         its own "Start over", so this stands in for every other way a clip can
+         end up staged — chiefly a file picked with cleanup switched off, which
+         never reaches that chooser. Shown by initVoiceFlow(). --}}
+    <div data-staged-clip class="mt-4 hidden flex-wrap items-center gap-3 rounded-[12px] border border-ok/30 bg-inset px-[18px] py-3">
+        <p class="min-w-0 flex-1 truncate text-[13px] text-zinc-300" data-staged-clip-text></p>
+        <button type="button" data-clear-staged-clip
+                class="shrink-0 rounded-[8px] border border-edge px-3.5 py-[7px] text-[13px] text-zinc-300 transition hover:border-bad/50 hover:text-bad"></button>
     </div>
 </div>
