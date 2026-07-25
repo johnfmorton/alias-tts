@@ -9,8 +9,10 @@ use App\Models\Speech;
 use App\Models\User;
 use App\Models\UserEvent;
 use App\Services\Credit\CreditService;
+use Carbon\CarbonInterface;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\URL;
@@ -112,7 +114,7 @@ class UserController extends Controller
      * Each entry is a display-ready array: kind (grant|usage|account), title,
      * detail, amount_micro (null for non-money rows), and the timestamp.
      *
-     * @return array{0: \Illuminate\Support\Collection, 1: int}
+     * @return array{0: Collection, 1: int}
      */
     private function timeline(User $user, string $filter, int $limit): array
     {
@@ -166,7 +168,7 @@ class UserController extends Controller
         return [$merged->take($limit), $merged->count()];
     }
 
-    /** @return array{kind: string, title: string, detail: ?string, amount_micro: ?int, at: \Carbon\CarbonInterface} */
+    /** @return array{kind: string, title: string, detail: ?string, amount_micro: ?int, at: CarbonInterface} */
     private function moneyEvent(CreditTransaction $tx): array
     {
         $by = $tx->creator ? 'by '.$tx->creator->name : null;
@@ -213,7 +215,7 @@ class UserController extends Controller
         ];
     }
 
-    /** @return array{kind: string, title: string, detail: ?string, amount_micro: null, at: \Carbon\CarbonInterface} */
+    /** @return array{kind: string, title: string, detail: ?string, amount_micro: null, at: CarbonInterface} */
     private function accountEvent(UserEvent $event): array
     {
         $meta = $event->meta ?? [];

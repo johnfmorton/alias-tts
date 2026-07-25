@@ -5,6 +5,7 @@ namespace Tests\Feature;
 use App\Enums\SpeechStatus;
 use App\Models\ApiKey;
 use App\Models\Speech;
+use App\Models\User;
 use App\Models\Voice;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Storage;
@@ -61,7 +62,7 @@ class TextToSpeechTest extends TestCase
     public function test_a_deactivated_owner_takes_their_keys_down_too(): void
     {
         $this->makeVoice();
-        $owner = \App\Models\User::factory()->create(['status' => \App\Models\User::STATUS_SUSPENDED]);
+        $owner = User::factory()->create(['status' => User::STATUS_SUSPENDED]);
         $key = ApiKey::generate('test', null, $owner->id);
 
         $this->withHeaders(['xi-api-key' => $key->key])
@@ -70,7 +71,7 @@ class TextToSpeechTest extends TestCase
             ->assertJsonPath('detail.message', 'This API key belongs to a deactivated account.');
 
         // Reactivating restores the key without touching it.
-        $owner->update(['status' => \App\Models\User::STATUS_ACTIVE]);
+        $owner->update(['status' => User::STATUS_ACTIVE]);
 
         $this->withHeaders(['xi-api-key' => $key->key])
             ->postJson('/v1/text-to-speech/my-voice', ['text' => 'Hello'])
