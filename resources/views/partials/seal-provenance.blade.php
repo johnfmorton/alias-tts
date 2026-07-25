@@ -20,7 +20,7 @@
     <tr>
       <th>#</th>
       <th>Script</th>
-      <th>Voice</th>
+      <th>Voice · Engine</th>
       <th>Takes</th>
       <th>QA</th>
       <th>Source SHA-256<br><span class="muted">(pre-trim / pre-stitch)</span></th>
@@ -37,6 +37,7 @@
         </td>
         <td class="num">
           {{ $row['voice'] ?? '—' }}
+          @if($row['model_label'] ?? null)<br><span class="muted">{{ $row['model_label'] }}</span>@endif
           @if($row['voice_inherited'])<br><span class="muted">project default</span>@endif
         </td>
         <td class="num">{{ $row['attempts'] }}</td>

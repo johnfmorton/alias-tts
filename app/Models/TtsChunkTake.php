@@ -23,6 +23,7 @@ class TtsChunkTake extends Model
         'tts_chunk_id',
         'audio_path',
         'voice_id',
+        'model',
         'text',
         'settings',
         'source',

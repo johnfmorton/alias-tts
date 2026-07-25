@@ -5,6 +5,7 @@ namespace App\Services;
 use App\Models\TtsChunk;
 use App\Models\TtsChunkTake;
 use App\Models\TtsProject;
+use App\Services\Tts\ModelCatalog;
 use Illuminate\Support\Facades\Storage;
 use RuntimeException;
 use ZipStream\CompressionMethod;
@@ -90,7 +91,7 @@ class ProjectExportService
             throw new RuntimeException('The sealed audio is missing — re-seal the project.');
         }
 
-        $project->loadMissing('voice', 'chunks.takes', 'chunks.voice');
+        $project->loadMissing('voice', 'chunks.takes.voice', 'chunks.voice');
 
         $zip = $this->openZip();
         $this->addAudio($zip, $this->finalName($project), $bytes);
@@ -163,6 +164,11 @@ class ProjectExportService
                     'chunk_position' => $chunk->position,
                     'selected' => $selected,
                     'source' => $take->source,
+                    // The engine this take rendered on — the key frozen at
+                    // record time, derived from its snapshotted voice (then
+                    // chunk/project voice) only for legacy takes.
+                    'model' => $take->model
+                        ?? ModelCatalog::forVoice($take->voice ?? $chunk->voice ?? $project->voice),
                     'seed' => $take->seed,
                     'duration_ms' => $take->duration_ms,
                     'text' => $take->text,
@@ -213,11 +219,11 @@ class ProjectExportService
      * @param  array<string, string>  $sourceShas  chunk id => already-computed sha of its
      *                                             selected audio (the archive stream
      *                                             collects these while zipping clips)
-     * @return array{project: TtsProject, chunks: list<array<string, mixed>>, manifest: array<string, mixed>, finalName: string}
+     * @return array{project: TtsProject, chunks: list<array<string, mixed>>, engines: list<string>, manifest: array<string, mixed>, finalName: string}
      */
     public function receiptData(TtsProject $project, array $sourceShas = []): array
     {
-        $project->loadMissing('voice', 'chunks.takes', 'chunks.voice');
+        $project->loadMissing('voice', 'chunks.takes.voice', 'chunks.voice');
 
         $finalName = $this->finalName($project);
 
@@ -226,6 +232,10 @@ class ProjectExportService
         return [
             'project' => $project,
             'chunks' => $chunks,
+            // Distinct engine labels across the chunks, in chunk order — the
+            // seal panel's "Engine" line ("Chatterbox Turbo", or several when
+            // chunks were rendered on different engines).
+            'engines' => array_values(array_unique(array_column($chunks, 'model_label'))),
             'manifest' => $this->manifest($project, $finalName, $chunks),
             'finalName' => $finalName,
         ];
@@ -259,6 +269,14 @@ class ProjectExportService
 
             $badge = TtsChunk::asrBadgeFrom($chunk->asr_report);
 
+            // The engine that rendered the selected audio: the key frozen on the
+            // take at record time (a voice's engine can be edited later, which
+            // must not rewrite old receipts). Takes predating that column fall
+            // back to deriving it from the take's snapshotted voice, then the
+            // chunk's, then the project's — best-effort input provenance.
+            $model = $selected?->model
+                ?? ModelCatalog::forVoice($selected?->voice ?? $chunk->voice ?? $project->voice);
+
             $rows[] = [
                 'position' => $chunk->position,
                 // The text the SELECTED take actually read — which can differ from
@@ -270,6 +288,12 @@ class ProjectExportService
                 // voice — a chunk can be voiced differently from the project.
                 'voice' => $chunk->voice?->name ?? $project->voice?->name,
                 'voice_inherited' => $chunk->voice_id === null,
+                // Catalog key (stable identifier) for the manifest, label for the
+                // human-readable receipt/verify table. A key retired from the
+                // catalog prints as itself rather than borrowing the default
+                // engine's label — the receipt must not misname what rendered.
+                'model' => $model,
+                'model_label' => ModelCatalog::isKnown($model) ? ModelCatalog::label($model) : $model,
                 'seed' => $selected->seed ?? ($chunk->settings['seed'] ?? $project->seed),
                 'source' => $selected->source ?? null,
                 'attempts' => $chunk->takes->count(),
@@ -301,6 +325,9 @@ class ProjectExportService
                 'id' => $project->id,
                 'title' => $project->title,
                 'voice' => $project->voice?->name,
+                // Distinct TTS engines (tts.models catalog keys) that rendered
+                // the chunks below — each chunk row names its own in `model`.
+                'models' => array_values(array_unique(array_column($chunks, 'model'))),
                 'seed' => $project->seed,
                 'output_format' => $project->output_format,
                 'model_id' => $project->model_id,

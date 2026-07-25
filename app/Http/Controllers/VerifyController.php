@@ -113,6 +113,7 @@ class VerifyController extends Controller
             'uploadedName' => null,
             'project' => null,
             'chunks' => [],
+            'engines' => [],
             'finalName' => null,
             'snapshotVerified' => null,  // did our stored snapshot still hash to final_sha256?
             'hashedLocally' => false,    // did the browser hash the file (no upload)?
@@ -135,6 +136,7 @@ class VerifyController extends Controller
         return [
             'project' => $data['project'],
             'chunks' => $data['chunks'],
+            'engines' => $data['engines'],
             'finalName' => $data['finalName'],
             'snapshotVerified' => $this->snapshotVerified($project),
         ];

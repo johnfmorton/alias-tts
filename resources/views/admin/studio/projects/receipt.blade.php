@@ -44,6 +44,7 @@
       <dt>Approved on</dt><dd>{{ optional($project->sealed_at)->toDayDateTimeString() ?? '—' }}</dd>
       <dt>File</dt><dd>{{ $finalName }} @if($project->final_bytes)· {{ number_format($project->final_bytes) }} bytes @endif @if($project->mime_type)· {{ $project->mime_type }}@endif</dd>
       <dt>Voice</dt><dd>{{ $manifest['project']['voice'] ?? '—' }}</dd>
+      <dt>Engine</dt><dd>{{ !empty($engines) ? implode(', ', $engines) : '—' }}</dd>
       <dt>SHA-256</dt><dd class="hash">{{ $project->final_sha256 }}</dd>
     </dl>
 

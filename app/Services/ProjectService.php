@@ -728,10 +728,16 @@ class ProjectService
         // counter below.
         $voice = $chunk->voice ?? $chunk->project->voice;
 
+        // The engine key is ALSO frozen on the take itself: the voice row's
+        // engine can be edited later, and receipts must report what rendered
+        // this audio, not what the voice points at today.
+        $model = ModelCatalog::forVoice($voice);
+
         $take = $chunk->takes()->create([
             'id' => $takeId,
             'audio_path' => $path,
             'voice_id' => $voice?->id,
+            'model' => $model,
             // Snapshot the text this take actually read, so a later "select" of an
             // earlier take can print the words it spoke on the receipt even after
             // the chunk's text was edited (see ProjectExportService::chunkRows).
@@ -764,7 +770,6 @@ class ProjectService
             TtsChunk::whereKey($chunk->id)->increment('spent_characters', $spent);
             TtsProject::whereKey($chunk->tts_project_id)->increment('spent_characters', $spent);
 
-            $model = ModelCatalog::forVoice($voice);
             SpendCounters::add('chunk', $chunk->id, $model, $spent);
             SpendCounters::add('project', $chunk->tts_project_id, $model, $spent);
 
@@ -1494,6 +1499,9 @@ class ProjectService
                         $plan['take'] = [
                             'id' => $takeId,
                             'text' => $selected->text ?? $chunk->text,
+                            // Frozen at record time; copied verbatim so the
+                            // duplicate's receipt reports the same engine.
+                            'model' => $selected?->model,
                             'settings' => $selected?->settings,
                             'seed' => $selected?->seed,
                             'characters' => $selected->characters ?? $chunk->characters,
@@ -1585,6 +1593,7 @@ class ProjectService
                             'tts_chunk_id' => $plan['id'],
                             'audio_path' => $plan['audio_path'],
                             'text' => $plan['take']['text'],
+                            'model' => $plan['take']['model'],
                             'settings' => $plan['take']['settings'],
                             'source' => 'duplicate',
                             'asr_score' => $plan['take']['asr_score'],

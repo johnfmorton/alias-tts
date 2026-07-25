@@ -418,6 +418,93 @@ class ProjectSealTest extends TestCase
         $this->assertTrue($byPos[1]['voice_inherited']);
     }
 
+    public function test_receipt_and_verify_name_the_engine_that_rendered_each_chunk(): void
+    {
+        $admin = $this->admin();
+        $voice = Voice::create(['slug' => 'v', 'name' => 'V']); // no model = classic chatterbox
+        $turbo = Voice::create(['slug' => 'turbo', 'name' => 'Turbo', 'model' => 'chatterbox-turbo']);
+        $svc = app(ProjectService::class);
+
+        $project = $svc->createFromText(
+            title: 'My project',
+            voice: $voice,
+            text: "First paragraph long enough to stand alone as its own chunk here.\n\n".
+                  'Second paragraph also long enough to be its own separate chunk.',
+            settings: config('tts.default_voice_settings'),
+            modelId: config('tts.default_model_id'),
+            outputFormat: config('tts.default_output_format'),
+            seed: null,
+        );
+
+        // Render the first chunk on the Turbo voice, the second on the project's
+        // classic voice — the receipt must name each chunk's own engine.
+        $project->chunks()->orderBy('position')->first()->update(['voice_id' => $turbo->id]);
+        foreach ($project->chunks()->get() as $chunk) {
+            $svc->generateChunk($chunk);
+        }
+        $svc->rebuild($project);
+        $svc->seal($project->refresh(), $admin);
+
+        $res = $this->actingAs($admin)->get(route('admin.studio.projects.receipt', $project));
+        $zip = $this->openZip($res->streamedContent());
+        $manifest = json_decode($zip->getFromName('manifest.json'), true);
+        $receipt = $zip->getFromName('receipt.html');
+        $zip->close();
+
+        // Manifest: the stable catalog key + human label per chunk, plus the
+        // project-level distinct-engines summary in chunk order.
+        $byPos = collect($manifest['chunks'])->keyBy('position');
+        $this->assertSame('chatterbox-turbo', $byPos[0]['model']);
+        $this->assertSame('Chatterbox Turbo', $byPos[0]['model_label']);
+        $this->assertSame('chatterbox', $byPos[1]['model']);
+        $this->assertSame('Chatterbox', $byPos[1]['model_label']);
+        $this->assertSame(['chatterbox-turbo', 'chatterbox'], $manifest['project']['models']);
+
+        // Receipt HTML: the seal panel's Engine line lists both.
+        $this->assertStringContainsString('Chatterbox Turbo, Chatterbox', $receipt);
+
+        // The hosted verify page names the engines too.
+        $this->get(route('verify', ['sha' => $project->refresh()->final_sha256]))
+            ->assertOk()
+            ->assertSee('Chatterbox Turbo, Chatterbox');
+    }
+
+    public function test_receipt_reports_the_engine_at_render_time_even_after_the_voice_switches_engines(): void
+    {
+        // The engine key is frozen on the take at record time. Re-pointing the
+        // voice at a different engine afterwards must not rewrite what the
+        // sealed receipt reports — the audio was rendered by the old engine.
+        $admin = $this->admin();
+        $turbo = Voice::create(['slug' => 'turbo', 'name' => 'Turbo', 'model' => 'chatterbox-turbo']);
+        $svc = app(ProjectService::class);
+
+        $project = $svc->createFromText(
+            title: 'My project',
+            voice: $turbo,
+            text: 'A single paragraph long enough to become one generated chunk.',
+            settings: config('tts.default_voice_settings'),
+            modelId: config('tts.default_model_id'),
+            outputFormat: config('tts.default_output_format'),
+            seed: null,
+        );
+        foreach ($project->chunks()->get() as $chunk) {
+            $svc->generateChunk($chunk);
+        }
+        $svc->rebuild($project);
+        $svc->seal($project->refresh(), $admin);
+
+        $turbo->update(['model' => 'qwen3-tts']);
+
+        $res = $this->actingAs($admin)->get(route('admin.studio.projects.receipt', $project));
+        $zip = $this->openZip($res->streamedContent());
+        $manifest = json_decode($zip->getFromName('manifest.json'), true);
+        $zip->close();
+
+        $this->assertSame('chatterbox-turbo', $manifest['chunks'][0]['model']);
+        $this->assertSame('Chatterbox Turbo', $manifest['chunks'][0]['model_label']);
+        $this->assertSame(['chatterbox-turbo'], $manifest['project']['models']);
+    }
+
     public function test_receipt_serves_the_frozen_snapshot_even_after_the_live_final_is_tampered(): void
     {
         $admin = $this->admin();
