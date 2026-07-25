@@ -4,6 +4,23 @@ All notable changes to this project are documented in this file. The format is
 based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this
 project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Changed
+- **Voices and Pronunciations moved up into the nav bar.** On desktop widths
+  the bar now reads Dashboard · Studio · Voices · Pronunciations — the
+  dashboard's own priority order — so the pages you visit weekly are one click
+  away instead of two. The account menu slims to what's left (API Keys, Jobs,
+  System, Admin). Below 1024px the two links fold back into the menu, which
+  keeps the same order, so nothing is ever more than the menu away.
+- **One destination, one name: Studio.** The dashboard card formerly titled
+  "Projects" now says Studio — matching the nav tab it shares a destination
+  with — and the project page breadcrumb reads "← All projects". "Project"
+  stays on as the noun for the things inside Studio ("+ New project",
+  "39 projects").
+- **The account menu header sits on one line.** Avatar, name, and role badge —
+  the hostname line is gone from both the desktop menu and the mobile sheet.
+
 ## [0.90.0] - 2026-07-25
 
 ### Added

@@ -6,9 +6,11 @@
     $navUser = auth()->user();
     $navFirstName = $navUser ? (Str::before(trim($navUser->name), ' ') ?: $navUser->name) : '';
 
-    // Primary nav — the three flat, always-visible destinations. Everything else
-    // lives under the account menu. Genblaze (the judge-facing demo page) leads
-    // only when TTS_GENBLAZE_DEMO is on; it's an emphasized pill, not a plain link.
+    // Primary nav — the flat, always-visible destinations. Genblaze (the
+    // judge-facing demo page) leads only when TTS_GENBLAZE_DEMO is on; it's an
+    // emphasized pill, not a plain link. Voices + Pronunciations are `surfaced`:
+    // in the bar at lg+ where five links fit, folded back into the account menu
+    // below that (the menu rows carry the matching flag).
     $primaryNav = [];
     if (config('tts.genblaze.demo')) {
         $primaryNav[] = ['route' => 'admin.studio.genblaze', 'pattern' => 'admin.studio.genblaze', 'label' => 'Genblaze Demo', 'demo' => true];
@@ -17,9 +19,13 @@
     // Studio must NOT highlight on the nested Genblaze route, which its wildcard
     // pattern would otherwise match — hence the `except`.
     $primaryNav[] = ['route' => 'admin.studio.index', 'pattern' => 'admin.studio.*', 'except' => 'admin.studio.genblaze', 'label' => 'Studio'];
+    $primaryNav[] = ['route' => 'admin.voices.index', 'pattern' => 'admin.voices.*', 'label' => 'Voices', 'surfaced' => true];
+    $primaryNav[] = ['route' => 'admin.pronunciations.index', 'pattern' => 'admin.pronunciations.*', 'label' => 'Pronunciations', 'surfaced' => true];
 
-    // Account menu — the secondary set, grouped. ADMIN is role-gated and rendered
-    // separately below (only for SuperAdmins, and only once its routes exist).
+    // Account menu — the secondary set, grouped. Manage follows the dashboard's
+    // priority order; its `surfaced` rows only render below lg, where those
+    // links leave the bar. ADMIN is role-gated and rendered separately below
+    // (only for SuperAdmins, and only once its routes exist).
     $menuSections = [
         [
             'label' => null,
@@ -30,9 +36,9 @@
         [
             'label' => 'Manage',
             'items' => [
+                ['route' => 'admin.voices.index', 'pattern' => 'admin.voices.*', 'label' => 'Voices', 'surfaced' => true],
+                ['route' => 'admin.pronunciations.index', 'pattern' => 'admin.pronunciations.*', 'label' => 'Pronunciations', 'surfaced' => true],
                 ['route' => 'admin.api-keys.index', 'pattern' => 'admin.api-keys.*', 'label' => 'API Keys'],
-                ['route' => 'admin.voices.index', 'pattern' => 'admin.voices.*', 'label' => 'Voices'],
-                ['route' => 'admin.pronunciations.index', 'pattern' => 'admin.pronunciations.*', 'label' => 'Pronunciations'],
                 ['route' => 'admin.jobs.index', 'pattern' => 'admin.jobs.*', 'label' => 'Jobs'],
             ],
         ],
@@ -109,7 +115,7 @@
                             </a>
                         @else
                             <a href="{{ route($item['route']) }}"
-                               class="shrink-0 rounded-[2px] px-3 py-2 transition {{ $active ? 'border-b-2 border-accent text-accent' : 'text-zinc-400 hover:text-zinc-100' }}">
+                               class="{{ ($item['surfaced'] ?? false) ? 'hidden lg:block' : '' }} shrink-0 rounded-[2px] px-3 py-2 transition {{ $active ? 'border-b-2 border-accent text-accent' : 'text-zinc-400 hover:text-zinc-100' }}">
                                 {{ $item['label'] }}
                             </a>
                         @endif
@@ -127,20 +133,15 @@
 
                         <div id="account-menu"
                              class="absolute top-[52px] right-0 z-50 hidden w-[250px] rounded-[14px] border border-white/10 bg-menu p-1.5 shadow-[0_20px_40px_-12px_rgba(0,0,0,0.7)]">
-                            {{-- Header: identity + role badge --}}
+                            {{-- Header: identity + role badge, one line --}}
                             <div class="flex items-center gap-2.5 p-3">
                                 <x-avatar :user="$navUser" :size="34" />
-                                <div class="min-w-0">
-                                    <div class="truncate text-sm leading-tight font-semibold text-zinc-100">{{ $navUser->name }}</div>
-                                    <div class="mt-[3px] flex items-center gap-1.5">
-                                        <span class="truncate text-xs text-zinc-500">{{ request()->getHost() }}</span>
-                                        @if($navUser->isSuperAdmin())
-                                            <span class="rounded-[5px] border border-accent/30 bg-accent/[0.12] px-1.5 py-px text-[10px] font-semibold text-accent">SuperAdmin</span>
-                                        @else
-                                            <span class="rounded-[5px] border border-white/12 bg-white/[0.06] px-1.5 py-px text-[10px] font-semibold text-zinc-400">User</span>
-                                        @endif
-                                    </div>
-                                </div>
+                                <span class="min-w-0 truncate text-sm font-semibold text-zinc-100">{{ $navUser->name }}</span>
+                                @if($navUser->isSuperAdmin())
+                                    <span class="ml-auto shrink-0 rounded-[5px] border border-accent/30 bg-accent/[0.12] px-1.5 py-px text-[10px] font-semibold text-accent">SuperAdmin</span>
+                                @else
+                                    <span class="ml-auto shrink-0 rounded-[5px] border border-white/12 bg-white/[0.06] px-1.5 py-px text-[10px] font-semibold text-zinc-400">User</span>
+                                @endif
                             </div>
 
                             <div class="mx-2 mt-0.5 mb-1 h-px bg-white/8"></div>
@@ -152,7 +153,7 @@
                                 @foreach($section['items'] as $it)
                                     @php $rowActive = request()->routeIs($it['pattern']); @endphp
                                     <a href="{{ route($it['route']) }}"
-                                       class="block rounded-lg px-3 py-[7px] text-sm transition {{ $rowActive ? 'bg-accent/[0.08] text-accent' : 'text-zinc-300 hover:bg-white/[0.04]' }}">
+                                       class="{{ ($it['surfaced'] ?? false) ? 'block lg:hidden' : 'block' }} rounded-lg px-3 py-[7px] text-sm transition {{ $rowActive ? 'bg-accent/[0.08] text-accent' : 'text-zinc-300 hover:bg-white/[0.04]' }}">
                                         {{ $it['label'] }}
                                     </a>
                                 @endforeach
@@ -196,7 +197,9 @@
         @auth
             @php
                 $demoItem = collect($primaryNav)->first(fn ($i) => $i['demo'] ?? false);
-                $mainNav = collect($primaryNav)->reject(fn ($i) => $i['demo'] ?? false);
+                // Surfaced items ride in the secondary list here (via $menuSections),
+                // keeping the sheet's big items to the two core destinations.
+                $mainNav = collect($primaryNav)->reject(fn ($i) => ($i['demo'] ?? false) || ($i['surfaced'] ?? false));
                 $secondaryItems = collect($menuSections)->flatMap(fn ($s) => $s['items']);
             @endphp
             {{-- Mobile full-screen navigation sheet (Option 6C). Hidden at md+, where
@@ -206,10 +209,7 @@
                 {{-- Header: identity + Close --}}
                 <div class="flex h-[60px] shrink-0 items-center gap-3 border-b border-white/8 px-4">
                     <x-avatar :user="$navUser" :size="38" />
-                    <div class="min-w-0">
-                        <div class="truncate text-sm font-semibold text-zinc-100">{{ $navUser->name }}</div>
-                        <div class="truncate text-[11px] text-zinc-500">{{ request()->getHost() }}</div>
-                    </div>
+                    <span class="min-w-0 truncate text-sm font-semibold text-zinc-100">{{ $navUser->name }}</span>
                     <button id="mobile-menu-close" type="button" aria-label="Close menu"
                             class="ml-auto inline-flex items-center gap-[7px] rounded-[10px] border border-accent/50 bg-accent/10 px-[13px] py-2 text-[13px] text-accent transition hover:bg-accent/[0.16]">
                         <span aria-hidden="true">✕</span> Close

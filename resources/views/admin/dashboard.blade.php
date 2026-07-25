@@ -9,10 +9,10 @@
     $cards = [
         [
             'icon' => 'projects',
-            'title' => 'Projects',
-            'desc' => "Scripts you're producing",
+            'title' => 'Studio',
+            'desc' => 'Projects in production',
             'count' => $stats['projects'],
-            'manage' => ['label' => 'Open in Studio', 'route' => 'admin.studio.index'],
+            'manage' => ['label' => 'Open Studio', 'route' => 'admin.studio.index'],
             'add' => ['label' => '+ New project', 'route' => 'admin.studio.projects.create'],
         ],
         [

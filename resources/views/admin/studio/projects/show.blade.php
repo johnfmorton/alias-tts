@@ -77,7 +77,7 @@
         @endif
 
         {{-- Project header — 11C "player-forward": one sticky card, three rows.
-             Row 1 (identity): ← Projects · title · Rename · economics chips · status
+             Row 1 (identity): ← All projects · title · Rename · economics chips · status
              · project-scope ⋯ menu. Row 2: the final-audio hero player. Row 3
              (controls): Voice/Format config on the left, the audio-output action
              cluster on the right. Every element id and data hook is unchanged —
@@ -86,7 +86,7 @@
         <div id="project-sticky-header" class="sticky top-0 z-30 mb-6 rounded-2xl border border-white/[0.09] bg-sticky px-5 py-4 shadow-[0_16px_40px_-10px_rgba(0,0,0,0.7)] sm:px-6 sm:py-5">
             {{-- Row 1: identity + economics chips + project-scope menu --}}
             <div class="flex flex-wrap items-center gap-x-3 gap-y-2">
-                <a href="{{ route('admin.studio.index') }}" class="inline-flex items-center gap-1.5 text-sm text-zinc-400 hover:text-zinc-200">← Projects</a>
+                <a href="{{ route('admin.studio.index') }}" class="inline-flex items-center gap-1.5 text-sm text-zinc-400 hover:text-zinc-200">← All projects</a>
                 <span class="hidden h-[18px] w-px bg-white/10 sm:block" aria-hidden="true"></span>
                 <span id="project-title-label" class="text-lg font-bold tracking-[-0.2px] text-zinc-100">{{ $project->title }}</span>
                 @if($foreignOwner)
