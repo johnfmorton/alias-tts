@@ -4,6 +4,23 @@ All notable changes to this project are documented in this file. The format is
 based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this
 project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+- **A fourth teleprompter script for expressive voices.** "Good News" packs a
+  question, an exclamation, and a warm aside into the ~15 seconds the engines
+  actually listen to, for cloning a lively voice rather than a calm one. It is
+  deliberately the shortest script so an expressive, slower read still fits
+  Qwen's clone-transcript length check.
+
+### Changed
+- **The script picker now says what it decides.** A reference clip captures one
+  delivery, not a range — so the picker explains that your voice inherits the
+  delivery it hears, and the taglines describe the voice you'll get ("calm,
+  even narration", "friendly conversation", "clear explainer") instead of just
+  labeling the text. The recording tips warn in both directions now: a flat
+  read clones into a flat voice, but over-acting hurts too.
+
 ## [0.89.0] - 2026-07-25
 
 ### Added

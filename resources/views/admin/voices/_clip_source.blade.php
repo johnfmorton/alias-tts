@@ -1,9 +1,16 @@
 @php($replace = $replace ?? false)
 @php($enhanceOn = config('tts.enhance.enabled'))
+{{-- Teleprompter scripts. Each is deliberately a SINGLE register: the engines
+     only hear the first ~15 seconds, so a clip captures one delivery, not a
+     range — the picker really chooses the voice's default style, and the
+     taglines say which. Keep the expressive option the shortest: lively reads
+     run slower, and Qwen's clone path rejects a transcript longer than the clip
+     can cover (referenceTextFitsClip, ~17 chars/sec). --}}
 @php($scripts = [
-    ['title' => 'The Harbor', 'tagline' => 'calm narration · ~20s', 'text' => "The old harbor wakes slowly on a gray Thursday morning. Gulls wheel over the fishing boats while the tide pushes little waves against the wooden pier. By nine o'clock the market stalls are busy: bright oranges, fresh bread, and silver mackerel on beds of ice. It's an ordinary day, and that's exactly why I love it."],
-    ['title' => 'The Plan', 'tagline' => 'conversational · ~20s', 'text' => "Would you believe it finally stopped raining? After six soggy days, the sky turned a brilliant, cloudless blue this afternoon. So here's the plan: we'll drive up the coast road, grab sandwiches at that little bakery in Rockport, and reach the lighthouse before sunset. Bring a jacket, though — the wind off the water gets sharp around seven. Oh, and don't forget your camera; last time the photos were spectacular!"],
-    ['title' => 'Small Machines', 'tagline' => 'explanatory · ~25s', 'text' => "Here's a quick thought about everyday machines. A simple zipper has more than twenty tiny teeth per inch, each one shaped to catch its neighbor at exactly the right angle. Elevators, meanwhile, hang from six or eight steel cables, and any single one could hold the entire car. We walk past these small miracles daily — zipping a jacket, pressing a button — without ever asking how they actually work."],
+    ['title' => 'The Harbor', 'tagline' => 'calm, even narration · ~20s', 'text' => "The old harbor wakes slowly on a gray Thursday morning. Gulls wheel over the fishing boats while the tide pushes little waves against the wooden pier. By nine o'clock the market stalls are busy: bright oranges, fresh bread, and silver mackerel on beds of ice. It's an ordinary day, and that's exactly why I love it."],
+    ['title' => 'The Plan', 'tagline' => 'friendly conversation · ~20s', 'text' => "Would you believe it finally stopped raining? After six soggy days, the sky turned a brilliant, cloudless blue this afternoon. So here's the plan: we'll drive up the coast road, grab sandwiches at that little bakery in Rockport, and reach the lighthouse before sunset. Bring a jacket, though — the wind off the water gets sharp around seven. Oh, and don't forget your camera; last time the photos were spectacular!"],
+    ['title' => 'Small Machines', 'tagline' => 'clear explainer · ~25s', 'text' => "Here's a quick thought about everyday machines. A simple zipper has more than twenty tiny teeth per inch, each one shaped to catch its neighbor at exactly the right angle. Elevators, meanwhile, hang from six or eight steel cables, and any single one could hold the entire car. We walk past these small miracles daily — zipping a jacket, pressing a button — without ever asking how they actually work."],
+    ['title' => 'Good News', 'tagline' => 'animated, expressive · ~18s', 'text' => "Guess what arrived this morning? The letter I'd been waiting on for three weeks — and it's good news! I actually laughed out loud in the kitchen. So tonight we celebrate: dinner's on me, anywhere you like. Honestly, after the month we've had, don't we deserve it?"],
 ])
 @php($fileInputClass = 'block w-full text-sm text-zinc-400 file:mr-3 file:rounded-lg file:border-0 file:bg-white/8 file:px-3 file:py-2 file:text-sm file:text-zinc-200 hover:file:bg-white/12')
 
@@ -43,7 +50,8 @@
                     <div data-clip-body="record" class="hidden px-4 pb-4 pt-2">
                         <div class="grid grid-cols-1 gap-[18px] md:grid-cols-[290px_1fr]">
                             <div>
-                                <div class="mb-2.5 text-xs font-semibold text-zinc-400">Pick a script to read</div>
+                                <div class="mb-1 text-xs font-semibold text-zinc-400">Pick a script to read</div>
+                                <p class="mb-2.5 text-xs leading-relaxed text-zinc-500">Your voice inherits the delivery it hears — pick the style it should default to.</p>
                                 <div class="flex flex-col gap-2">
                                     @foreach($scripts as $i => $s)
                                         <label class="flex cursor-pointer items-center gap-2.5 rounded-[10px] border border-white/10 px-3.5 py-3 transition has-[:checked]:border-accent/50 has-[:checked]:bg-accent/[0.08]">

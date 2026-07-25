@@ -14,7 +14,7 @@
         <li class="flex gap-2"><span class="text-accent" aria-hidden="true">•</span>Speak at full conversational volume — as if the listener is across the room.</li>
         <li class="flex gap-2"><span class="text-accent" aria-hidden="true">•</span>Stay 6–12 inches from the microphone.</li>
         <li class="flex gap-2"><span class="text-accent" aria-hidden="true">•</span>Quiet room, no echo — soft furnishings beat bare walls.</li>
-        <li class="flex gap-2"><span class="text-accent" aria-hidden="true">•</span>Steady, natural pacing — read, don't perform.</li>
+        <li class="flex gap-2"><span class="text-accent" aria-hidden="true">•</span>Natural pacing, real energy — a flat read clones into a flat voice, but don't over-act either.</li>
         <li class="flex gap-2 sm:col-span-2"><span class="text-accent" aria-hidden="true">•</span>Aim for 15–20 seconds of clean speech — longer clips are trimmed automatically at a natural pause (the engines only listen to the first ~15 seconds).</li>
     </ul>
 </div>
