@@ -4,6 +4,17 @@ All notable changes to this project are documented in this file. The format is
 based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this
 project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.93.2] - 2026-07-26
+
+### Fixed
+- **Big projects open light on an iPad.** A project page used to build every
+  chunk's whole take history — each take with its own audio player — during
+  page load; on a 147-chunk project that meant ~450 players and enough DOM
+  work to make iPad Safari feel frozen (WebKit degrades badly with hundreds
+  of media elements). Take histories now render as their chunk scrolls into
+  view, so opening the page only builds what's on screen. Fresh results from
+  Generate, Select, and background runs still render immediately.
+
 ## [0.93.1] - 2026-07-26
 
 ### Fixed

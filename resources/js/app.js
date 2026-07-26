@@ -3006,6 +3006,10 @@ function initStudioProject() {
     }
 
     function renderTakes(card, data) {
+        // Any render — lazy or from fresh server data — retires the card's
+        // pending lazy pass (the IntersectionObserver checks this flag), so the
+        // page-load JSON can't clobber a newer take list.
+        card.dataset.takesRendered = '1';
         renderSpend(card, data && data.spend);
         // Keep the main player's duration fallback in step with whichever take the
         // chunk audio now points at (its src is cache-busted on select/generate, so
@@ -3148,10 +3152,29 @@ function initStudioProject() {
         }
     }
 
+    // Take histories are heavy: every take row carries its own <audio> player,
+    // so a 147-chunk project would build ~450 of them during init — and iPad
+    // Safari grinds to a halt well before that (WebKit degrades badly with
+    // hundreds of media elements). Build each card's takes only as it nears
+    // the viewport instead. Any direct renderTakes() call (generate, select,
+    // poll) marks the card rendered, so the page-load JSON can never overwrite
+    // fresher server data.
+    const lazyTakes = 'IntersectionObserver' in window ? new IntersectionObserver((entries) => {
+        entries.forEach((entry) => {
+            if (!entry.isIntersecting) return;
+            const card = entry.target;
+            lazyTakes.unobserve(card);
+            if (card.dataset.takesRendered) return;
+            try { renderTakes(card, JSON.parse(card.dataset.takes || '{}')); } catch { /* ignore */ }
+        });
+    }, { rootMargin: '600px 0px' }) : null;
+
     root.querySelectorAll('.studio-chunk').forEach((card) => {
-        // Render the take history embedded on the card, and wire Select/Delete via
-        // one delegated listener (the list is rebuilt wholesale on every change).
-        try { renderTakes(card, JSON.parse(card.dataset.takes || '{}')); } catch { /* ignore */ }
+        // Render the take history embedded on the card (lazily where supported —
+        // see above), and wire Select/Delete via one delegated listener (the
+        // list is rebuilt wholesale on every change).
+        if (lazyTakes) lazyTakes.observe(card);
+        else { try { renderTakes(card, JSON.parse(card.dataset.takes || '{}')); } catch { /* ignore */ } }
         card.querySelector('.chunk-takes')?.addEventListener('click', (e) => {
             const row = e.target.closest('.chunk-take');
             if (!row) return;
