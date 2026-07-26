@@ -1,4 +1,5 @@
-<x-layout title="Jobs" description="Background “Generate remaining” runs — live progress while they work, a Stop button while they can still be stopped, and the reason when one fails.">
+<x-layout title="Jobs" :description="'Background “Generate remaining” runs — live progress while they work, a Stop button while they can still be stopped, and the reason when one fails. '
+    .'Finished runs clear automatically after '.config('tts.jobs_keep_days').' days, keeping at most the newest '.config('tts.jobs_keep_per_user').' per user.'">
 
     @php
         $jobStyles = [

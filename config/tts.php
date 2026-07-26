@@ -515,6 +515,13 @@ return [
     // 'always'-mode projects are intentional artifacts and are NOT auto-pruned.
     'api_project_ttl_hours' => (int) env('TTS_API_PROJECT_TTL_HOURS', 168), // 7 days
 
+    // Jobs-page history retention (jobs:prune, scheduled daily). Finished runs
+    // (completed/failed/cancelled) are deleted once they age past the window OR
+    // fall beyond the newest N for their owner; active runs are never touched.
+    // 0 disables that rule.
+    'jobs_keep_days' => (int) env('TTS_JOBS_KEEP_DAYS', 7),
+    'jobs_keep_per_user' => (int) env('TTS_JOBS_KEEP_PER_USER', 100),
+
     /*
     |--------------------------------------------------------------------------
     | Storage

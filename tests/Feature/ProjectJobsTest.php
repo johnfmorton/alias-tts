@@ -20,6 +20,7 @@ use App\Services\Tts\TtsProvider;
 use App\Support\GenerationTimings;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Queue\MaxAttemptsExceededException;
+use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Queue;
 use Illuminate\Support\Facades\Storage;
 use RuntimeException;
@@ -901,6 +902,94 @@ class ProjectJobsTest extends TestCase
             ->assertOk()
             ->assertSee('of 51 run(s)')
             ->assertSee('page=2');
+    }
+
+    // --- Jobs-page retention (jobs:prune) -------------------------------------
+
+    /** A finished run row for the project, backdated to $createdAt. */
+    private function finishedRun(TtsProject $project, Carbon $createdAt, ProjectJobStatus $status = ProjectJobStatus::Completed): TtsProjectJob
+    {
+        return TtsProjectJob::forceCreate([
+            'tts_project_id' => $project->id,
+            'user_id' => $project->user_id,
+            'created_by_id' => $project->user_id,
+            'status' => $status,
+            'chunk_ids' => [],
+            'chunks_total' => 0,
+            'created_at' => $createdAt,
+        ]);
+    }
+
+    public function test_prune_deletes_finished_runs_older_than_the_window(): void
+    {
+        $project = $this->project(User::factory()->create()->id);
+        $old = $this->finishedRun($project, now()->subDays(8));
+        $fresh = $this->finishedRun($project, now()->subDays(6));
+
+        $this->artisan('jobs:prune')->expectsOutput('Pruned 1 finished run(s).')->assertExitCode(0);
+
+        $this->assertNull(TtsProjectJob::find($old->id));
+        $this->assertNotNull(TtsProjectJob::find($fresh->id));
+    }
+
+    public function test_prune_caps_finished_runs_per_owner_independently(): void
+    {
+        config(['tts.jobs_keep_per_user' => 2]);
+        $aliceProject = $this->project(User::factory()->create()->id);
+        $bobProject = $this->project(User::factory()->create()->id);
+
+        // Three recent finished runs each (inside the age window) — only the
+        // oldest of each owner's three falls past the cap.
+        $aliceRuns = $bobRuns = [];
+        foreach ([3, 2, 1] as $minutes) {
+            $aliceRuns[] = $this->finishedRun($aliceProject, now()->subMinutes($minutes));
+            $bobRuns[] = $this->finishedRun($bobProject, now()->subMinutes($minutes));
+        }
+
+        $this->artisan('jobs:prune')->expectsOutput('Pruned 2 finished run(s).')->assertExitCode(0);
+
+        foreach ([$aliceRuns, $bobRuns] as $runs) {
+            $this->assertNull(TtsProjectJob::find($runs[0]->id));
+            $this->assertNotNull(TtsProjectJob::find($runs[1]->id));
+            $this->assertNotNull(TtsProjectJob::find($runs[2]->id));
+        }
+    }
+
+    public function test_prune_never_touches_active_runs(): void
+    {
+        config(['tts.jobs_keep_per_user' => 1]);
+        $project = $this->project(User::factory()->create()->id);
+
+        // Both active rows are ancient AND newer rows exist past the cap — an
+        // active run must survive both rules (the worker owns those rows), and
+        // it must not occupy a slot in the per-owner keep list either.
+        $queued = $this->finishedRun($project, now()->subDays(30), ProjectJobStatus::Queued);
+        $running = $this->finishedRun($project, now()->subDays(30), ProjectJobStatus::Running);
+        $finished = $this->finishedRun($project, now()->subMinutes(5));
+
+        $this->artisan('jobs:prune')->expectsOutput('Pruned 0 finished run(s).')->assertExitCode(0);
+
+        $this->assertNotNull(TtsProjectJob::find($queued->id));
+        $this->assertNotNull(TtsProjectJob::find($running->id));
+        $this->assertNotNull(TtsProjectJob::find($finished->id));
+    }
+
+    public function test_prune_dry_run_counts_each_run_once_and_deletes_nothing(): void
+    {
+        config(['tts.jobs_keep_per_user' => 1]);
+        $project = $this->project(User::factory()->create()->id);
+
+        // The old run trips BOTH rules (past the window and past the cap) —
+        // the dry-run count must not double-count it.
+        $old = $this->finishedRun($project, now()->subDays(8));
+        $fresh = $this->finishedRun($project, now()->subMinutes(5));
+
+        $this->artisan('jobs:prune', ['--dry-run' => true])
+            ->expectsOutput('1 finished run(s) would be pruned.')
+            ->assertExitCode(0);
+
+        $this->assertNotNull(TtsProjectJob::find($old->id));
+        $this->assertNotNull(TtsProjectJob::find($fresh->id));
     }
 
     // --- Async "Build final" (stitch runs) ------------------------------------
