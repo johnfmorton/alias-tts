@@ -50,9 +50,12 @@ trait ServesRangedAudio
             $options['ResponseContentDisposition'] = $disposition;
         }
 
+        // 12 hours: long enough that a Studio tab left open across a workday
+        // still seeks fine. If a signature does expire, the player's retry
+        // re-follows this redirect for a fresh one (see enhanceStudioPlayers).
         // no-store: the Location carries a signature that expires — never let a
         // browser or Cloudflare replay a cached redirect past its lifetime.
-        return redirect()->away($disk->temporaryUrl($path, now()->addHour(), $options))
+        return redirect()->away($disk->temporaryUrl($path, now()->addHours(12), $options))
             ->header('Cache-Control', 'no-store');
     }
 

@@ -4,6 +4,16 @@ All notable changes to this project are documented in this file. The format is
 based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this
 project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.93.1] - 2026-07-26
+
+### Fixed
+- **An expired play link now recovers in one tap, right where you left off.**
+  The signed storage URLs behind the players last 12 hours (was 1), so a
+  Studio tab left open across a workday still seeks fine. If one does expire,
+  the player already offered "failed — press ▶ to retry" — that retry now
+  fetches a fresh signed URL and resumes from where playback stopped instead
+  of starting over at 0:00.
+
 ## [0.93.0] - 2026-07-26
 
 ### Fixed

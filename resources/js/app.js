@@ -3880,13 +3880,25 @@ function enhanceStudioPlayers(scope) {
             if (fill) fill.style.width = pct + '%';
             if (knob) knob.style.left = pct + '%';
             if (time) time.textContent = fmt(audio.currentTime) + ' / ' + fmt(d);
+            // Remember where playback got to, so an error retry can resume
+            // there instead of 0:00 (see the ▶ handler).
+            if (audio.currentTime > 0) el.dataset.lastTime = String(audio.currentTime);
         };
 
         btn.addEventListener('click', () => {
             // A failed fetch bricks the element: after a media error, play()
             // won't re-run resource selection, so clicks would silently no-op
-            // forever. load() re-arms it and the play below retries the fetch.
-            if (audio.error) audio.load();
+            // forever. load() re-arms it and the play below retries the fetch —
+            // re-following the audio route's redirect, so an expired signed
+            // storage URL is replaced by a fresh one. Resume where the failure
+            // struck, not from the top.
+            if (audio.error) {
+                const resumeAt = parseFloat(el.dataset.lastTime || '0');
+                audio.load();
+                if (resumeAt > 0) {
+                    audio.addEventListener('loadedmetadata', () => { audio.currentTime = resumeAt; }, { once: true });
+                }
+            }
             audio.paused ? audio.play().catch(() => {}) : audio.pause();
         });
         track.addEventListener('click', (e) => {
@@ -3905,7 +3917,9 @@ function enhanceStudioPlayers(scope) {
         // reads as retryable instead of a dead button. A fresh attempt (the
         // retry's load()+play() above) fires loadstart, which hands the readout
         // back to sync().
-        audio.addEventListener('loadstart', () => { delete el.dataset.loadFailed; sync(); });
+        // (lastTime too: a fresh load means a new resource — the retry above
+        // captured its resume point before calling load(), so this can't race.)
+        audio.addEventListener('loadstart', () => { delete el.dataset.loadFailed; delete el.dataset.lastTime; sync(); });
         audio.addEventListener('error', () => {
             el.classList.remove('is-playing');
             el.dataset.loadFailed = '1';
