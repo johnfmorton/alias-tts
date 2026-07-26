@@ -4,6 +4,16 @@ All notable changes to this project are documented in this file. The format is
 based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this
 project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.95.1] - 2026-07-26
+
+### Changed
+- **Off-screen chunks no longer cost anything to render.** Chunk cards use
+  CSS `content-visibility: auto`, so the browser skips styling, layout, and
+  painting for every card outside the viewport and re-renders each one as it
+  scrolls near — on a 147-chunk project, opening the page now renders a
+  handful of cards instead of all of them. Older browsers ignore the rule and
+  behave exactly as before.
+
 ## [0.95.0] - 2026-07-26
 
 ### Changed

@@ -221,6 +221,20 @@
 }
 
 /*
+ * CSS-level virtualization: skip style/layout/paint for off-screen chunk cards
+ * so a 147-card page only renders what's visible — the browser re-renders each
+ * card as it scrolls near. `auto` in contain-intrinsic-size remembers a card's
+ * real height once rendered (340px is only the first-pass estimate), keeping
+ * the scrollbar honest. The DOM stays intact, so IntersectionObserver mounting,
+ * querySelector wiring, and find-in-page all behave normally; browsers without
+ * content-visibility simply ignore both lines.
+ */
+.studio-chunk {
+    content-visibility: auto;
+    contain-intrinsic-size: auto 340px;
+}
+
+/*
  * Custom audio player (design 4A) — one anatomy at three weights so the final
  * audio reads as the hero and chunk/take players stay quieter. The native <audio>
  * lives inside as `.aplayer__native` (hidden) and does the actual playback; the JS
