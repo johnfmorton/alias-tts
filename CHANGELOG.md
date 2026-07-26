@@ -4,6 +4,20 @@ All notable changes to this project are documented in this file. The format is
 based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this
 project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.96.0] - 2026-07-26
+
+### Changed
+- **The tuning panel joined the slim-card diet — the last big repeat.** Every
+  chunk card used to ship its own full copy of the Delivery chips, saved-preset
+  picker, seed row, and all eight fine-tune controls — the single heaviest
+  per-card block, ~1.7 MB of near-identical HTML on a 147-chunk project. The
+  panel now renders once as a page template; each card carries only its saved
+  overrides as a small data attribute, and the panel mounts per card as it
+  scrolls near (or the moment it's needed — Regenerate, Revert, and take
+  restores all mount it first). Values, sliders, the lit Delivery chip, and
+  engine-specific knob sets all restore exactly as saved. Governed by the same
+  `TTS_STUDIO_SLIM_CARDS=false` rollback as v0.95.0.
+
 ## [0.95.1] - 2026-07-26
 
 ### Changed
