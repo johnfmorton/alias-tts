@@ -2498,6 +2498,7 @@ function initStudioProject() {
     // it and reports its place in line ('queued' + queue_label); followRun's
     // poll then delivers the take and keeps the line fresh as it moves.
     async function queueChunkRegen(card) {
+        ensureTune(card); // the payload below reads the tuning panel
         const btn = card.querySelector('.chunk-generate');
         startBusy(btn, 'Queueing…');
         try {
@@ -3110,6 +3111,7 @@ function initStudioProject() {
             });
             if (!res.ok) throw new Error(await errorMessage(res));
             const data = await res.json();
+            ensureTune(card); // the snapshot below restores into the tuning panel
             setChunkStatus(card, data.status);
             setChunkAsrBadge(card, data.asr_badge ?? null);
             setProjectStatus(data.project_status);
@@ -3235,97 +3237,12 @@ function initStudioProject() {
         slot.append(tagChipsTpl.content.cloneNode(true));
     };
 
-    // Take histories are heavy: every take row carries its own <audio> player,
-    // so a 147-chunk project would build ~450 of them during init — and iPad
-    // Safari grinds to a halt well before that (WebKit degrades badly with
-    // hundreds of media elements). Build each card's takes (and mount its slim
-    // pieces) only as it nears the viewport. Any direct renderTakes() call
-    // (generate, select, poll) marks the card rendered, so the page-load JSON
-    // can never overwrite fresher server data.
-    const mountCard = (card) => {
-        ensureVoiceOptions(card.querySelector('.chunk-voice'));
-        mountTagChips(card);
-        if (!card.dataset.takesRendered) {
-            try { renderTakes(card, JSON.parse(card.dataset.takes || '{}')); } catch { /* ignore */ }
-        }
-    };
-
-    const lazyTakes = 'IntersectionObserver' in window ? new IntersectionObserver((entries) => {
-        entries.forEach((entry) => {
-            if (!entry.isIntersecting) return;
-            lazyTakes.unobserve(entry.target);
-            mountCard(entry.target);
-        });
-    }, { rootMargin: '600px 0px' }) : null;
-
-    root.querySelectorAll('.studio-chunk').forEach((card) => {
-        // Mount the card's deferred pieces (lazily where supported — see above),
-        // and wire Select/Delete via one delegated listener (the take list is
-        // rebuilt wholesale on every change).
-        if (lazyTakes) lazyTakes.observe(card);
-        else mountCard(card);
-        card.querySelector('.chunk-takes')?.addEventListener('click', (e) => {
-            const row = e.target.closest('.chunk-take');
-            if (!row) return;
-            const selBtn = e.target.closest('.chunk-take-select');
-            const delBtn = e.target.closest('.chunk-take-delete');
-            if (selBtn && !selBtn.disabled) selectTake(card, row.dataset.takeId, selBtn);
-            else if (delBtn && !delBtn.disabled) deleteTake(card, row.dataset.takeId, delBtn);
-        });
-
-        // QA popover footer actions (design "QA Badge States"). Delegated on the
-        // .chunk-asr-badge wrapper (its innerHTML is rebuilt on every verdict, but
-        // the wrapper element persists). Regenerate and Play reuse the existing
-        // chunk controls; Restore reverts to the pre-fix take; Dismiss
-        // acknowledges a flag. On a foreign project the guard intercepts these
-        // (they mutate) — only opening the popover (.qa-badge) is whitelisted.
-        card.querySelector('.chunk-asr-badge')?.addEventListener('click', (e) => {
-            const act = e.target.closest('.qa-act');
-            if (!act) return;
-            e.preventDefault();
-            const kind = act.dataset.qaAct;
-            if (kind === 'reroll') {
-                card.querySelector('.chunk-generate')?.click();
-            } else if (kind === 'play') {
-                const wrap = chunkPlayerOf(card);
-                wrap?.classList.remove('hidden');
-                ensureNative(wrap)?.play().catch(() => {});
-            } else if (kind === 'restore') {
-                restoreOriginalTake(card, act);
-            } else if (kind === 'dismiss') {
-                dismissChunkQa(card, act);
-            }
-            // Fold the popover away; a resulting verdict change rebuilds it fresh.
-            const pop = card.querySelector('.qa-popover');
-            pop?.classList.add('hidden');
-            card.querySelector('.qa-badge')?.setAttribute('aria-expanded', 'false');
-        });
-
-        card.querySelector('.chunk-generate').addEventListener('click', () => queueChunkRegen(card));
-
-        // Per-chunk voice override: a PENDING edit, like the text and tuning —
-        // held on screen and written with the next Regenerate, not saved on its
-        // own. Picking a voice may switch engines, so swap the knob set and
-        // re-point the Delivery chips; then flag the chunk unsaved (Revert puts it
-        // back). An explicit pick stops the chunk mirroring the project voice.
-        const chunkVoice = card.querySelector('.chunk-voice');
-        if (chunkVoice) {
-            chunkVoice.dataset.current = chunkVoice.value;
-            // Belt-and-braces for slim cards: the observer mounts the full option
-            // list as the card nears view, but focus (fires before the dropdown
-            // opens, mouse or keyboard) guarantees it regardless.
-            chunkVoice.addEventListener('focus', () => ensureVoiceOptions(chunkVoice), { once: true });
-            chunkVoice.addEventListener('change', () => {
-                const voice = chunkVoice.value;
-                if (voice === chunkVoice.dataset.current) return;
-                chunkVoice.dataset.current = voice;
-                chunkVoice.dataset.inherits = '0';
-                syncKnobEngines(card, modelOfSelect(chunkVoice));
-                card.dispatchEvent(new Event('engine-change'));
-                setDirty(card, isDirty(card));
-                chunkNotice(card, 'Voice changed — Regenerate to apply.');
-            });
-        }
+    // Wire one card's tuning panel — everything below the takes list: seed row,
+    // saved presets, Delivery chips, and the fine-tune disclosure. Called once
+    // per card by ensureTune, AFTER the panel's controls exist and hold their
+    // saved values, so no listener ever fires during setup.
+    const wireTune = (card) => {
+        initTuningKnobs(card); // slider ↔ number sync (idempotent per knob)
 
         // 🎲 rolls a fresh random seed into the field so the pin is visible and
         // re-usable (clearing the field by hand still means inherit/random).
@@ -3478,8 +3395,155 @@ function initStudioProject() {
         updateFineCount();
         refreshDelivery();
 
+        // Revert (wired in the init loop, panel or no panel) restores into this
+        // panel — hand it the closures it needs.
+        card._refreshDelivery = refreshDelivery;
+        card._updateFineCount = updateFineCount;
+    };
+
+    // The tuning panel is the single heaviest per-card block, so slim cards ship
+    // the <details> with only its takes list; the chunk's overrides park on
+    // data-tune-settings. Mounting clones the shared #chunk-tune-template, fills
+    // the overrides in (baselines included, so isDirty stays truthful), syncs
+    // the knob set to the card's actual engine, then wires the panel — a path
+    // eager markup also routes through (from the init loop instead). Idempotent;
+    // every code path that reads or writes panel controls (Regenerate payload,
+    // take restore, Revert) calls this first.
+    const tuneTpl = document.getElementById('chunk-tune-template');
+    const ensureTune = (card) => {
+        if (card.dataset.tuneWired) return card;
+        const details = card.querySelector('.chunk-tune');
+        if (!details) return card;
+        if (details.dataset.lazyTune) {
+            if (!tuneTpl) return card; // slim markup without its template — leave for a later attempt
+            details.append(tuneTpl.content.cloneNode(true));
+            let overrides = {};
+            try { overrides = JSON.parse(details.dataset.tuneSettings || '{}'); } catch { /* ignore */ }
+            const fill = (key, sel) => {
+                const input = card.querySelector(sel);
+                if (!input) return;
+                input.value = overrides[key] == null ? '' : String(overrides[key]);
+                // What was just applied IS the saved state — baseline it so a
+                // mount can never read as an unsaved edit.
+                input.dataset.original = input.value;
+                // Rest the paired slider on the override, or the inherited default.
+                const range = input.closest('.tuning-knob')?.querySelector('.knob-range');
+                if (range) range.value = input.value === '' ? (input.placeholder || range.min) : input.value;
+            };
+            fill('seed', '.chunk-seed');
+            KNOB_INPUTS.forEach(([key, sel]) => fill(key, sel));
+            // The template rendered as the PROJECT's engine — re-sync to this
+            // card's actual voice (covers per-chunk voices, and a project voice
+            // change that fanned out while the card was unmounted).
+            syncKnobEngines(card, modelOfSelect(card.querySelector('.chunk-voice')));
+        }
+        card.dataset.tuneWired = '1';
+        wireTune(card);
+        return card;
+    };
+
+    // Take histories are heavy: every take row carries its own <audio> player,
+    // so a 147-chunk project would build ~450 of them during init — and iPad
+    // Safari grinds to a halt well before that (WebKit degrades badly with
+    // hundreds of media elements). Build each card's takes (and mount its slim
+    // pieces) only as it nears the viewport. Any direct renderTakes() call
+    // (generate, select, poll) marks the card rendered, so the page-load JSON
+    // can never overwrite fresher server data.
+    const mountCard = (card) => {
+        ensureVoiceOptions(card.querySelector('.chunk-voice'));
+        mountTagChips(card);
+        ensureTune(card);
+        if (!card.dataset.takesRendered) {
+            try { renderTakes(card, JSON.parse(card.dataset.takes || '{}')); } catch { /* ignore */ }
+        }
+    };
+
+    const lazyTakes = 'IntersectionObserver' in window ? new IntersectionObserver((entries) => {
+        entries.forEach((entry) => {
+            if (!entry.isIntersecting) return;
+            lazyTakes.unobserve(entry.target);
+            mountCard(entry.target);
+        });
+    }, { rootMargin: '600px 0px' }) : null;
+
+    root.querySelectorAll('.studio-chunk').forEach((card) => {
+        // Mount the card's deferred pieces (lazily where supported — see above),
+        // and wire Select/Delete via one delegated listener (the take list is
+        // rebuilt wholesale on every change).
+        if (lazyTakes) lazyTakes.observe(card);
+        else mountCard(card);
+        card.querySelector('.chunk-takes')?.addEventListener('click', (e) => {
+            const row = e.target.closest('.chunk-take');
+            if (!row) return;
+            const selBtn = e.target.closest('.chunk-take-select');
+            const delBtn = e.target.closest('.chunk-take-delete');
+            if (selBtn && !selBtn.disabled) selectTake(card, row.dataset.takeId, selBtn);
+            else if (delBtn && !delBtn.disabled) deleteTake(card, row.dataset.takeId, delBtn);
+        });
+
+        // QA popover footer actions (design "QA Badge States"). Delegated on the
+        // .chunk-asr-badge wrapper (its innerHTML is rebuilt on every verdict, but
+        // the wrapper element persists). Regenerate and Play reuse the existing
+        // chunk controls; Restore reverts to the pre-fix take; Dismiss
+        // acknowledges a flag. On a foreign project the guard intercepts these
+        // (they mutate) — only opening the popover (.qa-badge) is whitelisted.
+        card.querySelector('.chunk-asr-badge')?.addEventListener('click', (e) => {
+            const act = e.target.closest('.qa-act');
+            if (!act) return;
+            e.preventDefault();
+            const kind = act.dataset.qaAct;
+            if (kind === 'reroll') {
+                card.querySelector('.chunk-generate')?.click();
+            } else if (kind === 'play') {
+                const wrap = chunkPlayerOf(card);
+                wrap?.classList.remove('hidden');
+                ensureNative(wrap)?.play().catch(() => {});
+            } else if (kind === 'restore') {
+                restoreOriginalTake(card, act);
+            } else if (kind === 'dismiss') {
+                dismissChunkQa(card, act);
+            }
+            // Fold the popover away; a resulting verdict change rebuilds it fresh.
+            const pop = card.querySelector('.qa-popover');
+            pop?.classList.add('hidden');
+            card.querySelector('.qa-badge')?.setAttribute('aria-expanded', 'false');
+        });
+
+        card.querySelector('.chunk-generate').addEventListener('click', () => queueChunkRegen(card));
+
+        // Per-chunk voice override: a PENDING edit, like the text and tuning —
+        // held on screen and written with the next Regenerate, not saved on its
+        // own. Picking a voice may switch engines, so swap the knob set and
+        // re-point the Delivery chips; then flag the chunk unsaved (Revert puts it
+        // back). An explicit pick stops the chunk mirroring the project voice.
+        const chunkVoice = card.querySelector('.chunk-voice');
+        if (chunkVoice) {
+            chunkVoice.dataset.current = chunkVoice.value;
+            // Belt-and-braces for slim cards: the observer mounts the card as it
+            // nears view, but focus (fires before the dropdown opens, mouse or
+            // keyboard) guarantees the options AND the tuning panel regardless —
+            // a voice change flows straight into both.
+            chunkVoice.addEventListener('focus', () => mountCard(card), { once: true });
+            chunkVoice.addEventListener('change', () => {
+                const voice = chunkVoice.value;
+                if (voice === chunkVoice.dataset.current) return;
+                chunkVoice.dataset.current = voice;
+                chunkVoice.dataset.inherits = '0';
+                syncKnobEngines(card, modelOfSelect(chunkVoice));
+                card.dispatchEvent(new Event('engine-change'));
+                setDirty(card, isDirty(card));
+                chunkNotice(card, 'Voice changed — Regenerate to apply.');
+            });
+        }
+
+        // Tuning panel: eager markup wires it now — the baseline below reads the
+        // live controls, matching the pre-slim init exactly. Slim cards defer the
+        // whole panel to ensureTune via mountCard as they near the viewport.
+        if (!card.querySelector('.chunk-tune[data-lazy-tune]')) ensureTune(card);
+
         // Snapshot the server-rendered panel as the saved baseline, so isDirty/Revert
         // have a reference point for the voice, knobs and seed from the first paint.
+        // (A slim card baselines its deferred tuning controls at mount instead.)
         commitBaseline(card);
 
         // Sound-tag chips (turbo only — the row swaps with the engine): insert
@@ -3507,6 +3571,7 @@ function initStudioProject() {
         // Revert restores the WHOLE panel to its last-saved baseline in one click:
         // text, voice (which may switch engines back), every knob, and the seed.
         card.querySelector('.chunk-revert').addEventListener('click', () => {
+            ensureTune(card); // the restore below writes into the tuning panel
             const textarea = card.querySelector('.chunk-text');
             textarea.value = textarea.dataset.original;
             const voice = ensureVoiceOptions(card.querySelector('.chunk-voice'));
@@ -3526,8 +3591,8 @@ function initStudioProject() {
             });
             const seedOriginal = card.querySelector('.chunk-seed')?.dataset.original;
             applyTuningSnapshot(card, tuning, (seedOriginal == null || seedOriginal === '') ? null : Number(seedOriginal));
-            refreshDelivery();
-            updateFineCount();
+            card._refreshDelivery?.();
+            card._updateFineCount?.();
             setDirty(card, false);
         });
 

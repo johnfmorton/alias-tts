@@ -729,6 +729,33 @@ class StudioProjectTest extends TestCase
             ->assertDontSee('data-lazy-chips', false);
     }
 
+    public function test_slim_cards_ship_the_tuning_panel_once_with_overrides_on_the_card(): void
+    {
+        $project = $this->project();
+        $project->chunks()->first()->update(['settings' => ['seed' => 4242, 'exaggeration' => 0.9]]);
+
+        // Default (slim): the tuning panel renders ONCE as a page template —
+        // one set of Delivery chips for the whole page — and each card carries
+        // only its overrides as JSON for ensureTune() to fill in on mount.
+        $slim = $this->actingAs($this->admin())->get(route('admin.studio.projects.show', $project))
+            ->assertOk()
+            ->assertSee('id="chunk-tune-template"', false)
+            ->assertSee('data-lazy-tune="1"', false)
+            ->assertSee('"seed":4242', false)
+            ->assertDontSee('value="4242"', false);
+        $this->assertSame(3, substr_count($slim->getContent(), 'class="delivery-chip"'));
+
+        // TTS_STUDIO_SLIM_CARDS=false restores the full panel per card, with
+        // the chunk's saved overrides rendered straight into its inputs.
+        config(['tts.studio_slim_cards' => false]);
+        $eager = $this->actingAs($this->admin())->get(route('admin.studio.projects.show', $project))
+            ->assertOk()
+            ->assertDontSee('chunk-tune-template', false)
+            ->assertDontSee('data-lazy-tune', false)
+            ->assertSee('value="4242"', false);
+        $this->assertSame(2 * 3, substr_count($eager->getContent(), 'class="delivery-chip"'));
+    }
+
     public function test_chunk_audio_redirects_to_presigned_url_on_object_storage(): void
     {
         $project = $this->project();
