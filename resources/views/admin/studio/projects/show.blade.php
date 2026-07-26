@@ -33,7 +33,10 @@
         </div>
     @endif
 
-    @php $lazyPlayers = (bool) config('tts.studio_lazy_players'); @endphp
+    @php
+        $lazyPlayers = (bool) config('tts.studio_lazy_players');
+        $slimCards = (bool) config('tts.studio_slim_cards');
+    @endphp
     <div id="studio-project"
          data-lazy-players="{{ $lazyPlayers ? '1' : '0' }}"
          data-has-final="{{ $hasFinal ? '1' : '0' }}"
@@ -58,6 +61,24 @@
          data-delivery-presets='@json(\App\Services\Tts\DeliveryPresets::all())'
          data-active-run="{{ $hasActiveRun ? '1' : '0' }}"
          data-active-run-type="{{ $activeRunType ?? '' }}">
+
+        @if($slimCards)
+            {{-- Slim cards: the lists every card repeats render ONCE here; cards
+                 ship a stub (selected voice option only, empty tag row) and JS
+                 mounts the full content per card as it nears the viewport
+                 (ensureVoiceOptions / mountTagChips). ~0.8 MB on 147 chunks. --}}
+            <template id="chunk-voice-options-template">
+                @foreach($voices as $v)
+                    <option value="{{ $v->slug }}" data-model="{{ \App\Services\Tts\ModelCatalog::forVoice($v) }}">{{ $v->name }}</option>
+                @endforeach
+            </template>
+            <template id="chunk-tag-chips-template">
+                @foreach(\App\Services\Tts\ParalinguisticTags::TAGS as $tag)
+                    <button type="button" class="chunk-tag-insert whitespace-nowrap rounded-full border border-white/10 bg-white/[0.04] px-2.5 py-0.5 font-mono text-xs text-zinc-200 transition hover:border-cyan-400/40 hover:bg-cyan-500/10 hover:text-cyan-100 active:bg-cyan-500/20"
+                            data-tag="[{{ $tag }}]" title="Insert [{{ $tag }}] at the cursor"><span class="text-zinc-500">[</span>{{ $tag }}<span class="text-zinc-500">]</span></button>
+                @endforeach
+            </template>
+        @endif
 
         @if($project->origin === 'api_failure')
             <div id="project-failure-notice" class="mb-6 rounded-xl border border-red-500/30 bg-red-500/10 px-5 py-4 text-sm text-red-200">
@@ -377,13 +398,21 @@
                         <div class="flex items-center gap-2">
                             <label class="flex items-center gap-1.5 text-xs text-zinc-500">
                                 <span class="text-zinc-400">Voice</span>
+                                @php $effectiveVoice = $slimCards ? $voices->firstWhere('id', $chunk->voice_id ?? $project->voice_id) : null; @endphp
                                 <select class="chunk-voice rounded-lg border border-edge bg-zinc-950 px-2 py-1.5 text-sm text-zinc-200 focus:border-cyan-500 focus:outline-none focus:ring-2 focus:ring-cyan-500/30"
                                         data-voice-url="{{ route('admin.studio.projects.chunks.voice', [$project, $chunk]) }}"
                                         data-inherits="{{ $chunk->voice_id ? '0' : '1' }}"
+                                        @if($effectiveVoice) data-lazy-options="1" @endif
                                         title="Voice for this chunk. Follows the project voice until you pick one here.">
-                                    @foreach($voices as $v)
-                                        <option value="{{ $v->slug }}" data-model="{{ \App\Services\Tts\ModelCatalog::forVoice($v) }}" @selected(($chunk->voice_id ?? $project->voice_id) === $v->id)>{{ $v->name }}</option>
-                                    @endforeach
+                                    {{-- Slim: only the selected option ships; ensureVoiceOptions()
+                                         swaps in the full list (from the page template) on demand. --}}
+                                    @if($effectiveVoice)
+                                        <option value="{{ $effectiveVoice->slug }}" data-model="{{ \App\Services\Tts\ModelCatalog::forVoice($effectiveVoice) }}" selected>{{ $effectiveVoice->name }}</option>
+                                    @else
+                                        @foreach($voices as $v)
+                                            <option value="{{ $v->slug }}" data-model="{{ \App\Services\Tts\ModelCatalog::forVoice($v) }}" @selected(($chunk->voice_id ?? $project->voice_id) === $v->id)>{{ $v->name }}</option>
+                                        @endforeach
+                                    @endif
                                 </select>
                             </label>
                             <button type="button" class="chunk-revert hidden rounded-lg border border-zinc-700 px-3 py-1.5 text-sm text-zinc-400 hover:bg-zinc-800">Revert</button>
@@ -434,14 +463,18 @@
                          syncKnobEngines via data-engine-help); the wrapper is a plain
                          block so `hidden` alone is safe — the flex lives one level in. --}}
                     <div data-engine-help="chatterbox-turbo" @class(['chunk-sound-tags', 'hidden' => $chunkModel !== 'chatterbox-turbo'])>
-                        <div class="mt-1.5 flex flex-wrap items-center gap-1.5">
+                        {{-- Chips show the literal token they insert; the brackets are
+                             dimmed like editor syntax so the tag words stay scannable.
+                             Slim: the row ships empty and mountTagChips() clones the
+                             chips from the page template as the card nears view. --}}
+                        <div class="chunk-tag-slot mt-1.5 flex flex-wrap items-center gap-1.5" @if($slimCards) data-lazy-chips="1" @endif>
                             <span class="cursor-help text-[11px] uppercase tracking-wide text-zinc-500" title="Chatterbox Turbo renders these as actual sounds, not words. They work best mid-sentence — a tag at the very end of a chunk can trip take QA.">Sound tags</span>
-                            {{-- Chips show the literal token they insert; the brackets are
-                                 dimmed like editor syntax so the tag words stay scannable. --}}
-                            @foreach(\App\Services\Tts\ParalinguisticTags::TAGS as $tag)
-                                <button type="button" class="chunk-tag-insert whitespace-nowrap rounded-full border border-white/10 bg-white/[0.04] px-2.5 py-0.5 font-mono text-xs text-zinc-200 transition hover:border-cyan-400/40 hover:bg-cyan-500/10 hover:text-cyan-100 active:bg-cyan-500/20"
-                                        data-tag="[{{ $tag }}]" title="Insert [{{ $tag }}] at the cursor"><span class="text-zinc-500">[</span>{{ $tag }}<span class="text-zinc-500">]</span></button>
-                            @endforeach
+                            @unless($slimCards)
+                                @foreach(\App\Services\Tts\ParalinguisticTags::TAGS as $tag)
+                                    <button type="button" class="chunk-tag-insert whitespace-nowrap rounded-full border border-white/10 bg-white/[0.04] px-2.5 py-0.5 font-mono text-xs text-zinc-200 transition hover:border-cyan-400/40 hover:bg-cyan-500/10 hover:text-cyan-100 active:bg-cyan-500/20"
+                                            data-tag="[{{ $tag }}]" title="Insert [{{ $tag }}] at the cursor"><span class="text-zinc-500">[</span>{{ $tag }}<span class="text-zinc-500">]</span></button>
+                                @endforeach
+                            @endunless
                         </div>
                     </div>
 

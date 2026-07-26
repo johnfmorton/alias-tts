@@ -3125,7 +3125,7 @@ function initStudioProject() {
             // land in the correct engine's now-visible inputs. Null (legacy take)
             // leaves the picker as-is.
             if (data.voice) {
-                const chunkVoice = card.querySelector('.chunk-voice');
+                const chunkVoice = ensureVoiceOptions(card.querySelector('.chunk-voice'));
                 const opt = chunkVoice?.querySelector(`option[value="${CSS.escape(data.voice)}"]`);
                 if (chunkVoice && opt && chunkVoice.value !== data.voice) {
                     chunkVoice.value = data.voice;
@@ -3208,29 +3208,62 @@ function initStudioProject() {
         }
     }
 
+    // ---- Slim cards: shared option/chip sources -----------------------------
+    // Big projects ship each card's voice picker with only its selected option
+    // and its sound-tag row empty (see tts.studio_slim_cards); the full lists
+    // render once as page-level <template>s and mount per card on approach or
+    // first use. On eager markup both helpers are no-ops (no data-lazy-* hooks).
+    const voiceOptionsTpl = document.getElementById('chunk-voice-options-template');
+    const tagChipsTpl = document.getElementById('chunk-tag-chips-template');
+
+    // Swap the full voice list into a slim select, keeping its value. MUST run
+    // before any programmatic `.value =` write (revert, take restore, project
+    // fanout): assigning a slug whose <option> isn't there silently no-ops.
+    const ensureVoiceOptions = (select) => {
+        if (!select || !select.dataset.lazyOptions || select.dataset.optionsLoaded || !voiceOptionsTpl) return select;
+        select.dataset.optionsLoaded = '1';
+        const value = select.value;
+        select.replaceChildren(voiceOptionsTpl.content.cloneNode(true));
+        select.value = value;
+        return select;
+    };
+
+    const mountTagChips = (card) => {
+        const slot = card.querySelector('.chunk-tag-slot[data-lazy-chips]');
+        if (!slot || slot.dataset.chipsMounted || !tagChipsTpl) return;
+        slot.dataset.chipsMounted = '1';
+        slot.append(tagChipsTpl.content.cloneNode(true));
+    };
+
     // Take histories are heavy: every take row carries its own <audio> player,
     // so a 147-chunk project would build ~450 of them during init — and iPad
     // Safari grinds to a halt well before that (WebKit degrades badly with
-    // hundreds of media elements). Build each card's takes only as it nears
-    // the viewport instead. Any direct renderTakes() call (generate, select,
-    // poll) marks the card rendered, so the page-load JSON can never overwrite
-    // fresher server data.
+    // hundreds of media elements). Build each card's takes (and mount its slim
+    // pieces) only as it nears the viewport. Any direct renderTakes() call
+    // (generate, select, poll) marks the card rendered, so the page-load JSON
+    // can never overwrite fresher server data.
+    const mountCard = (card) => {
+        ensureVoiceOptions(card.querySelector('.chunk-voice'));
+        mountTagChips(card);
+        if (!card.dataset.takesRendered) {
+            try { renderTakes(card, JSON.parse(card.dataset.takes || '{}')); } catch { /* ignore */ }
+        }
+    };
+
     const lazyTakes = 'IntersectionObserver' in window ? new IntersectionObserver((entries) => {
         entries.forEach((entry) => {
             if (!entry.isIntersecting) return;
-            const card = entry.target;
-            lazyTakes.unobserve(card);
-            if (card.dataset.takesRendered) return;
-            try { renderTakes(card, JSON.parse(card.dataset.takes || '{}')); } catch { /* ignore */ }
+            lazyTakes.unobserve(entry.target);
+            mountCard(entry.target);
         });
     }, { rootMargin: '600px 0px' }) : null;
 
     root.querySelectorAll('.studio-chunk').forEach((card) => {
-        // Render the take history embedded on the card (lazily where supported —
-        // see above), and wire Select/Delete via one delegated listener (the
-        // list is rebuilt wholesale on every change).
+        // Mount the card's deferred pieces (lazily where supported — see above),
+        // and wire Select/Delete via one delegated listener (the take list is
+        // rebuilt wholesale on every change).
         if (lazyTakes) lazyTakes.observe(card);
-        else { try { renderTakes(card, JSON.parse(card.dataset.takes || '{}')); } catch { /* ignore */ } }
+        else mountCard(card);
         card.querySelector('.chunk-takes')?.addEventListener('click', (e) => {
             const row = e.target.closest('.chunk-take');
             if (!row) return;
@@ -3278,6 +3311,10 @@ function initStudioProject() {
         const chunkVoice = card.querySelector('.chunk-voice');
         if (chunkVoice) {
             chunkVoice.dataset.current = chunkVoice.value;
+            // Belt-and-braces for slim cards: the observer mounts the full option
+            // list as the card nears view, but focus (fires before the dropdown
+            // opens, mouse or keyboard) guarantees it regardless.
+            chunkVoice.addEventListener('focus', () => ensureVoiceOptions(chunkVoice), { once: true });
             chunkVoice.addEventListener('change', () => {
                 const voice = chunkVoice.value;
                 if (voice === chunkVoice.dataset.current) return;
@@ -3472,7 +3509,7 @@ function initStudioProject() {
         card.querySelector('.chunk-revert').addEventListener('click', () => {
             const textarea = card.querySelector('.chunk-text');
             textarea.value = textarea.dataset.original;
-            const voice = card.querySelector('.chunk-voice');
+            const voice = ensureVoiceOptions(card.querySelector('.chunk-voice'));
             if (voice && voice.value !== voice.dataset.original) {
                 voice.value = voice.dataset.original;
                 voice.dataset.current = voice.dataset.original;
@@ -3835,7 +3872,7 @@ function initStudioProject() {
                 // the new voice into their pickers and stale their generated audio.
                 // Chunks with an explicit per-chunk voice are left untouched.
                 document.querySelectorAll('.studio-chunk').forEach((card) => {
-                    const cv = card.querySelector('.chunk-voice');
+                    const cv = ensureVoiceOptions(card.querySelector('.chunk-voice'));
                     if (!cv || cv.dataset.inherits !== '1') return;
                     cv.value = voice;
                     cv.dataset.current = voice;

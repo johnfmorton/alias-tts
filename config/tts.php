@@ -262,6 +262,13 @@ return [
     // JS handles both shapes, so this flag only changes the markup.
     'studio_lazy_players' => (bool) env('TTS_STUDIO_LAZY_PLAYERS', true),
 
+    // Ship each chunk card's voice picker with only its selected option and its
+    // sound-tag row empty; the full lists render once as page-level <template>s
+    // and mount per card as it nears the viewport. 147 cards × (9 options + 6
+    // chips) was ~0.8 MB of repeated HTML. Set false to restore the full
+    // per-card markup — the JS handles both shapes.
+    'studio_slim_cards' => (bool) env('TTS_STUDIO_SLIM_CARDS', true),
+
     // Chunks shorter than this are merged into a neighbor so they are never sent
     // to the backend alone. Chatterbox is unreliable on very short inputs (a bare
     // "Why?" or a "The to-do list." heading) — it tends to return silence/garbage

@@ -707,6 +707,28 @@ class StudioProjectTest extends TestCase
             ->assertSee('<audio class="chunk-audio', false);
     }
 
+    public function test_project_page_ships_slim_cards_by_default_with_an_eager_toggle(): void
+    {
+        $project = $this->project();
+
+        // Default (slim): the full voice list and tag chips render once as
+        // page-level templates; each card ships a stub wired for lazy mounting.
+        $this->actingAs($this->admin())->get(route('admin.studio.projects.show', $project))
+            ->assertOk()
+            ->assertSee('id="chunk-voice-options-template"', false)
+            ->assertSee('id="chunk-tag-chips-template"', false)
+            ->assertSee('data-lazy-options="1"', false)
+            ->assertSee('data-lazy-chips="1"', false);
+
+        // TTS_STUDIO_SLIM_CARDS=false restores the full per-card markup.
+        config(['tts.studio_slim_cards' => false]);
+        $this->actingAs($this->admin())->get(route('admin.studio.projects.show', $project))
+            ->assertOk()
+            ->assertDontSee('chunk-voice-options-template', false)
+            ->assertDontSee('data-lazy-options', false)
+            ->assertDontSee('data-lazy-chips', false);
+    }
+
     public function test_chunk_audio_redirects_to_presigned_url_on_object_storage(): void
     {
         $project = $this->project();

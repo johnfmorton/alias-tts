@@ -4,6 +4,19 @@ All notable changes to this project are documented in this file. The format is
 based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this
 project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.95.0] - 2026-07-26
+
+### Changed
+- **Chunk cards stopped repeating themselves.** Every card used to carry its
+  own full copy of the voice picker's option list and the sound-tag chip row —
+  on a 147-chunk project that was ~0.8 MB of identical HTML parsed 147 times.
+  The lists now render once as page templates; each card ships just its
+  selected voice and an empty tag row, and the full content mounts per card as
+  it scrolls near (or the moment you open the picker). Behavior is unchanged —
+  reverts, take restores, and project-wide voice changes all populate the list
+  first. Set `TTS_STUDIO_SLIM_CARDS=false` to restore the full per-card
+  markup.
+
 ## [0.94.0] - 2026-07-26
 
 ### Changed
