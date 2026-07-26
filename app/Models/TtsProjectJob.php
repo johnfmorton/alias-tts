@@ -203,6 +203,10 @@ class TtsProjectJob extends Model
                 : null,
             'created_human' => $this->created_at?->diffForHumans(),
             'finished_human' => $this->finished_at?->diffForHumans(),
+            // Measured wall-clock of a finished run ("4m 32s") — precise, unlike
+            // the deliberately-rounded ETA, because this one actually happened.
+            // Null while active or for a run stopped before a worker started it.
+            'duration_human' => $this->durationHuman(),
             'eta_seconds' => $eta['eta_seconds'],
             'eta_human' => $eta['eta_human'],
             // A running stitch is one ffmpeg pass, and a running duplicate is a
@@ -251,7 +255,10 @@ class TtsProjectJob extends Model
             $this->status === ProjectJobStatus::Queued && $this->cancel_requested => ['Stopping…', null],
             $this->status === ProjectJobStatus::Queued => ['Waiting for a queue worker…', null],
             $this->status === ProjectJobStatus::Running => [sprintf('Duplicating — copying clip %d of %d…', min($this->chunks_done + 1, $total), $this->chunks_total), null],
-            $this->status === ProjectJobStatus::Completed => ['✓ Duplicated — opening the copy…', 'ok'],
+            // The source page auto-navigates on redirect_url the moment this
+            // lands; the Jobs page shows it after the fact with an "Open the
+            // copy" link — so the words must read true in both places.
+            $this->status === ProjectJobStatus::Completed => ['✓ Duplicated — the copy is ready.', 'ok'],
             $this->status === ProjectJobStatus::Failed => ['✗ '.($this->error ?: 'The duplicate failed.'), 'error'],
             default => ['Stopped before it finished.', null],
         };
@@ -268,6 +275,32 @@ class TtsProjectJob extends Model
         $position = count($ids) === 1 ? TtsChunk::whereKey($ids[0])->value('position') : null;
 
         return $position === null ? 'Clip' : 'Clip '.($position + 1);
+    }
+
+    /**
+     * "4m 32s" for a finished run, from started_at → finished_at. Zero-parts
+     * are dropped ("4m", "1h 5m"); a sub-second run rounds up to "1s" rather
+     * than claiming nothing happened.
+     */
+    private function durationHuman(): ?string
+    {
+        if ($this->isActive() || ! $this->started_at || ! $this->finished_at) {
+            return null;
+        }
+
+        $seconds = max(1, $this->finished_at->timestamp - $this->started_at->timestamp);
+        if ($seconds < 60) {
+            return "{$seconds}s";
+        }
+
+        $minutes = intdiv($seconds, 60);
+        if ($minutes < 60) {
+            return ($seconds % 60) ? "{$minutes}m ".($seconds % 60).'s' : "{$minutes}m";
+        }
+
+        $hours = intdiv($minutes, 60);
+
+        return ($minutes % 60) ? "{$hours}h ".($minutes % 60).'m' : "{$hours}h";
     }
 
     /**

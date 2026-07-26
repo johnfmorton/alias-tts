@@ -904,6 +904,70 @@ class ProjectJobsTest extends TestCase
             ->assertSee('page=2');
     }
 
+    public function test_status_payload_reports_the_measured_run_duration(): void
+    {
+        $project = $this->project(User::factory()->create()->id);
+        $job = $this->queuedRun($project)->refresh(); // pull the DB-default status
+
+        // Active (or never-started) runs have no duration to report.
+        $this->assertNull($job->statusPayload()['duration_human']);
+
+        $job->update([
+            'status' => ProjectJobStatus::Completed,
+            'started_at' => now()->subSeconds(95),
+            'finished_at' => now(),
+        ]);
+        $this->assertSame('1m 35s', $job->refresh()->statusPayload()['duration_human']);
+
+        // Zero-parts drop; a sub-second run still admits it happened.
+        $job->update(['started_at' => now()->subMinutes(4)]);
+        $this->assertSame('4m', $job->refresh()->statusPayload()['duration_human']);
+        $job->update(['started_at' => now()]);
+        $this->assertSame('1s', $job->refresh()->statusPayload()['duration_human']);
+    }
+
+    public function test_jobs_page_shows_duration_starter_and_duplicate_copy_link(): void
+    {
+        $owner = User::factory()->create();
+        $admin = $this->admin();
+        $project = $this->project($owner->id);
+
+        // A finished run the admin started on the owner's project.
+        $this->queuedRun($project, $admin->id)->update([
+            'status' => ProjectJobStatus::Completed,
+            'started_at' => now()->subSeconds(272),
+            'finished_at' => now(),
+        ]);
+
+        // A completed duplicate pointing at its copy.
+        $copy = $this->project($owner->id);
+        TtsProjectJob::forceCreate([
+            'tts_project_id' => $project->id,
+            'user_id' => $owner->id,
+            'created_by_id' => $owner->id,
+            'type' => TtsProjectJob::TYPE_DUPLICATE,
+            'status' => ProjectJobStatus::Completed,
+            'chunk_ids' => [],
+            'chunks_total' => 2,
+            'result_project_id' => $copy->id,
+        ]);
+
+        // The owner sees the duration, who ran it (no Owner column for them),
+        // and the duplicate's copy link.
+        $this->actingAs($owner)->get(route('admin.jobs.index'))
+            ->assertOk()
+            ->assertSee('took 4m 32s')
+            ->assertSee('by '.$admin->name)
+            ->assertSee('Open the copy')
+            ->assertSee(route('admin.studio.projects.show', $copy->id));
+
+        // The SuperAdmin keeps the attribution in the Owner column instead of
+        // a duplicated "by" line under Started.
+        $this->actingAs($admin)->get(route('admin.jobs.index'))
+            ->assertOk()
+            ->assertSee('run by '.$admin->name);
+    }
+
     // --- Jobs-page retention (jobs:prune) -------------------------------------
 
     /** A finished run row for the project, backdated to $createdAt. */
@@ -1230,7 +1294,7 @@ class ProjectJobsTest extends TestCase
         $payload = $job->statusPayload();
         $this->assertSame('completed', $payload['status']);
         $this->assertSame(route('admin.studio.projects.show', $copy->id), $payload['redirect_url']);
-        $this->assertStringContainsString('opening the copy', $payload['message']);
+        $this->assertStringContainsString('the copy is ready', $payload['message']);
     }
 
     public function test_duplicate_run_offers_no_cancel_while_running(): void

@@ -6136,6 +6136,18 @@ function initJobsPage() {
         pill.className = 'job-status inline-flex rounded-md border px-2 py-0.5 text-xs ' + (JOB_STYLES[job.status] || JOB_STYLES.queued);
         row.querySelector('.job-progress').textContent = `${job.chunks_done + job.chunks_failed}/${job.chunks_total} · ${job.percent}%`;
         row.querySelector('.job-message').textContent = job.message;
+        // A run finishing live grows its extras in place: the measured duration
+        // under "Started", and — for a completed duplicate — the copy link.
+        const duration = row.querySelector('.job-duration');
+        if (duration && job.duration_human) {
+            duration.textContent = `took ${job.duration_human}`;
+            duration.classList.remove('hidden');
+        }
+        const copy = row.querySelector('.job-open-copy');
+        if (copy && job.redirect_url) {
+            copy.href = job.redirect_url;
+            copy.classList.remove('hidden');
+        }
         if (!job.active) row.querySelector('.job-cancel')?.classList.add('hidden');
     };
 

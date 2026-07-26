@@ -41,9 +41,22 @@
                             </td>
                             <td class="job-progress whitespace-nowrap px-4 py-3 text-zinc-300">{{ $payload['chunks_done'] + $payload['chunks_failed'] }}/{{ $payload['chunks_total'] }} · {{ $payload['percent'] }}%</td>
                             {{-- The server-composed message: live progress while running, the
-                                 failure reason after a failure — same words the project page shows. --}}
-                            <td class="job-message max-w-md px-4 py-3 text-zinc-400">{{ $payload['message'] }}</td>
-                            <td class="whitespace-nowrap px-4 py-3 text-zinc-500" title="{{ $job->created_at }}">{{ $payload['created_human'] }}</td>
+                                 failure reason after a failure — same words the project page shows.
+                                 The copy link lives OUTSIDE .job-message: the poll rewrites that
+                                 span's textContent wholesale, which would eat an inline anchor. --}}
+                            <td class="max-w-md px-4 py-3 text-zinc-400">
+                                <span class="job-message">{{ $payload['message'] }}</span>
+                                <a href="{{ $payload['redirect_url'] ?? '#' }}"
+                                   class="job-open-copy text-cyan-400 hover:underline {{ $payload['redirect_url'] ? '' : 'hidden' }}">Open the copy →</a>
+                            </td>
+                            <td class="whitespace-nowrap px-4 py-3 text-zinc-500" title="{{ $job->created_at }}">
+                                {{ $payload['created_human'] }}
+                                <span class="job-duration block text-xs {{ $payload['duration_human'] ? '' : 'hidden' }}">took {{ $payload['duration_human'] }}</span>
+                                {{-- SuperAdmins get this attribution in the Owner column instead. --}}
+                                @if(! $isSuperAdmin && $job->created_by_id && $job->created_by_id !== $job->user_id)
+                                    <span class="block text-xs">by {{ $job->createdBy?->name ?? 'an admin' }}</span>
+                                @endif
+                            </td>
                             @if($isSuperAdmin)
                                 <td class="whitespace-nowrap px-4 py-3 text-zinc-400">
                                     {{ $job->user?->name ?? '—' }}

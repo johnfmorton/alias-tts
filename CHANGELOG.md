@@ -4,6 +4,17 @@ All notable changes to this project are documented in this file. The format is
 based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this
 project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+- **Jobs rows now tell you more about the run itself.** Each finished run
+  shows its measured wall-clock ("took 4m 32s") under the Started time — the
+  real number, not the rounded estimate. When someone else started a run on
+  your project, the row says so ("by Admin"). And a completed Duplicate run
+  links straight to the project it created ("Open the copy →"), with its
+  message reworded to "the copy is ready" since the Jobs page shows it after
+  the fact.
+
 ## [0.92.0] - 2026-07-26
 
 ### Added
