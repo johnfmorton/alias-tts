@@ -4069,6 +4069,14 @@ function enhanceStudioPlayers(scope) {
             // there instead of 0:00 (see the ▶ handler).
             if (ct > 0) el.dataset.lastTime = String(ct);
         };
+        // Third transport state between idle and playing: lazy players fetch
+        // their audio on the first tap, so there's real network time before
+        // sound while the icon already shows "playing". `.is-loading` draws a
+        // spinner arc over the button ring (see .aplayer__btn::after).
+        const loading = (on) => {
+            el.classList.toggle('is-loading', on);
+            btn.setAttribute('aria-busy', on ? 'true' : 'false');
+        };
 
         btn.addEventListener('click', () => {
             const audio = ensureNative(el);
@@ -4086,7 +4094,14 @@ function enhanceStudioPlayers(scope) {
                     audio.addEventListener('loadedmetadata', () => { audio.currentTime = resumeAt; }, { once: true });
                 }
             }
-            audio.paused ? audio.play().catch(() => {}) : audio.pause();
+            if (audio.paused) {
+                // Safari is slow to fire 'waiting' on a cold start; flag the
+                // stall here so the spinner appears with the tap, not after it.
+                if (audio.readyState < HTMLMediaElement.HAVE_FUTURE_DATA) loading(true);
+                audio.play().catch(() => loading(false));
+            } else {
+                audio.pause();
+            }
         });
         track.addEventListener('click', (e) => {
             // Scrubbing a never-built player is a no-op (nothing is loaded yet).
@@ -4105,8 +4120,12 @@ function enhanceStudioPlayers(scope) {
             // the readout tracks a re-selected take via the data-duration-ms fallback.
             audio.addEventListener('durationchange', sync);
             audio.addEventListener('play', () => el.classList.add('is-playing'));
-            audio.addEventListener('pause', () => el.classList.remove('is-playing'));
-            audio.addEventListener('ended', () => el.classList.remove('is-playing'));
+            audio.addEventListener('pause', () => { el.classList.remove('is-playing'); loading(false); });
+            audio.addEventListener('ended', () => { el.classList.remove('is-playing'); loading(false); });
+            // Mid-play rebuffering and scrub-ahead stalls get the same spinner
+            // as the cold start; 'playing' means sound is actually running.
+            audio.addEventListener('waiting', () => loading(true));
+            audio.addEventListener('playing', () => loading(false));
             // Surface load/decode failures in the readout, so a dropped connection
             // reads as retryable instead of a dead button. A fresh attempt (the
             // retry's load()+play() above) fires loadstart, which hands the readout
@@ -4116,6 +4135,7 @@ function enhanceStudioPlayers(scope) {
             audio.addEventListener('loadstart', () => { delete el.dataset.loadFailed; delete el.dataset.lastTime; sync(); });
             audio.addEventListener('error', () => {
                 el.classList.remove('is-playing');
+                loading(false);
                 el.dataset.loadFailed = '1';
                 if (time) time.textContent = 'failed — press ▶ to retry';
             });

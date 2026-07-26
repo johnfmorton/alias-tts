@@ -258,6 +258,7 @@
     display: none;
 }
 .aplayer__btn {
+    position: relative;
     flex-shrink: 0;
     display: grid;
     place-items: center;
@@ -265,6 +266,55 @@
     cursor: pointer;
     color: var(--color-accent);
     transition: filter 0.15s ease;
+}
+/*
+ * Buffering spinner: lazy players fetch their audio on the first tap, so a
+ * cold ▶ has real network time before sound. While the transport is stalled
+ * (`.is-loading`, driven by the media events in enhanceStudioPlayers) this
+ * arc overlays the button's outline and spins. The delayed opacity keeps
+ * sub-150ms loads from ever flashing it.
+ */
+.aplayer__btn::after {
+    content: '';
+    position: absolute;
+    inset: -1.5px;
+    border-radius: inherit;
+    border: 1.5px solid transparent;
+    opacity: 0;
+    pointer-events: none;
+}
+.aplayer.is-loading .aplayer__btn::after {
+    border-top-color: currentColor;
+    opacity: 1;
+    transition: opacity 0.15s ease 0.15s;
+    animation: aplayer-spin 0.8s linear infinite;
+}
+/*
+ * The resting outline cross-fades out on the same delay, so the arc spins
+ * alone (a lone moving arc reads as "working"; arc-over-ring just reads as a
+ * ring). It snaps back the instant loading ends — no transition on the way in.
+ */
+.aplayer.is-loading .aplayer__btn {
+    border-color: transparent;
+    transition: border-color 0.15s ease 0.15s;
+}
+/*
+ * The hero button is filled, not outlined — an arc at the outer edge would be
+ * accent-on (dark) on the dark card. Spin it just inside the fill instead.
+ */
+.aplayer--hero .aplayer__btn::after {
+    inset: 3px;
+}
+@keyframes aplayer-spin {
+    to {
+        transform: rotate(360deg);
+    }
+}
+@media (prefers-reduced-motion: reduce) {
+    .aplayer.is-loading .aplayer__btn::after {
+        animation: none;
+        opacity: 0.6;
+    }
 }
 .aplayer__icon {
     width: 0;

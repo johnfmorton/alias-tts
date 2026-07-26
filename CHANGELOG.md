@@ -4,6 +4,17 @@ All notable changes to this project are documented in this file. The format is
 based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this
 project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+- **Play buttons now show they heard you.** Players fetch their audio on the
+  first tap, so a cold ▶ has a moment of real network time before sound — and
+  the button used to flip straight to "playing" over silence. Now a small arc
+  spins around the button while audio is loading (including mid-play rebuffers
+  and scrub-ahead stalls), vanishing the instant sound actually starts. Loads
+  faster than ~150 ms never flash it, screen readers hear the wait via
+  `aria-busy`, and reduced-motion users get a steady ring instead of a spin.
+
 ## [0.96.0] - 2026-07-26
 
 ### Changed
