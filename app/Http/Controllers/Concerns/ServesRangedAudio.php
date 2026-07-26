@@ -2,7 +2,9 @@
 
 namespace App\Http\Controllers\Concerns;
 
+use Illuminate\Filesystem\AwsS3V3Adapter as S3Disk;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Storage;
 use Symfony\Component\HttpFoundation\Response;
 
 /**
@@ -17,6 +19,43 @@ use Symfony\Component\HttpFoundation\Response;
  */
 trait ServesRangedAudio
 {
+    /**
+     * A short-lived redirect to the object store for a stored audio file, or
+     * null when the disk can't presign (local dev, tests) and the caller must
+     * buffer the bytes itself.
+     *
+     * Serving stored audio through PHP downloads the WHOLE object from B2 on
+     * EVERY request — and iOS Safari range-probes each player with several
+     * requests per play, so one tap on a 13 MB final could pin FPM workers for
+     * seconds apiece and stall the rest of the site behind them. A 302 to a
+     * presigned URL hands the bytes (and native 206 range handling) to B2;
+     * PHP's only job is the auth check and the signature.
+     *
+     * @param  string  $mime  forced via ResponseContentType — B2 objects may lack one
+     * @param  string|null  $disposition  optional Content-Disposition for the B2 response
+     */
+    protected function presignedAudioRedirect(string $diskName, string $path, string $mime, ?string $disposition = null): ?Response
+    {
+        $disk = Storage::disk($diskName);
+
+        // Only genuine object storage: a local disk's "temporary URL" is a
+        // signed route that still streams through PHP (and local reads are
+        // cheap anyway), so dev and tests keep the byte path below.
+        if (! $disk instanceof S3Disk) {
+            return null;
+        }
+
+        $options = ['ResponseContentType' => $mime];
+        if ($disposition !== null) {
+            $options['ResponseContentDisposition'] = $disposition;
+        }
+
+        // no-store: the Location carries a signature that expires — never let a
+        // browser or Cloudflare replay a cached redirect past its lifetime.
+        return redirect()->away($disk->temporaryUrl($path, now()->addHour(), $options))
+            ->header('Cache-Control', 'no-store');
+    }
+
     /**
      * @param  array<string, string>  $headers  extra headers (e.g. Content-Disposition)
      */

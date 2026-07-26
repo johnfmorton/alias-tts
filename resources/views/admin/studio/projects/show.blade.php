@@ -239,7 +239,9 @@
                     <button type="button" id="project-rebuild" class="inline-flex items-center gap-1.5 rounded-[9px] px-4 py-[9px] text-sm transition">↻ Build final</button>
                     {{-- Preview download (bare final audio) — hidden once approved; the
                          approved-version package below supersedes it. --}}
-                    <a id="project-download" href="{{ route('admin.studio.projects.audio', $project) }}" download class="inline-flex items-center gap-1.5 rounded-[9px] px-4 py-[9px] text-sm transition">↓ Download preview</a>
+                    {{-- dl=1 keeps the download on the byte path (fingerprint filename + same-origin
+     fetch); bare playback URLs redirect to presigned storage instead. --}}
+                    <a id="project-download" href="{{ route('admin.studio.projects.audio', ['project' => $project, 'dl' => 1]) }}" download class="inline-flex items-center gap-1.5 rounded-[9px] px-4 py-[9px] text-sm transition">↓ Download preview</a>
                     {{-- Approve ⇆ approved-download share one slot: "Approve as final" shows
                          until approved, then the approved-version download replaces it in
                          place as the primary action (toggled by reflectActionState). --}}

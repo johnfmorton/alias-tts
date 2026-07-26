@@ -668,6 +668,70 @@ class StudioProjectTest extends TestCase
         $this->assertStringStartsWith('audio/wav', (string) $res->headers->get('content-type'));
     }
 
+    /**
+     * Point tts.storage_disk at a real (offline) S3 disk. Presigning never
+     * touches the network, so routes can 302 to it without any B2 behind it.
+     */
+    private function useS3StorageDisk(): void
+    {
+        config([
+            'filesystems.disks.test-s3' => [
+                'driver' => 's3', 'key' => 'test', 'secret' => 'test',
+                'region' => 'us-east-1', 'bucket' => 'test-bucket',
+                'endpoint' => 'https://s3.test.example', 'use_path_style_endpoint' => true,
+            ],
+            'tts.storage_disk' => 'test-s3',
+        ]);
+    }
+
+    public function test_chunk_audio_redirects_to_presigned_url_on_object_storage(): void
+    {
+        $project = $this->project();
+        $chunk = $project->chunks()->first();
+        $this->actingAs($this->admin())->post(route('admin.studio.projects.chunks.generate', [$project, $chunk]));
+
+        $this->useS3StorageDisk();
+
+        $res = $this->actingAs($this->admin())
+            ->get(route('admin.studio.projects.chunks.audio', [$project, $chunk]));
+
+        $res->assertStatus(302);
+        $location = (string) $res->headers->get('Location');
+        $this->assertStringContainsString($chunk->refresh()->audio_path, $location);
+        $this->assertStringContainsString('X-Amz-Signature=', $location);
+        $this->assertStringContainsString('response-content-type=audio%2Fwav', $location);
+        // The Location's signature expires — nothing may cache the redirect.
+        $this->assertStringContainsString('no-store', (string) $res->headers->get('cache-control'));
+    }
+
+    public function test_final_audio_redirects_for_playback_but_downloads_stay_on_the_byte_path(): void
+    {
+        $project = $this->project();
+        foreach ($project->chunks()->get() as $chunk) {
+            $this->actingAs($this->admin())->post(route('admin.studio.projects.chunks.generate', [$project, $chunk]));
+        }
+        $this->actingAs($this->admin())->postJson(route('admin.studio.projects.rebuild', $project))->assertOk();
+        $project->refresh();
+
+        $this->useS3StorageDisk();
+
+        $playback = $this->actingAs($this->admin())->get(route('admin.studio.projects.audio', $project));
+        $playback->assertStatus(302);
+        $this->assertStringContainsString($project->final_audio_path, (string) $playback->headers->get('Location'));
+
+        // ?dl=1 (the Download link) must keep serving bytes so the filename
+        // carries its SHA-256 fingerprint and the JS fetch stays same-origin.
+        config(['tts.storage_disk' => 'local']);
+        $download = $this->actingAs($this->admin())
+            ->get(route('admin.studio.projects.audio', ['project' => $project, 'dl' => 1]));
+        $download->assertOk();
+        $this->assertStringStartsWith('audio/mpeg', (string) $download->headers->get('content-type'));
+        $this->assertStringContainsString(
+            substr(hash('sha256', (string) $download->getContent()), 0, 8),
+            (string) $download->headers->get('content-disposition'),
+        );
+    }
+
     public function test_rebuild_requires_all_chunks_generated(): void
     {
         $project = $this->project();

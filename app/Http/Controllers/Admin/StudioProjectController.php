@@ -1793,6 +1793,11 @@ class StudioProjectController extends Controller
     {
         $this->assertChunkBelongs($project, $chunk);
 
+        if ($chunk->audio_path
+            && ($redirect = $this->presignedAudioRedirect(config('tts.storage_disk'), $chunk->audio_path, 'audio/wav'))) {
+            return $redirect;
+        }
+
         $bytes = $this->projects->chunkAudioBytes($chunk);
         if ($bytes === null) {
             return response()->json(['message' => 'This chunk has not been generated yet.'], 404);
@@ -1816,6 +1821,11 @@ class StudioProjectController extends Controller
     public function takeAudio(Request $request, TtsProject $project, TtsChunk $chunk, TtsChunkTake $take): Response
     {
         $this->assertTakeBelongs($project, $chunk, $take);
+
+        if ($take->audio_path
+            && ($redirect = $this->presignedAudioRedirect(config('tts.storage_disk'), $take->audio_path, 'audio/wav'))) {
+            return $redirect;
+        }
 
         $bytes = $this->projects->takeAudioBytes($take);
         if ($bytes === null) {
@@ -2086,6 +2096,13 @@ class StudioProjectController extends Controller
 
     public function finalAudio(Request $request, TtsProject $project): Response
     {
+        // Playback redirects to a presigned URL; ?dl=1 (the Download link) stays
+        // on the byte path so the filename keeps its SHA-256 fingerprint tag.
+        if ($project->final_audio_path && ! $request->boolean('dl')
+            && ($redirect = $this->presignedAudioRedirect(config('tts.storage_disk'), $project->final_audio_path, $project->mime_type ?: 'audio/mpeg'))) {
+            return $redirect;
+        }
+
         $bytes = $this->projects->finalAudioBytes($project);
         if ($bytes === null) {
             return response()->json(['message' => 'No final audio — rebuild the project first.'], 404);

@@ -6,6 +6,18 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Fixed
+- **Pressing play no longer makes the whole app hold its breath.** Studio's
+  chunk, take, and final players — and the Genblaze player — now redirect to a
+  short-lived signed URL on the storage bucket, which streams the audio and
+  answers seek/range requests natively. Before, every play (and every one of
+  iOS Safari's several range probes per tap) made the server download the
+  entire file from the bucket just to return a slice — a 13 MB final cost
+  seconds per probe, and enough probes could tie up the server until the site
+  felt frozen, which is exactly how it failed from an iPad. Downloads keep
+  their fingerprint-tagged filenames, and local installs without a bucket are
+  unaffected.
+
 ### Added
 - **Jobs rows now tell you more about the run itself.** Each finished run
   shows its measured wall-clock ("took 4m 32s") under the Started time — the

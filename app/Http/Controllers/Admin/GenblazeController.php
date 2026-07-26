@@ -127,13 +127,19 @@ class GenblazeController extends Controller
 
         $mime = str_ends_with($key, '.wav') ? 'audio/wav' : 'audio/mpeg';
 
-        // ?download=1 → serve the same (private-bucket-proxied) bytes as an
-        // attachment, so a judge can grab the sealed final deliverable the way a
-        // real client would. The <audio> src omits the flag and still streams.
+        // ?download=1 → serve as an attachment, so a judge can grab the sealed
+        // final deliverable the way a real client would. The <audio> src omits
+        // the flag and still streams.
         $headers = [];
+        $disposition = null;
         if ($request->boolean('download')) {
             $ext = str_ends_with($key, '.wav') ? 'wav' : 'mp3';
-            $headers['Content-Disposition'] = 'attachment; filename="alias-sealed-final.'.$ext.'"';
+            $disposition = 'attachment; filename="alias-sealed-final.'.$ext.'"';
+            $headers['Content-Disposition'] = $disposition;
+        }
+
+        if ($redirect = $this->presignedAudioRedirect('s3', $key, $mime, $disposition)) {
+            return $redirect;
         }
 
         return $this->rangedAudio((string) $disk->get($key), $mime, $request, $headers);

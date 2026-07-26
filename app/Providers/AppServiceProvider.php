@@ -15,6 +15,7 @@ use App\Services\Tts\TtsProvider;
 use Aws\CommandInterface;
 use Aws\Middleware;
 use Aws\S3\S3Client;
+use Illuminate\Filesystem\AwsS3V3Adapter as LaravelS3Adapter;
 use Illuminate\Filesystem\FilesystemAdapter;
 use Illuminate\Queue\Events\JobProcessing;
 use Illuminate\Queue\Events\Looping;
@@ -155,7 +156,9 @@ class AppServiceProvider extends ServiceProvider
 
             $adapter = new AwsS3V3Adapter($client, $config['bucket'], $config['root'] ?? '');
 
-            return new FilesystemAdapter(new Flysystem($adapter, $config), $adapter, $config);
+            // Laravel's S3 wrapper (not the generic FilesystemAdapter) so the
+            // disk can presign temporary URLs — audio routes redirect to them.
+            return new LaravelS3Adapter(new Flysystem($adapter, $config), $adapter, $config, $client);
         });
     }
 }
