@@ -7,6 +7,19 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 ## [Unreleased]
 
 ### Added
+- **The project page finally works one-handed on a phone.** Below ~640px the
+  project header no longer pins to the top (where it ate two-thirds of an
+  iPhone screen) — it scrolls away with the page, chunks own the whole
+  viewport, and the project transport pins to the bottom instead, above the
+  home indicator: play, a scrubber, a one-line status (state · chunks ·
+  spend — or live build/download progress while something's running), and the
+  Preview download. Swipe up on the handle (or tap it) to expand the full
+  production sheet — title, stats, the big player, Voice and Format, Build
+  final, Download, and Approve as final, full-width and last so the
+  deliberate action stays deliberate. It's the same controls and the same
+  audio element as the desktop header, just re-homed on small screens:
+  playback carries across, a playing chunk pauses the project transport, and
+  the dock steps aside while you're typing in a chunk. Desktop is unchanged.
 - **Play buttons now show they heard you.** Players fetch their audio on the
   first tap, so a cold ▶ has a moment of real network time before sound — and
   the button used to flip straight to "playing" over silence. Now a small arc

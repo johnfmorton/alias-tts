@@ -71,7 +71,9 @@
 <html lang="en" class="h-full">
 <head>
     <meta charset="utf-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1">
+    {{-- viewport-fit=cover lets env(safe-area-inset-bottom) report the real home-
+         indicator inset, which the Studio mobile dock pads itself above. --}}
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
     <meta name="csrf-token" content="{{ csrf_token() }}">
     <title>{{ $title }} — Alias TTS</title>
     <link rel="icon" href="{{ asset('favicon.ico') }}" sizes="32x32">

@@ -89,6 +89,138 @@
 }
 
 /*
+ * Studio mobile transport dock + production sheet (design 12B, ≤640px). The
+ * dock pins the project transport above the home indicator while the header
+ * scrolls away; the sheet is the dock expanded into the full production
+ * controls (the desktop header's rows 2–3, reparented in by
+ * initStudioMobileDock in app.js). Like #mobile-nav-sheet above, display and
+ * the slide/fade transitions are owned here un-layered — `hidden`/`flex`
+ * toggling can't animate and hits the hidden-vs-display conflict — and the
+ * ≥640px hide is doubled up so none of it ever renders on desktop.
+ */
+#project-dock {
+    transition:
+        transform 0.25s ease,
+        opacity 0.2s ease;
+}
+/* Tucked away: while the sheet is open (it replaces the dock) and while the
+   keyboard owns the bottom of the screen (a focused chunk textarea). */
+#project-dock.is-tucked {
+    transform: translateY(110%);
+    pointer-events: none;
+}
+#project-sheet-scrim {
+    opacity: 0;
+    visibility: hidden;
+    pointer-events: none;
+    transition:
+        opacity 0.25s ease,
+        visibility 0s linear 0.25s;
+}
+#project-sheet-scrim.is-open {
+    opacity: 1;
+    visibility: visible;
+    pointer-events: auto;
+    transition: opacity 0.25s ease;
+}
+#project-sheet {
+    transform: translateY(100%);
+    visibility: hidden;
+    transition:
+        transform 0.3s cubic-bezier(0.32, 0.72, 0.24, 1),
+        visibility 0s linear 0.3s;
+}
+#project-sheet.is-open {
+    transform: translateY(0);
+    visibility: visible;
+    transition: transform 0.3s cubic-bezier(0.32, 0.72, 0.24, 1);
+}
+@media (prefers-reduced-motion: reduce) {
+    #project-dock,
+    #project-sheet,
+    #project-sheet-scrim {
+        transition: none;
+    }
+}
+@media (min-width: 640px) {
+    #project-dock,
+    #project-sheet,
+    #project-sheet-scrim {
+        display: none;
+    }
+}
+/* Keep the last chunk workable above the pinned dock. */
+@media (max-width: 639.98px) {
+    #studio-project {
+        padding-bottom: calc(96px + env(safe-area-inset-bottom, 0px));
+    }
+}
+
+/*
+ * Dock transport button: the hero's filled-accent look at thumb size. It shares
+ * the .aplayer anatomy classes purely for the icon/spinner CSS — there's no
+ * .aplayer__native inside (it drives the one final-audio element from outside),
+ * which is also why enhanceStudioPlayers() skips it. `.is-idle` = no final
+ * audio yet, so the transport has nothing to play.
+ */
+.aplayer--dock .aplayer__btn {
+    width: 42px;
+    height: 42px;
+    background: var(--color-accent);
+    color: var(--color-accent-on);
+}
+.aplayer--dock .aplayer__btn::after {
+    inset: 3px; /* filled button — spin the arc inside the fill, like the hero */
+}
+.aplayer--dock.is-idle .aplayer__btn {
+    background: rgba(255, 255, 255, 0.08);
+    color: var(--color-zinc-500);
+    cursor: default;
+}
+
+/*
+ * The desktop header groups, restyled for the sheet they move into on mobile.
+ * Two-id selectors so these beat both the groups' Tailwind utilities and the
+ * one-id rules above (e.g. the right-aligned status lines, which sit under the
+ * right-hand action cluster on desktop but read left in a stacked sheet).
+ */
+#project-sheet #project-config-group {
+    width: 100%;
+    gap: 8px;
+}
+#project-sheet #project-config-group label {
+    flex: 1 1 auto;
+}
+#project-sheet #project-config-group label:last-child {
+    flex: 0 1 auto; /* Format stays compact; Voice takes the width */
+}
+#project-sheet #project-config-group select {
+    flex: 1;
+    min-width: 0;
+    font-size: 16px; /* under 16px iOS Safari zooms the page on focus */
+}
+#project-sheet #project-actions {
+    margin-left: 0;
+    width: 100%;
+    gap: 8px;
+}
+#project-sheet #project-actions > * {
+    flex: 1 1 auto;
+    justify-content: center;
+}
+/* Approve (and its approved-download replacement) full-width and last, so the
+   deliberate action never sits beside an everyday one at thumb speed. */
+#project-sheet #project-seal,
+#project-sheet #project-receipt {
+    flex-basis: 100%;
+}
+#project-sheet #project-generate-estimate,
+#project-sheet #project-dirty-hint,
+#project-sheet #project-final-status {
+    text-align: left;
+}
+
+/*
  * Studio action cluster: a soft accent ring breathing outward nudges the user
  * toward the one step that brings the audio back in sync with the text —
  * Generate remaining while saved edits await new audio, Build final once every

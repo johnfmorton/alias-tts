@@ -1899,6 +1899,8 @@ function initStudioProject() {
             t.closest('#project-seal-copy') ||      // clipboard only
             t.closest('#project-duplicate-form') || // copies; the original is untouched
             t.closest('.seam-preview') ||           // renders a temporary preview only
+            t.closest('#dock-handle') ||            // mobile dock: expands the production sheet (read-only)
+            t.closest('#sheet-handle') ||           // mobile sheet: collapses it again
             t.closest('.qa-badge');                 // opens the QA popover (read-only; its .qa-act mutations stay gated)
 
         // Would this key press type, submit, or (on a select) change the value —
@@ -2062,7 +2064,11 @@ function initStudioProject() {
     // inserted-chunk ring marks the landing spot; the class is removed and
     // re-added (with a reflow between) so a second click flashes again.
     function scrollToChunk(card) {
-        const offset = (stickyHeader?.offsetHeight ?? 0) + 12;
+        // Below sm the header is ordinary content (the transport docks at the
+        // bottom instead — see initStudioMobileDock), so nothing overlaps the
+        // card's top; only a header that's actually pinned needs offsetting.
+        const pinned = stickyHeader && getComputedStyle(stickyHeader).position === 'sticky';
+        const offset = (pinned ? stickyHeader.offsetHeight : 0) + 12;
         window.scrollTo({
             top: card.getBoundingClientRect().top + window.scrollY - offset,
             behavior: window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth',
@@ -4154,6 +4160,271 @@ try {
 } finally {
     document.getElementById('studio-loading')?.remove();
 }
+
+// ---- Studio mobile transport dock (design 12B) --------------------------------
+// Below 640px nothing pins at the top of the project page: the header scrolls
+// away, chunks own the screen, and the transport pins at the BOTTOM — a compact
+// dock (play / scrubber / one-line status / primary download) that expands into
+// the full production sheet. The dock and the desktop header are the same
+// logical component in two placements: the header's rows 2–3 (hero player,
+// Voice/Format, action cluster, status lines) plus the status pill and ⋯ menu
+// are MOVED into the sheet on entering mobile and moved back on leaving, so
+// every control keeps its single id and all of initStudioProject's wiring
+// (reflectActionState, setStatus, the one shared final-audio element) drives
+// both layouts untouched. The dock's own readouts are mirrors, kept in step by
+// a MutationObserver on the nodes that wiring already updates.
+function initStudioMobileDock() {
+    const root = document.getElementById('studio-project');
+    const dock = document.getElementById('project-dock');
+    const sheet = document.getElementById('project-sheet');
+    const scrim = document.getElementById('project-sheet-scrim');
+    if (!root || !dock || !sheet || !scrim) return;
+
+    const audio = document.getElementById('project-final-audio');
+    const finalPlayer = document.getElementById('project-final-player');
+    const statusPill = document.getElementById('project-status');
+    const finalStatus = document.getElementById('project-final-status');
+    const downloadLink = document.getElementById('project-download');
+    const receiptLink = document.getElementById('project-receipt');
+    const titleLabel = document.getElementById('project-title-label');
+    const spendValue = document.querySelector('#project-spend .stat-value');
+
+    // ---- Two placements, one set of nodes ------------------------------------
+    // Each group's desktop anchor (parent + next sibling) is captured now, while
+    // everything sits in header position. Restores run in REVERSE list order so
+    // a group whose anchor is a later-listed sibling (config → actions) finds it
+    // already back home; the parentNode check covers any anchor that's mid-move.
+    const moves = [
+        ['project-player-row', 'sheet-slot-player'],
+        ['project-config-group', 'sheet-slot-config'],
+        ['project-actions', 'sheet-slot-actions'],
+        ['project-status-lines', 'sheet-slot-status'],
+        ['project-status', 'sheet-slot-pill'],
+        ['project-overflow-wrap', 'sheet-slot-menu'],
+    ].flatMap(([id, slotId]) => {
+        const el = document.getElementById(id);
+        const slot = document.getElementById(slotId);
+        return el && slot ? [{ el, slot, home: el.parentNode, next: el.nextSibling }] : [];
+    });
+    const mobile = window.matchMedia('(max-width: 639.98px)');
+    const place = (m) => {
+        if (m) moves.forEach(({ el, slot }) => slot.appendChild(el));
+        else [...moves].reverse().forEach(({ el, home, next }) =>
+            home.insertBefore(el, next && next.parentNode === home ? next : null));
+    };
+
+    // ---- Sheet open/close ------------------------------------------------------
+    const dockHandle = document.getElementById('dock-handle');
+    const sheetHandle = document.getElementById('sheet-handle');
+    const isOpen = () => sheet.classList.contains('is-open');
+    const open = () => {
+        sheet.classList.add('is-open');
+        scrim.classList.add('is-open');
+        dock.classList.add('is-tucked'); // the sheet replaces the dock
+        dockHandle.setAttribute('aria-expanded', 'true');
+        document.body.style.overflow = 'hidden';
+        sheetHandle.focus();
+    };
+    const close = ({ refocus = true } = {}) => {
+        sheet.classList.remove('is-open');
+        scrim.classList.remove('is-open');
+        dock.classList.remove('is-tucked');
+        dockHandle.setAttribute('aria-expanded', 'false');
+        document.body.style.overflow = '';
+        if (refocus) dockHandle.focus();
+    };
+    dockHandle.addEventListener('click', () => (isOpen() ? close() : open()));
+    sheetHandle.addEventListener('click', () => close());
+    scrim.addEventListener('click', () => close({ refocus: false }));
+    document.addEventListener('keydown', (e) => {
+        if (!isOpen()) return;
+        if (e.key === 'Escape') {
+            close();
+        } else if (e.key === 'Tab') {
+            // Keep focus cycling inside the sheet while it's modal (same idiom
+            // as the mobile nav sheet). display:none controls drop out via the
+            // offsetParent check.
+            const items = [...sheet.querySelectorAll('a[href], button:not([disabled]), select, input, textarea, [tabindex]:not([tabindex="-1"])')]
+                .filter((el) => el.offsetParent !== null);
+            if (!items.length) return;
+            const first = items[0];
+            const last = items[items.length - 1];
+            if (e.shiftKey && document.activeElement === first) {
+                e.preventDefault();
+                last.focus();
+            } else if (!e.shiftKey && document.activeElement === last) {
+                e.preventDefault();
+                first.focus();
+            }
+        }
+    });
+    // Swipe: up anywhere on the dock expands; down on the sheet's handle
+    // collapses. Touch-only nicety — the handle taps are the accessible path.
+    // Swipe-down is scoped to the handle so scrolling the sheet's own content
+    // (overflow-y) never dismisses it.
+    const swipe = (el, dir, act) => {
+        let y0 = null;
+        el.addEventListener('touchstart', (e) => { y0 = e.touches[0].clientY; }, { passive: true });
+        el.addEventListener('touchmove', (e) => {
+            if (y0 === null) return;
+            const dy = e.touches[0].clientY - y0;
+            if (dir === 'up' ? dy < -24 : dy > 24) { y0 = null; act(); }
+        }, { passive: true });
+        el.addEventListener('touchend', () => { y0 = null; }, { passive: true });
+    };
+    swipe(dock, 'up', open);
+    swipe(sheetHandle, 'down', () => close({ refocus: false }));
+
+    // ---- Transport: the dock drives the ONE final-audio element ---------------
+    // Same element the hero player (now living in the sheet) wraps, so playing
+    // state persists across dock ↔ sheet and the document-level one-player-at-
+    // a-time rule applies unchanged; a playing chunk shows the dock ▶ paused.
+    const dockPlayer = document.getElementById('dock-player');
+    const playBtn = document.getElementById('dock-play');
+    const track = document.getElementById('dock-track');
+    const fill = document.getElementById('dock-fill');
+    const time = document.getElementById('dock-time');
+    const fmt = (s) => (isFinite(s) && s >= 0)
+        ? Math.floor(s / 60) + ':' + String(Math.floor(s % 60)).padStart(2, '0')
+        : '0:00';
+    const syncTransport = () => {
+        const d = audio.duration || 0;
+        const ct = audio.currentTime || 0;
+        fill.style.width = (d ? (ct / d) * 100 : 0) + '%';
+        time.textContent = fmt(ct) + ' / ' + fmt(d);
+    };
+    if (audio && dockPlayer) {
+        ['timeupdate', 'loadedmetadata', 'durationchange', 'emptied'].forEach((ev) =>
+            audio.addEventListener(ev, syncTransport));
+        audio.addEventListener('play', () => dockPlayer.classList.add('is-playing'));
+        ['pause', 'ended'].forEach((ev) => audio.addEventListener(ev, () =>
+            dockPlayer.classList.remove('is-playing', 'is-loading')));
+        audio.addEventListener('waiting', () => dockPlayer.classList.add('is-loading'));
+        audio.addEventListener('playing', () => dockPlayer.classList.remove('is-loading'));
+        audio.addEventListener('error', () => {
+            dockPlayer.classList.remove('is-playing', 'is-loading');
+            time.textContent = 'failed — tap ▶ to retry';
+        });
+        playBtn.addEventListener('click', () => {
+            if (dockPlayer.classList.contains('is-idle')) return;
+            // Re-arm after a failed fetch, same as enhanceStudioPlayers: play()
+            // alone won't re-run resource selection after a media error.
+            if (audio.error) audio.load();
+            if (audio.paused) {
+                if (audio.readyState < HTMLMediaElement.HAVE_FUTURE_DATA) dockPlayer.classList.add('is-loading');
+                audio.play().catch(() => dockPlayer.classList.remove('is-loading'));
+            } else {
+                audio.pause();
+            }
+        });
+        track.addEventListener('click', (e) => {
+            const r = track.getBoundingClientRect();
+            if (audio.duration) audio.currentTime = ((e.clientX - r.left) / r.width) * audio.duration;
+        });
+        syncTransport();
+    }
+
+    // ---- Status row + primary mirror ------------------------------------------
+    const dot = document.getElementById('dock-dot');
+    const statusOut = document.getElementById('dock-status');
+    const metaOut = document.getElementById('dock-meta');
+    const primary = document.getElementById('dock-primary');
+    const sheetTitle = document.getElementById('sheet-title');
+    const sheetChunks = document.getElementById('sheet-chunks');
+    const sheetSpend = document.getElementById('sheet-spend');
+    const TONES = {
+        ok: ['bg-ok', 'text-ok'],
+        warn: ['bg-warn', 'text-warn'],
+        idle: ['bg-zinc-500', 'text-zinc-400'],
+        busy: ['bg-accent', 'text-zinc-300'],
+    };
+    const setTone = (tone) => {
+        dot.className = 'h-1.5 w-1.5 shrink-0 rounded-full ' + TONES[tone][0];
+        statusOut.className = 'truncate ' + TONES[tone][1];
+    };
+    const visible = (el) => !!el && !el.classList.contains('hidden');
+    const syncDock = () => {
+        const chunkCount = root.querySelectorAll('.studio-chunk').length;
+        const spend = spendValue ? spendValue.textContent.trim() : '';
+        const live = finalStatus ? finalStatus.textContent.trim() : '';
+        const status = statusPill ? statusPill.textContent.trim() : '';
+        if (live) {
+            // A live message owns the line — run progress ("Creating clip N of
+            // M"), download %, build results, errors — until setStatus clears it.
+            setTone('busy');
+            statusOut.textContent = live;
+            metaOut.textContent = '';
+        } else {
+            setTone(status === 'ready' ? 'ok' : status === 'stale' ? 'warn' : 'idle');
+            statusOut.textContent = status;
+            metaOut.textContent = '· ' + chunkCount + ' chunks' + (spend ? ' · ' + spend : '');
+        }
+        // Header data mirrored into the sheet's own stats row.
+        if (sheetChunks) sheetChunks.textContent = chunkCount;
+        if (sheetSpend && spend) sheetSpend.textContent = spend;
+        if (sheetTitle && titleLabel) sheetTitle.textContent = titleLabel.textContent;
+        // No final audio yet → the transport has nothing to play.
+        dockPlayer?.classList.toggle('is-idle', !visible(finalPlayer));
+        // The primary proxies whichever download currently leads the action
+        // cluster: the approved package once sealed, else the bare preview;
+        // dimmed while neither is offered (chunks outstanding, run active).
+        const lead = visible(receiptLink) ? receiptLink : (visible(downloadLink) ? downloadLink : null);
+        primary.textContent = lead === receiptLink ? '⤓ Approved' : '↓ Preview';
+        if (lead) primary.href = lead.href;
+        primary.classList.toggle('opacity-40', !lead);
+        primary.classList.toggle('pointer-events-none', !lead);
+        primary.setAttribute('aria-disabled', lead ? 'false' : 'true');
+        primary.tabIndex = lead ? 0 : -1;
+    };
+    // Route through the cluster's managed download so its staged progress and
+    // errors land in the status line — which this dock mirrors right here.
+    primary.addEventListener('click', (e) => {
+        e.preventDefault();
+        (visible(receiptLink) ? receiptLink : (visible(downloadLink) ? downloadLink : null))?.click();
+    });
+
+    // Everything the mirror reads is already kept current by initStudioProject —
+    // watch exactly those nodes rather than re-implementing any state logic.
+    const mo = new MutationObserver(syncDock);
+    [statusPill, finalStatus, spendValue, titleLabel].forEach((n) =>
+        n && mo.observe(n, { childList: true, characterData: true, subtree: true }));
+    [downloadLink, receiptLink, finalPlayer].forEach((n) =>
+        n && mo.observe(n, { attributes: true, attributeFilter: ['class'] }));
+    const chunkList = root.querySelector('.studio-chunk')?.parentElement;
+    if (chunkList) mo.observe(chunkList, { childList: true }); // delete-chunk updates the count
+
+    // ---- Keyboard: a focused text field owns the bottom of the screen ---------
+    // The on-screen keyboard covers the dock anyway; hide it so it can't hover
+    // mid-screen on browsers that resize the viewport instead. Deferred restore
+    // so focus hopping field → field doesn't flicker the dock in between.
+    let kbTimer;
+    const editsText = (el) => el instanceof Element
+        && el.matches('textarea, input:not([type="checkbox"]):not([type="radio"])');
+    document.addEventListener('focusin', (e) => {
+        if (!mobile.matches || isOpen()) return;
+        if (editsText(e.target)) {
+            clearTimeout(kbTimer);
+            dock.classList.add('is-tucked');
+        }
+    });
+    document.addEventListener('focusout', () => {
+        if (isOpen()) return;
+        clearTimeout(kbTimer);
+        kbTimer = setTimeout(() => {
+            if (!editsText(document.activeElement)) dock.classList.remove('is-tucked');
+        }, 120);
+    });
+
+    // ---- The breakpoint owns which placement is live ---------------------------
+    mobile.addEventListener('change', (e) => {
+        if (!e.matches && isOpen()) close({ refocus: false });
+        place(e.matches);
+        syncDock();
+    });
+    place(mobile.matches);
+    syncDock();
+}
+initStudioMobileDock();
 
 // ---- Studio project "Revise text" page --------------------------------------
 // Paste the updated manuscript, preview the chunk-level diff (AJAX), then the

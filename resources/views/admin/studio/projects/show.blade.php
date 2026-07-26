@@ -105,8 +105,15 @@
              (controls): Voice/Format config on the left, the audio-output action
              cluster on the right. Every element id and data hook is unchanged —
              initStudioProject()/reflectActionState()/renderSpend() drive looks,
-             text, and visibility exactly as before; this is a layout + skin pass. --}}
-        <div id="project-sticky-header" class="sticky top-0 z-30 mb-6 rounded-2xl border border-white/[0.09] bg-sticky px-5 py-4 shadow-[0_16px_40px_-10px_rgba(0,0,0,0.7)] sm:px-6 sm:py-5">
+             text, and visibility exactly as before; this is a layout + skin pass.
+
+             Below sm (design 12B) the header is ordinary page content — it scrolls
+             away so chunks own the screen — and the transport pins at the BOTTOM
+             instead: rows 2–3, the status pill, the ⋯ menu, and the status lines
+             reparent into the production sheet (#project-sheet) attached to the
+             bottom dock. initStudioMobileDock() moves the same nodes back and
+             forth on the 640px boundary, so every id keeps a single instance. --}}
+        <div id="project-sticky-header" class="mb-6 rounded-2xl border border-white/[0.09] bg-sticky px-5 py-4 sm:sticky sm:top-0 sm:z-30 sm:px-6 sm:py-5 sm:shadow-[0_16px_40px_-10px_rgba(0,0,0,0.7)]">
             {{-- Row 1: identity + economics chips + project-scope menu --}}
             <div class="flex flex-wrap items-center gap-x-3 gap-y-2">
                 <a href="{{ route('admin.studio.index') }}" class="inline-flex items-center gap-1.5 text-sm text-zinc-400 hover:text-zinc-200">← All projects</a>
@@ -161,11 +168,13 @@
                         </div>
                     @endif
                     <span id="project-status" class="inline-flex rounded-md border px-2 py-0.5 text-xs {{ $statusBadgeClass }}">{{ $statusVal }}</span>
-                    <span class="h-[22px] w-px bg-white/10" aria-hidden="true"></span>
+                    {{-- The divider pairs the pill with the ⋯ menu; both live in the
+                         mobile sheet instead, so it hides with them below sm. --}}
+                    <span class="h-[22px] w-px bg-white/10 max-sm:hidden" aria-hidden="true"></span>
                     {{-- Project-scope menu (Start over, Duplicate, Clean up, Download
                          archive, Delete) — rare + lifecycle actions, kept with identity
                          and away from the export buttons (design turn 3). --}}
-                    <div class="relative">
+                    <div class="relative" id="project-overflow-wrap">
                         <button type="button" id="project-overflow" aria-label="More actions"
                                 class="grid h-[38px] w-[38px] place-items-center rounded-[9px] border border-white/14 text-lg text-zinc-300 hover:bg-white/[0.04]">⋯</button>
                         <div id="project-overflow-menu" class="absolute top-[44px] right-0 z-40 hidden w-56 rounded-[12px] border border-white/10 bg-menu p-1.5 shadow-[0_20px_40px_-12px_rgba(0,0,0,0.7)]">
@@ -218,7 +227,7 @@
             </div>
 
             {{-- Row 2: the final-audio hero player (the artifact this whole page builds) --}}
-            <div class="mt-4 flex flex-wrap items-center gap-4">
+            <div id="project-player-row" class="mt-4 flex flex-wrap items-center gap-4">
                 <div id="project-final-player" class="aplayer aplayer--hero min-w-[300px] flex-1 {{ $hasFinal ? '' : 'hidden' }}">
                     <button type="button" class="aplayer__btn" aria-label="Play or pause the final audio"><span class="aplayer__icon"></span></button>
                     <div class="aplayer__track"><div class="aplayer__fill"></div><div class="aplayer__knob"></div></div>
@@ -234,6 +243,8 @@
                  (right). Action looks (primary / outline / seal / disabled) and
                  visibility are set by reflectActionState() from the current state. --}}
             <div class="mt-4 flex flex-wrap items-center gap-3">
+                {{-- Voice/Format travel to the sheet as one group on mobile. --}}
+                <div id="project-config-group" class="flex flex-wrap items-center gap-3">
                 <label class="flex items-center gap-2 text-xs text-zinc-500" title="Changing the voice marks generated chunks for regeneration.">
                     <span class="text-zinc-400">Voice</span>
                     <select id="project-voice"
@@ -252,7 +263,8 @@
                         @endforeach
                     </select>
                 </label>
-                <div class="ml-auto flex flex-wrap items-center gap-2">
+                </div>
+                <div id="project-actions" class="ml-auto flex flex-wrap items-center gap-2">
                     <button type="button" id="project-generate-all" class="inline-flex items-center gap-1.5 rounded-[9px] px-4 py-[9px] text-sm transition">▶ Generate remaining</button>
                     {{-- Stop the background run (shown only while one is in flight;
                          see reflectActionState). The clip being rendered still lands. --}}
@@ -277,6 +289,9 @@
                 </div>
             </div>
 
+            {{-- Approved-final badge + status lines, grouped so the mobile sheet can
+                 adopt them whole (feedback must land where the buttons are). --}}
+            <div id="project-status-lines">
             {{-- Approved-final badge + status line (toggled in JS; see initStudioProject) --}}
             <div id="project-seal-badge" data-sha256="{{ $project->final_sha256 }}"
                  class="mt-3 flex flex-wrap items-center gap-x-3 gap-y-1 rounded-lg border border-ok/30 bg-ok/10 px-3 py-2 text-sm text-ok {{ $project->isSealed() ? '' : 'hidden' }}">
@@ -302,6 +317,7 @@
                  visibility are owned by reflectActionState() in app.js. --}}
             <div id="project-dirty-hint" class="hidden text-sm text-amber-400" role="status"></div>
             <div id="project-final-status" class="text-sm text-zinc-400" role="status" aria-live="polite"></div>
+            </div>
         </div>
 
         @if(config('tts.asr.enabled'))
@@ -597,6 +613,79 @@
                     </div>
                 @endif
             @endforeach
+        </div>
+
+        {{-- Mobile bottom transport dock (design 12B, ≤640px only). Nothing pins at
+             the top on a phone — the header above scrolls away and this dock pins
+             the transport where thumbs are: play, scrubber, a one-line status, and
+             the primary download. The handle (tap or swipe up) expands the
+             production sheet below. Show/hide + transitions live in app.css
+             (mobile-nav-sheet pattern); initStudioMobileDock() drives everything. --}}
+        <div id="project-dock" class="fixed inset-x-0 bottom-0 z-40 border-t border-accent/35 bg-sticky px-4 pb-[calc(env(safe-area-inset-bottom,0px)+8px)] shadow-[0_-14px_30px_-8px_rgba(0,0,0,0.8)] sm:hidden">
+            <button type="button" id="dock-handle" aria-controls="project-sheet" aria-expanded="false"
+                    aria-label="Open production controls"
+                    class="mx-auto flex h-7 w-28 items-center justify-center">
+                <span class="h-1 w-9 rounded-full bg-white/25" aria-hidden="true"></span>
+            </button>
+            <div class="flex items-center gap-3">
+                {{-- Same anatomy classes as the page players so the icon, spinner,
+                     and playing states come from the .aplayer CSS — but no
+                     .aplayer__native inside: this transport drives the ONE final
+                     audio element (inside the sheet's hero player) from outside. --}}
+                <div id="dock-player" class="aplayer aplayer--dock shrink-0">
+                    <button type="button" id="dock-play" class="aplayer__btn" aria-label="Play or pause the project audio"><span class="aplayer__icon"></span></button>
+                </div>
+                <div class="min-w-0 flex-1">
+                    <div class="flex items-center gap-2">
+                        <div id="dock-track" class="relative h-1 flex-1 cursor-pointer rounded-full bg-white/15">
+                            <div id="dock-fill" class="absolute inset-y-0 left-0 w-0 rounded-full bg-accent"></div>
+                        </div>
+                        <span id="dock-time" class="shrink-0 font-mono text-[10px] text-zinc-500">0:00 / 0:00</span>
+                    </div>
+                    {{-- One-line project status: mirrors the status pill (or the live
+                         status/run message while one shows) + chunk count + spend.
+                         The live region: with the sheet closed its status line is
+                         visibility:hidden, so this is what announces on a phone. --}}
+                    <div class="mt-1 flex items-center gap-1.5 text-[11px] leading-tight" role="status" aria-live="polite">
+                        <span id="dock-dot" class="h-1.5 w-1.5 shrink-0 rounded-full bg-ok" aria-hidden="true"></span>
+                        <span id="dock-status" class="truncate text-ok">{{ $statusVal }}</span>
+                        <span id="dock-meta" class="truncate text-zinc-500"></span>
+                    </div>
+                </div>
+                {{-- The everyday primary, abbreviated. Proxies whichever download
+                     leads in the action cluster (preview, or the approved package
+                     once sealed); dimmed while neither is available. Approve never
+                     appears here — no irreversible action one accidental tap away. --}}
+                <a id="dock-primary" href="{{ route('admin.studio.projects.audio', ['project' => $project, 'dl' => 1]) }}"
+                   class="shrink-0 rounded-[9px] bg-accent px-3.5 py-2.5 text-xs font-bold text-accent-on">↓ Preview</a>
+            </div>
+        </div>
+
+        {{-- Production sheet (dock expanded): full title, stats + status pill + ⋯
+             menu, the hero player, Voice/Format, and the full action cluster —
+             the pieces the desktop header shows in rows 2–3, adopted here below
+             sm by initStudioMobileDock(). Approve arrives with them, full-width
+             and last so it stays deliberate. --}}
+        <div id="project-sheet-scrim" class="fixed inset-0 z-40 bg-black/55 sm:hidden" aria-hidden="true"></div>
+        <div id="project-sheet" role="dialog" aria-modal="true" aria-label="Production controls"
+             class="fixed inset-x-0 bottom-0 z-40 max-h-[85dvh] overflow-y-auto rounded-t-[18px] border-t border-accent/35 bg-sticky px-4 pb-[calc(env(safe-area-inset-bottom,0px)+12px)] shadow-[0_-18px_40px_-8px_rgba(0,0,0,0.85)] sm:hidden">
+            <button type="button" id="sheet-handle" aria-label="Close production controls"
+                    class="mx-auto flex h-8 w-28 items-center justify-center">
+                <span class="h-1 w-9 rounded-full bg-white/25" aria-hidden="true"></span>
+            </button>
+            <div id="sheet-title" class="text-[15px] font-bold leading-snug text-zinc-100">{{ $project->title }}</div>
+            <div class="mt-2 flex flex-wrap items-center gap-x-3 gap-y-2 text-xs text-zinc-500">
+                <span><span id="sheet-chunks" class="font-semibold text-zinc-200">{{ $chunks->count() }}</span> chunks</span>
+                @if(\App\Support\GenerationCost::enabled())
+                    <span>spend <span id="sheet-spend" class="font-mono text-zinc-200">{{ $projectSpendReadout['label'] }}</span></span>
+                @endif
+                <span id="sheet-slot-pill" class="inline-flex"></span>
+                <span id="sheet-slot-menu" class="ml-auto"></span>
+            </div>
+            <div id="sheet-slot-player"></div>
+            <div id="sheet-slot-config" class="mt-3"></div>
+            <div id="sheet-slot-actions" class="mt-3"></div>
+            <div id="sheet-slot-status"></div>
         </div>
 
         @if($foreignOwner)
