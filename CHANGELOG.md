@@ -4,6 +4,16 @@ All notable changes to this project are documented in this file. The format is
 based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this
 project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.92.0] - 2026-07-26
+
+### Added
+- **The Jobs page now cleans up after itself.** Finished runs are cleared
+  automatically after 7 days, and only the newest 100 per user are kept — a
+  daily `jobs:prune` pass permanently deletes the rest (a busy week of
+  regenerating one project had left 50+ near-identical entries). Runs still
+  queued or running are never touched, the page header states the policy, and
+  both limits are tunable via `TTS_JOBS_KEEP_DAYS` / `TTS_JOBS_KEEP_PER_USER`.
+
 ## [0.91.0] - 2026-07-25
 
 ### Changed
