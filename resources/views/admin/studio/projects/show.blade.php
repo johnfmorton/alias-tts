@@ -33,7 +33,9 @@
         </div>
     @endif
 
+    @php $lazyPlayers = (bool) config('tts.studio_lazy_players'); @endphp
     <div id="studio-project"
+         data-lazy-players="{{ $lazyPlayers ? '1' : '0' }}"
          data-has-final="{{ $hasFinal ? '1' : '0' }}"
          data-rebuild-url="{{ route('admin.studio.projects.rebuild', $project) }}"
          data-final-url="{{ route('admin.studio.projects.audio', $project) }}"
@@ -449,13 +451,20 @@
                          a big project fired one ranged-audio request per chunk on page
                          load, enough to saturate the server and freeze the page. --}}
                     @php $selectedTakeDuration = collect($takesByChunk[$chunk->id]['takes'])->firstWhere('selected', true)['duration_ms'] ?? null; @endphp
+                    {{-- Lazy mode (tts.studio_lazy_players): no <audio> in the markup at
+                         all — the URL parks on data-audio-src and ensureNative() builds
+                         the element on first tap. WebKit allocates media plumbing per
+                         <audio>, so hundreds of them froze iPad Safari. --}}
                     <div class="aplayer aplayer--chunk mt-3 rounded-[12px] border border-white/8 bg-inset px-3.5 py-2.5 {{ $chunk->isCompleted() ? '' : 'hidden' }}"
-                         @if($selectedTakeDuration) data-duration-ms="{{ $selectedTakeDuration }}" @endif>
+                         @if($selectedTakeDuration) data-duration-ms="{{ $selectedTakeDuration }}" @endif
+                         @if($lazyPlayers) data-audio-src="{{ $chunk->isCompleted() ? route('admin.studio.projects.chunks.audio', [$project, $chunk]) : '' }}" data-native-class="chunk-audio" @endif>
                         <button type="button" class="aplayer__btn" aria-label="Play chunk audio"><span class="aplayer__icon"></span></button>
                         <div class="aplayer__track"><div class="aplayer__fill"></div><div class="aplayer__knob"></div></div>
                         <span class="aplayer__time">0:00 / 0:00</span>
+                        @unless($lazyPlayers)
                         <audio class="chunk-audio aplayer__native" preload="none"
                                @if($chunk->isCompleted()) src="{{ route('admin.studio.projects.chunks.audio', [$project, $chunk]) }}" @endif></audio>
+                        @endunless
                     </div>
 
                     {{-- Take history + per-chunk tuning override. --}}
@@ -635,11 +644,17 @@
                         {{-- Transient stitched preview — the same player used per chunk,
                              never a saved take. --}}
                         <div class="seam-player mt-3 hidden">
-                            <div class="aplayer aplayer--chunk rounded-xl border border-white/8 bg-inset px-4 py-3.5">
+                            {{-- Lazy mode: the seam audio only ever holds a stitched blob, so
+                                 data-audio-src stays empty — ensureNative() builds a bare
+                                 element when the preview is first stitched. --}}
+                            <div class="aplayer aplayer--chunk rounded-xl border border-white/8 bg-inset px-4 py-3.5"
+                                 @if($lazyPlayers) data-audio-src="" data-native-class="seam-audio" @endif>
                                 <button type="button" class="aplayer__btn" aria-label="Play stitched preview"><span class="aplayer__icon"></span></button>
                                 <div class="aplayer__track"><div class="aplayer__fill"></div><div class="aplayer__knob"></div></div>
                                 <span class="aplayer__time">0:00 / 0:00</span>
+                                @unless($lazyPlayers)
                                 <audio class="seam-audio aplayer__native"></audio>
+                                @endunless
                             </div>
                             <div class="mt-2"><span class="seam-status text-xs text-ok" role="status" aria-live="polite"></span></div>
                         </div>

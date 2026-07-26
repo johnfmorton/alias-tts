@@ -4,6 +4,20 @@ All notable changes to this project are documented in this file. The format is
 based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this
 project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.94.0] - 2026-07-26
+
+### Changed
+- **Studio players now materialize on first tap.** Even after take histories
+  went lazy, a 147-chunk project still shipped ~300 `<audio>` elements (one
+  per chunk player and seam preview) — and WebKit allocates real media
+  plumbing for every one, which kept big projects sluggish on iPad Safari.
+  Players now render as pure UI with the audio URL held in a data attribute;
+  the real `<audio>` element is created the moment you press play, behaving
+  identically from there (same retry, resume, and duration readouts). A page
+  now opens with a single media element — the final player. Set
+  `TTS_STUDIO_LAZY_PLAYERS=false` to restore the previous eager markup; the
+  JS handles both shapes, so the flag is a safe instant rollback.
+
 ## [0.93.2] - 2026-07-26
 
 ### Fixed

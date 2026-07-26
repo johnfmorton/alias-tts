@@ -82,7 +82,9 @@ function hidePlayer(audio) {
 // hidden native audio (same anatomy as <x-aplayer> and Studio's takeRow).
 // Callers grab the native via `.aplayer__native` and run enhanceStudioPlayers()
 // on the wrapper (or an ancestor) once it's in the DOM.
-function buildAPlayer(variant, { label = 'Play audio', hidden = false, extraClass = '' } = {}) {
+// With `lazySrc` (a URL, may be '') no native is created — the URL parks on
+// data-audio-src and ensureNative() builds the element on first tap.
+function buildAPlayer(variant, { label = 'Play audio', hidden = false, extraClass = '', lazySrc } = {}) {
     const el = document.createElement('div');
     el.className = `aplayer aplayer--${variant}` + (hidden ? ' hidden' : '') + (extraClass ? ` ${extraClass}` : '');
     const btn = document.createElement('button');
@@ -102,10 +104,36 @@ function buildAPlayer(variant, { label = 'Play audio', hidden = false, extraClas
     const time = document.createElement('span');
     time.className = 'aplayer__time';
     time.textContent = '0:00 / 0:00';
-    const audio = document.createElement('audio');
-    audio.className = 'aplayer__native';
-    el.append(btn, track, time, audio);
+    if (lazySrc === undefined) {
+        const audio = document.createElement('audio');
+        audio.className = 'aplayer__native';
+        el.append(btn, track, time, audio);
+    } else {
+        el.dataset.audioSrc = lazySrc;
+        el.append(btn, track, time);
+    }
     return el;
+}
+
+// A lazy player's native <audio>, created on first use. Big Studio pages ship
+// their players as pure UI with the media URL parked on data-audio-src (see
+// tts.studio_lazy_players): WebKit allocates real media plumbing for every
+// <audio> element on the page, and hundreds of them at once made iPad Safari
+// feel frozen. The element built here matches what the eager markup would have
+// shipped, and _wireNative (stashed by enhanceStudioPlayers) attaches the same
+// transport listeners — so everything downstream behaves identically.
+function ensureNative(el) {
+    if (!el) return null;
+    let audio = el.querySelector('.aplayer__native');
+    if (!audio && el.dataset.audioSrc !== undefined) {
+        audio = document.createElement('audio');
+        audio.className = ('aplayer__native ' + (el.dataset.nativeClass || '')).trim();
+        audio.preload = 'none';
+        if (el.dataset.audioSrc) audio.src = el.dataset.audioSrc;
+        el.append(audio);
+        el._wireNative?.(audio);
+    }
+    return audio;
 }
 
 async function errorMessage(res) {
@@ -2532,12 +2560,10 @@ function initStudioProject() {
             return false;
         }
         renderedTakes.set(data.id, data.selected_take_id);
-        const audio = card.querySelector('.chunk-audio');
-        if (audio && data.selected_take_id !== null) {
+        if (data.selected_take_id !== null) {
             // No autoplay: chunks land while the user is elsewhere on the page
             // (or was — a resumed run may deliver several at once).
-            audio.src = bust(card.dataset.audioUrl);
-            audio.closest('.aplayer')?.classList.remove('hidden');
+            setChunkAudioSrc(card, bust(card.dataset.audioUrl));
             flashRenderedChunk(card);
         }
         card.querySelector('.chunk-generate').dataset.base = 'Regenerate';
@@ -2838,17 +2864,33 @@ function initStudioProject() {
     // in place. Once stitched and on screen, re-clicking just toggles that preview's
     // playback rather than re-stitching; a seam hidden by an edit stitches fresh
     // next time. The stitched clip is transient preview audio, never a saved take.
+    // The seam player's native audio — created on first use in lazy mode — with
+    // the transport-mirroring listeners attached exactly once either way.
+    function ensureSeamAudio(seam) {
+        const audio = ensureNative(seam.querySelector('.seam-player .aplayer'));
+        if (audio && !audio.dataset.seamWired) {
+            audio.dataset.seamWired = '1';
+            // Mirror the player's transport onto the Preview-stitch button
+            // (play/pause/ended), so the seam control and the inline player
+            // never disagree about what's sounding.
+            audio.addEventListener('play', () => renderSeamPlaying(seam, true));
+            audio.addEventListener('pause', () => renderSeamPlaying(seam, false));
+            audio.addEventListener('ended', () => renderSeamPlaying(seam, false));
+        }
+        return audio;
+    }
+
     async function previewSeam(seam) {
         const btn = seam.querySelector('.seam-preview');
         const label = btn.querySelector('.seam-label');
         const player = seam.querySelector('.seam-player');
-        const audio = seam.querySelector('.seam-audio');
+        const audio = ensureSeamAudio(seam);
         // setStatus() rewrites className, so find the status by its stable role
         // attribute — its `seam-status` class doesn't survive the first update.
         const status = seam.querySelector('[role="status"]');
 
         // Already stitched and on screen? Toggle the existing preview's playback.
-        if (audio.src && !player.classList.contains('hidden')) {
+        if (audio?.src && !player.classList.contains('hidden')) {
             audio.paused ? audio.play().catch(() => {}) : audio.pause();
             return;
         }
@@ -2885,14 +2927,9 @@ function initStudioProject() {
 
     root.querySelectorAll('.chunk-seam').forEach((seam) => {
         seam.querySelector('.seam-preview')?.addEventListener('click', () => previewSeam(seam));
-        // Mirror the player's transport onto the button (play/pause/ended), so the
-        // seam control and the inline player never disagree about what's sounding.
-        const audio = seam.querySelector('.seam-audio');
-        if (audio) {
-            audio.addEventListener('play', () => renderSeamPlaying(seam, true));
-            audio.addEventListener('pause', () => renderSeamPlaying(seam, false));
-            audio.addEventListener('ended', () => renderSeamPlaying(seam, false));
-        }
+        // Eager markup ships the native audio up front — wire its transport
+        // mirroring now. Lazy seams get the same wiring inside previewSeam.
+        if (seam.querySelector('.seam-audio')) ensureSeamAudio(seam);
     });
 
     // ---- Take history -------------------------------------------------------
@@ -2909,16 +2946,21 @@ function initStudioProject() {
 
         // Custom player (take weight): enhanceStudioPlayers() (called by
         // renderTakes) wires it up. Fills the grid's first (1fr) column.
+        // Lazy mode parks the URL on data-audio-src — no <audio> until played.
+        const lazy = root.dataset.lazyPlayers === '1';
         const player = buildAPlayer('take', {
             label: 'Play take',
             extraClass: 'min-w-0' + (take.selected ? ' aplayer--selected' : ''),
+            ...(lazy ? { lazySrc: take.audio_url } : {}),
         });
         // Recorded length: enhanceStudioPlayers prints it immediately, so the
         // duration is visible without playing (preload stays 'none' — no request).
         if (take.duration_ms) player.dataset.durationMs = take.duration_ms;
-        const audio = player.querySelector('.aplayer__native');
-        audio.preload = 'none';
-        audio.src = take.audio_url;
+        if (!lazy) {
+            const audio = player.querySelector('.aplayer__native');
+            audio.preload = 'none';
+            audio.src = take.audio_url;
+        }
 
         const meta = document.createElement('div');
         meta.className = 'flex min-w-0 flex-col text-xs text-zinc-500';
@@ -3005,6 +3047,22 @@ function initStudioProject() {
         }
     }
 
+    // The chunk's main player wrapper — findable whether or not its native
+    // <audio> has been created yet (lazy mode builds those on first tap).
+    const chunkPlayerOf = (card) => card.querySelector('.chunk-audio')?.closest('.aplayer')
+        || card.querySelector('.aplayer--chunk');
+
+    // Point the chunk's player at a (busted) audio URL and reveal it: write the
+    // native's src when it exists, else the data-audio-src it will be built from.
+    const setChunkAudioSrc = (card, url) => {
+        const wrap = chunkPlayerOf(card);
+        if (!wrap) return;
+        const audio = wrap.querySelector('.aplayer__native');
+        if (audio) audio.src = url;
+        else if (wrap.dataset.audioSrc !== undefined) wrap.dataset.audioSrc = url;
+        wrap.classList.remove('hidden');
+    };
+
     function renderTakes(card, data) {
         // Any render — lazy or from fresh server data — retires the card's
         // pending lazy pass (the IntersectionObserver checks this flag), so the
@@ -3015,7 +3073,7 @@ function initStudioProject() {
         // chunk audio now points at (its src is cache-busted on select/generate, so
         // audio.duration is briefly unavailable — durationchange re-syncs from this).
         const selected = ((data && data.takes) || []).find((t) => t.selected);
-        const mainPlayer = card.querySelector('.chunk-audio')?.closest('.aplayer');
+        const mainPlayer = chunkPlayerOf(card);
         if (mainPlayer && selected?.duration_ms) mainPlayer.dataset.durationMs = selected.duration_ms;
         const list = card.querySelector('.chunk-takes');
         const takes = (data && data.takes) || [];
@@ -3082,9 +3140,7 @@ function initStudioProject() {
             // is the new saved baseline — nothing should read as unsaved.
             commitBaseline(card);
             setDirty(card, false);
-            const audio = card.querySelector('.chunk-audio');
-            audio.src = bust(card.dataset.audioUrl);
-            audio.closest('.aplayer')?.classList.remove('hidden');
+            setChunkAudioSrc(card, bust(card.dataset.audioUrl));
             card.querySelector('.chunk-generate').dataset.base = 'Regenerate';
             setGenerateLabel(card);
             renderTakes(card, data); // rebuilds the list (and detaches btn)
@@ -3198,9 +3254,9 @@ function initStudioProject() {
             if (kind === 'reroll') {
                 card.querySelector('.chunk-generate')?.click();
             } else if (kind === 'play') {
-                const audio = card.querySelector('.chunk-audio');
-                audio?.closest('.aplayer')?.classList.remove('hidden');
-                audio?.play?.().catch(() => {});
+                const wrap = chunkPlayerOf(card);
+                wrap?.classList.remove('hidden');
+                ensureNative(wrap)?.play().catch(() => {});
             } else if (kind === 'restore') {
                 restoreOriginalTake(card, act);
             } else if (kind === 'dismiss') {
@@ -3878,13 +3934,15 @@ function initStudioProject() {
 function enhanceStudioPlayers(scope) {
     (scope || document).querySelectorAll('.aplayer').forEach((el) => {
         if (el.dataset.enhanced) return;
-        const audio = el.querySelector('.aplayer__native');
         const btn = el.querySelector('.aplayer__btn');
         const track = el.querySelector('.aplayer__track');
         const fill = el.querySelector('.aplayer__fill');
         const knob = el.querySelector('.aplayer__knob');
         const time = el.querySelector('.aplayer__time');
-        if (!audio || !btn || !track) return;
+        // Lazy players (data-audio-src) carry no native <audio> until the first
+        // tap builds one via ensureNative() — read it fresh, never close over it.
+        const native = () => el.querySelector('.aplayer__native');
+        if ((!native() && el.dataset.audioSrc === undefined) || !btn || !track) return;
         el.dataset.enhanced = '1';
 
         const fmt = (s) => (isFinite(s) && s >= 0)
@@ -3895,20 +3953,24 @@ function enhanceStudioPlayers(scope) {
             // the browser fires trailing timeupdate/pause after 'error' that
             // would otherwise immediately overwrite the failure notice.
             if (el.dataset.loadFailed) return;
-            // Until the audio's own metadata loads, fall back to the server-recorded
-            // length (data-duration-ms) so the duration shows without any interaction
-            // — take players are preload="none", so metadata only loads on play.
-            const d = audio.duration || (parseInt(el.dataset.durationMs, 10) || 0) / 1000;
-            const pct = d ? (audio.currentTime / d) * 100 : 0;
+            const audio = native();
+            const ct = audio ? audio.currentTime : 0;
+            // Until the audio (exists and) has metadata, fall back to the
+            // server-recorded length (data-duration-ms) so the duration shows
+            // without any interaction or request.
+            const d = (audio && audio.duration) || (parseInt(el.dataset.durationMs, 10) || 0) / 1000;
+            const pct = d ? (ct / d) * 100 : 0;
             if (fill) fill.style.width = pct + '%';
             if (knob) knob.style.left = pct + '%';
-            if (time) time.textContent = fmt(audio.currentTime) + ' / ' + fmt(d);
+            if (time) time.textContent = fmt(ct) + ' / ' + fmt(d);
             // Remember where playback got to, so an error retry can resume
             // there instead of 0:00 (see the ▶ handler).
-            if (audio.currentTime > 0) el.dataset.lastTime = String(audio.currentTime);
+            if (ct > 0) el.dataset.lastTime = String(ct);
         };
 
         btn.addEventListener('click', () => {
+            const audio = ensureNative(el);
+            if (!audio) return;
             // A failed fetch bricks the element: after a media error, play()
             // won't re-run resource selection, so clicks would silently no-op
             // forever. load() re-arms it and the play below retries the fetch —
@@ -3925,29 +3987,39 @@ function enhanceStudioPlayers(scope) {
             audio.paused ? audio.play().catch(() => {}) : audio.pause();
         });
         track.addEventListener('click', (e) => {
+            // Scrubbing a never-built player is a no-op (nothing is loaded yet).
+            const audio = native();
+            if (!audio) return;
             const r = track.getBoundingClientRect();
             if (audio.duration) audio.currentTime = ((e.clientX - r.left) / r.width) * audio.duration;
         });
-        audio.addEventListener('timeupdate', sync);
-        audio.addEventListener('loadedmetadata', sync);
-        // Fires on src swap (duration resets) and when the new metadata arrives, so
-        // the readout tracks a re-selected take via the data-duration-ms fallback.
-        audio.addEventListener('durationchange', sync);
-        audio.addEventListener('play', () => el.classList.add('is-playing'));
-        audio.addEventListener('pause', () => el.classList.remove('is-playing'));
-        audio.addEventListener('ended', () => el.classList.remove('is-playing'));
-        // Surface load/decode failures in the readout, so a dropped connection
-        // reads as retryable instead of a dead button. A fresh attempt (the
-        // retry's load()+play() above) fires loadstart, which hands the readout
-        // back to sync().
-        // (lastTime too: a fresh load means a new resource — the retry above
-        // captured its resume point before calling load(), so this can't race.)
-        audio.addEventListener('loadstart', () => { delete el.dataset.loadFailed; delete el.dataset.lastTime; sync(); });
-        audio.addEventListener('error', () => {
-            el.classList.remove('is-playing');
-            el.dataset.loadFailed = '1';
-            if (time) time.textContent = 'failed — press ▶ to retry';
-        });
+
+        // The transport listeners — attached now for an eager native, or by
+        // ensureNative() the moment a lazy player builds its element.
+        const wire = (audio) => {
+            audio.addEventListener('timeupdate', sync);
+            audio.addEventListener('loadedmetadata', sync);
+            // Fires on src swap (duration resets) and when the new metadata arrives, so
+            // the readout tracks a re-selected take via the data-duration-ms fallback.
+            audio.addEventListener('durationchange', sync);
+            audio.addEventListener('play', () => el.classList.add('is-playing'));
+            audio.addEventListener('pause', () => el.classList.remove('is-playing'));
+            audio.addEventListener('ended', () => el.classList.remove('is-playing'));
+            // Surface load/decode failures in the readout, so a dropped connection
+            // reads as retryable instead of a dead button. A fresh attempt (the
+            // retry's load()+play() above) fires loadstart, which hands the readout
+            // back to sync().
+            // (lastTime too: a fresh load means a new resource — the retry above
+            // captured its resume point before calling load(), so this can't race.)
+            audio.addEventListener('loadstart', () => { delete el.dataset.loadFailed; delete el.dataset.lastTime; sync(); });
+            audio.addEventListener('error', () => {
+                el.classList.remove('is-playing');
+                el.dataset.loadFailed = '1';
+                if (time) time.textContent = 'failed — press ▶ to retry';
+            });
+        };
+        el._wireNative = wire;
+        if (native()) wire(native());
         sync();
     });
 }

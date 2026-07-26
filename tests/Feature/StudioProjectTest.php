@@ -684,6 +684,29 @@ class StudioProjectTest extends TestCase
         ]);
     }
 
+    public function test_project_page_ships_lazy_players_by_default_with_an_eager_toggle(): void
+    {
+        $project = $this->project();
+        $chunk = $project->chunks()->first();
+        $this->actingAs($this->admin())->post(route('admin.studio.projects.chunks.generate', [$project, $chunk]));
+
+        // Default (lazy): players are pure UI — the audio URL parks on
+        // data-audio-src and no chunk/seam <audio> ships in the markup.
+        $this->actingAs($this->admin())->get(route('admin.studio.projects.show', $project))
+            ->assertOk()
+            ->assertSee('data-lazy-players="1"', false)
+            ->assertSee('data-native-class="chunk-audio"', false)
+            ->assertDontSee('<audio class="chunk-audio', false)
+            ->assertDontSee('<audio class="seam-audio', false);
+
+        // TTS_STUDIO_LAZY_PLAYERS=false restores the eager elements verbatim.
+        config(['tts.studio_lazy_players' => false]);
+        $this->actingAs($this->admin())->get(route('admin.studio.projects.show', $project))
+            ->assertOk()
+            ->assertSee('data-lazy-players="0"', false)
+            ->assertSee('<audio class="chunk-audio', false);
+    }
+
     public function test_chunk_audio_redirects_to_presigned_url_on_object_storage(): void
     {
         $project = $this->project();

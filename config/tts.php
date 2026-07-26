@@ -255,6 +255,13 @@ return [
     'show_getting_started_pronunciations' => (bool) env('TTS_SHOW_GETTING_STARTED_PRONUNCIATIONS', true),
     'show_getting_started_api' => (bool) env('TTS_SHOW_GETTING_STARTED_API', true),
 
+    // Studio project pages ship chunk/seam/take players as pure UI and create
+    // each real <audio> on first tap. WebKit (iPad Safari especially) sets up
+    // media plumbing per element, and a big project's hundreds of players made
+    // the page feel frozen. Set false to restore eager <audio> elements — the
+    // JS handles both shapes, so this flag only changes the markup.
+    'studio_lazy_players' => (bool) env('TTS_STUDIO_LAZY_PLAYERS', true),
+
     // Chunks shorter than this are merged into a neighbor so they are never sent
     // to the backend alone. Chatterbox is unreliable on very short inputs (a bare
     // "Why?" or a "The to-do list." heading) — it tends to return silence/garbage
