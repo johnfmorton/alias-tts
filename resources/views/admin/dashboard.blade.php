@@ -102,7 +102,7 @@
             </a>
         </div>
 
-        <p class="mt-4 text-[12.5px] text-zinc-500">Already using ElevenLabs or OpenAI for voice? <a href="/admin#connect" class="text-accent hover:underline">Connect your app to Alias →</a></p>
+        <p class="mt-4 text-[12.5px] text-zinc-500">Already using ElevenLabs or OpenAI for voice? <a href="#connect" class="text-accent hover:underline">Connect your app to Alias →</a></p>
     </x-getting-started>
 
     {{-- Destination cards --}}
