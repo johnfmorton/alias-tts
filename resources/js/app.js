@@ -155,7 +155,9 @@ function startBusy(btn, label) {
 function endBusy(btn) {
     delete btn.dataset.busy;
     btn.classList.remove('pointer-events-none', 'opacity-50');
-    btn.textContent = btn.dataset.originalText;
+    // bfcache pageshow resets call this on buttons that were never busy —
+    // without a captured label, "restoring" would wipe the button's text.
+    if (btn.dataset.originalText !== undefined) btn.textContent = btn.dataset.originalText;
 }
 
 // Synchronous provider test: POST → audio blob → play.

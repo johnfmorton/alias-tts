@@ -4,6 +4,18 @@ All notable changes to this project are documented in this file. The format is
 based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this
 project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Fixed
+- **Back/forward no longer blanks the Duplicate, Delete, and + Add voice
+  buttons.** Returning to a page via the browser's back or forward button
+  restores it from the back/forward cache, and a cleanup handler meant to
+  clear a stuck in-flight spinner ran on every busy-capable button — including
+  ones that were never busy. Those buttons had no saved label to restore, so
+  the "restore" erased their text. The cleanup now only rewrites a button's
+  label when one was actually captured, so idle buttons keep their text and
+  buttons genuinely caught mid-spin still recover.
+
 ## [0.97.2] - 2026-07-27
 
 ### Changed
