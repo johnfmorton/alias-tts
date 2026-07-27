@@ -4,6 +4,16 @@ All notable changes to this project are documented in this file. The format is
 based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this
 project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Changed
+- **Dashboard connect prompt speaks to the visitor, not the plugin.** The
+  small line under the Getting Started cards used to read "Connecting an app
+  or the Bespoken plugin? See Connect your app below" — a mix of internal
+  naming and passive phrasing. It now reads "Already using ElevenLabs or
+  OpenAI for voice? Connect your app to Alias →", still linking to the same
+  Connect your app section.
+
 ## [0.97.1] - 2026-07-27
 
 ### Fixed
