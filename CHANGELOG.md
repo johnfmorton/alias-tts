@@ -4,6 +4,18 @@ All notable changes to this project are documented in this file. The format is
 based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this
 project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Fixed
+- **Dropped voices stopped flying home first.** Dragging a voice to a new
+  spot in the Voices list used to end with a wrong-way animation: on release,
+  the dragged row flew back to its old position before the list snapped to
+  the new (correct) order. The browser was treating the release as a
+  cancelled drag, because the list only accepted a drop while hovering a
+  *different* row — and the reorder logic keeps the dragged row itself under
+  the cursor. The list now accepts the drag everywhere over it, so a dropped
+  row settles exactly where you left it.
+
 ## [0.97.0] - 2026-07-26
 
 ### Added

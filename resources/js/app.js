@@ -5329,6 +5329,16 @@ function initVoicesReorder() {
 
     const rows = () => [...tbody.querySelectorAll('tr[data-voice-id]')];
 
+    // Accept the drag anywhere over the list — including over the dragged row
+    // itself (where the cursor usually is, since the row live-moves under it)
+    // and the gaps between rows. A release the browser doesn't consider a
+    // valid drop plays the drop-cancel animation: the ghost flies back to the
+    // row's OLD position even though the DOM order is already correct.
+    tbody.addEventListener('dragover', (e) => {
+        if (!dragging) return;
+        e.preventDefault();
+        e.dataTransfer.dropEffect = 'move';
+    });
     tbody.addEventListener('drop', (e) => e.preventDefault());
 
     rows().forEach((row) => {
@@ -5345,7 +5355,6 @@ function initVoicesReorder() {
         });
         row.addEventListener('dragover', (e) => {
             if (!dragging || dragging === row) return;
-            e.preventDefault();
             const rect = row.getBoundingClientRect();
             const before = e.clientY < rect.top + rect.height / 2;
             tbody.insertBefore(dragging, before ? row : row.nextSibling);
