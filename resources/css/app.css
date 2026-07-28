@@ -306,6 +306,33 @@
 }
 
 /*
+ * The one field still blocking Create on Add a voice — a few soft accent rings
+ * so the eye lands on it. Fired by initVoiceFlow() when the voice source
+ * becomes ready while Name is still empty, and when the disabled Create button
+ * or the footer hint is clicked. Finite on purpose: a cue, not an alarm. The
+ * accent border sits outside the motion gate so reduced-motion users get a
+ * steady highlight instead of nothing; refresh() clears the class once the
+ * field is filled.
+ */
+.field-nudge {
+    border-color: var(--color-accent);
+}
+@media (prefers-reduced-motion: no-preference) {
+    .field-nudge {
+        animation: field-nudge 1.1s ease-out 3;
+    }
+}
+@keyframes field-nudge {
+    0% {
+        box-shadow: 0 0 0 0 color-mix(in srgb, var(--color-accent) 45%, transparent);
+    }
+    70%,
+    100% {
+        box-shadow: 0 0 0 7px transparent;
+    }
+}
+
+/*
  * Chunk seam — Preview stitch (design 8A). A borderless text action on the seam's
  * connector line: a muted label with a cyan play glyph at rest (base colors are
  * Tailwind utilities on the button). While its stitched preview plays it turns

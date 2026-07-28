@@ -5411,6 +5411,7 @@ function initVoiceRecorder() {
     const enhanceBox = q('[data-clip-enhance]');
     const previewBtn = q('[data-clip-preview]');
     const rerecordBtn = q('[data-clip-rerecord]');
+    const rerecordRow = q('[data-clip-rerecord-row]');
     const panel = q('[data-clip-panel]');
     const abPanel = q('[data-clip-ab]');
     const warningEl = q('[data-clip-ab-warning]');
@@ -5556,7 +5557,10 @@ function initVoiceRecorder() {
         panel.classList.add('hidden');       // swap the Upload/Record panel for the chooser
         abPanel.classList.remove('hidden');
         previewBtn.classList.add('hidden');
-        if (rerecordBtn) rerecordBtn.classList.toggle('hidden', !recordedBlob); // mic takes can be rejected in place
+        if (rerecordRow) { // mic takes can be re-recorded in place; hidden+flex toggled together (display-conflict gotcha)
+            rerecordRow.classList.toggle('hidden', !recordedBlob);
+            rerecordRow.classList.toggle('flex', !!recordedBlob);
+        }
         if (fileInput) fileInput.disabled = true; // the token supersedes a raw upload
         announceToken(); // the panel swap changes which undo affordance applies
     }
@@ -5586,9 +5590,17 @@ function initVoiceRecorder() {
         if (recordedBlob) prepareClip(recordedBlob, 'recording.webm');
         else if (file) prepareClip(file, file.name);
     });
-    widget.querySelector('[data-clip-reset]')?.addEventListener('click', () => { recordedBlob = null; clearPreview(); });
+    // Start over also clears the recorder's review of the discarded take —
+    // without this it resurfaces showing a player for audio that's gone. The
+    // mic stays released: Start over may be headed for the upload tab, and
+    // grabbing the mic uninvited there would be noise.
+    widget.querySelector('[data-clip-reset]')?.addEventListener('click', () => {
+        recordedBlob = null;
+        clearPreview();
+        widget.__recorderReset?.();
+    });
 
-    // Reject the previewed mic take: back to the recorder, mic still armed, ready to retake.
+    // Reject the previewed mic take: back to the recorder, which re-arms the mic.
     rerecordBtn?.addEventListener('click', () => {
         recordedBlob = null;
         clearPreview();
@@ -5775,10 +5787,10 @@ function initVoiceMicRecorder(widget) {
         mr.ondataavailable = (e) => { if (e.data && e.data.size) chunks.push(e.data); };
         mr.onstop = () => {
             recBlob = new Blob(chunks, { type: mr.mimeType || mimeType || 'audio/webm' });
+            if (reviewAudio.src) URL.revokeObjectURL(reviewAudio.src);
             reviewAudio.src = URL.createObjectURL(recBlob);
             enhanceStudioPlayers(widget);
             show(reviewWrap, true);
-            show(useBtn, true);
             if ((performance.now() - startedAt) / 1000 < 10) {
                 setStatus(recStatus, 'That was short — aim for 15–20s for a better clone. You can re-record.', 'muted');
             }
@@ -5787,7 +5799,7 @@ function initVoiceMicRecorder(widget) {
         startedAt = performance.now();
         timerId = setInterval(tick, 200);
         show(timerEl, true); show(guideEl, true); show(reviewWrap, false);
-        showFlex(recordBtn, false); showFlex(stopBtn, true); show(redoBtn, false);
+        showFlex(recordBtn, false); showFlex(stopBtn, true);
         if (deviceSel) deviceSel.disabled = true; // the recorder is bound to this stream
         setStatus(recStatus, '', 'muted');
     }
@@ -5795,7 +5807,10 @@ function initVoiceMicRecorder(widget) {
     function stopRecording(msg) {
         if (mr && mr.state !== 'inactive') mr.stop();
         clearInterval(timerId);
-        showFlex(stopBtn, false); showFlex(recordBtn, false); show(redoBtn, true);
+        // The pacing guide ("Keep reading…") is live-recording chrome — left up, it
+        // reads as an instruction while the take sits in review.
+        show(guideEl, false);
+        showFlex(stopBtn, false); showFlex(recordBtn, false);
         if (deviceSel) deviceSel.disabled = false;
         if (msg) setStatus(recStatus, msg, 'muted');
     }
@@ -5807,10 +5822,26 @@ function initVoiceMicRecorder(widget) {
         stream = null; audioCtx = null; analyser = null;
     }
 
-    function resetForRetake() {
-        show(reviewWrap, false); show(useBtn, false); show(redoBtn, false);
-        showFlex(recordBtn, true); timerEl.textContent = '0:00'; show(guideEl, false);
+    // "Use this recording" commits the take — past that point a hot mic (the
+    // tab's recording indicator, a dancing level meter, a device picker) reads
+    // as leftover machinery, so let go of all of it.
+    function releaseMic() {
+        teardown();
+        show(meterWrap, false); show(deviceSel, false); show(timerEl, false);
+    }
+
+    // Clear the review of a discarded take. Use/Re-record live inside
+    // reviewWrap, so its visibility carries both. reacquire=true re-arms the
+    // mic in the same click when it was released — a remembered permission
+    // re-grants silently; enableMic() swaps Enable for Record on success, and
+    // on failure reports beside the Enable button we've just put back.
+    function backToRecorder(reacquire) {
+        show(reviewWrap, false);
+        timerEl.textContent = '0:00'; show(guideEl, false);
         setStatus(recStatus, '', 'muted');
+        if (stream) { showFlex(recordBtn, true); return; }
+        showFlex(enableBtn, true);
+        if (reacquire) enableMic();
     }
 
     enableBtn.addEventListener('click', enableMic);
@@ -5819,12 +5850,15 @@ function initVoiceMicRecorder(widget) {
     deviceSel?.addEventListener('change', switchDevice);
     // Keep the picker current as devices come and go (labels need a granted mic).
     navigator.mediaDevices.addEventListener?.('devicechange', () => { if (stream) refreshDeviceList(); });
-    redoBtn.addEventListener('click', resetForRetake);
-    // The A/B chooser's Reject & re-record lands back here with the mic still armed.
-    widget.__recorderRedo = resetForRetake;
+    redoBtn.addEventListener('click', () => backToRecorder(true));
+    // The A/B chooser's Re-record lands back here re-arming the mic; Start over
+    // clears the review too but leaves the mic released (see data-clip-reset).
+    widget.__recorderRedo = () => backToRecorder(true);
+    widget.__recorderReset = () => backToRecorder(false);
     useBtn.addEventListener('click', () => {
         if (!recBlob || recBlob.size < 1) { setStatus(recStatus, '✗ The recording is empty — try again.', 'error'); return; }
         const ext = /mp4|m4a/.test(recBlob.type) ? 'mp4' : recBlob.type.includes('ogg') ? 'ogg' : 'webm';
+        releaseMic();
         // Freeze Re-record while the clip is preparing — a retake started mid-flight
         // would be yanked away when the A/B chooser replaces the panel.
         redoBtn.classList.add('pointer-events-none', 'opacity-50');
@@ -6081,7 +6115,9 @@ function initVoiceFlow() {
         const named = complete.identity();
         const sourced = hasSource() || !engineNeedsSource();
         createBtn.disabled = !(named && sourced);
+        // The hint doubles as a jump-to-the-blocker button while one exists.
         if (!createHint) return;
+        createHint.disabled = !createBtn.disabled;
         createHint.textContent = !named
             ? 'Name the voice to continue'
             : (!sourced
@@ -6090,6 +6126,36 @@ function initVoiceFlow() {
                     ? 'Step 2 of 2 — tuning unlocks once the voice exists'
                     : `No clip — ${engineLabel()} will speak in its own generic voice`));
     }
+
+    // ── nudge: walk the eye to what Create still needs ──────────────────────
+    // With the source ready and the page parked at the take chooser, an empty
+    // Name up top reads as done and the disabled Create as broken. The pulse is
+    // the field-nudge cue in app.css; refresh() clears it once the field fills
+    // (also the reduced-motion exit, where animationend never comes).
+    function pulseField(el) {
+        if (!el) return;
+        el.classList.remove('field-nudge');
+        void el.offsetWidth; // restart the animation when re-fired mid-run
+        el.classList.add('field-nudge');
+    }
+    nameInput?.addEventListener('animationend', () => nameInput.classList.remove('field-nudge'));
+    const motionOK = () => !window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    function nudgeCreateBlocker() {
+        if (!complete.identity()) {
+            sections.get('identity')?.scrollIntoView({ behavior: motionOK() ? 'smooth' : 'auto', block: 'center' });
+            nameInput?.focus({ preventScroll: true });
+            pulseField(nameInput);
+        } else {
+            sections.get('source')?.scrollIntoView({ behavior: motionOK() ? 'smooth' : 'auto', block: 'start' });
+        }
+    }
+    createHint?.addEventListener('click', nudgeCreateBlocker); // only fires while enabled = blocked
+    // The disabled Create button swallows clicks (and pointer-events are off so
+    // they land here) — answer them by pointing at the blocker instead.
+    form.querySelector('[data-create-guard]')?.addEventListener('click', () => {
+        if (createBtn?.disabled) nudgeCreateBlocker();
+    });
+    let sourcedBefore = hasSource();
 
     // ── built-in voice vs reference clip: one source, not two ──────────────
     // The provider gives a clip absolute precedence — `voice` (turbo) and
@@ -6378,6 +6444,14 @@ function initVoiceFlow() {
         refreshStagedClip();
         refreshSaveBar(groups);
         refreshCreate();
+
+        // A source landing while Name is still blank is the moment the empty
+        // field gets missed — one finite pulse, no scroll (the footer hint and
+        // Create button carry the jump for when the field is off-screen).
+        const sourcedNow = hasSource();
+        if (mode === 'create' && sourcedNow && !sourcedBefore && !complete.identity()) pulseField(nameInput);
+        sourcedBefore = sourcedNow;
+        if (complete.identity()) nameInput?.classList.remove('field-nudge');
     }
 
     form.addEventListener('input', refresh);

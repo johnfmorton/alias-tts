@@ -4,6 +4,45 @@ All notable changes to this project are documented in this file. The format is
 based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this
 project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+- **The Name field speaks up when it's the last thing missing.** On Add a
+  voice it's easy to record a clip, pick a take, and then stall on a Create
+  button that looks broken — the empty Name field two cards up is the real
+  blocker, and nothing pointed at it. Now the field pulses a few soft accent
+  rings the moment the voice source is ready while the name is still blank,
+  the footer's "Name the voice to continue" hint became a button that jumps
+  to (and pulses) the field, and clicking the disabled Create button does the
+  same instead of swallowing the click. The cue is finite — a nudge, not an
+  alarm — and users who prefer reduced motion get a steady highlight instead
+  of animation.
+
+### Changed
+- **Re-record is a visible button everywhere a take can be judged.** After
+  stopping a recording, the review now presents a real decision pair — "Use
+  this recording" beside a bordered "Re-record" — instead of hiding the
+  retake behind small gray text that read as a caption. And in the
+  cleaned-up/original chooser, "Reject & re-record" (which testing showed
+  people simply missed) is now a plain "Re-record" with a hint that says the
+  quiet part out loud: nothing is saved yet — record another take.
+- **The microphone lets go the moment a take heads to cleanup.** Pressing
+  "Use this recording" used to leave the mic hot for the whole cleanup
+  minute — browser recording indicator on, level meter dancing, device
+  picker implying there was still something to do. The take is committed at
+  that point, so the recorder now releases the microphone entirely and
+  clears that machinery away. Choosing to re-record re-arms the mic in the
+  same click; a remembered permission re-grants silently.
+
+### Fixed
+- **Stopping a recording no longer leaves "Keep reading…" on screen.** The
+  live pacing guide is recording chrome; it now clears at stop instead of
+  sitting under the review player like an instruction.
+- **"Start over" in the take chooser no longer resurfaces the discarded
+  take.** It used to land back on the recorder still showing the rejected
+  recording's player; the review clears with it now (without grabbing the
+  microphone uninvited, in case you're headed for the upload tab).
+
 ## [0.97.3] - 2026-07-27
 
 ### Fixed

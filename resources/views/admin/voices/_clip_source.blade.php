@@ -86,7 +86,6 @@
                                         <button type="button" data-recorder-enable class="inline-flex items-center gap-2.5 rounded-[10px] bg-accent px-5 py-3 text-[15px] font-semibold text-accent-on transition hover:brightness-110"><span class="h-[11px] w-[11px] rounded-full bg-accent-on"></span>Enable microphone</button>
                                         <button type="button" data-recorder-record class="hidden items-center gap-2 rounded-[10px] bg-bad px-5 py-3 text-[15px] font-semibold text-zinc-950 transition hover:brightness-110"><span class="h-2.5 w-2.5 rounded-full bg-zinc-950"></span>Record</button>
                                         <button type="button" data-recorder-stop class="hidden items-center gap-2 rounded-[10px] bg-white/10 px-5 py-3 text-[15px] font-semibold text-zinc-100 transition hover:bg-white/15"><span class="h-2.5 w-2.5 bg-zinc-100"></span>Stop</button>
-                                        <button type="button" data-recorder-redo class="hidden text-sm text-zinc-400 hover:text-zinc-200">Re-record</button>
                                         <span data-recorder-timer class="hidden font-mono text-sm text-zinc-400">0:00</span>
                                         {{-- Input picker: populated + shown once the mic is granted (labels are blank before). --}}
                                         <select data-recorder-device aria-label="Microphone input device"
@@ -95,14 +94,21 @@
                                     </div>
                                     <div data-recorder-meter-wrap class="mt-3 hidden h-2 overflow-hidden rounded bg-white/10"><div data-recorder-meter class="h-full w-0 rounded bg-emerald-500"></div></div>
                                     <p data-recorder-guide class="mt-2 hidden text-xs text-zinc-500"></p>
-                                    <div data-recorder-review class="mt-3 hidden space-y-2">
+                                    {{-- Review = an explicit decision pair. Re-record must read as a peer of
+                                         "Use this recording" — as dim text up in the controls row it was invisible
+                                         and users reported no way to retake. Styling mirrors the A/B chooser's
+                                         Reject & re-record. --}}
+                                    <div data-recorder-review class="mt-3 hidden space-y-3">
                                         <span class="aplayer aplayer--chunk" data-recorder-player>
                                             <button type="button" class="aplayer__btn"><span class="aplayer__icon"></span></button>
                                             <span class="aplayer__track"><span class="aplayer__fill"></span><span class="aplayer__knob"></span></span>
                                             <span class="aplayer__time">0:00 / 0:00</span>
                                             <audio class="aplayer__native" preload="metadata"></audio>
                                         </span>
-                                        <button type="button" data-recorder-use class="rounded-[9px] bg-accent px-4 py-2 text-sm font-semibold text-accent-on transition hover:brightness-110">Use this recording</button>
+                                        <div class="flex flex-wrap items-center gap-3">
+                                            <button type="button" data-recorder-use class="rounded-[9px] bg-accent px-4 py-2 text-sm font-semibold text-accent-on transition hover:brightness-110">Use this recording</button>
+                                            <button type="button" data-recorder-redo class="rounded-[9px] border border-white/15 px-3.5 py-2 text-sm text-zinc-300 transition hover:border-bad/50 hover:text-bad">Re-record</button>
+                                        </div>
                                     </div>
                                     <p data-recorder-status role="status" aria-live="polite" class="mt-2 text-sm text-zinc-400"></p>
                                 </div>
@@ -140,8 +146,14 @@
                         </span>
                     </label>
 
-                    {{-- Mic path only (renderAB toggles it): discard this take and go straight back to an armed recorder. --}}
-                    <button type="button" data-clip-rerecord class="hidden rounded-[9px] border border-white/15 px-3.5 py-2 text-sm text-zinc-300 transition hover:border-bad/50 hover:text-bad">Reject &amp; re-record</button>
+                    {{-- Mic path only (renderAB toggles it): discard both takes and go back to the
+                         recorder (it re-arms the mic). John-tested: as a lone "Reject & re-record" this
+                         read as chooser chrome and got missed — a plain Re-record beside a
+                         nothing-is-saved-yet hint is what a surprised ear goes looking for. --}}
+                    <div data-clip-rerecord-row class="hidden flex-wrap items-center gap-3">
+                        <button type="button" data-clip-rerecord class="rounded-[9px] border border-white/15 px-3.5 py-2 text-sm text-zinc-300 transition hover:border-bad/50 hover:text-bad">Re-record</button>
+                        <span class="text-xs text-zinc-500">Neither sounds like you? Nothing is saved yet — record another take.</span>
+                    </div>
                 </div>
 
                 <p data-clip-status role="status" aria-live="polite" class="mx-4 mb-3 text-sm text-zinc-400"></p>

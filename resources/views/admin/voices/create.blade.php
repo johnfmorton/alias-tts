@@ -71,14 +71,21 @@
              nothing saved yet to be out of step with. --}}
         <div class="fixed inset-x-0 bottom-0 z-40 border-t border-white/8 bg-sticky/95 backdrop-blur">
             <div class="mx-auto flex max-w-[1100px] flex-wrap items-center gap-x-3.5 gap-y-2 px-4 py-3.5 sm:px-8">
-                <span class="text-[13px] text-zinc-500" data-create-hint>Step 2 of 2 — tuning unlocks once the voice exists</span>
+                {{-- A button while Create is still blocked: clicking it jumps to (and pulses)
+                     the field that's missing. Disabled otherwise — then it's plain caption text. --}}
+                <button type="button" data-create-hint disabled
+                        class="text-left text-[13px] text-zinc-500 transition enabled:cursor-pointer enabled:underline enabled:decoration-dotted enabled:underline-offset-4 enabled:hover:text-zinc-300">Step 2 of 2 — tuning unlocks once the voice exists</button>
                 <div class="ml-auto flex shrink-0 items-center gap-2">
                     <a href="{{ route('admin.voices.index') }}" class="px-3.5 py-2 text-sm text-zinc-400 transition hover:text-zinc-200">Cancel</a>
                     {{-- Enabled in markup, gated by initVoiceFlow(): without JS
                          there's no staged-clip state to read, so the server's
-                         own validation stays the only gate. --}}
+                         own validation stays the only gate. The guard span picks
+                         up clicks the disabled button swallows and points at the
+                         blocker instead of doing nothing. --}}
+                    <span data-create-guard>
                     <button type="submit" data-create-submit
-                            class="rounded-[9px] bg-accent px-5 py-2.5 text-sm font-semibold text-accent-on transition hover:brightness-110 disabled:bg-accent/25 disabled:text-[#3a4a4e] disabled:hover:brightness-100">Create voice</button>
+                            class="rounded-[9px] bg-accent px-5 py-2.5 text-sm font-semibold text-accent-on transition hover:brightness-110 disabled:pointer-events-none disabled:bg-accent/25 disabled:text-[#3a4a4e] disabled:hover:brightness-100">Create voice</button>
+                    </span>
                 </div>
             </div>
         </div>
