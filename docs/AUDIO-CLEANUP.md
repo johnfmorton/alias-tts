@@ -59,23 +59,39 @@ The end of the **last** speech window is the speech end — with two refinements
 before the cut is measured.
 
 **Voiced-coda fold.** The speech gate needs loud **and** high-ZCR, so a loud
-word-final **voiced** coda (a nasal /n/, /m/, /ŋ/ — voiced but low-frequency,
-hence low-ZCR) fails it and would read as the start of a trailing artifact,
-hard-cutting mid-word ("…built in" losing its "n"). So `voicedCodaEnd()` first
-extends the speech end forward over up to `chunk_tail_voiced_coda_max_ms` of
-contiguous windows that are loud, **voiced** (clear fundamental), and at/below
-the speech-body level — a louder re-swell swoosh is not folded, and a
-multi-second voiced drone is far too long to be mistaken for a coda.
+word-final **voiced** coda (a nasal /n/, /m/, /ŋ/, or a sustained phrase-final
+vowel — voiced but low-frequency, hence low-ZCR) fails it and would read as the
+start of a trailing artifact, hard-cutting mid-word ("…built in" losing its
+"n"). So `voicedCodaEnd()` first extends the speech end forward over the loud
+run that follows it, before the cut is measured.
 
-The fold tolerates brief voicing **flicker**: the autocorrelation pitch check
-dips at phone transitions — a real "…read itself to them." measured ACF 0.480
-against the 0.5 gate on the single vowel→nasal boundary window while the next
-nasal window read voiced again, and stopping the fold there re-clipped the word
-("them" lost its "m" at the seam). Up to `chunk_tail_voiced_coda_flicker_ms` of
-consecutive loud-but-unvoiced windows are bridged, and they only count as coda
-when voicing **resumes** after them — the extension never ends on a flicker
-window, so a sustained unvoiced run (a fricative/hiss tail) still stops the
-fold at the last voiced window, exactly as before.
+What separates a coda from a drone is that a coda **dies**: a run that reaches
+genuine sub-floor quiet within `chunk_tail_voiced_coda_decay_max_ms` is folded
+**whole**, however long it ran. Duration below that bound is deliberately *not*
+a discriminator — a languid voice sustains a phrase-final vowel far past any
+fixed per-phone cap (a real "…that view." held ~450 ms of loud low-ZCR /uː/
+against the older 300 ms cap, and the seam clipped the word's second half), so
+a fixed cap merely re-encodes the tempo of whichever voice it was tuned on.
+Loudness stays gated per window: each folded window must sit at/below the
+speech **peak** window level + `over_speech_db` — a louder re-swell swoosh
+still aborts the fold entirely.
+
+A run **still loud at the decay bound** (or running loud into EOF) is a
+sustained drone fused to the speech end and is still cut — but the fold
+degrades **gracefully**: it keeps up to `chunk_tail_voiced_coda_max_ms` of the
+run's voiced, flicker-bridged head (the part most plausibly still word) instead
+of the older all-or-nothing behavior, where a coda one window over the cap lost
+the entire fold and the word with it.
+
+The capped fold tolerates brief voicing **flicker**: the autocorrelation pitch
+check dips at phone transitions — a real "…read itself to them." measured ACF
+0.480 against the 0.5 gate on the single vowel→nasal boundary window while the
+next nasal window read voiced again, and stopping the fold there re-clipped the
+word ("them" lost its "m" at the seam). Up to
+`chunk_tail_voiced_coda_flicker_ms` of consecutive loud-but-unvoiced windows
+are bridged, and they only count as coda when voicing **resumes** after them —
+so a sustained unvoiced run (a fricative/hiss tail) stops the voiced extent and
+stays with the other paths.
 
 **Peel.** Any isolated short trailing speech run is then **peeled** off:
 
@@ -153,7 +169,8 @@ periodic too, so neither path catches them — that's what the ASR round-trip in
 | `chunk_tail_guard_ms` | `TTS_CHUNK_TAIL_GUARD_MS` | `60` | keep this much after the last speech |
 | `chunk_tail_blip_max_ms` | `TTS_CHUNK_TAIL_BLIP_MAX_MS` | `400` | drop a trailing re-swell blip ≤ this isolated by a long gap (`0` disables the whole peel) |
 | `chunk_tail_tonal_cv_max` | `TTS_CHUNK_TAIL_TONAL_CV_MAX` | `0.35` | also drop a LONGER isolated run whose ZCR coeff-of-variation ≤ this (a sustained tone, not speech); `0` disables the tonal path |
-| `chunk_tail_voiced_coda_max_ms` | `TTS_CHUNK_TAIL_VOICED_CODA_MAX_MS` | `300` | fold a short loud + voiced + at/below-speech-level run (a word-final nasal coda) back into speech before cutting; `0` disables the fold |
+| `chunk_tail_voiced_coda_max_ms` | `TTS_CHUNK_TAIL_VOICED_CODA_MAX_MS` | `300` | when a trailing loud run never dies out (a fused drone), still fold up to this much of its voiced head back into speech (the graceful cap); `0` disables the fold entirely |
+| `chunk_tail_voiced_coda_decay_max_ms` | `TTS_CHUNK_TAIL_VOICED_CODA_DECAY_MAX_MS` | `1000` | a trailing loud at/below-speech-level run that dies into sub-floor quiet within this bound is a word-final coda and is kept whole, however long it ran; `0` disables the decay extension (only the graceful capped fold remains) |
 | `chunk_tail_voiced_coda_flicker_ms` | `TTS_CHUNK_TAIL_VOICED_CODA_FLICKER_MS` | `100` | bridge this much consecutive loud-but-unvoiced "flicker" inside a coda (the ACF pitch check dips at phone transitions); only counted when voicing resumes; `0` = stop at the first unvoiced window |
 | `chunk_tail_voicing_enabled` | `TTS_CHUNK_TAIL_VOICING` | `true` | enable the voicing refinement (catches loud, aperiodic hiss tails) |
 | `chunk_tail_voicing_acf_min` | `TTS_CHUNK_TAIL_VOICING_ACF_MIN` | `0.5` | min peak normalized autocorrelation to call a window voiced |
@@ -211,6 +228,15 @@ work but are not needed — post-processing removes the artifact reliably.
 - `test_detector_keeps_a_short_voiced_coda_at_the_end` — a word-final voiced
   nasal coda (loud but low-ZCR, e.g. "…built in") is folded back into speech,
   not hard-cut mid-word.
+- `test_decaying_voiced_tail_longer_than_the_coda_cap_is_kept` — the languid-voice
+  regression guard ("…that view."): a phrase-final vowel that outlives the old
+  300 ms cap but dies into quiet is word material and survives whole.
+- `test_vowel_that_dies_is_kept_while_the_drone_after_it_is_cut` — the decay
+  terminus is the word/artifact boundary: the vowel before the sub-floor dip is
+  kept, the drone after it is cut.
+- `test_persistent_voiced_tail_is_still_cut_via_the_graceful_cap` — a run still
+  loud at the decay bound is a fused drone: still cut, keeping at most the
+  ≤ `voiced_coda_max_ms` voiced head.
 - `test_voicing_detector_removes_a_loud_unvoiced_noise_tail` — a loud (~+9 dB
   over speech) broadband noise tail clears the speech gate and is aperiodic;
   only the voicing path cuts it.

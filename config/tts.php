@@ -352,20 +352,32 @@ return [
     // fundamental), and AT/BELOW the speech PEAK window level + over_speech_db (so
     // a louder re-swell swoosh is NOT folded; the peak — not the span's mean RMS,
     // which pauses dilute until an ordinary stressed final word reads "louder than
-    // speech" and gets cut). The fold is bounded to this many ms
-    // so a sustained voiced drone (multi-second) is NOT mistaken for a coda and is
-    // still cut. Purely acoustic (voicing + loudness + duration) — no phoneme/
-    // language assumptions; a nasal is voiced + low-ZCR in any language. 0 disables.
+    // speech" and gets cut).
     //
-    // The fold tolerates brief voicing FLICKER: the pure-PHP ACF voicing check
-    // dips at phone transitions (a real "…to them." measured ACF 0.480 vs the 0.5
-    // gate on the single vowel→nasal boundary window, then read voiced again), and
-    // stopping the fold there re-clips the word. Up to flicker_ms of consecutive
-    // loud-but-unvoiced windows are bridged, and only count as coda when voicing
-    // RESUMES after them — a sustained unvoiced run (fricative/hiss tail) still
-    // ends the fold at the last voiced window. flicker_ms 0 restores the old
-    // stop-at-first-unvoiced behavior.
+    // What separates a coda from a drone is that a coda DIES: a run that reaches
+    // genuine sub-floor quiet within decay_max_ms is folded WHOLE, however long
+    // it ran — a languid voice sustains a phrase-final vowel far past any fixed
+    // cap (a real "…that view." held ~450 ms of loud low-ZCR /uː/ against the old
+    // 300 ms cap and the seam clipped the word), and a fixed duration cap merely
+    // re-encodes the tempo of whichever voice it was tuned on. A run still loud
+    // at the decay bound (or at EOF) is a drone fused to the speech end; the fold
+    // then degrades gracefully to at most coda_max_ms of its voiced head instead
+    // of the old all-or-nothing return (where a coda one window over the cap lost
+    // the entire fold — and the word). Purely acoustic (voicing + loudness) — no
+    // phoneme/language assumptions; a nasal is voiced + low-ZCR in any language.
+    // coda_max_ms 0 disables the fold entirely; decay_max_ms 0 disables the decay
+    // extension (leaving only the graceful capped fold).
+    //
+    // The capped fold tolerates brief voicing FLICKER: the pure-PHP ACF voicing
+    // check dips at phone transitions (a real "…to them." measured ACF 0.480 vs
+    // the 0.5 gate on the single vowel→nasal boundary window, then read voiced
+    // again), and stopping the fold there re-clips the word. Up to flicker_ms of
+    // consecutive loud-but-unvoiced windows are bridged, and only count as coda
+    // when voicing RESUMES after them — a sustained unvoiced run (fricative/hiss
+    // tail) stops the voiced extent, leaving a hiss tail to the other paths.
+    // flicker_ms 0 restores the old stop-at-first-unvoiced behavior.
     'chunk_tail_voiced_coda_max_ms' => (int) env('TTS_CHUNK_TAIL_VOICED_CODA_MAX_MS', 300),
+    'chunk_tail_voiced_coda_decay_max_ms' => (int) env('TTS_CHUNK_TAIL_VOICED_CODA_DECAY_MAX_MS', 1000),
     'chunk_tail_voiced_coda_flicker_ms' => (int) env('TTS_CHUNK_TAIL_VOICED_CODA_FLICKER_MS', 100),
 
     // Voicing refinement of the tail detector. A trailing run that clears the

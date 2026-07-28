@@ -4,6 +4,23 @@ All notable changes to this project are documented in this file. The format is
 based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this
 project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Fixed
+- **Slow voices no longer lose the end of their last word at chunk seams.** A
+  languid voice can hold a phrase-final vowel ("…guarantee that view.") well
+  past the quarter-second the tail-noise detector allowed for a word ending,
+  so the sustained vowel read as a tail artifact and the stitch cut the word
+  off mid-decay at full volume. The detector now judges a trailing sound by
+  how it *ends*, not how long it runs: a tail that fades to genuine silence
+  within a second is the word finishing and is kept whole, while a tail still
+  droning at that bound is an artifact and is still removed (keeping at most a
+  syllable's worth of its start, where before one window too long forfeited
+  the entire word ending). Verified across all eight admin voices on three
+  engines — the fix also rescued Winston, the slowest stock voice, which was
+  quietly losing word endings the same way. The decay window is tunable via
+  `TTS_CHUNK_TAIL_VOICED_CODA_DECAY_MAX_MS` (default 1000 ms).
+
 ## [0.98.0] - 2026-07-27
 
 ### Added

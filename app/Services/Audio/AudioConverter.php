@@ -586,28 +586,38 @@ class AudioConverter
      * it is purely acoustic (voicing + loudness + duration) — no phoneme/language
      * assumptions, since a nasal is voiced + low-ZCR in any language.
      *
-     * From the window after $lastSpeechWin, fold each contiguous window that is loud
-     * (above the floor), VOICED (a clear fundamental), and AT/BELOW the speech PEAK
-     * window level + over_speech_db — i.e. energy tapering off the word, not a louder
-     * re-swell swoosh. The reference must be the loudest 50 ms speech window, NOT the
-     * span's mean RMS: the mean averages in every pause, so on a pause-heavy chunk a
+     * What separates a coda from a drone is that a coda DIES: the energy tapering
+     * off a word reaches genuine quiet (sub-floor) within a bounded time, while the
+     * Chatterbox drone persists for multiple seconds. So the fold walks the loud
+     * run after the speech end — for up to voiced_coda_decay_max_ms — and when the
+     * run terminates in quiet inside that bound, trusts ALL of it as word material.
+     * Duration below that bound is deliberately NOT a discriminator: a languid
+     * voice sustains a phrase-final vowel far past any per-phone cap (a real
+     * "…that view." held its /uː/ ~450 ms of loud low-ZCR audio against the old
+     * 300 ms voiced_coda_max_ms, and the seam clipped the word's second half), and
+     * a fixed cap merely re-encodes the tempo of whichever voice it was tuned on.
+     * Loudness stays gated per window: each folded window must sit AT/BELOW the
+     * speech PEAK window level + over_speech_db — i.e. energy tapering off the
+     * word, not a louder re-swell swoosh, which still aborts the fold entirely.
+     * The reference must be the loudest 50 ms speech window, NOT the span's mean
+     * RMS: the mean averages in every pause, so on a pause-heavy chunk a
      * merely-ordinary stressed final word ("...love what you DO") measured 6 dB over
      * the diluted mean while sitting BELOW the chunk's own speech peak — and the gate
      * cut the word ("do" clipped at the #5/#6 seam). Nothing tapering off a word can
      * exceed everything the speaker said by over_speech_db; a real appended swoosh can.
-     * Stop folding at the first window that is quiet (the word ended) or too loud
-     * (a swoosh). An UNVOICED window does not stop the fold immediately: the ACF
-     * voicing check flickers at phone transitions — a real "…to them." measured
-     * 0.480 vs the 0.5 acf_min on the single vowel→nasal boundary window while the
-     * next nasal window read voiced again, and breaking there re-clipped the word
-     * ("them" lost its "m"). Up to voiced_coda_flicker_ms of consecutive
-     * loud-but-unvoiced windows are tolerated, and folded only when voicing
-     * RESUMES after them ($ext never advances onto a flicker window itself) — so a
-     * sustained fricative/hiss tail still ends the fold at the last voiced window,
-     * exactly as an immediate break did, and stays with the other paths. If the
-     * run goes LONGER than voiced_coda_max_ms it is a sustained drone, not a
-     * coda — don't extend at all, so the drone is still cut.
-     * {@see AudioConverterTest}.
+     *
+     * A run still loud when the decay bound expires (or when the chunk simply ends
+     * loud) IS treated as a sustained drone fused to the speech end — but the fold
+     * degrades GRACEFULLY: it keeps up to voiced_coda_max_ms of the run's VOICED,
+     * flicker-bridged head (the part most plausibly still word) instead of the old
+     * all-or-nothing return, where a coda one window over the cap lost the entire
+     * fold and the word with it. Voicing matters only on that capped path: the ACF
+     * check flickers at phone transitions (a real "…to them." measured 0.480 vs
+     * the 0.5 acf_min on the single vowel→nasal boundary window while the next
+     * nasal window read voiced again), so up to voiced_coda_flicker_ms of
+     * consecutive loud-but-unvoiced windows are bridged and only count once
+     * voicing RESUMES — a sustained loud unvoiced run stops crediting voiced
+     * extent, leaving a hiss tail to the other paths. {@see AudioConverterTest}.
      */
     private function voicedCodaEnd(string $pcmWav, int $offset, array $dbWindows, int $lastSpeechWin, int $win, int $rate): int
     {
@@ -619,9 +629,13 @@ class AudioConverter
         $floorDb = (float) config('tts.chunk_tail_rms_floor_db', -40);
         $overSpeechDb = (float) config('tts.chunk_tail_voicing_over_speech_db', 6.0);
         $flickerSec = max(0, (int) config('tts.chunk_tail_voiced_coda_flicker_ms', 100)) / 1000;
+        $decaySec = max(0, (int) config('tts.chunk_tail_voiced_coda_decay_max_ms', 1000)) / 1000;
         $windowSec = $win / $rate;
         $codaMaxWin = (int) round($codaMaxSec / $windowSec);
         $flickerMaxWin = (int) round($flickerSec / $windowSec);
+        // The decay bound is never tighter than the classic cap; decay_max_ms 0
+        // disables the decay extension and leaves only the graceful capped fold.
+        $decayMaxWin = max($codaMaxWin, (int) round($decaySec / $windowSec));
         $nWindows = count($dbWindows);
 
         // Speech reference: the loudest window up to the ZCR-path speech end (a
@@ -631,21 +645,30 @@ class AudioConverter
             return $lastSpeechWin;
         }
 
-        $ext = $lastSpeechWin;
+        $lastLoud = $lastSpeechWin; // furthest loud window — the fold target for a run that dies
+        $ext = $lastSpeechWin;      // furthest VOICED window, flicker-bridged — the capped fold target
+        $extOpen = true;
         $unvoicedStreak = 0;
+        $decayed = false;
         for ($w = $lastSpeechWin + 1; $w < $nWindows; $w++) {
-            if (($w - $lastSpeechWin) > $codaMaxWin) {
-                return $lastSpeechWin; // voiced run too long for a coda — a drone; cut as before
+            if (($w - $lastSpeechWin) > $decayMaxWin) {
+                break; // still loud this far past the word — a persistent drone, not a dying coda
             }
             if ($dbWindows[$w] <= $floorDb) {
-                break; // quiet — the word ended; coda complete
+                $decayed = true; // the run died into genuine quiet — word material
+
+                break;
             }
             if ($dbWindows[$w] > $speechPeakDb + $overSpeechDb) {
                 return $lastSpeechWin; // louder than any speech — a re-swell swoosh, not a coda; cut as before
             }
+            $lastLoud = $w;
+            if (! $extOpen) {
+                continue;
+            }
             if (! $this->windowIsVoiced($pcmWav, $offset, $w * $win, $win, $rate)) {
                 if (++$unvoicedStreak > $flickerMaxWin) {
-                    break; // sustained loud unvoiced — a fricative/hiss tail; leave it to the other paths
+                    $extOpen = false; // sustained loud unvoiced — stop crediting voiced extent
                 }
 
                 continue; // a brief voicing flicker (phone transition) — folded only if voicing resumes
@@ -654,7 +677,11 @@ class AudioConverter
             $ext = $w; // fold this voiced coda window into speech
         }
 
-        return $ext;
+        if ($decayed) {
+            return $lastLoud;
+        }
+
+        return min($ext, $lastSpeechWin + $codaMaxWin);
     }
 
     /**

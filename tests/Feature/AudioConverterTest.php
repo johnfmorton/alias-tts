@@ -131,7 +131,8 @@ class AudioConverterTest extends TestCase
         [$out] = $converter->concatenate([$artifact], 'wav', 'wav', []);
         $seconds = $this->wavDataBytes($out) / (44100 * 2);
 
-        // Was 17.8s; speech ends ~14.85s. Allow margin around the ~14.9s cut.
+        // Was 17.8s; speech ends ~14.85s. Allow margin around the cut (~14.9s,
+        // plus up to the ≤300ms voiced head the graceful coda cap may keep).
         $this->assertGreaterThan(14.0, $seconds, 'Speech must be preserved.');
         $this->assertLessThan(15.8, $seconds, 'The multi-second drone must be removed.');
     }
@@ -148,8 +149,10 @@ class AudioConverterTest extends TestCase
         [$out] = $converter->concatenate([$chunk], 'wav', 'wav', []);
         $seconds = $this->wavDataBytes($out) / (44100 * 2);
 
-        // ~1.0s speech + small guard; well under the 2.0s input (the bounded
-        // trim alone could only remove ~0.3s, so this proves the detector fired).
+        // ~1.0s speech, plus the ≤300ms voiced head the graceful coda cap may
+        // keep (the tone runs loud to EOF, so the fold treats it as a fused
+        // drone), plus the guard; well under the 2.0s input (the bounded trim
+        // alone could only remove ~0.3s, so this proves the detector fired).
         $this->assertGreaterThan(0.85, $seconds, 'The broadband speech must survive.');
         $this->assertLessThan(1.4, $seconds, 'The long low-frequency tail must be cut.');
     }
@@ -288,9 +291,9 @@ class AudioConverterTest extends TestCase
         $seconds = $this->wavDataBytes($out) / (44100 * 2);
 
         // ~1.25s preserved (speech + coda). The bug cut at the speech/coda boundary
-        // (~1.06s), clipping the coda; the trailing silence is still trimmed (the
-        // 1.0s drone in test_long_tail_detector_trims_synthetic_drone — longer than
-        // voiced_coda_max_ms — proves a sustained voiced tail is still cut).
+        // (~1.06s), clipping the coda; the trailing silence is still trimmed
+        // (test_persistent_voiced_tail_is_still_cut_via_the_graceful_cap proves a
+        // tail that never dies out is still cut).
         $this->assertGreaterThan(1.2, $seconds, 'A short voiced coda at the end must not be clipped.');
         $this->assertLessThan(1.5, $seconds, 'The trailing silence after the coda must still be trimmed.');
     }
@@ -357,6 +360,84 @@ class AudioConverterTest extends TestCase
         // still trimmed). The mean-referenced gate cut at the word's onset (~2.11s).
         $this->assertGreaterThan(2.25, $seconds, 'A stressed voiced final word must not be clipped on a pause-heavy chunk.');
         $this->assertLessThan(2.55, $seconds, 'The trailing silence after the final word must still be trimmed.');
+    }
+
+    public function test_decaying_voiced_tail_longer_than_the_coda_cap_is_kept(): void
+    {
+        // Regression for the clipped "view" ("…guarantee that view."): a languid
+        // voice held the phrase-final /uː/ as ~450ms of loud, low-ZCR audio —
+        // longer than voiced_coda_max_ms — so the old fold declared it a drone,
+        // abandoned the fold ENTIRELY (all-or-nothing), and the seam cut the
+        // word's second half at full speech level. What separates a coda from a
+        // drone is that a coda DIES: a run that reaches genuine quiet within
+        // voiced_coda_decay_max_ms is word material, however long it ran.
+        // Layout: broadband speech | a 0.5s voiced vowel (past the 300ms cap,
+        // below speech level) | trailing silence — the run dies.
+        $converter = new AudioConverter(config('tts.ffmpeg_path', 'ffmpeg'));
+        $chunk = $this->wrapWav(
+            $this->noiseWav(1.0, 15000)       // speech body (high ZCR)
+            .$this->rawTone(0.5, 9000, 120.0) // sustained phrase-final vowel (loud, low ZCR)
+            .$this->rawTone(0.6, 0, 0.0)      // trailing silence (the word has ended)
+        );
+
+        [$out] = $converter->concatenate([$chunk], 'wav', 'wav', []);
+        $seconds = $this->wavDataBytes($out) / (44100 * 2);
+
+        // Speech + the FULL vowel survive (~1.56s with the guard); the trailing
+        // silence is still trimmed. The all-or-nothing cap cut at ~1.06s.
+        $this->assertGreaterThan(1.45, $seconds, 'A decaying voiced tail longer than the coda cap must not be clipped.');
+        $this->assertLessThan(1.75, $seconds, 'The trailing silence after the vowel must still be trimmed.');
+    }
+
+    public function test_vowel_that_dies_is_kept_while_the_drone_after_it_is_cut(): void
+    {
+        // The decay terminus is the word/artifact boundary: a phrase-final vowel
+        // that dies into sub-floor quiet is kept WHOLE — even past the 300ms cap —
+        // and everything after its death (here a drone rising out of the dip) is
+        // trailing non-speech, measured against min_artifact_ms and cut. Layout:
+        // broadband speech | a 0.4s voiced vowel | a 0.1s sub-floor dip (the vowel
+        // dies) | a 1.5s loud low-frequency drone.
+        $converter = new AudioConverter(config('tts.ffmpeg_path', 'ffmpeg'));
+        $chunk = $this->wrapWav(
+            $this->noiseWav(1.0, 15000)       // speech body (high ZCR)
+            .$this->rawTone(0.4, 9000, 120.0) // phrase-final vowel (loud, low ZCR, past the cap)
+            .$this->rawTone(0.1, 0, 0.0)      // the vowel dies (sub-floor dip)
+            .$this->rawTone(1.5, 8000, 90.0)  // drone after the word's death
+        );
+
+        [$out] = $converter->concatenate([$chunk], 'wav', 'wav', []);
+        $seconds = $this->wavDataBytes($out) / (44100 * 2);
+
+        // Speech + the full vowel survive (~1.46s with the guard); the dip and
+        // the whole drone are cut. The old cap abandoned the fold and cut the
+        // vowel at ~1.06s; keeping the drone instead would read ~3.0s.
+        $this->assertGreaterThan(1.35, $seconds, 'A vowel that dies before a drone must be kept whole.');
+        $this->assertLessThan(1.7, $seconds, 'The drone after the vowel dies must still be cut.');
+    }
+
+    public function test_persistent_voiced_tail_is_still_cut_via_the_graceful_cap(): void
+    {
+        // The counterpart guardrail: a run STILL LOUD at the decay bound is a
+        // sustained drone fused to the speech end, not a dying coda — it must
+        // still be cut. But the fold now degrades gracefully: up to
+        // voiced_coda_max_ms of the run's voiced head (the part most plausibly
+        // still word) is kept, instead of the old all-or-nothing zero fold.
+        // Layout: broadband speech | a 1.4s voiced drone (outlives the 1.0s decay
+        // bound) | trailing silence.
+        $converter = new AudioConverter(config('tts.ffmpeg_path', 'ffmpeg'));
+        $chunk = $this->wrapWav(
+            $this->noiseWav(1.0, 15000)       // speech body (high ZCR)
+            .$this->rawTone(1.4, 8000, 90.0)  // fused drone: still loud at the decay bound
+            .$this->rawTone(0.3, 0, 0.0)      // (its eventual end is past the bound)
+        );
+
+        [$out] = $converter->concatenate([$chunk], 'wav', 'wav', []);
+        $seconds = $this->wavDataBytes($out) / (44100 * 2);
+
+        // ~1.0s speech + the ≤300ms graceful voiced head + guard (~1.36s); the
+        // drone's remaining second is cut. Zero fold would read ~1.06s.
+        $this->assertGreaterThan(1.25, $seconds, 'The graceful cap must keep the voiced head of a fused tail.');
+        $this->assertLessThan(1.6, $seconds, 'A tail still loud at the decay bound must still be cut.');
     }
 
     public function test_voicing_detector_removes_a_loud_unvoiced_noise_tail(): void
