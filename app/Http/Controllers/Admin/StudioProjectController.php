@@ -12,6 +12,7 @@ use App\Jobs\DuplicateProjectJob;
 use App\Jobs\GenerateProjectChunksJob;
 use App\Jobs\GenerateProjectChunkWorkerJob;
 use App\Jobs\StitchProjectJob;
+use App\Models\AppEvent;
 use App\Models\PronunciationEntry;
 use App\Models\TtsChunk;
 use App\Models\TtsChunkTake;
@@ -1318,6 +1319,11 @@ class StudioProjectController extends Controller
 
         $job = $this->dispatchGenerationRun($request, $project, $outstanding);
 
+        AppEvent::record(AppEvent::PROJECT_RUN_STARTED, $project->user_id, AppEvent::SOURCE_STUDIO, [
+            'project_id' => $project->id,
+            'chunks' => $outstanding->count(),
+        ]);
+
         // 202 unless the queue ran it inline (QUEUE_CONNECTION=sync) — then the
         // run is already over and the payload says so.
         return response()->json(['ok' => true, 'job' => $job->statusPayload()], $job->isActive() ? 202 : 200);
@@ -1848,6 +1854,11 @@ class StudioProjectController extends Controller
 
         $chunk = $this->projects->selectTake($take);
 
+        AppEvent::record(AppEvent::TAKE_SELECTED, $project->user_id, AppEvent::SOURCE_STUDIO, [
+            'project_id' => $project->id,
+            'chunk_id' => $chunk->id,
+        ]);
+
         return response()->json(array_merge([
             'ok' => true,
             'status' => $chunk->status->value,
@@ -1910,6 +1921,11 @@ class StudioProjectController extends Controller
 
             return response()->json(['message' => 'Could not delete this take: '.$e->getMessage()], 502);
         }
+
+        AppEvent::record(AppEvent::TAKE_DELETED, $project->user_id, AppEvent::SOURCE_STUDIO, [
+            'project_id' => $project->id,
+            'chunk_id' => $chunk->id,
+        ]);
 
         return response()->json(array_merge(
             ['ok' => true, 'spend' => $this->spendPayload($project, $chunk)],
@@ -2050,6 +2066,10 @@ class StudioProjectController extends Controller
         // inside all read as a set (love-what-you-do-sealed-bbe2014e.*).
         $filename = $project->sealedBaseName().'.zip';
 
+        AppEvent::record(AppEvent::RECEIPT_DOWNLOADED, $project->user_id, AppEvent::SOURCE_STUDIO, [
+            'project_id' => $project->id,
+        ]);
+
         // Streamed (see ProjectExportService): the sealed audio goes out
         // immediately and bytes keep flowing while the provenance pass runs,
         // so a big project can't sit silent past the gateway timeout. The
@@ -2081,6 +2101,10 @@ class StudioProjectController extends Controller
         // downloads never collide on disk.
         $filename = $project->sealedBaseName().'-archive.zip';
 
+        AppEvent::record(AppEvent::PROJECT_ARCHIVED, $project->user_id, AppEvent::SOURCE_STUDIO, [
+            'project_id' => $project->id,
+        ]);
+
         // Streamed clip by clip (see ProjectExportService): the old build
         // fetched every take AND held the whole zip in memory before the first
         // byte left — a 504 and a memory spike waiting to happen on a big
@@ -2106,6 +2130,15 @@ class StudioProjectController extends Controller
         $bytes = $this->projects->finalAudioBytes($project);
         if ($bytes === null) {
             return response()->json(['message' => 'No final audio — rebuild the project first.'], 404);
+        }
+
+        // Only the deliberate Download click (?dl=1) counts — ordinary playback
+        // (the presign redirect above, or this byte path on a local disk) would
+        // log a "download" every time a player is scrubbed.
+        if ($request->boolean('dl')) {
+            AppEvent::record(AppEvent::AUDIO_DOWNLOADED, $project->user_id, AppEvent::SOURCE_STUDIO, [
+                'project_id' => $project->id,
+            ]);
         }
 
         $ext = pathinfo((string) $project->final_audio_path, PATHINFO_EXTENSION) ?: 'mp3';

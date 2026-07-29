@@ -2,6 +2,7 @@
 
 use App\Http\Middleware\ApplyUserSettings;
 use App\Http\Middleware\EnsureAccountIsActive;
+use App\Http\Middleware\RecordPageView;
 use App\Http\Middleware\TrustProxies;
 use App\Http\Middleware\ValidateInternalSecret;
 use Illuminate\Foundation\Application;
@@ -32,7 +33,7 @@ return Application::configure(basePath: dirname(__DIR__))
             // the SuperAdmin-only surface (Users) is gated per-route inside admin.php.
             // ApplyUserSettings overlays the signed-in user's saved settings onto
             // config so the whole panel runs under THEIR preferences.
-            Route::middleware(['web', 'auth', EnsureAccountIsActive::class, ApplyUserSettings::class])
+            Route::middleware(['web', 'auth', EnsureAccountIsActive::class, ApplyUserSettings::class, RecordPageView::class])
                 ->prefix('admin')
                 ->name('admin.')
                 ->group(base_path('routes/admin.php'));

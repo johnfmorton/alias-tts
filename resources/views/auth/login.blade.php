@@ -8,6 +8,7 @@
     <link rel="icon" href="{{ asset('alias-icon.svg') }}" type="image/svg+xml">
     <link rel="apple-touch-icon" href="{{ asset('apple-touch-icon.png') }}">
     @vite(['resources/css/app.css'])
+    @include('partials.analytics')
 </head>
 <body class="h-full bg-zinc-950 text-zinc-100 antialiased">
     <div class="mx-auto flex min-h-full max-w-sm flex-col justify-center px-6 py-12">

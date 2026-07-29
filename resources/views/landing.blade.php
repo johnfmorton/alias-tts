@@ -65,6 +65,7 @@
 
         a:focus-visible { outline: 2px solid #22d3ee; outline-offset: 3px; border-radius: .65rem; }
     </style>
+    @include('partials.analytics')
 </head>
 <body class="h-full bg-[#0a0a0a] text-zinc-100 antialiased">
     <main class="relative mx-auto flex min-h-full max-w-2xl flex-col items-center justify-center overflow-hidden px-6 py-20 text-center">

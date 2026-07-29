@@ -45,6 +45,7 @@
         [
             'label' => 'System',
             'items' => [
+                ['route' => 'admin.insights', 'pattern' => 'admin.insights', 'label' => 'Insights', 'super_admin' => true],
                 ['route' => 'admin.health', 'pattern' => 'admin.health', 'label' => 'Health', 'super_admin' => true],
                 ['route' => 'admin.settings.index', 'pattern' => 'admin.settings.*', 'label' => 'Settings'],
             ],

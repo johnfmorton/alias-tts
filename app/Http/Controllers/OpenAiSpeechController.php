@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Http\Requests\OpenAiSpeechRequest;
+use App\Models\AppEvent;
 use App\Models\Speech;
 use App\Models\Voice;
 use App\Services\Audio\AudioConverter;
@@ -100,6 +101,14 @@ class OpenAiSpeechController extends Controller
 
             return OpenAiError::json('Speech generation failed: '.$e->getMessage(), 502);
         }
+
+        AppEvent::record(AppEvent::API_SPEECH, $apiKey?->user_id, AppEvent::SOURCE_API, [
+            'model' => $speech->model_id,
+            'characters' => $speech->characters,
+            'mode' => 'sync',
+            'dialect' => 'openai',
+            'cached' => ! $speech->wasRecentlyCreated,
+        ]);
 
         return $this->audioResponse($speech);
     }

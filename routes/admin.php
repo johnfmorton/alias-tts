@@ -6,6 +6,7 @@ use App\Http\Controllers\Admin\DashboardController;
 use App\Http\Controllers\Admin\GenblazeController;
 use App\Http\Controllers\Admin\HealthController;
 use App\Http\Controllers\Admin\HealthTestController;
+use App\Http\Controllers\Admin\InsightsController;
 use App\Http\Controllers\Admin\ProjectJobController;
 use App\Http\Controllers\Admin\PronunciationController;
 use App\Http\Controllers\Admin\SettingsController;
@@ -84,6 +85,10 @@ Route::put('/settings', [SettingsController::class, 'update'])->name('settings.u
 Route::middleware(EnsureUserIsSuperAdmin::class)->group(function () {
     Route::get('/health', [HealthController::class, 'index'])->name('health');
     Route::get('/health/results', [HealthController::class, 'results'])->name('health.results');
+
+    // Insights — first-party product analytics (app_events + credit_transactions
+    // aggregates): who's active, which features get used, what screens get seen.
+    Route::get('/insights', [InsightsController::class, 'index'])->name('insights');
 
     // Live provider tests (real, billable generation calls).
     Route::post('/health/test/short', [HealthTestController::class, 'short'])->name('health.test.short');

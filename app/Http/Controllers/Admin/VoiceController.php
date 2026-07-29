@@ -8,6 +8,7 @@ use App\Http\Controllers\Controller;
 use App\Http\Requests\StoreVoiceRequest;
 use App\Http\Requests\UpdateVoiceRequest;
 use App\Models\ApiKey;
+use App\Models\AppEvent;
 use App\Models\TuningPreset;
 use App\Models\User;
 use App\Models\Voice;
@@ -143,6 +144,11 @@ class VoiceController extends Controller
         if ($token) {
             $this->voiceClips->discard($token);
         }
+
+        AppEvent::record(AppEvent::VOICE_CREATED, $request->user()->id, AppEvent::SOURCE_STUDIO, [
+            'voice_id' => $voice->id,
+            'method' => 'created',
+        ]);
 
         // Land on the edit page: tuning lives there now, so the natural next
         // step after saving a clip is to hear it and dial in the defaults.
@@ -394,6 +400,11 @@ class VoiceController extends Controller
 
         $copy = $this->voices->duplicate($voice, $request->user()->id);
 
+        AppEvent::record(AppEvent::VOICE_CREATED, $request->user()->id, AppEvent::SOURCE_STUDIO, [
+            'voice_id' => $copy->id,
+            'method' => 'duplicated',
+        ]);
+
         return redirect()->route('admin.voices.edit', $copy)
             ->with('success', "Voice '{$copy->slug}' created — it's yours to rename and tune.");
     }
@@ -424,6 +435,11 @@ class VoiceController extends Controller
 
             return redirect()->route('admin.voices.index')->with('error', 'Import failed: '.$e->getMessage());
         }
+
+        AppEvent::record(AppEvent::VOICE_CREATED, $request->user()->id, AppEvent::SOURCE_STUDIO, [
+            'voice_id' => $voice->id,
+            'method' => 'imported',
+        ]);
 
         return redirect()->route('admin.voices.edit', $voice)
             ->with('success', "Voice '{$voice->slug}' imported — clip and tuning restored. Rename or retune it here.");

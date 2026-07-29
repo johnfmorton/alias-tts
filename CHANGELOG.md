@@ -4,6 +4,30 @@ All notable changes to this project are documented in this file. The format is
 based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this
 project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+- **The public pages can now report traffic to Google Analytics.** Set
+  `TTS_ANALYTICS_GA_ID` and the landing, about, verify, login, and error
+  pages load the GA4 tag; leave it unset (the default) and no Google script
+  renders anywhere. The tag never loads inside the signed-in panel, never on
+  the signed invite page (a signed URL must not reach Google), and reports
+  every URL with its query string stripped — a `/verify?sha=` lookup stays
+  between the visitor and the app.
+- **Insights: a first-party picture of how the instance is used.** The app
+  now records its own product events server-side — projects created, chunks
+  rendered, finals sealed, receipts downloaded, voices added, API speech
+  calls, and which admin screens get viewed — into a new `app_events` table.
+  No third-party script runs inside the panel, ad blockers can't hide
+  anything, and the record includes the API/plugin traffic no browser tag
+  could ever see. A new SuperAdmin **Insights** page (System menu) turns
+  those events plus the billing ledger into active-user counts, a 30-day
+  activity trend, feature-adoption and top-screen tables, and
+  Studio-vs-API / per-engine volume splits. Recording can be switched off
+  with `TTS_ANALYTICS_EVENTS_ENABLED=false`, and a nightly prune keeps
+  `TTS_ANALYTICS_RETENTION_DAYS` days of history (180 by default; 0 keeps
+  everything).
+
 ## [0.98.1] - 2026-07-28
 
 ### Fixed

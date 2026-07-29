@@ -6,6 +6,7 @@ use App\Enums\SpeechStatus;
 use App\Exceptions\SpeechGenerationException;
 use App\Http\Requests\TextToSpeechRequest;
 use App\Models\ApiKey;
+use App\Models\AppEvent;
 use App\Models\Speech;
 use App\Models\TtsProject;
 use App\Models\Voice;
@@ -82,6 +83,14 @@ class TextToSpeechController extends Controller
             return $this->error('Speech generation failed: '.$e->getMessage(), 502);
         }
 
+        AppEvent::record(AppEvent::API_SPEECH, $apiKey?->user_id, AppEvent::SOURCE_API, [
+            'model' => $speech->model_id,
+            'characters' => $speech->characters,
+            'mode' => 'sync',
+            'dialect' => 'elevenlabs',
+            'cached' => ! $speech->wasRecentlyCreated,
+        ]);
+
         return $this->audioResponse($speech);
     }
 
@@ -122,6 +131,14 @@ class TextToSpeechController extends Controller
         // Reflect any inline completion (e.g. QUEUE_CONNECTION=sync, where the
         // job runs during dispatch) so the response status is accurate.
         $speech->refresh();
+
+        AppEvent::record(AppEvent::API_SPEECH, $apiKey?->user_id, AppEvent::SOURCE_API, [
+            'model' => $speech->model_id,
+            'characters' => $speech->characters,
+            'mode' => 'queued',
+            'dialect' => 'elevenlabs',
+            'cached' => ! $speech->wasRecentlyCreated,
+        ]);
 
         $code = $speech->isCompleted() ? Response::HTTP_OK : Response::HTTP_ACCEPTED;
 

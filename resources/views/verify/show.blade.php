@@ -80,6 +80,7 @@
   footer { margin-top: 2.5rem; color: #71717a; font-size: .82rem; }
   footer code { color: #a1a1aa; }
 </style>
+@include('partials.analytics')
 </head>
 <body>
 <main>

@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Admin;
 use App\Http\Controllers\Concerns\ServesRangedAudio;
 use App\Http\Controllers\Controller;
 use App\Jobs\PrepareVoiceClipJob;
+use App\Models\AppEvent;
 use App\Models\VoiceClip;
 use App\Rules\AudioOnlyUpload;
 use App\Services\VoiceClipService;
@@ -76,6 +77,12 @@ class VoiceClipController extends Controller
             // sync driver has already finished the job, so reflect the truth.
             $clip->refresh();
         }
+
+        // The in-browser recorder always names its blob 'recording.<ext>';
+        // uploads keep the user's own filename.
+        AppEvent::record(AppEvent::VOICE_CLIP_ADDED, $request->user()->id, AppEvent::SOURCE_STUDIO, [
+            'method' => str_starts_with($request->file('audio')->getClientOriginalName(), 'recording.') ? 'record' : 'upload',
+        ]);
 
         return response()->json($this->payload($clip));
     }

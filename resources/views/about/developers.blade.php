@@ -21,6 +21,7 @@
         @keyframes fadeUp{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:none}}
         @media (prefers-reduced-motion:reduce){.rise{animation:none!important;opacity:1!important;transform:none!important}}
     </style>
+    @include('partials.analytics')
 </head>
 <body class="min-h-full bg-[#0a0a0a] text-zinc-100 antialiased">
     <header class="rise mx-auto flex w-full max-w-5xl items-center justify-between px-6 py-6" style="animation-delay: 0ms">

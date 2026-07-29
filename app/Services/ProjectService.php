@@ -7,6 +7,7 @@ use App\Enums\ProjectStatus;
 use App\Jobs\DeleteStoredFilesJob;
 use App\Jobs\DuplicateProjectJob;
 use App\Models\ApiKey;
+use App\Models\AppEvent;
 use App\Models\Speech;
 use App\Models\TtsChunk;
 use App\Models\TtsChunkTake;
@@ -115,6 +116,14 @@ class ProjectService
         ]);
 
         $this->createChunks($project, $segments);
+
+        AppEvent::record(AppEvent::PROJECT_CREATED, $project->user_id, $apiKey ? AppEvent::SOURCE_API : AppEvent::SOURCE_STUDIO, [
+            'project_id' => $project->id,
+            'voice_id' => $voice->id,
+            'model' => $modelId,
+            'characters' => mb_strlen($normalized),
+            'chunks' => count($segments),
+        ]);
 
         return $project;
     }
@@ -435,6 +444,10 @@ class ProjectService
             DeleteStoredFilesJob::dispatch($this->disk(), $batch);
         }
 
+        AppEvent::record(AppEvent::PROJECT_REVISED, $project->user_id, AppEvent::SOURCE_STUDIO, [
+            'project_id' => $project->id,
+        ]);
+
         return ['changed' => true, 'counts' => $plan['counts']];
     }
 
@@ -641,10 +654,19 @@ class ProjectService
 
             $this->markFinalOutdated($project);
 
+            $model = ModelCatalog::forVoice($chunk->voice ?? $project->voice);
             GenerationTimings::record(
-                ModelCatalog::forVoice($chunk->voice ?? $project->voice),
+                $model,
                 (int) round((microtime(true) - $start) * 1000),
             );
+
+            // source=internal: a render can originate from the panel, a queued
+            // run, or the API — the billing split lives in credit_transactions.
+            AppEvent::record(AppEvent::CHUNK_GENERATED, $project->user_id, AppEvent::SOURCE_INTERNAL, [
+                'project_id' => $project->id,
+                'chunk_id' => $chunk->id,
+                'model' => $model,
+            ]);
         } catch (Throwable $e) {
             $chunk->update([
                 'status' => ChunkStatus::Failed,
@@ -1083,6 +1105,10 @@ class ProjectService
             'status' => ProjectStatus::Ready,
         ]);
 
+        AppEvent::record(AppEvent::PROJECT_REBUILT, $project->user_id, AppEvent::SOURCE_STUDIO, [
+            'project_id' => $project->id,
+        ]);
+
         return $project;
     }
 
@@ -1330,6 +1356,10 @@ class ProjectService
             'sealed_by_email' => $approver->email,
         ]);
 
+        AppEvent::record(AppEvent::PROJECT_SEALED, $project->user_id, AppEvent::SOURCE_STUDIO, [
+            'project_id' => $project->id,
+        ]);
+
         return $project->refresh();
     }
 
@@ -1544,7 +1574,7 @@ class ProjectService
             // Phase B — create the rows. forceFill: the models don't list `id`
             // in $fillable, and the copied paths must embed the REAL row ids so
             // deleteChunk's directory wipe finds the files.
-            return DB::transaction(function () use ($source, $user, $newProjectId, $finalPath, $status, $plans, $mapVoice) {
+            $copy = DB::transaction(function () use ($source, $user, $newProjectId, $finalPath, $status, $plans, $mapVoice) {
                 $copy = new TtsProject;
                 $copy->forceFill([
                     'id' => $newProjectId,
@@ -1608,6 +1638,13 @@ class ProjectService
 
                 return $copy;
             });
+
+            AppEvent::record(AppEvent::PROJECT_DUPLICATED, $user->id, AppEvent::SOURCE_STUDIO, [
+                'project_id' => $copy->id,
+                'from_project_id' => $source->id,
+            ]);
+
+            return $copy;
         } catch (Throwable $e) {
             // A failed duplicate must not strand half a file tree: no committed
             // row references anything under the new id, so wipe it wholesale.

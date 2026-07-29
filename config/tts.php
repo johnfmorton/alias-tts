@@ -915,6 +915,27 @@ return [
 
     /*
     |--------------------------------------------------------------------------
+    | Analytics
+    |--------------------------------------------------------------------------
+    |
+    | Two independent layers. ga_id renders the GA4 snippet on the PUBLIC pages
+    | only (landing, about, verify, login, error pages) — never inside /admin
+    | and never on signed-URL pages (invite set-password); empty = no Google
+    | tag anywhere. events_enabled is the master switch for first-party
+    | product analytics: server-side events (feature usage + admin page views)
+    | written to the app_events table by AppEvent::record() and aggregated on
+    | /admin/insights. retention_days bounds app_events growth via the nightly
+    | analytics:prune command; 0 keeps rows forever.
+    |
+    */
+    'analytics' => [
+        'ga_id' => env('TTS_ANALYTICS_GA_ID'),
+        'events_enabled' => (bool) env('TTS_ANALYTICS_EVENTS_ENABLED', true),
+        'retention_days' => (int) env('TTS_ANALYTICS_RETENTION_DAYS', 180),
+    ],
+
+    /*
+    |--------------------------------------------------------------------------
     | Provider configuration
     |--------------------------------------------------------------------------
     |
