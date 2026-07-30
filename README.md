@@ -21,6 +21,12 @@ languages, its own built-in voices, cloning from ~3s of audio, and free-text
 style notes instead of numeric knobs) — each voice picks its engine on its
 edit page.
 
+> [!NOTE]
+> **New: Qwen3 TTS.** The newest engine in the catalog, and still in testing.
+> Qwen3 voices plug into the same workflow as the Chatterbox engines — the
+> same dashboard, Studio editing, caching, and quality checks — so trying it
+> is a per-voice switch on the voice's edit page, not a different tool.
+
 Full documentation lives in **[docs/](docs/README.md)** — setup, integration,
 and internals, grouped by audience.
 
@@ -42,6 +48,14 @@ you an alternative where:
   0.3 }` for a steadier, slightly more expressive read — higher `stability` =
   steadier pacing, higher `style` = more animated delivery), and opt into
   quality checks that automatically re-roll or trim flawed takes.
+
+And you don't need to be a developer to get value out of it. The APIs are how
+apps connect, but everything else lives in the dashboard: record yourself for
+~20 seconds right in the browser to clone your voice, paste in a script, and
+produce the finished piece in **Studio** — audition it sentence by sentence,
+re-roll just the line that reads wrong, then download a polished MP3 along
+with a receipt anyone can use to verify it's the approved take. A creator can
+do all of that without ever seeing a line of JSON.
 
 ## How it works
 
@@ -92,8 +106,9 @@ short/long test generations to confirm end-to-end audio works.
 Today the only real inference backend is **Replicate** (plus a `fake` driver
 that returns silent audio for local development and tests), running the
 model catalog (`config('tts.models')`): classic **resemble-ai/chatterbox**,
-**resemble-ai/chatterbox-turbo**, and **qwen/qwen3-tts**, chosen per-voice,
-each with its own pinned version, tuning knobs, and per-character rate. The
+**resemble-ai/chatterbox-turbo**, and **qwen/qwen3-tts** (a recent addition,
+still in testing), chosen per-voice, each with its own pinned version, tuning
+knobs, and per-character rate. The
 backend is a pluggable driver (`config('tts.provider')`); the dev-only
 `local` driver runs the Chatterbox engines on an in-repo sidecar and routes
 qwen voices to Replicate (see
@@ -113,9 +128,9 @@ ddev artisan apikey:create "me"                # or generate keys from the dashb
 ddev artisan voice:create "John" ./sample.wav --slug=john   # or add voices from the dashboard
 ```
 
-A fresh install ships with **two bundled voices** (`default`, male, and
-`default-female` — public-domain reference clips), so you can generate
-audio before cloning a voice of your own.
+A fresh install ships with **two bundled voices** — `default` (male) and
+`default-female` — built from public-domain reference clips, so you can
+generate audio before cloning a voice of your own.
 
 The local `.env` defaults to `TTS_PROVIDER=fake`, so the app runs with **zero
 setup** and returns silent MP3s. Switch to real generation by setting:
@@ -239,10 +254,10 @@ request. Over the limit, the endpoint returns an ElevenLabs-shaped 422.
 ### OpenAI dialect
 
 `POST /v1/audio/speech` — an app written against OpenAI's TTS API works by
-changing only the base URL and key. Authenticate with a **Alias** key via
+changing only the base URL and key. Authenticate with an **Alias** key via
 `Authorization: Bearer`; errors use the OpenAI `{"error":{…}}` envelope.
 
-The one semantic difference: `voice` is a **Alias voice slug**, not an OpenAI
+The one semantic difference: `voice` is an **Alias voice slug**, not an OpenAI
 preset (OpenAI has no custom voices to map to). For stock clients that only know
 `alloy`/`nova`/etc., a config map (`openai_voice_aliases`) can alias the preset
 names to your voices (see
@@ -427,7 +442,7 @@ healthy. See [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md) for the details.
 The **[Bespoken plugin](https://github.com/johnfmorton/craft-bespoken)** for
 Craft CMS speaks the ElevenLabs dialect and understands the Alias extensions
 (async jobs, projects, pronunciation sync), so it works with Alias out of the
-box: set the plugin's base URL to your domain, the API key to a Alias key, and
+box: set the plugin's base URL to your domain, the API key to an Alias key, and
 a `voice_id` that matches a registered voice slug. See
 **[docs/BESPOKEN.md](docs/BESPOKEN.md)** for the full step-by-step guide.
 
