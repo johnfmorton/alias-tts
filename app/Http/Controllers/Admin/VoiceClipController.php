@@ -43,6 +43,10 @@ class VoiceClipController extends Controller
      */
     public function store(Request $request): JsonResponse
     {
+        // The in-browser recorder always names its blob 'recording.<ext>';
+        // uploads keep the user's own filename.
+        $isRecording = str_starts_with((string) $request->file('audio')?->getClientOriginalName(), 'recording.');
+
         $validator = Validator::make($request->all(), [
             'audio' => [
                 'required', 'file', 'max:20480',
@@ -50,6 +54,11 @@ class VoiceClipController extends Controller
                 new AudioOnlyUpload,
             ],
             'enhance' => ['sometimes', 'boolean'],
+            // A mic take is the speaker consenting in person; an uploaded file
+            // can be anyone, so staging one requires the rights attestation.
+            'clip_rights' => $isRecording ? ['sometimes', 'boolean'] : ['accepted'],
+        ], [
+            'clip_rights.accepted' => "Please confirm you have the rights to this recording and the speaker's consent to clone their voice.",
         ]);
 
         if ($validator->fails()) {
@@ -78,11 +87,11 @@ class VoiceClipController extends Controller
             $clip->refresh();
         }
 
-        // The in-browser recorder always names its blob 'recording.<ext>';
-        // uploads keep the user's own filename.
+        // For uploads the attestation just validated is stamped into the event —
+        // the durable record that the uploader affirmed the clip's rights.
         AppEvent::record(AppEvent::VOICE_CLIP_ADDED, $request->user()->id, AppEvent::SOURCE_STUDIO, [
-            'method' => str_starts_with($request->file('audio')->getClientOriginalName(), 'recording.') ? 'record' : 'upload',
-        ]);
+            'method' => $isRecording ? 'record' : 'upload',
+        ] + ($isRecording ? [] : ['rights_attested' => true]));
 
         return response()->json($this->payload($clip));
     }

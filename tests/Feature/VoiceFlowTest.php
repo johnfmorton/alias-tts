@@ -390,6 +390,7 @@ class VoiceFlowTest extends TestCase
             'slug' => 'john',
             'remove_clip' => '1',
             'audio' => UploadedFile::fake()->createWithContent('new.wav', $this->silentWav(9.0)),
+            'clip_rights' => '1',
         ])->assertRedirect(route('admin.voices.index'));
 
         // Replacing is not removing: the voice still has a clip.

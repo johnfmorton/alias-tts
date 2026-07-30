@@ -145,10 +145,12 @@ class VoiceController extends Controller
             $this->voiceClips->discard($token);
         }
 
+        // A directly-attached upload records its rights attestation here; a
+        // staged clip's landed on VOICE_CLIP_ADDED when the clip was staged.
         AppEvent::record(AppEvent::VOICE_CREATED, $request->user()->id, AppEvent::SOURCE_STUDIO, [
             'voice_id' => $voice->id,
             'method' => 'created',
-        ]);
+        ] + ($request->hasFile('audio') ? ['rights_attested' => true] : []));
 
         // Land on the edit page: tuning lives there now, so the natural next
         // step after saving a clip is to hear it and dial in the defaults.

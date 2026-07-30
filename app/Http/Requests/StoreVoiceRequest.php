@@ -36,6 +36,10 @@ class StoreVoiceRequest extends FormRequest
             // A prepared-clip token + the A/B choice, when saving a previewed clip.
             'clip_token' => ['nullable', 'string', 'size:40', 'required_with:clip_choice'],
             'clip_choice' => ['nullable', 'in:original,enhanced', 'required_with:clip_token'],
+            // A directly-attached file needs the uploader's rights attestation.
+            // A clip_token is exempt: staged uploads were attested at staging
+            // (VoiceClipController), and mic recordings are consent in person.
+            'clip_rights' => $this->hasFile('audio') ? ['accepted'] : ['nullable', 'boolean'],
         ];
     }
 
@@ -43,6 +47,7 @@ class StoreVoiceRequest extends FormRequest
     {
         return [
             'slug.regex' => 'The voice_id may only contain letters, numbers, dots, dashes and underscores.',
+            'clip_rights.accepted' => "Please confirm you have the rights to this recording and the speaker's consent to clone their voice.",
         ];
     }
 }

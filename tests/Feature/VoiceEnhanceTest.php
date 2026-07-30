@@ -58,6 +58,7 @@ class VoiceEnhanceTest extends TestCase
             'enhance' => '1',
             'raw' => '1',
             'audio' => $this->wavUpload(),
+            'clip_rights' => '1',
         ]);
 
         $voice = Voice::where('slug', 'cleaned-voice')->first();
@@ -81,6 +82,7 @@ class VoiceEnhanceTest extends TestCase
             'enhance' => '1',
             'raw' => '1',
             'audio' => $this->wavUpload(),
+            'clip_rights' => '1',
         ]);
 
         $voice = Voice::where('slug', 'fallback-voice')->first();
@@ -102,6 +104,7 @@ class VoiceEnhanceTest extends TestCase
             'name' => 'Plain Voice',
             'raw' => '1',
             'audio' => $this->wavUpload(),
+            'clip_rights' => '1',
         ]);
 
         $voice = Voice::where('slug', 'plain-voice')->first();

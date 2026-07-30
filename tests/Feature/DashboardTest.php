@@ -104,6 +104,7 @@ class DashboardTest extends TestCase
             'name' => 'Test Voice',
             'slug' => 'test-voice',
             'audio' => $file,
+            'clip_rights' => '1',
         ]);
 
         $voice = Voice::firstWhere('slug', 'test-voice');

@@ -340,6 +340,7 @@ class VoiceModelTest extends TestCase
             'model' => 'qwen3-tts',
             'reference_text' => 'What the OLD clip said.',
             'audio' => UploadedFile::fake()->createWithContent('new.wav', $this->silentWav(6.0)),
+            'clip_rights' => '1',
         ], $extra));
     }
 

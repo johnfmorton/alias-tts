@@ -4,6 +4,18 @@ All notable changes to this project are documented in this file. The format is
 based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this
 project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+- **Uploading a reference clip now requires a rights attestation.** Saving an
+  uploaded file — on Add a voice, or when replacing the clip on a voice's
+  edit page — requires checking "I have the right to use this recording, and
+  the speaker's consent to clone their voice." The requirement is enforced
+  server-side on every upload path (the preview/cleanup flow and the direct
+  form submit), and each affirmation is stamped into the app's first-party
+  event log as a durable record. Recording with the mic is exempt: the
+  speaker reading into the microphone is the consent.
+
 ## [0.99.0] - 2026-07-29
 
 ### Added

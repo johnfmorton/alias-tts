@@ -40,6 +40,9 @@ class UpdateVoiceRequest extends FormRequest
             // value, so a preset on a preset-less engine still fails.
             'preset_voice' => ['nullable', 'string', Rule::in(ModelCatalog::presetVoices($this->input('model') ?: ($voice?->model ?? ModelCatalog::DEFAULT)))],
             'audio' => ['nullable', 'file', 'mimes:wav,mp3,m4a,aac,ogg,flac', 'max:20480', new AudioOnlyUpload], // 20 MB
+            // Replacing the clip with a directly-attached file needs the same
+            // rights attestation as Add a voice (see StoreVoiceRequest).
+            'clip_rights' => $this->hasFile('audio') ? ['accepted'] : ['nullable', 'boolean'],
             'seed' => ['nullable', 'integer'],
             // Chatterbox's native knobs — same ranges as the Studio bench.
             'exaggeration' => ['nullable', 'numeric', 'between:0.25,2'],
@@ -69,6 +72,7 @@ class UpdateVoiceRequest extends FormRequest
         return [
             'slug.regex' => 'The voice_id may only contain letters, numbers, dots, dashes and underscores.',
             'slug.unique' => 'That voice_id is already in use by another voice.',
+            'clip_rights.accepted' => "Please confirm you have the rights to this recording and the speaker's consent to clone their voice.",
         ];
     }
 }

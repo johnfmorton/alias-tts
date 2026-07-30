@@ -58,6 +58,7 @@ class VoiceClipPrepareTest extends TestCase
     {
         $response = $this->actingAs($this->admin())->post(route('admin.voices.clips.store'), [
             'audio' => $this->wavUpload(),
+            'clip_rights' => '1',
             'enhance' => '1',
         ]);
 
@@ -78,6 +79,7 @@ class VoiceClipPrepareTest extends TestCase
     {
         $response = $this->actingAs($this->admin())->post(route('admin.voices.clips.store'), [
             'audio' => $this->wavUpload(),
+            'clip_rights' => '1',
         ]);
 
         $response->assertOk()->assertJson(['enhanced' => null]);
@@ -92,6 +94,7 @@ class VoiceClipPrepareTest extends TestCase
 
         $response = $this->actingAs($this->admin())->post(route('admin.voices.clips.store'), [
             'audio' => $this->wavUpload(),
+            'clip_rights' => '1',
             'enhance' => '1',
         ]);
 
@@ -104,6 +107,7 @@ class VoiceClipPrepareTest extends TestCase
     {
         $this->actingAs($this->admin())->post(route('admin.voices.clips.store'), [
             'audio' => UploadedFile::fake()->createWithContent('notes.txt', 'not audio at all'),
+            'clip_rights' => '1',
         ])->assertStatus(422);
     }
 
@@ -113,6 +117,7 @@ class VoiceClipPrepareTest extends TestCase
 
         $this->actingAs($this->admin())->post(route('admin.voices.clips.store'), [
             'audio' => $this->wavUpload(seconds: 2),
+            'clip_rights' => '1',
         ])->assertStatus(422)->assertJsonFragment(['message' => 'That clip is too long (2s) — keep it under 1s.']);
     }
 
@@ -124,6 +129,7 @@ class VoiceClipPrepareTest extends TestCase
 
         $response = $this->actingAs($this->admin())->post(route('admin.voices.clips.store'), [
             'audio' => $this->wavUpload(),
+            'clip_rights' => '1',
             'enhance' => '1',
         ]);
 
@@ -147,6 +153,7 @@ class VoiceClipPrepareTest extends TestCase
 
         $response = $this->actingAs($this->admin())->post(route('admin.voices.clips.store'), [
             'audio' => $this->wavUpload(),
+            'clip_rights' => '1',
         ]);
 
         $response->assertOk()->assertJson(['status' => 'ready', 'enhanced' => null]);
@@ -160,6 +167,7 @@ class VoiceClipPrepareTest extends TestCase
         $admin = $this->admin();
         $token = $this->actingAs($admin)->post(route('admin.voices.clips.store'), [
             'audio' => $this->wavUpload(),
+            'clip_rights' => '1',
             'enhance' => '1',
         ])->json('token');
 
@@ -193,6 +201,7 @@ class VoiceClipPrepareTest extends TestCase
 
         $token = $this->actingAs($this->admin())->post(route('admin.voices.clips.store'), [
             'audio' => $this->wavUpload(),
+            'clip_rights' => '1',
             'enhance' => '1',
         ])->json('token');
 
@@ -207,6 +216,7 @@ class VoiceClipPrepareTest extends TestCase
 
         $token = $this->actingAs($this->admin())->post(route('admin.voices.clips.store'), [
             'audio' => $this->wavUpload(),
+            'clip_rights' => '1',
             'enhance' => '1',
         ])->json('token');
 
@@ -227,6 +237,7 @@ class VoiceClipPrepareTest extends TestCase
         $admin = $this->admin();
         $token = $this->actingAs($admin)->post(route('admin.voices.clips.store'), [
             'audio' => $this->wavUpload(),
+            'clip_rights' => '1',
             'enhance' => '1',
         ])->json('token');
 
@@ -248,6 +259,7 @@ class VoiceClipPrepareTest extends TestCase
         $admin = $this->admin();
         $token = $this->actingAs($admin)->post(route('admin.voices.clips.store'), [
             'audio' => $this->wavUpload(),
+            'clip_rights' => '1',
             'enhance' => '1',
         ])->json('token');
 
@@ -273,6 +285,7 @@ class VoiceClipPrepareTest extends TestCase
         $owner = $this->admin();
         $token = $this->actingAs($owner)->post(route('admin.voices.clips.store'), [
             'audio' => $this->wavUpload(),
+            'clip_rights' => '1',
         ])->json('token');
 
         $this->actingAs($this->admin())->post(route('admin.voices.store'), [
@@ -289,6 +302,7 @@ class VoiceClipPrepareTest extends TestCase
         $admin = $this->admin();
         $token = $this->actingAs($admin)->post(route('admin.voices.clips.store'), [
             'audio' => $this->wavUpload(),
+            'clip_rights' => '1',
         ])->json('token');
 
         VoiceClip::where('token', $token)->update(['expires_at' => now()->subMinute()]);
@@ -307,6 +321,7 @@ class VoiceClipPrepareTest extends TestCase
         $admin = $this->admin();
         $token = $this->actingAs($admin)->post(route('admin.voices.clips.store'), [
             'audio' => $this->wavUpload(), // enhance off → no enhanced variant
+            'clip_rights' => '1',
         ])->json('token');
 
         $this->actingAs($admin)->post(route('admin.voices.store'), [
@@ -323,9 +338,11 @@ class VoiceClipPrepareTest extends TestCase
         $admin = $this->admin();
         $liveToken = $this->actingAs($admin)->post(route('admin.voices.clips.store'), [
             'audio' => $this->wavUpload(),
+            'clip_rights' => '1',
         ])->json('token');
         $deadToken = $this->actingAs($admin)->post(route('admin.voices.clips.store'), [
             'audio' => $this->wavUpload(),
+            'clip_rights' => '1',
         ])->json('token');
 
         VoiceClip::where('token', $deadToken)->update(['expires_at' => now()->subHour()]);
@@ -339,6 +356,60 @@ class VoiceClipPrepareTest extends TestCase
         Storage::disk('local')->assertMissing('voice-clips/'.$deadToken.'/original.wav');
     }
 
+    // ---- rights attestation -------------------------------------------------
+
+    public function test_staging_an_uploaded_file_requires_the_rights_attestation(): void
+    {
+        $response = $this->actingAs($this->admin())->post(route('admin.voices.clips.store'), [
+            'audio' => $this->wavUpload(),
+        ]);
+
+        $response->assertStatus(422);
+        $this->assertStringContainsString('confirm you have the rights', $response->json('message'));
+        $this->assertDatabaseCount('voice_clips', 0);
+    }
+
+    public function test_staging_a_mic_recording_is_exempt_from_the_attestation(): void
+    {
+        // The in-browser recorder names its blob recording.<ext> — the speaker
+        // consenting in person needs no checkbox.
+        $response = $this->actingAs($this->admin())->post(route('admin.voices.clips.store'), [
+            'audio' => $this->wavUpload(name: 'recording.wav'),
+        ]);
+
+        $response->assertOk();
+        $this->assertDatabaseHas('voice_clips', ['token' => $response->json('token')]);
+    }
+
+    public function test_creating_a_voice_from_a_direct_upload_requires_the_attestation(): void
+    {
+        $this->actingAs($this->admin())->post(route('admin.voices.store'), [
+            'name' => 'No Rights',
+            'audio' => $this->wavUpload(),
+            'raw' => '1',
+        ])->assertSessionHasErrors('clip_rights');
+
+        $this->assertNull(Voice::firstWhere('name', 'No Rights'));
+    }
+
+    public function test_replacing_a_clip_via_direct_upload_requires_the_attestation(): void
+    {
+        $admin = $this->admin();
+        Storage::disk('local')->put('voices/rights.wav', 'stub');
+        $voice = Voice::create([
+            'user_id' => $admin->id,
+            'slug' => 'rights',
+            'name' => 'Rights',
+            'reference_audio_path' => 'voices/rights.wav',
+        ]);
+
+        $this->actingAs($admin)->put(route('admin.voices.update', $voice), [
+            'name' => 'Rights',
+            'slug' => 'rights',
+            'audio' => $this->wavUpload(),
+        ])->assertSessionHasErrors('clip_rights');
+    }
+
     // ---- helpers ------------------------------------------------------------
 
     private function admin(): User
@@ -346,7 +417,7 @@ class VoiceClipPrepareTest extends TestCase
         return User::factory()->create(['is_super_admin' => true]);
     }
 
-    private function wavUpload(int $seconds = 1): UploadedFile
+    private function wavUpload(int $seconds = 1, ?string $name = null): UploadedFile
     {
         $path = $this->dir.'/clip_'.uniqid().'.wav';
         $process = new Process([
@@ -361,6 +432,6 @@ class VoiceClipPrepareTest extends TestCase
             $this->fail('ffmpeg could not build the test clip: '.trim($process->getErrorOutput()));
         }
 
-        return new UploadedFile($path, basename($path), 'audio/wav', null, true);
+        return new UploadedFile($path, $name ?? basename($path), 'audio/wav', null, true);
     }
 }

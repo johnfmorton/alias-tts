@@ -43,6 +43,19 @@
                         <input id="audio" name="audio" type="file" accept=".wav,.mp3,.m4a,.aac,.ogg,.flac" data-clip-file
                                data-dirty-group="reference clip" data-voice-source class="{{ $fileInputClass }}">
                         <p class="mt-2 text-[12.5px] leading-relaxed text-zinc-500">{{ $fileHelp }}</p>
+                        {{-- Rights attestation — uploads only. A mic take is the speaker
+                             consenting in person; a file can be anyone, so saving one requires
+                             this box (VoiceClipController + Store/UpdateVoiceRequest enforce it
+                             server-side). Unchecked posts nothing, so old() re-checks it after
+                             a validation bounce. --}}
+                        <label class="mt-3 flex items-start gap-3 text-sm text-zinc-300">
+                            <input type="checkbox" name="clip_rights" value="1" data-clip-rights data-dirty-group="reference clip" data-dirty-value="rights confirmed"
+                                   {{ old('clip_rights') ? 'checked' : '' }}
+                                   class="mt-0.5 rounded-[5px] border-white/25 bg-inset text-accent focus:ring-accent/30">
+                            <span>I have the right to use this recording, and the speaker's consent to clone their voice <span class="text-zinc-500">(required)</span>
+                                <span class="mt-0.5 block max-w-[640px] text-[12.5px] leading-relaxed text-zinc-500">Your own voice counts as consent. Anyone else's needs their permission — a recording is copyrighted work, and a voice belongs to its speaker.</span>
+                            </span>
+                        </label>
                         <button type="button" data-clip-preview class="mt-3 hidden rounded-[9px] border border-accent/40 px-3.5 py-2 text-sm text-accent transition hover:bg-accent/10">Preview cleanup</button>
                     </div>
 
@@ -188,6 +201,16 @@
                        data-dirty-group="reference clip" data-voice-source class="{{ $fileInputClass }}">
                 <p class="mt-2 text-[12.5px] leading-relaxed text-zinc-500">{{ $fileHelp }}</p>
             </div>
+            {{-- Same rights attestation as the enhance-on upload body — this branch
+                 is upload-only, so it is always required here. --}}
+            <label class="mt-4 flex items-start gap-3 px-1 text-sm text-zinc-300">
+                <input type="checkbox" name="clip_rights" value="1" data-clip-rights data-dirty-group="reference clip" data-dirty-value="rights confirmed"
+                       {{ old('clip_rights') ? 'checked' : '' }}
+                       class="mt-0.5 rounded-[5px] border-white/25 bg-inset text-accent focus:ring-accent/30">
+                <span>I have the right to use this recording, and the speaker's consent to clone their voice <span class="text-zinc-500">(required)</span>
+                    <span class="mt-0.5 block max-w-[640px] text-[12.5px] leading-relaxed text-zinc-500">Your own voice counts as consent. Anyone else's needs their permission — a recording is copyrighted work, and a voice belongs to its speaker.</span>
+                </span>
+            </label>
             <label class="mt-4 flex items-start gap-3 px-1 text-sm text-zinc-300">
                 <input type="checkbox" name="raw" value="1" data-dirty-group="reference clip" data-dirty-value="store raw" {{ old('raw') ? 'checked' : '' }} class="mt-0.5 rounded-[5px] border-edge bg-inset text-accent focus:ring-accent/30">
                 <span>Store raw <span class="text-zinc-500">(skip auto-normalization){{ $replace ? ' — only applies when replacing the clip' : '' }}</span></span>

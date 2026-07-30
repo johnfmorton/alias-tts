@@ -141,6 +141,7 @@ class DefaultVoiceTest extends TestCase
             ->post(route('admin.voices.store'), [
                 'name' => 'With Clip',
                 'audio' => UploadedFile::fake()->create('ref.wav', 64, 'audio/wav'),
+                'clip_rights' => '1',
                 'raw' => '1', // skip ffmpeg normalization in the test
             ]);
 

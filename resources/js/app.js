@@ -5409,6 +5409,7 @@ function initVoiceRecorder() {
     const q = (sel) => widget.querySelector(sel);
     const fileInput = q('[data-clip-file]');
     const enhanceBox = q('[data-clip-enhance]');
+    const rightsBox = q('[data-clip-rights]');
     const previewBtn = q('[data-clip-preview]');
     const rerecordBtn = q('[data-clip-rerecord]');
     const rerecordRow = q('[data-clip-rerecord-row]');
@@ -5490,6 +5491,9 @@ function initVoiceRecorder() {
             const fd = new FormData();
             fd.append('audio', blob, filename);
             if (enhancing) fd.append('enhance', '1');
+            // Uploads carry the rights attestation; a mic take is exempt (the
+            // speaker consenting in person). The server requires it either way.
+            if (!recordedBlob && rightsBox?.checked) fd.append('clip_rights', '1');
             const res = await fetch(prepareUrl, {
                 method: 'POST',
                 headers: { 'X-CSRF-TOKEN': csrfToken(), 'Accept': 'application/json' },
@@ -5588,7 +5592,14 @@ function initVoiceRecorder() {
     previewBtn.addEventListener('click', () => {
         const file = fileInput && fileInput.files && fileInput.files[0];
         if (recordedBlob) prepareClip(recordedBlob, 'recording.webm');
-        else if (file) prepareClip(file, file.name);
+        else if (file) {
+            if (rightsBox && !rightsBox.checked) {
+                setStatus(statusEl, '✗ Confirm you have the rights to this recording first — the checkbox above.', 'error');
+                rightsBox.focus();
+                return;
+            }
+            prepareClip(file, file.name);
+        }
     });
     // Start over also clears the recorder's review of the discarded take —
     // without this it resurfaces showing a player for audio that's gone. The
@@ -6110,11 +6121,22 @@ function initVoiceFlow() {
     // ── Add a voice: what Create still needs ────────────────────────────────
     const createBtn = form.querySelector('[data-create-submit]');
     const createHint = form.querySelector('[data-create-hint]');
+    // An UPLOADED file needs the rights attestation before it can be saved
+    // (Store/UpdateVoiceRequest refuse it server-side); a mic recording stages
+    // through a token and clears the file input, so it never trips this.
+    const rightsBox = form.querySelector('[data-clip-rights]');
+    const rightsGap = () => {
+        const file = form.querySelector('input[name="audio"]');
+        // A disabled file input is superseded by a staged token (attested at
+        // staging, or a mic take) — only a live upload still needs the box.
+        return !!rightsBox && !rightsBox.checked
+            && !!file && !file.disabled && (file.files?.length ?? 0) > 0;
+    };
     function refreshCreate() {
         if (!createBtn) return;
         const named = complete.identity();
         const sourced = hasSource() || !engineNeedsSource();
-        createBtn.disabled = !(named && sourced);
+        createBtn.disabled = !(named && sourced) || rightsGap();
         // The hint doubles as a jump-to-the-blocker button while one exists.
         if (!createHint) return;
         createHint.disabled = !createBtn.disabled;
@@ -6122,9 +6144,11 @@ function initVoiceFlow() {
             ? 'Name the voice to continue'
             : (!sourced
                 ? `Add a reference clip, or pick a built-in ${engineLabel()} voice`
-                : (hasSource()
-                    ? 'Step 2 of 2 — tuning unlocks once the voice exists'
-                    : `No clip — ${engineLabel()} will speak in its own generic voice`));
+                : (rightsGap()
+                    ? 'Confirm you have the rights to the uploaded clip'
+                    : (hasSource()
+                        ? 'Step 2 of 2 — tuning unlocks once the voice exists'
+                        : `No clip — ${engineLabel()} will speak in its own generic voice`)));
     }
 
     // ── nudge: walk the eye to what Create still needs ──────────────────────
