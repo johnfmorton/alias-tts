@@ -4,6 +4,20 @@ All notable changes to this project are documented in this file. The format is
 based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this
 project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Changed
+- **The Studio chunk card now puts the script front and center.** The words
+  you wrote are the card's dominant element: a large, auto-growing text field
+  with a visible edit affordance — quiet at rest, brighter on hover, and a
+  cyan focus ring while editing. While a chunk has pending edits, one amber
+  "edited — regenerate to hear" badge replaces the status and QA badges (they
+  describe audio the text no longer matches), and a pending text edit also
+  disables the chunk's mini player until you regenerate. The character count
+  updates live as you type, and ⌘/Ctrl+Enter in the field regenerates the
+  chunk. The mute and delete controls are now compact icon buttons with
+  proper accessible labels.
+
 ## [0.100.0] - 2026-07-30
 
 ### Added

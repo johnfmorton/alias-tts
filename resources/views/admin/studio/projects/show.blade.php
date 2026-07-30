@@ -391,7 +391,7 @@
                     // render button reads "Queued" (kept fresh by the poll).
                     $queueLabel = $queuedLabels[$chunk->id] ?? null;
                 @endphp
-                <div class="studio-chunk rounded-xl border border-zinc-800 bg-zinc-900/50 p-4"
+                <div class="studio-chunk rounded-[14px] border border-white/[0.09] bg-panel p-4 sm:px-6 sm:py-5"
                      data-chunk-id="{{ $chunk->id }}"
                      data-queued="{{ $queueLabel ? '1' : '0' }}"
                      data-queue-url="{{ route('admin.studio.projects.chunks.queue', [$project, $chunk]) }}"
@@ -423,7 +423,10 @@
                             {{-- "Present but silent": shown while the chunk is skipped. Class strings
                                  must stay identical to setChunkSkipped() in app.js. --}}
                             <span class="chunk-skip-pill {{ $chunk->skipped ? 'inline-flex' : 'hidden' }} rounded-md border border-amber-500/30 bg-amber-500/10 px-2 py-0.5 text-xs text-amber-300">skipped</span>
-                            <span class="chunk-dirty hidden rounded-md border border-amber-500/30 bg-amber-500/10 px-2 py-0.5 text-xs text-amber-300">● unsaved</span>
+                            {{-- While pending edits exist this badge REPLACES the status + QA
+                                 badges (they describe audio the panel no longer matches — the
+                                 swap is CSS on data-dirty, see app.css). --}}
+                            <span class="chunk-dirty hidden rounded-md border border-amber-500/30 bg-amber-500/10 px-2 py-0.5 text-xs text-amber-300">edited — regenerate to hear</span>
                         </div>
                         <div class="flex items-center gap-2">
                             <label class="flex items-center gap-1.5 text-xs text-zinc-500">
@@ -457,17 +460,20 @@
                                     title="Render this chunk with the text and Delivery settings shown — they're saved as part of the click.">{{ $queueLabel ? '⏳ Queued' : '▶ '.($chunk->isCompleted() ? 'Regenerate' : 'Generate') }}</button>
                             {{-- Skip toggle: leave this chunk out of the stitched final without deleting
                                  it. Reversible, so no confirm step. Class strings must stay identical to
-                                 setChunkSkipped() in app.js. --}}
+                                 setChunkSkipped() in app.js, which toggles the icon pair (speaker-with-arcs
+                                 = audible, speaker-with-× = skipped) instead of rewriting it. --}}
                             <button type="button"
-                                    class="chunk-skip rounded-lg border px-2.5 py-1.5 text-sm {{ $chunk->skipped
+                                    class="chunk-skip flex h-7 w-7 items-center justify-center rounded-lg border p-0 {{ $chunk->skipped
                                         ? 'border-amber-500/40 bg-amber-500/10 text-amber-300'
                                         : 'border-zinc-700 text-zinc-500 hover:border-amber-700/60 hover:text-amber-300' }}"
-                                    title="{{ $chunk->skipped ? 'Include this chunk in the final audio.' : 'Skip this chunk in the final audio.' }}">{{ $chunk->skipped ? '🔇' : '🔊' }}</button>
+                                    aria-label="{{ $chunk->skipped ? 'Include this chunk in the final audio.' : 'Skip this chunk in the final audio.' }}"
+                                    title="{{ $chunk->skipped ? 'Include this chunk in the final audio.' : 'Skip this chunk in the final audio.' }}"><svg class="chunk-skip-on {{ $chunk->skipped ? 'hidden' : '' }}" width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2.5 6v4h2.8L9 13V3L5.3 6H2.5z" fill="currentColor" stroke="none"></path><path d="M11 6.3c.9.9.9 2.5 0 3.4M12.9 4.6c1.8 1.9 1.8 4.9 0 6.8"></path></svg><svg class="chunk-skip-off {{ $chunk->skipped ? '' : 'hidden' }}" width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2.5 6v4h2.8L9 13V3L5.3 6H2.5z" fill="currentColor" stroke="none"></path><path d="M11 6.2l3.6 3.6M14.6 6.2L11 9.8"></path></svg></button>
                             @if($chunks->count() > 1)
                                 {{-- Delete this chunk (two-step inline confirm). Hidden entirely for a
                                      one-chunk project — a project needs at least one chunk. --}}
-                                <button type="button" class="chunk-delete rounded-lg border border-zinc-700 px-2.5 py-1.5 text-sm text-zinc-500 hover:border-red-700/60 hover:text-red-300"
-                                        title="Delete this chunk.">🗑</button>
+                                <button type="button" class="chunk-delete flex h-7 w-7 items-center justify-center rounded-lg border border-zinc-700 p-0 text-zinc-500 hover:border-red-700/60 hover:text-red-300"
+                                        aria-label="Delete this chunk."
+                                        title="Delete this chunk."><svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2.5 4.5h11"></path><path d="M5.5 4.5V3.2c0-.4.3-.7.7-.7h3.6c.4 0 .7.3.7.7v1.3"></path><path d="M4 4.5l.7 8.3c0 .4.3.7.7.7h5.2c.4 0 .7-.3.7-.7l.7-8.3"></path><path d="M6.5 7v3.5M9.5 7v3.5"></path></svg></button>
                                 <span class="chunk-delete-confirm hidden items-center gap-1.5">
                                     <span class="text-xs text-red-300">Delete chunk?</span>
                                     <button type="button" class="chunk-delete-yes rounded-lg border border-red-700/60 bg-red-500/10 px-3 py-1.5 text-sm text-red-300 hover:bg-red-500/20">Confirm</button>
@@ -485,8 +491,17 @@
                     <div class="chunk-notice mt-2 text-sm empty:hidden text-zinc-400" role="status" aria-live="polite"></div>
 
                     @php $chunkModel = \App\Services\Tts\ModelCatalog::forVoice($chunk->voice ?? $project->voice); @endphp
-                    <textarea class="chunk-text mt-2 w-full rounded-lg border border-edge bg-zinc-950 px-3 py-2 text-sm text-zinc-200 focus:border-cyan-500 focus:outline-none focus:ring-2 focus:ring-cyan-500/30"
-                              rows="2" data-original="{{ $chunk->text }}">{{ $chunk->text }}</textarea>
+                    {{-- The emphasized script field (design "chunk-script-field" 2A): the
+                         wrapper's data-replicated-value drives the auto-grow replica and
+                         MUST mirror the textarea (the input handler keeps them in sync).
+                         Metrics (size/padding/border-width) live in .chunk-script in
+                         app.css — shared with the replica — so only colors are utilities
+                         here; setDirty() still owns the amber border-edge swap. --}}
+                    <div class="chunk-script mt-3" data-replicated-value="{{ $chunk->text }}">
+                        <textarea class="chunk-text w-full rounded-[10px] border-edge bg-inset text-zinc-100 transition-colors hover:border-zinc-400 hover:bg-panel hover:text-white focus:border-accent focus:text-white focus:outline-none focus:ring-[3px] focus:ring-accent/15"
+                                  rows="1" data-original="{{ $chunk->text }}">{{ $chunk->text }}</textarea>
+                        <span class="chunk-script-glyph" aria-hidden="true">✎</span>
+                    </div>
 
                     {{-- Turbo renders these tags as actual sounds; a click inserts one
                          at the cursor. Engine-scoped like the knobs (swapped live by

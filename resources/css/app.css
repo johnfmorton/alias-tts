@@ -394,6 +394,80 @@
 }
 
 /*
+ * Chunk script field (design "chunk-script-field" 2A): the words the user wrote
+ * are the card's dominant element — 20px text in a visible, auto-growing field.
+ * Auto-grow is the grid-replica trick: the wrapper's ::after renders the same
+ * text (mirrored into data-replicated-value on input) with the same metrics,
+ * and the grid cell sizes both — no inner scrollbar and no per-keystroke
+ * scrollHeight measuring. The metric block below MUST stay identical between
+ * the ::after and the textarea or line wrapping (and so height) drifts.
+ * Colors stay on the textarea as utilities — setDirty() in app.js flips its
+ * border classes for the amber pending-edit outline.
+ */
+.chunk-script {
+    position: relative;
+    display: grid;
+    cursor: text;
+}
+.chunk-script::after {
+    content: attr(data-replicated-value) ' ';
+    visibility: hidden;
+    white-space: pre-wrap;
+    overflow-wrap: break-word;
+}
+.chunk-script::after,
+.chunk-script > .chunk-text {
+    grid-area: 1 / 1 / 2 / 2;
+    min-width: 0;
+    border-width: 1px;
+    padding: 14px 44px 14px 16px;
+    font-size: 20px;
+    font-weight: 450;
+    line-height: 1.55;
+}
+.chunk-script > .chunk-text {
+    resize: none;
+    overflow: hidden;
+    caret-color: var(--color-accent);
+}
+/* The ✎ edit affordance: quiet at rest, brighter on hover, gone while editing. */
+.chunk-script-glyph {
+    position: absolute;
+    top: 12px;
+    right: 12px;
+    font-size: 12px;
+    color: var(--color-zinc-600);
+    pointer-events: none;
+    transition:
+        color 0.15s ease,
+        opacity 0.15s ease;
+}
+.chunk-script:hover .chunk-script-glyph {
+    color: var(--color-zinc-400, #a1a1aa);
+}
+.chunk-script:focus-within .chunk-script-glyph {
+    opacity: 0;
+}
+
+/*
+ * Post-edit state (same design): while a chunk has pending edits, the status +
+ * QA badges describe audio that no longer matches the panel — they yield to the
+ * single amber "edited — regenerate to hear" badge (setDirty keeps data-dirty
+ * current and toggles that badge). A pending TEXT edit also disables the chunk
+ * mini player — the recorded audio no longer speaks the words on screen. The
+ * child combinator keeps take players auditionable (selecting a take is a valid
+ * way OUT of a pending edit).
+ */
+.studio-chunk[data-dirty='1'] .chunk-status,
+.studio-chunk[data-dirty='1'] .chunk-asr-badge {
+    display: none;
+}
+.studio-chunk[data-text-dirty='1'] > .aplayer--chunk {
+    opacity: 0.45;
+    pointer-events: none;
+}
+
+/*
  * Custom audio player (design 4A) — one anatomy at three weights so the final
  * audio reads as the hero and chunk/take players stay quieter. The native <audio>
  * lives inside as `.aplayer__native` (hidden) and does the actual playback; the JS

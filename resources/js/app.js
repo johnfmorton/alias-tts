@@ -2401,6 +2401,17 @@ function initStudioProject() {
         const textDirty = dirty && textarea.value !== textarea.dataset.original;
         textarea.classList.toggle('border-amber-500/50', textDirty);
         textarea.classList.toggle('border-edge', !textDirty);
+        // The hover brighten (script-field design) would out-cascade the amber
+        // outline mid-hover — hand the hover class over with the border.
+        textarea.classList.toggle('hover:border-zinc-400', !textDirty);
+        // A pending text edit disables the chunk mini player via CSS (the audio
+        // no longer speaks the words on screen) — stop it too if it was
+        // mid-play, or pointer-events:none would trap it playing.
+        card.dataset.textDirty = textDirty ? '1' : '0';
+        if (textDirty) {
+            const audio = card.querySelector('.chunk-audio');
+            if (audio && !audio.paused) audio.pause();
+        }
         // There is no save-text-without-render — the render button absorbs the
         // save (patchChunk runs first in queueChunkRegen).
         setGenerateLabel(card);
@@ -2414,8 +2425,10 @@ function initStudioProject() {
             gen.classList.toggle('border-zinc-700', !dirty);
             gen.classList.toggle('hover:bg-zinc-800', !dirty);
             gen.classList.toggle('border-accent/60', dirty);
+            gen.classList.toggle('bg-accent/10', dirty);
             gen.classList.toggle('text-accent', dirty);
-            gen.classList.toggle('hover:bg-accent/10', dirty);
+            gen.classList.toggle('font-semibold', dirty);
+            gen.classList.toggle('hover:bg-accent/20', dirty);
             gen.classList.toggle('act-pulse', dirty && ! gen.dataset.busy);
         }
         // Build final reacts to pending edits project-wide (guard + hint live
@@ -2803,14 +2816,18 @@ function initStudioProject() {
 
         const btn = card.querySelector('.chunk-skip');
         if (btn) {
-            btn.className = `chunk-skip rounded-lg border px-2.5 py-1.5 text-sm ${skipped
+            btn.className = `chunk-skip flex h-7 w-7 items-center justify-center rounded-lg border p-0 ${skipped
                 ? 'border-amber-500/40 bg-amber-500/10 text-amber-300'
                 : 'border-zinc-700 text-zinc-500 hover:border-amber-700/60 hover:text-amber-300'}`;
-            btn.title = skipped ? 'Include this chunk in the final audio.' : 'Skip this chunk in the final audio.';
-            btn.textContent = skipped ? '🔇' : '🔊';
-            // endBusy() restores dataset.originalText (captured once by startBusy),
-            // so it must track the new icon or the old one reappears after a toggle.
-            btn.dataset.originalText = btn.textContent;
+            const label = skipped ? 'Include this chunk in the final audio.' : 'Skip this chunk in the final audio.';
+            btn.title = label;
+            btn.setAttribute('aria-label', label);
+            // The speaker icon pair ships in the Blade markup (arcs = audible,
+            // × = skipped) — toggle visibility rather than rewrite content, so
+            // no SVG strings are mirrored here. currentColor picks up the
+            // button's state color above.
+            btn.querySelector('.chunk-skip-on')?.classList.toggle('hidden', skipped);
+            btn.querySelector('.chunk-skip-off')?.classList.toggle('hidden', !skipped);
         }
     }
 
@@ -3129,6 +3146,7 @@ function initStudioProject() {
             if (data.text != null) {
                 const textarea = card.querySelector('.chunk-text');
                 textarea.value = data.text;
+                card._syncScript?.(); // re-size the auto-grow field to the restored text
                 card.querySelector('.chunk-chars').textContent = `${data.characters} chars`;
             }
             // Restore the take's voice BEFORE its tuning, so the take's knob values
@@ -3574,14 +3592,36 @@ function initStudioProject() {
             textarea.focus();
         });
 
-        // Track dirty state as the user types.
-        card.querySelector('.chunk-text').addEventListener('input', () => setDirty(card, isDirty(card)));
+        // Track dirty state as the user types; keep the auto-grow replica
+        // (.chunk-script::after sizes the field from data-replicated-value) and
+        // the header char count live. The count is the JS string length — an
+        // estimate the server's canonical count corrects on the next save.
+        const scriptWrap = card.querySelector('.chunk-script');
+        const syncScript = () => {
+            const textarea = card.querySelector('.chunk-text');
+            scriptWrap?.setAttribute('data-replicated-value', textarea.value);
+            card.querySelector('.chunk-chars').textContent = `${textarea.value.length} chars`;
+        };
+        card._syncScript = syncScript; // programmatic text writes (Revert, take select) re-sync through this
+        card.querySelector('.chunk-text').addEventListener('input', () => {
+            syncScript();
+            setDirty(card, isDirty(card));
+        });
+        // ⌘/Ctrl+Enter while writing = render this chunk (the click saves the
+        // pending edit as part of the render, same as pressing the button).
+        card.querySelector('.chunk-text').addEventListener('keydown', (e) => {
+            if (!(e.metaKey || e.ctrlKey) || e.key !== 'Enter') return;
+            e.preventDefault();
+            const gen = card.querySelector('.chunk-generate');
+            if (gen && !gen.dataset.busy) gen.click();
+        });
         // Revert restores the WHOLE panel to its last-saved baseline in one click:
         // text, voice (which may switch engines back), every knob, and the seed.
         card.querySelector('.chunk-revert').addEventListener('click', () => {
             ensureTune(card); // the restore below writes into the tuning panel
             const textarea = card.querySelector('.chunk-text');
             textarea.value = textarea.dataset.original;
+            syncScript(); // re-size the field + restore the char count
             const voice = ensureVoiceOptions(card.querySelector('.chunk-voice'));
             if (voice && voice.value !== voice.dataset.original) {
                 voice.value = voice.dataset.original;
@@ -3612,10 +3652,17 @@ function initStudioProject() {
         // explicit body state (not a blind flip) keeps double-clicks idempotent.
         const skipBtn = card.querySelector('.chunk-skip');
         if (skipBtn) {
+            // Not startBusy/endBusy: those restore textContent, which would wipe
+            // the button's SVG icon pair — dim + lock the button directly instead.
+            const setSkipBusy = (busy) => {
+                if (busy) skipBtn.dataset.busy = '1'; else delete skipBtn.dataset.busy;
+                skipBtn.classList.toggle('pointer-events-none', busy);
+                skipBtn.classList.toggle('opacity-50', busy);
+            };
             skipBtn.addEventListener('click', async () => {
                 if (skipBtn.dataset.busy) return;
                 const skipped = !isChunkSkipped(card);
-                startBusy(skipBtn, '…');
+                setSkipBusy(true);
                 try {
                     const res = await fetch(card.dataset.skipUrl, {
                         method: 'PATCH',
@@ -3624,7 +3671,7 @@ function initStudioProject() {
                     });
                     if (!res.ok) throw new Error(await errorMessage(res));
                     const data = await res.json();
-                    endBusy(skipBtn);
+                    setSkipBusy(false);
                     setChunkSkipped(card, data.skipped);
                     setProjectStatus(data.project_status); // also re-lights the action cluster
                     refreshSeams();
@@ -3632,7 +3679,7 @@ function initStudioProject() {
                         ? "✓ Chunk skipped — it won't be in the final."
                         : '✓ Chunk included again.', 'ok');
                 } catch (err) {
-                    endBusy(skipBtn);
+                    setSkipBusy(false);
                     chunkNotice(card, `✗ ${err.message}`, 'error');
                 }
             });
