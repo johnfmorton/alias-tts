@@ -59,7 +59,7 @@
 
         <section class="mt-28" id="voice">
             <p class="font-mono text-xs font-semibold uppercase tracking-[.18em] text-sky-400">Your voice</p>
-            <h2 class="mt-4 text-3xl font-semibold tracking-tight">Clone a voice from a short recording.</h2>
+            <h2 class="mt-4 text-3xl font-semibold tracking-tight">Clone your voice from a short recording.</h2>
             <p class="mt-4 max-w-2xl leading-relaxed text-zinc-400">Record in the browser or upload a clean reference clip. There is no training job to manage: choose the voice, tune its delivery, and start making audio.</p>
             <div class="mt-10 grid gap-8 sm:grid-cols-2">
                 <div><h3 class="font-semibold">Record with a prompt</h3><p class="mt-2 text-sm leading-relaxed text-zinc-400">Use the built-in teleprompter, review the recording, and keep the take that best represents the voice.</p></div>
