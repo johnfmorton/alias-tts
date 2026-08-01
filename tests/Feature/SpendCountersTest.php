@@ -101,8 +101,9 @@ class SpendCountersTest extends TestCase
         // Re-run the counters migration over existing spend, as a deploy would.
         // Seven steps: the per-chunk skip flag, the credit system, the project-jobs
         // table, the generation-timings table, the voice-clip status column, the
-        // take-voice column, and the app-events table sit on top of it.
-        Artisan::call('migrate:rollback', ['--step' => 14]);
+        // take-voice column, the app-events table, and the final-timeline
+        // column sit on top of it.
+        Artisan::call('migrate:rollback', ['--step' => 15]);
         $this->assertFalse(DB::getSchemaBuilder()->hasTable('tts_spend_counters'));
         Artisan::call('migrate', ['--force' => true]);
 

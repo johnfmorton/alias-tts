@@ -2118,6 +2118,22 @@ class StudioProjectController extends Controller
         ]);
     }
 
+    /**
+     * The final file's chunk timeline — ordered {chunk_id, start_ms, end_ms},
+     * recorded by the stitch (see ProjectService::rebuild()) — for the Studio's
+     * follow-playback UI. AJAX (JSON). `timeline` is null when there's no final
+     * or the final predates timelines (an Inspector carry-over, or a build from
+     * before the feature); the page keeps Follow disabled and says a rebuild
+     * fills it in. Fetched on load AND after each stitch settles, so the map
+     * always matches the bytes the hero player is holding.
+     */
+    public function timeline(TtsProject $project): JsonResponse
+    {
+        return response()->json([
+            'timeline' => $project->final_audio_path ? $project->final_timeline : null,
+        ]);
+    }
+
     public function finalAudio(Request $request, TtsProject $project): Response
     {
         // Playback redirects to a presigned URL; ?dl=1 (the Download link) stays

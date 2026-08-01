@@ -1,8 +1,10 @@
 # Studio: follow playback (auto-scroll to the playing chunk)
 
-> **Status: proposed — post-hackathon.** This is a design/feature document
-> only. Nothing described here is implemented yet, and work should not start
-> until after hackathon judging.
+> **Status: implemented on this branch — hold for post-hackathon merge.**
+> Written as a design doc first; the implementation now lives alongside it
+> (see `ProjectService::buildTimeline()`, the `timeline` route, and
+> `initStudioProject`'s follow-playback section in `app.js`). Kept as the
+> feature's rationale/reference.
 
 While the final (concatenated) audio plays in the Studio's hero player, the
 page follows along: the chunk currently being heard is highlighted and kept in
@@ -130,9 +132,11 @@ timeline until their first Studio rebuild — same disabled-toggle behavior.
 
 ### Frontend wiring
 
-- Embed the timeline in `show.blade.php` as a JSON script tag (or a data
-  attribute on `#studio-root`) — it's a few KB even at 147 chunks; no extra
-  request.
+- Serve the timeline from a small JSON endpoint
+  (`GET /{project}/timeline`) rather than embedding it in the page: "Build
+  final" is an async stitch that refreshes the hero player's `src` without a
+  page reload, so the page must be able to refetch the map that matches the
+  new bytes. Fetched once on load and again each time a stitch settles.
 - Listen to `timeupdate` on `#project-final-audio` (fires ~4×/s — plenty;
   no rAF loop needed while paused). Resolve the active entry by binary
   search; `timeupdate` plus a `seeked` handler covers scrubbing.

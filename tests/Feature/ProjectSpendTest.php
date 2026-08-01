@@ -161,9 +161,10 @@ class ProjectSpendTest extends TestCase
         // Ten steps because the take-duration column, the turbo preset knobs,
         // the per-model spend counters, the per-chunk skip flag, the credit
         // system, the project-jobs table, the generation-timings table, the
-        // voice-clip status column, the take-voice column, and the app-events
-        // table sit on top of it — bump this when a migration lands above them.
-        Artisan::call('migrate:rollback', ['--step' => 17]);
+        // voice-clip status column, the take-voice column, the app-events
+        // table, and the final-timeline column sit on top of it — bump this
+        // when a migration lands above them.
+        Artisan::call('migrate:rollback', ['--step' => 18]);
         Artisan::call('migrate', ['--force' => true]);
 
         $this->assertSame(2 * mb_strlen($chunk->text), $chunk->fresh()->spent_characters);

@@ -158,6 +158,9 @@ Route::prefix('studio')->name('studio.')->group(function () {
             // Everything-zip for offline archiving: the receipt package + every saved clip.
             Route::get('/{project}/archive', [StudioProjectController::class, 'archive'])->name('archive');
             Route::get('/{project}/audio', [StudioProjectController::class, 'finalAudio'])->name('audio');
+            // The final's chunk timeline (JSON) — drives follow-playback and
+            // the per-card "Play in final" seeks; refetched after each stitch.
+            Route::get('/{project}/timeline', [StudioProjectController::class, 'timeline'])->name('timeline');
             Route::post('/{project}/preview', [StudioProjectController::class, 'previewConcat'])->name('preview');
             Route::post('/{project}/rebuild', [StudioProjectController::class, 'rebuild'])->name('rebuild');
             // "Generate remaining" runs on the queue worker so it survives leaving

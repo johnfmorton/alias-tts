@@ -266,6 +266,19 @@
 }
 
 /*
+ * The chunk currently audible in the FINAL player (follow-playback, see
+ * initStudioFollowPlayback in app.js): a steady accent ring — not an
+ * animation, it can sit on one card for many seconds — that moves card to
+ * card as playback crosses each seam, and stays on the last-heard card
+ * after pause so the editing target is still marked when the user gets
+ * there. JS owns add/remove; only ever on one card at a time.
+ */
+.chunk-live {
+    border-color: color-mix(in srgb, var(--color-accent) 45%, transparent);
+    box-shadow: 0 0 0 3px color-mix(in srgb, var(--color-accent) 22%, transparent);
+}
+
+/*
  * A chunk whose fresh render just landed from the queue (applyRunChunk in
  * app.js): the border tints accent while two soft rings breathe outward, so
  * the eye finds the card whose new audio is now playable — the header status

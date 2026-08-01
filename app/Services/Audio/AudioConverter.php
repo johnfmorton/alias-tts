@@ -76,7 +76,7 @@ class AudioConverter
      *
      * @param  array<int, string>  $inputChunks
      * @param  array<int, int>  $seamGapsMs  silence (ms) to insert after each chunk; the entry after the last chunk is ignored
-     * @return array{0: string, 1: string, 2: string} [bytes, mimeType, extension]
+     * @return array{0: string, 1: string, 2: string, 3: array<int, int|null>} [bytes, mimeType, extension, per-chunk POST-TRIM durations (ms; null where the trimmed WAV header couldn't be read)]
      */
     /**
      * @param  array<int, bool>  $preserveTails  per-chunk (same indexes as $inputChunks):
@@ -101,12 +101,13 @@ class AudioConverter
             // then encode to the requested format.
             $trimmed = $this->trimChunk($inputChunks[0], $spec['rate'], $threshold, $fadeMs, $tailWindowMs, (bool) ($preserveTails[0] ?? false));
 
-            return $this->convert($trimmed, $outputFormat, 'wav', $metadata);
+            return [...$this->convert($trimmed, $outputFormat, 'wav', $metadata), [$this->trimmedMs($trimmed)]];
         }
 
         $files = [];          // every temp file to clean up
         $silenceCache = [];    // gap ms => silence temp file (reused across seams)
         $entries = [];         // concat demuxer list lines
+        $chunkMs = [];         // per-chunk post-trim duration — the final's true timeline
 
         $outFile = tempnam(sys_get_temp_dir(), 'tts_catout_');
         $list = tempnam(sys_get_temp_dir(), 'tts_list_');
@@ -116,8 +117,10 @@ class AudioConverter
             $last = count($inputChunks) - 1;
 
             foreach ($inputChunks as $i => $bytes) {
+                $trimmed = $this->trimChunk($bytes, $spec['rate'], $threshold, $fadeMs, $tailWindowMs, (bool) ($preserveTails[$i] ?? false));
+                $chunkMs[] = $this->trimmedMs($trimmed);
                 $chunkFile = tempnam(sys_get_temp_dir(), 'tts_cat_');
-                file_put_contents($chunkFile, $this->trimChunk($bytes, $spec['rate'], $threshold, $fadeMs, $tailWindowMs, (bool) ($preserveTails[$i] ?? false)));
+                file_put_contents($chunkFile, $trimmed);
                 $files[] = $chunkFile;
                 $entries[] = "file '".$chunkFile."'";
 
@@ -165,13 +168,27 @@ class AudioConverter
                 throw new RuntimeException('ffmpeg produced no concatenated output.');
             }
 
-            return [$bytes, $spec['mime'], $spec['ext']];
+            return [$bytes, $spec['mime'], $spec['ext'], $chunkMs];
         } finally {
             foreach ($files as $file) {
                 @unlink($file);
             }
             @unlink($outFile);
         }
+    }
+
+    /**
+     * Milliseconds of a trimmed chunk, from its WAV header — this is exactly the
+     * audio the concat demuxer will splice in, so summing these + the seam gaps
+     * reproduces the final's internal layout (the timeline rebuild() persists).
+     * Null when the header can't be parsed (trimChunk's last-resort fallback can
+     * return the provider's original non-WAV bytes verbatim).
+     */
+    private function trimmedMs(string $trimmedWav): ?int
+    {
+        $seconds = $this->wavDurationSeconds($trimmedWav);
+
+        return $seconds === null ? null : (int) round($seconds * 1000);
     }
 
     /**

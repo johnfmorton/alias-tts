@@ -1901,6 +1901,9 @@ function initStudioProject() {
             t.closest('#project-seal-copy') ||      // clipboard only
             t.closest('#project-duplicate-form') || // copies; the original is untouched
             t.closest('.seam-preview') ||           // renders a temporary preview only
+            t.closest('.chunk-play-final') ||       // seeks the final player (playback only)
+            t.closest('#follow-toggle') ||          // follow-playback preference (this viewer's, not the project's)
+            t.closest('#follow-resume') ||          // re-centers the playing chunk (scroll only)
             t.closest('#dock-handle') ||            // mobile dock: expands the production sheet (read-only)
             t.closest('#sheet-handle') ||           // mobile sheet: collapses it again
             t.closest('.qa-badge');                 // opens the QA popover (read-only; its .qa-act mutations stay gated)
@@ -2699,6 +2702,7 @@ function initStudioProject() {
         if (job.status !== 'completed') return;
         finalAudio.src = bust(finalUrl);
         hasFinal = true;
+        refreshTimeline(); // the fresh stitch recorded a fresh chunk map
         finalPlayer?.classList.remove('hidden');
         document.getElementById('project-final-placeholder')?.remove();
         if (autoplay) finalAudio.play().catch(() => {});
@@ -2786,6 +2790,200 @@ function initStudioProject() {
             setStatus(finalStatus, `✗ ${err.message}`, 'error');
         }
     }
+
+    // ---- Follow playback (final player ↔ chunk list) -------------------------
+    // While the final plays, highlight the chunk being heard and (opt-out via
+    // the Follow toggle) keep its card scrolled into view — so "hear a flaw,
+    // hit pause" lands the editor on the right card without hunting. And the
+    // reverse: every card's ▶ "play in final" button seeks the hero player to
+    // that chunk's spot, to hear a repair in context. Both directions run on
+    // the timeline the stitch records (ordered {chunk_id, start_ms, end_ms} —
+    // see ProjectService::rebuild()): summing stored take durations would
+    // drift (each chunk is edge-trimmed, seams add silence), so a final with
+    // no recorded timeline (pre-feature build, Inspector carry-over) keeps
+    // the whole feature disabled until the next rebuild. See
+    // docs/STUDIO-PLAYBACK-FOLLOW.md.
+    const followToggle = document.getElementById('follow-toggle');
+    const followResume = document.getElementById('follow-resume');
+    const timelineUrl = root.dataset.timelineUrl;
+    const FOLLOW_KEY = 'studio-follow';
+    let timeline = null;   // the CURRENT final's map, or null = feature off
+    let liveCard = null;   // the one card wearing .chunk-live
+    let lastAutoId = null; // last chunk id auto-scrolled to (scroll on CHANGE only)
+    // Suspended = the user scrolled away while following; the highlight keeps
+    // tracking but the page stays put until they ask to follow again (the
+    // Resume chip, a seek, or a card's play-in-final). Never persisted.
+    let followSuspended = false;
+    let followOn = true;
+    try { followOn = localStorage.getItem(FOLLOW_KEY) !== '0'; } catch { /* default on */ }
+
+    // The last timeline entry starting at/before ms — a time inside a seam's
+    // silence belongs to the chunk whose pause it is. Null before the first
+    // entry (or with no timeline). Binary search: 147 chunks × 4 Hz timeupdate.
+    const timelineEntryAt = (ms) => {
+        if (!timeline) return null;
+        let lo = 0, hi = timeline.length - 1, hit = null;
+        while (lo <= hi) {
+            const mid = (lo + hi) >> 1;
+            if (timeline[mid].start_ms <= ms) { hit = timeline[mid]; lo = mid + 1; }
+            else hi = mid - 1;
+        }
+        return hit;
+    };
+
+    const cardForChunk = (id) => root.querySelector(`.studio-chunk[data-chunk-id="${id}"]`);
+
+    // Move the steady accent ring. A timeline entry whose card is gone (chunk
+    // deleted after the build — the project is Stale) passes null: highlight
+    // nothing, never throw. Deliberately left in place on pause — marking the
+    // editing target is the whole point.
+    const setLiveCard = (card) => {
+        if (card === liveCard) return;
+        liveCard?.classList.remove('chunk-live');
+        liveCard = card;
+        card?.classList.add('chunk-live');
+    };
+
+    // Same header-offset math as scrollToChunk (plain scrollIntoView tucks the
+    // card under the sticky header) minus its inserted-chunk flash — the ring
+    // already marks the landing spot, and this fires at every seam crossing.
+    const followScroll = (card) => {
+        const pinned = stickyHeader && getComputedStyle(stickyHeader).position === 'sticky';
+        const offset = (pinned ? stickyHeader.offsetHeight : 0) + 12;
+        window.scrollTo({
+            top: card.getBoundingClientRect().top + window.scrollY - offset,
+            behavior: window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth',
+        });
+    };
+
+    const showResumeChip = (show) => {
+        followResume?.classList.toggle('hidden', !show);
+        followResume?.classList.toggle('inline-flex', show);
+    };
+    const reflectResumeChip = () => showResumeChip(
+        !!timeline && followOn && followSuspended && !finalAudio.paused,
+    );
+
+    // The toggle + every card's play-in-final button follow the timeline's
+    // presence: a rebuilt final lights them, an untimed one explains itself.
+    const reflectFollowUI = () => {
+        if (followToggle) {
+            showEl(followToggle, hasFinal, 'inline-flex');
+            followToggle.disabled = !timeline;
+            followToggle.setAttribute('aria-pressed', timeline && followOn ? 'true' : 'false');
+            followToggle.title = timeline
+                ? 'While the final plays, scroll the page to the chunk you\'re hearing.'
+                : 'Rebuild the final to enable follow-along.';
+        }
+        const inFinal = new Set((timeline || []).map((t) => t.chunk_id));
+        root.querySelectorAll('.studio-chunk').forEach((card) => {
+            const btn = card.querySelector('.chunk-play-final');
+            if (!btn) return;
+            btn.disabled = !inFinal.has(card.dataset.chunkId);
+            btn.title = btn.disabled
+                ? 'Rebuild the final to enable play-from-here.'
+                : 'Play the final audio from this chunk.';
+        });
+        reflectResumeChip();
+    };
+
+    // (Re)load the map for the final the player is holding: on page load, and
+    // after every stitch settles (applyStitchResult) — the old map described
+    // the old bytes. Failure just leaves the feature off; never surfaced.
+    async function refreshTimeline() {
+        timeline = null;
+        setLiveCard(null);
+        lastAutoId = null;
+        reflectFollowUI();
+        if (!hasFinal || !timelineUrl) return;
+        try {
+            const res = await fetch(timelineUrl, { headers: { 'Accept': 'application/json' } });
+            if (!res.ok) return;
+            const data = await res.json();
+            if (Array.isArray(data.timeline) && data.timeline.length) timeline = data.timeline;
+        } catch { /* transient — the feature quietly stays off */ }
+        reflectFollowUI();
+    }
+
+    // The 4-per-second heartbeat: resolve the audible chunk, move the ring,
+    // and — following, not suspended, actually playing — glide on chunk CHANGE
+    // (one scroll per seam crossing, never continuous scrolling).
+    const syncFollow = () => {
+        if (!timeline) return;
+        const entry = timelineEntryAt(finalAudio.currentTime * 1000);
+        const card = entry ? cardForChunk(entry.chunk_id) : null;
+        setLiveCard(card);
+        if (!card || !followOn || followSuspended || finalAudio.paused) return;
+        if (entry.chunk_id === lastAutoId) return;
+        lastAutoId = entry.chunk_id;
+        followScroll(card);
+    };
+    finalAudio.addEventListener('timeupdate', syncFollow);
+    // A seek is explicit navigation — it re-engages a suspended follow and
+    // lands on the card immediately, even while paused (scrub-to-browse).
+    finalAudio.addEventListener('seeked', () => {
+        if (!timeline) return;
+        followSuspended = false;
+        reflectResumeChip();
+        const entry = timelineEntryAt(finalAudio.currentTime * 1000);
+        const card = entry ? cardForChunk(entry.chunk_id) : null;
+        setLiveCard(card);
+        if (card && followOn) { lastAutoId = entry.chunk_id; followScroll(card); }
+    });
+    ['play', 'pause', 'ended'].forEach((ev) => finalAudio.addEventListener(ev, reflectResumeChip));
+
+    // Manual scrolling wins: any scroll INTENT while following suspends the
+    // auto-scroll (the ring keeps tracking; the Resume chip offers the way
+    // back). Intent events only — wheel/touch/keys — because our own smooth
+    // window.scrollTo fires 'scroll' too and must not read as the user's.
+    const suspendFollow = () => {
+        if (!timeline || !followOn || followSuspended || finalAudio.paused) return;
+        followSuspended = true;
+        reflectResumeChip();
+    };
+    window.addEventListener('wheel', suspendFollow, { passive: true });
+    window.addEventListener('touchmove', suspendFollow, { passive: true });
+    window.addEventListener('keydown', (e) => {
+        if (e.target instanceof Element && e.target.closest('input, textarea, select')) return;
+        if (['PageUp', 'PageDown', 'Home', 'End', 'ArrowUp', 'ArrowDown'].includes(e.key)) suspendFollow();
+    });
+
+    followToggle?.addEventListener('click', () => {
+        followOn = !followOn;
+        try { localStorage.setItem(FOLLOW_KEY, followOn ? '1' : '0'); } catch { /* preference just won't stick */ }
+        followSuspended = false;
+        reflectFollowUI();
+        // Turning follow ON mid-play catches up to the audible chunk at once.
+        if (followOn && liveCard && !finalAudio.paused) { lastAutoId = liveCard.dataset.chunkId; followScroll(liveCard); }
+    });
+
+    followResume?.addEventListener('click', () => {
+        followSuspended = false;
+        reflectResumeChip();
+        if (liveCard) { lastAutoId = liveCard.dataset.chunkId; followScroll(liveCard); }
+    });
+
+    // Reverse navigation: a card's ▶ seeks the final player to this chunk's
+    // first audible moment and plays. An explicit "go there", so it also
+    // clears any scroll suspension (the seeked handler above does both).
+    root.addEventListener('click', (e) => {
+        const btn = e.target instanceof Element ? e.target.closest('.chunk-play-final') : null;
+        if (!btn || btn.disabled || !timeline) return;
+        const card = btn.closest('.studio-chunk');
+        const entry = timeline.find((t) => t.chunk_id === card?.dataset.chunkId);
+        if (!entry) return;
+        const seek = () => {
+            try { finalAudio.currentTime = entry.start_ms / 1000; } catch { /* not seekable yet */ }
+            finalAudio.play().catch(() => { /* enhanceStudioPlayers surfaces media errors */ });
+        };
+        // preload="metadata" has usually loaded enough to seek; a media error
+        // (or a never-started load) needs load() and a metadata wait first.
+        if (finalAudio.error) { finalAudio.load(); finalAudio.addEventListener('loadedmetadata', seek, { once: true }); }
+        else if (finalAudio.readyState >= HTMLMediaElement.HAVE_METADATA) seek();
+        else finalAudio.addEventListener('loadedmetadata', seek, { once: true });
+    });
+
+    refreshTimeline();
 
     // A chunk's status badge is the source of truth for "is it generated?".
     const isChunkCompleted = (card) =>

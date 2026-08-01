@@ -41,6 +41,7 @@ class TtsProject extends Model
         'failed_chunk_index',
         'final_audio_path',
         'mime_type',
+        'final_timeline',
         'expires_at',
         'final_sha256',
         'final_bytes',
@@ -57,6 +58,10 @@ class TtsProject extends Model
         'status' => ProjectStatus::class,
         'seed' => 'integer',
         'failed_chunk_index' => 'integer',
+        // Ordered {chunk_id, start_ms, end_ms} map of the stitched final —
+        // see ProjectService::rebuild(). Null until a rebuild records one;
+        // must be cleared with final_audio_path (it describes those bytes).
+        'final_timeline' => 'array',
         'expires_at' => 'datetime',
         'final_bytes' => 'integer',
         'sealed_at' => 'datetime',

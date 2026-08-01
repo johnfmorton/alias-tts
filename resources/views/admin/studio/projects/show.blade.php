@@ -42,6 +42,7 @@
          data-has-final="{{ $hasFinal ? '1' : '0' }}"
          data-rebuild-url="{{ route('admin.studio.projects.rebuild', $project) }}"
          data-final-url="{{ route('admin.studio.projects.audio', $project) }}"
+         data-timeline-url="{{ route('admin.studio.projects.timeline', $project) }}"
          data-preview-url="{{ route('admin.studio.projects.preview', $project) }}"
          data-rename-url="{{ route('admin.studio.projects.update', $project) }}"
          data-dismiss-url="{{ route('admin.studio.projects.dismiss-failure', $project) }}"
@@ -234,6 +235,13 @@
                     <span class="aplayer__time">0:00 / 0:00</span>
                     <audio id="project-final-audio" class="aplayer__native" preload="metadata" @if($hasFinal) src="{{ route('admin.studio.projects.audio', $project) }}" @endif></audio>
                 </div>
+                {{-- Follow playback: while the final plays, highlight + scroll to the
+                     chunk being heard (initStudioFollowPlayback). Pressed state and
+                     enablement are wholly JS-driven: disabled until a timeline for
+                     the CURRENT final loads (older finals have none until rebuilt). --}}
+                <button type="button" id="follow-toggle" aria-pressed="false" disabled
+                        class="hidden items-center gap-1.5 rounded-[9px] border border-white/10 px-3 py-[7px] text-xs text-zinc-400 transition hover:border-cyan-400/40 hover:text-cyan-100 disabled:cursor-not-allowed disabled:opacity-40 aria-pressed:border-cyan-400/40 aria-pressed:bg-cyan-500/10 aria-pressed:text-cyan-200"
+                        title="While the final plays, scroll the page to the chunk you're hearing.">↧ Follow</button>
                 @unless($hasFinal)
                     <div id="project-final-placeholder" class="min-w-[300px] flex-1 text-sm text-zinc-600">No final audio yet — generate the chunks, then build the final.</div>
                 @endunless
@@ -406,6 +414,16 @@
                     <div class="flex flex-wrap items-center justify-between gap-2">
                         <div class="flex items-center gap-2 text-sm text-zinc-400">
                             <span class="chunk-no font-mono text-zinc-300">#{{ $chunk->position + 1 }}</span>
+                            {{-- Reverse navigation: seek the FINAL player to where this
+                                 chunk's audio sits and play from there — hear an edit in
+                                 context without hunting the transport for a timestamp.
+                                 Enabled by initStudioFollowPlayback once the current
+                                 final's timeline lists this chunk; stays disabled for
+                                 skipped chunks, chunks added since the last build, and
+                                 finals from before timelines existed. --}}
+                            <button type="button" class="chunk-play-final flex h-6 w-6 items-center justify-center rounded-md border border-zinc-700 p-0 text-zinc-500 transition hover:border-cyan-400/40 hover:text-cyan-200 disabled:cursor-not-allowed disabled:opacity-35 disabled:hover:border-zinc-700 disabled:hover:text-zinc-500" disabled
+                                    aria-label="Play the final audio from this chunk."
+                                    title="Rebuild the final to enable play-from-here."><svg width="11" height="11" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M4.5 2.8v10.4c0 .6.6.9 1.1.6l8.2-5.2c.4-.3.4-.9 0-1.2L5.6 2.2c-.5-.3-1.1 0-1.1.6z"></path></svg></button>
                             <span class="chunk-chars">{{ $chunk->characters }} chars</span>
                             @if(\App\Support\GenerationCost::enabled())
                                 {{-- This chunk's lifetime render spend; hidden until the first
@@ -702,6 +720,14 @@
             <div id="sheet-slot-actions" class="mt-3"></div>
             <div id="sheet-slot-status"></div>
         </div>
+
+        {{-- Follow-playback's "come back" chip: appears when the user scrolls away
+             while the final plays with Follow on (auto-scroll suspends so the page
+             never fights their scroll); a tap re-centers the playing chunk and
+             re-engages following. Positioned above the mobile dock; JS toggles
+             hidden/inline-flex (initStudioFollowPlayback). --}}
+        <button type="button" id="follow-resume"
+                class="fixed bottom-[calc(env(safe-area-inset-bottom,0px)+72px)] left-1/2 z-30 hidden -translate-x-1/2 items-center gap-1.5 rounded-full border border-cyan-400/40 bg-zinc-900/95 px-4 py-2 text-xs font-medium text-cyan-200 shadow-[0_10px_30px_-8px_rgba(0,0,0,0.8)] transition hover:bg-cyan-500/15 sm:bottom-6">↧ Resume following</button>
 
         @if($foreignOwner)
             {{-- Warning shown before a SuperAdmin's FIRST edit of someone else's

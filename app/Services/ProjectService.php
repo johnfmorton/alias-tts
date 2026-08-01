@@ -254,6 +254,9 @@ class ProjectService
         $project->update([
             'final_audio_path' => $path,
             'mime_type' => $speech->mime_type,
+            // The API's stitch measured nothing per-chunk, so this final has no
+            // timeline; follow-playback stays off until a Studio rebuild.
+            'final_timeline' => null,
             'status' => ProjectStatus::Ready,
         ]);
     }
@@ -288,6 +291,7 @@ class ProjectService
                 'normalized_text' => $normalized,
                 'final_audio_path' => null,
                 'mime_type' => null,
+                'final_timeline' => null,
                 'status' => ProjectStatus::Draft,
             ]);
         });
@@ -1085,7 +1089,7 @@ class ProjectService
             throw new RuntimeException("{$missing} chunk(s) still need to be generated before rebuilding.");
         }
 
-        [$bytes, $mime, $ext] = $this->concatenateChunks(
+        [$bytes, $mime, $ext, $chunkMs] = $this->concatenateChunks(
             $included,
             $project->output_format,
             $seamGapsMs,
@@ -1102,6 +1106,7 @@ class ProjectService
         $project->update([
             'final_audio_path' => $path,
             'mime_type' => $mime,
+            'final_timeline' => $this->buildTimeline($included, $chunkMs, $seamGapsMs),
             'status' => ProjectStatus::Ready,
         ]);
 
@@ -1110,6 +1115,42 @@ class ProjectService
         ]);
 
         return $project;
+    }
+
+    /**
+     * Where each included chunk's audio lands inside the final that
+     * concatenateChunks() just produced: an ordered list of
+     * {chunk_id, start_ms, end_ms}, from the stitch's ACTUAL post-trim
+     * durations plus the seam silences between them. A time that falls inside
+     * a seam gap belongs to no entry — the follow-playback UI resolves it to
+     * the preceding chunk (you're hearing its pause). Returns null when any
+     * duration is unmeasurable (a non-WAV trim fallback): a partly-guessed map
+     * would put the highlight on the wrong card for every chunk after the
+     * gap, and null cleanly reads as "no timeline" everywhere.
+     *
+     * @param  Collection<int, TtsChunk>  $included  the chunks that reached the stitch, in order
+     * @param  array<int, int|null>  $chunkMs  per-chunk post-trim durations from the converter
+     * @param  array<int, int>  $seamGapsMs  silence after each chunk (the last entry is unused)
+     * @return list<array{chunk_id: string, start_ms: int, end_ms: int}>|null
+     */
+    private function buildTimeline(Collection $included, array $chunkMs, array $seamGapsMs): ?array
+    {
+        $timeline = [];
+        $cursor = 0;
+        foreach ($included->values() as $i => $chunk) {
+            $ms = $chunkMs[$i] ?? null;
+            if ($ms === null) {
+                return null;
+            }
+            $timeline[] = [
+                'chunk_id' => (string) $chunk->id,
+                'start_ms' => $cursor,
+                'end_ms' => $cursor + $ms,
+            ];
+            $cursor += $ms + max(0, (int) ($seamGapsMs[$i] ?? 0));
+        }
+
+        return $timeline === [] ? null : $timeline;
     }
 
     /**
@@ -1209,7 +1250,7 @@ class ProjectService
      *
      * @param  Collection<int, TtsChunk>  $chunks
      * @param  array<int, int>  $seamGapsMs
-     * @return array{0: string, 1: string, 2: string} [bytes, mimeType, extension]
+     * @return array{0: string, 1: string, 2: string, 3: array<int, int|null>} [bytes, mimeType, extension, per-chunk post-trim ms]
      */
     private function concatenateChunks($chunks, string $outputFormat, array $seamGapsMs, array $metadata = []): array
     {
@@ -1226,7 +1267,7 @@ class ProjectService
                 && ParalinguisticTags::endsWith($chunk->text);
         }
 
-        return $this->converter->concatenate(
+        $result = $this->converter->concatenate(
             $rawParts,
             $outputFormat,
             $this->provider->outputContainer(),
@@ -1234,6 +1275,10 @@ class ProjectService
             $preserveTails,
             $metadata,
         );
+
+        // Tolerate a converter (test double, older subclass) that returns the
+        // classic 3-tuple: no durations simply means no timeline.
+        return [$result[0], $result[1], $result[2], $result[3] ?? []];
     }
 
     /**
@@ -1571,10 +1616,26 @@ class ProjectService
                 default => $source->status,
             };
 
+            // The final copied byte-for-byte, so its timeline carries over too —
+            // re-keyed to the copy's fresh chunk ids. An entry whose source
+            // chunk is gone keeps its (now matchless) id: the follow UI skips
+            // ids it can't find, same as after a post-build chunk delete.
+            $finalTimeline = null;
+            if ($finalPath !== null && is_array($source->final_timeline)) {
+                $newChunkId = array_combine(
+                    array_map(fn ($plan) => (string) $plan['chunk']->id, $plans),
+                    array_column($plans, 'id'),
+                );
+                $finalTimeline = array_map(fn (array $entry) => [
+                    ...$entry,
+                    'chunk_id' => $newChunkId[(string) ($entry['chunk_id'] ?? '')] ?? ($entry['chunk_id'] ?? ''),
+                ], $source->final_timeline);
+            }
+
             // Phase B — create the rows. forceFill: the models don't list `id`
             // in $fillable, and the copied paths must embed the REAL row ids so
             // deleteChunk's directory wipe finds the files.
-            $copy = DB::transaction(function () use ($source, $user, $newProjectId, $finalPath, $status, $plans, $mapVoice) {
+            $copy = DB::transaction(function () use ($source, $user, $newProjectId, $finalPath, $finalTimeline, $status, $plans, $mapVoice) {
                 $copy = new TtsProject;
                 $copy->forceFill([
                     'id' => $newProjectId,
@@ -1593,6 +1654,7 @@ class ProjectService
                     'status' => $status,
                     'final_audio_path' => $finalPath,
                     'mime_type' => $finalPath !== null ? $source->mime_type : null,
+                    'final_timeline' => $finalTimeline,
                 ])->save();
 
                 foreach ($plans as $plan) {
