@@ -7,6 +7,9 @@
 While the final (concatenated) audio plays in the Studio's hero player, the
 page follows along: the chunk currently being heard is highlighted and kept in
 view. Hit pause, and you're already looking at the chunk you want to edit.
+The link runs both ways: every chunk card can seek the hero player to its own
+spot in the final, so after a fix you can hear the repair in context without
+hunting for the timestamp.
 
 ## Why
 
@@ -49,6 +52,17 @@ preview into a navigation instrument for the chunk list.
 - **Seeking/scrubbing** the hero player re-resolves the active chunk
   immediately (and scrolls, if following), so the transport doubles as a
   chunk navigator: drag to a timestamp, land on its card.
+- **Reverse navigation — part of the same deliverable, not a follow-up.**
+  Each chunk card gets a small "▶ Play in final" affordance (in the card
+  header, next to the chunk number) that seeks the hero player to that
+  chunk's `start_ms` and starts playback. The timeline makes this a
+  one-line seek, and it completes the loop in both directions: *hear a flaw
+  → land on the card* (follow), and *edit a card → hear it in context*
+  (reverse). After a fix-and-rebuild, that second direction is how you
+  verify the repair without re-listening from the top. Cards for chunks
+  with no timeline entry (skipped, or added since the last build) show the
+  affordance disabled with a "rebuild the final to include this chunk"
+  tooltip.
 
 ## The hard part: mapping playback time → chunk
 
@@ -132,6 +146,14 @@ timeline until their first Studio rebuild — same disabled-toggle behavior.
   programmatic scrolls set/clear a guard so they don't trip it (the usual
   pattern: ignore scroll events for ~150 ms after our own scroll, or compare
   against the destination).
+- Reverse navigation: the per-card "Play in final" control looks up its
+  card's timeline entry (the same `chunk_id`-keyed map, inverted), sets
+  `audio.currentTime = start_ms / 1000`, and calls `play()`. Seeking from a
+  card counts as an explicit navigation, so it also clears any manual-scroll
+  suspension — you asked to go there, so following resumes from there. If
+  the final `<audio>` hasn't loaded yet (`preload="metadata"` has the
+  duration but seeks need data), set `currentTime` after a one-shot
+  `canplay` listener.
 
 ### Staleness
 
@@ -146,9 +168,6 @@ a deleted chunk breaks an entry, and that entry is just skipped (above).
 
 - **Seam-preview players** (the per-gap "Preview stitch" players) — short,
   two-chunk clips; no navigation value.
-- **Reverse navigation** (click a card to seek the hero player to that
-  chunk's `start_ms`) — a natural follow-up, and the persisted timeline makes
-  it nearly free, but it's a separate interaction worth its own pass.
 - **Word- or sentence-level position within a chunk** — would need forced
   alignment (ASR timestamps); chunk-level is what the edit workflow needs.
 
@@ -162,3 +181,7 @@ a deleted chunk breaks an entry, and that entry is just skipped (above).
 - Manual: a many-chunk project — verify follow tracks through paragraph
   seams, seek resolves correctly near seam boundaries, manual scroll
   suspends, reduced-motion jumps instead of gliding.
+- Manual (reverse navigation): "Play in final" on a mid-document card starts
+  playback at that chunk's first audible moment (not inside the preceding
+  seam gap); the control is disabled on a skipped chunk and on a chunk added
+  after the last build; using it while scroll-suspended re-engages follow.
