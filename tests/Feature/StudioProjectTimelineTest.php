@@ -20,6 +20,28 @@ class StudioProjectTimelineTest extends TestCase
 {
     use RefreshDatabase;
 
+    /**
+     * The DOM contract between the Blade and the frontend: markup literal =>
+     * the literal app.js binds it by. (A dataset attribute reaches JS
+     * camelCased, hence the two spellings on the first row.)
+     *
+     * Worth pinning because every failure here is SILENT. The follow-playback
+     * JS degrades quietly on purpose — optional chaining on the controls,
+     * early returns with no timeline, a swallowed fetch — so renaming a hook
+     * on either side doesn't throw, doesn't log, and doesn't fail anything
+     * else: it just leaves Follow and every card's ▶ permanently disabled.
+     * These two tests are what stands between a one-word rename and a dead
+     * feature. See docs/STUDIO-PLAYBACK-FOLLOW.md ("Coverage").
+     */
+    private const FOLLOW_HOOKS = [
+        'data-timeline-url' => 'timelineUrl',
+        'id="follow-toggle"' => 'follow-toggle',
+        'id="follow-resume"' => 'follow-resume',
+        'id="project-final-audio"' => 'project-final-audio',
+        'chunk-play-final' => 'chunk-play-final',
+        'data-chunk-id' => '.studio-chunk[data-chunk-id=',
+    ];
+
     protected function setUp(): void
     {
         parent::setUp();
@@ -181,6 +203,66 @@ class StudioProjectTimelineTest extends TestCase
         $this->actingAs($stranger)
             ->getJson(route('admin.studio.projects.timeline', $project))
             ->assertForbidden();
+    }
+
+    public function test_the_project_page_emits_every_hook_follow_playback_binds_to(): void
+    {
+        // No final needed: the toggle and the per-card ▶ always render (JS
+        // owns their enablement), so the hooks must be present from the start.
+        $page = $this->actingAs($this->admin())
+            ->get(route('admin.studio.projects.show', $this->project()))
+            ->assertOk();
+
+        foreach (array_keys(self::FOLLOW_HOOKS) as $markup) {
+            $page->assertSee($markup, false);
+        }
+    }
+
+    public function test_the_frontend_still_binds_those_hooks(): void
+    {
+        // The other half of the pairing above — asserting only the markup
+        // would let a rename inside app.js break the feature unnoticed.
+        $js = file_get_contents(resource_path('js/app.js'));
+
+        foreach (self::FOLLOW_HOOKS as $markup => $literal) {
+            $this->assertStringContainsString(
+                $literal,
+                $js,
+                "app.js no longer binds `{$literal}`, but the project page still emits `{$markup}`.",
+            );
+        }
+
+        // The highlight is a JS-toggled class with a CSS-only definition —
+        // nothing else references it, so a stylesheet cleanup could drop it
+        // and leave the ring invisible while everything still "works".
+        $this->assertStringContainsString('chunk-live', $js);
+        $this->assertStringContainsString(
+            '.chunk-live',
+            file_get_contents(resource_path('css/app.css')),
+            'app.css no longer styles .chunk-live — the playing chunk would highlight invisibly.',
+        );
+    }
+
+    public function test_timeline_chunk_ids_are_strings(): void
+    {
+        // Chunk ids are UUIDs, so this holds naturally — but the frontend
+        // matches entries against data-chunk-id with `===`, so pin it rather
+        // than leave the comparison depending on an unstated assumption.
+        $admin = $this->admin();
+        $project = $this->generateAndBuild($this->project(), $admin);
+
+        foreach ($project->final_timeline as $entry) {
+            $this->assertIsString($entry['chunk_id']);
+        }
+
+        $served = $this->actingAs($admin)
+            ->getJson(route('admin.studio.projects.timeline', $project))
+            ->assertOk()
+            ->json('timeline');
+
+        foreach ($served as $entry) {
+            $this->assertIsString($entry['chunk_id']);
+        }
     }
 
     public function test_duplicate_rekeys_the_timeline_to_the_copys_chunks(): void

@@ -4,6 +4,32 @@ All notable changes to this project are documented in this file. The format is
 based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this
 project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+- **The Studio now follows the final audio as it plays.** Press play on a
+  project's final and the page keeps up: the chunk you're hearing wears a
+  cyan ring and scrolls itself into view, one move per seam crossing. Hear a
+  flaw, hit pause, and you're already looking at the card that needs the fix —
+  no hunting through a hundred near-identical chunks for a timestamp. Scrub
+  the transport and it doubles as a chunk navigator. Scroll away yourself and
+  following steps aside rather than fighting you, leaving a "Resume
+  following" chip to come back with; a **Follow** toggle beside the player
+  turns the whole behaviour off, and the preference sticks per browser.
+  Reduced-motion settings are honoured with an instant jump instead of a
+  glide.
+- **Every chunk card can play the final from its own spot.** A small ▶ next
+  to the chunk number seeks the final player to where that chunk's audio
+  actually starts, so after an edit and a rebuild you can hear the repair in
+  context instead of listening from the top.
+
+  Both directions run on a timeline recorded during the stitch itself, since
+  the final isn't a plain concatenation — chunks are edge-trimmed and seams
+  add silence, so adding up stored durations would drift a card or more off
+  by the end of a long project. **Finals built before this release have no
+  such timeline: rebuild the final once to switch the feature on for an
+  existing project.**
+
 ## [0.101.0] - 2026-07-30
 
 ### Changed

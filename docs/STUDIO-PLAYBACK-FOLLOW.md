@@ -1,10 +1,16 @@
 # Studio: follow playback (auto-scroll to the playing chunk)
 
-> **Status: implemented on this branch — hold for post-hackathon merge.**
-> Written as a design doc first; the implementation now lives alongside it
-> (see `ProjectService::buildTimeline()`, the `timeline` route, and
-> `initStudioProject`'s follow-playback section in `app.js`). Kept as the
-> feature's rationale/reference.
+> **Status: shipped.** Written as a design doc first; this document is now the
+> feature's reference — the rationale for why the mapping works the way it
+> does, and the contract the code keeps. The implementation lives in
+> `ProjectService::buildTimeline()` (records the map), the `timeline` route
+> (serves it), and `initStudioProject`'s follow-playback section in `app.js`
+> (drives the UI). Covered by `tests/Feature/StudioProjectTimelineTest.php`.
+>
+> **Rollout note:** there is no backfill, by design. Every final built before
+> this shipped has a `null` timeline, so Follow and the per-card ▶ stay
+> disabled on those projects until the next **Build final** — see
+> [How it works](#how-it-works-a-timeline-persisted-at-build-time) below.
 
 While the final (concatenated) audio plays in the Studio's hero player, the
 page follows along: the chunk currently being heard is highlighted and kept in
@@ -85,31 +91,33 @@ Small per-chunk errors compound: across 147 chunks, an estimate drifting even
 ~100 ms per chunk lands the highlight several chunks away by the end of the
 file. The mapping must come from what the stitch *actually produced*.
 
-### Proposal: persist a timeline at build time
+### How it works: a timeline persisted at build time
 
 The only place the true post-trim durations exist is inside the stitch
-itself, so record them there:
+itself, so that is where they get recorded:
 
 1. **`AudioConverter::concatenate()`** already writes each trimmed chunk to a
-   temp WAV before the ffmpeg concat. Measure each one
+   temp WAV before the ffmpeg concat. It measures each one
    (`wavDurationSeconds()` on the trimmed bytes — cheap, header math, no
-   ffprobe run) and return a per-input duration list alongside the output
+   ffprobe run) and returns a per-input duration list alongside the output
    bytes.
 2. **`ProjectService::rebuild()`** walks that list plus the `seamGapsMs` it
-   already computed and builds a timeline for the *included* chunks:
+   already computed and builds a timeline for the *included* chunks
+   (`buildTimeline()`):
 
    ```json
    [
-     { "chunk_id": 123, "start_ms": 0,    "end_ms": 4210 },
-     { "chunk_id": 124, "start_ms": 4560, "end_ms": 9105 },
-     ...
+     { "chunk_id": "0f1c…-a1", "start_ms": 0,    "end_ms": 4210 },
+     { "chunk_id": "0f1c…-a2", "start_ms": 4560, "end_ms": 9105 }
    ]
    ```
 
    `start_ms` of chunk *n+1* = `end_ms` of chunk *n* + that seam's gap.
    Times inside a seam gap resolve to the *preceding* chunk (you're hearing
-   its pause).
-3. **Persist** it as a nullable JSON column on `tts_projects`
+   its pause). `chunk_id` is the chunk's UUID **as a string** — the frontend
+   matches entries against `data-chunk-id` with `===`, so the cast in
+   `buildTimeline()` is load-bearing, not decoration.
+3. **Persisted** as a nullable JSON column on `tts_projects`
    (`final_timeline`), written in the same `update()` that sets
    `final_audio_path`, and **cleared everywhere the final is invalidated**
    (the existing `final_audio_path => null` sites). The timeline describes a
@@ -119,7 +127,7 @@ itself, so record them there:
    milliseconds — imperceptible at "which card is this?" granularity. No
    correction needed.
 
-**Existing projects** (final built before this ships) simply have a `null`
+**Existing projects** (final built before this shipped) simply have a `null`
 timeline: the Follow toggle renders disabled with a tooltip — "Rebuild the
 final to enable follow-along." No backfill, no estimation fallback; the next
 rebuild fills it in. (An estimation fallback from take `duration_ms` + seam
@@ -155,9 +163,9 @@ timeline until their first Studio rebuild — same disabled-toggle behavior.
   `audio.currentTime = start_ms / 1000`, and calls `play()`. Seeking from a
   card counts as an explicit navigation, so it also clears any manual-scroll
   suspension — you asked to go there, so following resumes from there. If
-  the final `<audio>` hasn't loaded yet (`preload="metadata"` has the
-  duration but seeks need data), set `currentTime` after a one-shot
-  `canplay` listener.
+  the final `<audio>` hasn't loaded far enough to seek (`preload="metadata"`
+  usually has), `currentTime` is set from a one-shot `loadedmetadata`
+  listener — after a `load()` first if the element is sitting on an error.
 
 ### Staleness
 
@@ -168,24 +176,40 @@ hearing to the card it came from; the card's *text* may have moved on, which
 is exactly the situation the existing Stale messaging already explains. Only
 a deleted chunk breaks an entry, and that entry is just skipped (above).
 
-## Out of scope (for the first cut)
+## Out of scope
+
+Deliberately not built, and not planned:
 
 - **Seam-preview players** (the per-gap "Preview stitch" players) — short,
   two-chunk clips; no navigation value.
 - **Word- or sentence-level position within a chunk** — would need forced
   alignment (ASR timestamps); chunk-level is what the edit workflow needs.
 
-## Testing notes
+## Coverage
 
-- Feature test: after `rebuild()`, `final_timeline` exists, is ordered,
-  starts at 0, has no overlaps, covers exactly the non-skipped chunks, and
-  its last `end_ms` is within a small tolerance of the final file's real
-  duration.
-- Feature test: every final-invalidation path also nulls `final_timeline`.
-- Manual: a many-chunk project — verify follow tracks through paragraph
-  seams, seek resolves correctly near seam boundaries, manual scroll
-  suspends, reduced-motion jumps instead of gliding.
-- Manual (reverse navigation): "Play in final" on a mid-document card starts
-  playback at that chunk's first audible moment (not inside the preceding
-  seam gap); the control is disabled on a skipped chunk and on a chunk added
-  after the last build; using it while scroll-suspended re-engages follow.
+`tests/Feature/StudioProjectTimelineTest.php` holds the automated side:
+
+- after `rebuild()`, `final_timeline` is ordered, starts at 0, spans forward,
+  covers exactly the non-skipped chunks, and its last `end_ms` lands within
+  tolerance of the final file's real duration;
+- a converter that can't measure its inputs yields a `null` timeline rather
+  than a partly-guessed one, and final-invalidation paths null it out;
+- the endpoint serves the current map, returns `null` with no final, and is
+  access-controlled; `duplicate` re-keys the map to the copy's chunks;
+- **the DOM contract** — the page emits every hook the frontend binds
+  (`data-timeline-url`, `#follow-toggle`, `#follow-resume`,
+  `#project-final-audio`, `.chunk-play-final`, `.studio-chunk[data-chunk-id]`)
+  and `app.js`/`app.css` still bind those exact literals. Follow-playback
+  fails *silently* by design — the JS degrades quietly when a hook is
+  missing — so without this pairing a one-word rename on either side would
+  kill the feature with a green suite and a clean console.
+
+What still needs a human, on a many-chunk project:
+
+- follow tracks through paragraph seams, seeking resolves correctly near seam
+  boundaries, manual scroll suspends and the Resume chip restores, and
+  reduced-motion jumps instead of gliding;
+- "Play in final" on a mid-document card starts at that chunk's first audible
+  moment (not inside the preceding seam gap); it stays disabled on a skipped
+  chunk and on a chunk added since the last build; using it while
+  scroll-suspended re-engages follow.
