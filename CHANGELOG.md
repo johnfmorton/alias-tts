@@ -30,6 +30,17 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   such timeline: rebuild the final once to switch the feature on for an
   existing project.**
 
+### Changed
+- **An out-of-date final is no longer playable.** The moment a project goes
+  stale — a chunk regenerated, edited, or deleted — the superseded cut comes
+  off the page instead of sitting loaded beside "Build final". The transport
+  gives way to "Final audio is out of date — build it again to hear your
+  changes", playback stops if it was mid-play, and Follow and the per-card ▶
+  go quiet with it; building the final brings all of it back, speaking your
+  latest changes. Previously the old audio stayed there ready to play, so it
+  was easy to listen through a cut — or approve one — believing you were
+  hearing what you'd ship.
+
 ## [0.101.0] - 2026-07-30
 
 ### Changed

@@ -1863,7 +1863,17 @@ function initStudioProject() {
     const previewUrl = root.dataset.previewUrl;
     const insertUrl = root.dataset.insertUrl;
     const finalPlayer = document.getElementById('project-final-player');
+    const finalPlaceholder = document.getElementById('project-final-placeholder');
     let hasFinal = root.dataset.hasFinal === '1';
+    // A built final holds the transport only while it still speaks the project:
+    // the moment a chunk is regenerated, edited, or deleted, those bytes are a
+    // superseded cut and come off (see setFinalCurrent). Initial value mirrors
+    // the Blade's $finalCurrent; the first reflectActionState() pass takes over.
+    let finalCurrent = hasFinal && projectStatus.textContent.trim() === 'ready';
+    const PLAYER_PLACEHOLDER = {
+        none: 'No final audio yet — generate the chunks, then build the final.',
+        stale: 'Final audio is out of date — build it again to hear your changes.',
+    };
 
     // Cache-bust so a regenerated chunk / rebuilt final reloads in the player.
     const bust = (url) => url + (url.includes('?') ? '&' : '?') + 't=' + Date.now();
@@ -1997,6 +2007,28 @@ function initStudioProject() {
         el.classList.toggle('hidden', !show);
         if (displayClass) el.classList.toggle(displayClass, show);
     };
+    // Swap the hero transport for the placeholder as the final gains or loses
+    // currency. Taking the audio away (rather than dimming it) is the point: a
+    // playable superseded cut sitting beside "Build final" reads as the thing
+    // you'd ship, and it's the one an editor listens through before noticing.
+    // Hiding this one element also idles the mobile dock transport, which
+    // mirrors its visibility (initStudioMobileDock).
+    function setFinalCurrent(current) {
+        if (current === finalCurrent) return; // fires on every keystroke via setDirty — do the work only on the flip
+        finalCurrent = current;
+        if (! current && ! finalAudio.paused) finalAudio.pause();
+        showEl(finalPlayer, current); // `.aplayer.hidden` beats its display:flex (see app.css)
+        if (finalPlaceholder) {
+            finalPlaceholder.textContent = hasFinal ? PLAYER_PLACEHOLDER.stale : PLAYER_PLACEHOLDER.none;
+            showEl(finalPlaceholder, ! current);
+        }
+        // Follow and every card's play-in-final ride the timeline, so dropping
+        // it closes the other doors into the superseded cut. Regaining currency
+        // is always a fresh stitch, which reloads the map itself (see
+        // applyStitchResult) — so only the loss side needs handling here.
+        if (! current) refreshTimeline();
+    }
+
     // Seal is offered only on a clean (ready) final; the badge shows once sealed.
     // Any edit clears the seal server-side; this mirrors it in the UI. The seal
     // *button* and its receipt replacement live in the action cluster and are owned
@@ -2123,6 +2155,11 @@ function initStudioProject() {
         // a mid-run rebuild — so they disappear until the work is done.
         const canBuild = ! runActive && allCompleted && dirtyCards.length === 0;   // every chunk current AND saved, no run
         const finalReady = ready && ! anyPending;        // a built, in-sync final exists
+
+        // The transport answers to the same predicate as Download / Approve —
+        // one notion of "there is a current final", so the page can't offer to
+        // play a cut it won't let you download.
+        setFinalCurrent(finalReady);
 
         // Build final vanishing needs a why: name the chunks holding it. Only
         // when dirty edits are the SOLE blocker — while chunks are outstanding
@@ -2702,12 +2739,14 @@ function initStudioProject() {
         if (job.status !== 'completed') return;
         finalAudio.src = bust(finalUrl);
         hasFinal = true;
-        refreshTimeline(); // the fresh stitch recorded a fresh chunk map
-        finalPlayer?.classList.remove('hidden');
-        document.getElementById('project-final-placeholder')?.remove();
-        if (autoplay) finalAudio.play().catch(() => {});
         isSealed = false; // new bytes — the server cleared the seal; offer to re-seal
-        setProjectStatus('ready'); // also re-lights the action cluster (Download leads)
+        // Re-lights the action cluster (Download leads) and, through
+        // reflectActionState → setFinalCurrent, puts the fresh cut back on the
+        // transport. It has to land BEFORE the timeline reload and the autoplay:
+        // both no-op on a final the page still considers superseded.
+        setProjectStatus('ready');
+        refreshTimeline(); // the fresh stitch recorded a fresh chunk map
+        if (autoplay) finalAudio.play().catch(() => {});
     }
 
     // Follow an active stitch run until it settles. The latest run IS the
@@ -2868,7 +2907,9 @@ function initStudioProject() {
     // presence: a rebuilt final lights them, an untimed one explains itself.
     const reflectFollowUI = () => {
         if (followToggle) {
-            showEl(followToggle, hasFinal, 'inline-flex');
+            // Follows the transport, not just the file: a superseded final is
+            // off the page, so there's nothing to follow along with.
+            showEl(followToggle, finalCurrent, 'inline-flex');
             followToggle.disabled = !timeline;
             followToggle.setAttribute('aria-pressed', timeline && followOn ? 'true' : 'false');
             followToggle.title = timeline
@@ -2887,15 +2928,17 @@ function initStudioProject() {
         reflectResumeChip();
     };
 
-    // (Re)load the map for the final the player is holding: on page load, and
-    // after every stitch settles (applyStitchResult) — the old map described
-    // the old bytes. Failure just leaves the feature off; never surfaced.
+    // (Re)load the map for the final the player is holding: on page load, after
+    // every stitch settles (applyStitchResult) — the old map described the old
+    // bytes — and when the final is superseded (setFinalCurrent), where the
+    // early return below leaves the map null and the feature off. Failure just
+    // leaves the feature off too; never surfaced.
     async function refreshTimeline() {
         timeline = null;
         setLiveCard(null);
         lastAutoId = null;
         reflectFollowUI();
-        if (!hasFinal || !timelineUrl) return;
+        if (!finalCurrent || !timelineUrl) return; // superseded final ⇒ no map, so nothing can seek into it
         try {
             const res = await fetch(timelineUrl, { headers: { 'Accept': 'application/json' } });
             if (!res.ok) return;

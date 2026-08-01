@@ -12,6 +12,12 @@
         ];
         $hasFinal = (bool) $project->final_audio_path;
         $statusVal = $project->status->value;
+        // A built final is only offered for playback while it still speaks the
+        // project. Once a chunk changes the project goes Stale, and those bytes
+        // come off the transport rather than sit playable under a "Build final"
+        // prompt — where the obvious read is "what I just heard is what I'd
+        // ship". The JS mirrors this on every state change (setFinalCurrent).
+        $finalCurrent = $hasFinal && $statusVal === 'ready';
         $statusBadgeClass = $statusVal === 'ready' ? $chunkStyles['completed'] : ($statusVal === 'stale' ? $chunkStyles['stale'] : $chunkStyles['pending']);
     @endphp
 
@@ -229,11 +235,14 @@
 
             {{-- Row 2: the final-audio hero player (the artifact this whole page builds) --}}
             <div id="project-player-row" class="mt-4 flex flex-wrap items-center gap-4">
-                <div id="project-final-player" class="aplayer aplayer--hero min-w-[300px] flex-1 {{ $hasFinal ? '' : 'hidden' }}">
+                <div id="project-final-player" class="aplayer aplayer--hero min-w-[300px] flex-1 {{ $finalCurrent ? '' : 'hidden' }}">
                     <button type="button" class="aplayer__btn" aria-label="Play or pause the final audio"><span class="aplayer__icon"></span></button>
                     <div class="aplayer__track"><div class="aplayer__fill"></div><div class="aplayer__knob"></div></div>
                     <span class="aplayer__time">0:00 / 0:00</span>
-                    <audio id="project-final-audio" class="aplayer__native" preload="metadata" @if($hasFinal) src="{{ route('admin.studio.projects.audio', $project) }}" @endif></audio>
+                    {{-- No src for a superseded final: nothing to play, and nothing
+                         to spend a metadata request (a presign redirect) on. The
+                         next stitch sets it (applyStitchResult). --}}
+                    <audio id="project-final-audio" class="aplayer__native" preload="metadata" @if($finalCurrent) src="{{ route('admin.studio.projects.audio', $project) }}" @endif></audio>
                 </div>
                 {{-- Follow playback: while the final plays, highlight + scroll to the
                      chunk being heard (initStudioFollowPlayback). Pressed state and
@@ -242,9 +251,13 @@
                 <button type="button" id="follow-toggle" aria-pressed="false" disabled
                         class="hidden items-center gap-1.5 rounded-[9px] border border-white/10 px-3 py-[7px] text-xs text-zinc-400 transition hover:border-cyan-400/40 hover:text-cyan-100 disabled:cursor-not-allowed disabled:opacity-40 aria-pressed:border-cyan-400/40 aria-pressed:bg-cyan-500/10 aria-pressed:text-cyan-200"
                         title="While the final plays, scroll the page to the chunk you're hearing.">↧ Follow</button>
-                @unless($hasFinal)
-                    <div id="project-final-placeholder" class="min-w-[300px] flex-1 text-sm text-zinc-600">No final audio yet — generate the chunks, then build the final.</div>
-                @endunless
+                {{-- Stands in for the player whenever there's nothing current to
+                     play — no final yet, or one the project has moved past. Always
+                     in the DOM (setFinalCurrent swaps its text and visibility as
+                     the final is built, superseded, and rebuilt). --}}
+                <div id="project-final-placeholder" class="min-w-[300px] flex-1 text-sm text-zinc-600 {{ $finalCurrent ? 'hidden' : '' }}">{{ $hasFinal
+                    ? 'Final audio is out of date — build it again to hear your changes.'
+                    : 'No final audio yet — generate the chunks, then build the final.' }}</div>
             </div>
 
             {{-- Row 3: Voice/Format config (left) + the audio-output action cluster

@@ -684,6 +684,55 @@ class StudioProjectTest extends TestCase
         ]);
     }
 
+    /** The open tag of an element by id, from a rendered page. */
+    private function openTag(string $html, string $id): string
+    {
+        preg_match('/<[a-z]+ id="'.preg_quote($id, '/').'"[^>]*>/', $html, $m);
+
+        return $m[0] ?? '';
+    }
+
+    /**
+     * The hero transport carries the final only while that final still speaks
+     * the project. A Stale project's superseded cut is taken off the page (no
+     * player, no src) and the placeholder says why — otherwise the old audio
+     * sits playable beside "Build final", reading as the thing you'd ship.
+     * app.js mirrors these three states live (setFinalCurrent).
+     */
+    public function test_project_page_offers_the_final_player_only_while_the_final_is_current(): void
+    {
+        $admin = $this->admin();
+        $project = $this->project();
+        $url = route('admin.studio.projects.show', $project);
+        $audioSrc = 'src="'.route('admin.studio.projects.audio', $project).'"';
+
+        // Draft — nothing built yet.
+        $html = $this->actingAs($admin)->get($url)->assertOk()
+            ->assertSee('No final audio yet')
+            ->assertDontSee($audioSrc, false)
+            ->getContent();
+        $this->assertStringContainsString('hidden', $this->openTag($html, 'project-final-player'));
+        $this->assertStringNotContainsString('hidden', $this->openTag($html, 'project-final-placeholder'));
+
+        // Ready — the built final matches every chunk, so it's on the transport.
+        $project->update(['final_audio_path' => 'finals/f.mp3', 'status' => ProjectStatus::Ready]);
+        $html = $this->actingAs($admin)->get($url)->assertOk()
+            ->assertSee($audioSrc, false)
+            ->getContent();
+        $this->assertStringNotContainsString('hidden', $this->openTag($html, 'project-final-player'));
+        $this->assertStringContainsString('hidden', $this->openTag($html, 'project-final-placeholder'));
+
+        // Stale — a chunk changed since the build. Same file on disk; no longer
+        // offered, so it can't be listened through (or approved) as current.
+        $project->update(['status' => ProjectStatus::Stale]);
+        $html = $this->actingAs($admin)->get($url)->assertOk()
+            ->assertSee('Final audio is out of date')
+            ->assertDontSee($audioSrc, false)
+            ->getContent();
+        $this->assertStringContainsString('hidden', $this->openTag($html, 'project-final-player'));
+        $this->assertStringNotContainsString('hidden', $this->openTag($html, 'project-final-placeholder'));
+    }
+
     public function test_project_page_ships_lazy_players_by_default_with_an_eager_toggle(): void
     {
         $project = $this->project();

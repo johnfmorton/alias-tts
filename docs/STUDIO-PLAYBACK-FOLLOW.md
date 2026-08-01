@@ -38,6 +38,15 @@ preview into a navigation instrument for the chunk list.
 - **A "Follow" toggle** lives next to the hero player (row 2 of the sticky
   project header). Default **on**. State persists per browser
   (`localStorage`), like other Studio view preferences.
+- **A superseded final leaves the page entirely.** The moment the project goes
+  Stale (a chunk regenerated, edited, or deleted), the hero player, the Follow
+  toggle, and every card's ▶ go with it, replaced by "Final audio is out of
+  date — build it again to hear your changes." A playable old cut sitting
+  beside "Build final" reads as the thing you'd ship, and it's the one an
+  editor listens through before noticing. `setFinalCurrent()` in `app.js` owns
+  the swap and answers to the same predicate as the Download/Approve actions,
+  so the page never offers to play a final it won't let you download; the
+  timeline is dropped with it, which is what disables the ▶ buttons.
 - While the final audio plays and Follow is on:
   - the chunk currently audible gets an **active highlight** on its card
     (e.g. a cyan ring, consistent with the existing accent palette);
