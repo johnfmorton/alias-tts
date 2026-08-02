@@ -4,6 +4,31 @@ All notable changes to this project are documented in this file. The format is
 based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this
 project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Changed
+- **The mobile dock now offers the action the project actually needs.** On a
+  phone the bottom dock's one button always read "↓ Preview" — even on a
+  project whose final was out of date, where there was nothing current to
+  preview and the useful action, "Build final", sat a swipe-up away inside the
+  production sheet. The button now names the real next step: a stale project
+  gets an amber "↻ Build final" you can tap straight from the dock, a running
+  generate offers "■ Stop", a project with chunks still to render offers
+  "▶ Generate", and a finished one keeps the cyan "↓ Preview" (or "⤓ Approved"
+  once approved). The dock's top edge picks up the amber alongside the button,
+  and while a build runs the transport shows a spinner while the status line
+  carries its progress. Every one of these presses the same control the
+  desktop header uses, so the confirmations, warnings, and error messages are
+  exactly the ones you'd get from the full layout.
+
+### Fixed
+- **Chunk controls no longer run off the side of a phone screen.** The Voice
+  picker, Regenerate, and the skip and delete buttons shared a single row that
+  refused to wrap, spilling about 70px past the card's edge on a 390px display
+  and clipping the last controls out of reach. The row now wraps and the voice
+  picker shrinks to fit, keeping everything inside the card down to 320px.
+  The desktop layout is unchanged.
+
 ## [1.0.0] - 2026-08-01
 
 ### Added

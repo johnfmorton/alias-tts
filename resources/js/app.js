@@ -4476,6 +4476,12 @@ function initStudioMobileDock() {
     const finalStatus = document.getElementById('project-final-status');
     const downloadLink = document.getElementById('project-download');
     const receiptLink = document.getElementById('project-receipt');
+    // The rest of the action cluster. The dock's primary proxies whichever of
+    // these currently leads, so "the one next step" is reachable from the dock
+    // without opening the sheet — see the lead table in syncDock().
+    const rebuildBtn = document.getElementById('project-rebuild');
+    const generateAllBtn = document.getElementById('project-generate-all');
+    const stopBtn = document.getElementById('project-generate-stop');
     const titleLabel = document.getElementById('project-title-label');
     const spendValue = document.querySelector('#project-spend .stat-value');
 
@@ -4628,11 +4634,52 @@ function initStudioMobileDock() {
         idle: ['bg-zinc-500', 'text-zinc-400'],
         busy: ['bg-accent', 'text-zinc-300'],
     };
-    const setTone = (tone) => {
+    // `fixed` pins the state word (draft/ready/stale — always short) so the
+    // chunks/spend meta beside it absorbs the squeeze instead: on a 320px phone
+    // the wider "↻ Build final" would otherwise clip it to "st…", losing the one
+    // word that says why the button is amber. A live run message can be long, so
+    // that one keeps truncating.
+    const setTone = (tone, fixed = false) => {
         dot.className = 'h-1.5 w-1.5 shrink-0 rounded-full ' + TONES[tone][0];
-        statusOut.className = 'truncate ' + TONES[tone][1];
+        statusOut.className = (fixed ? 'shrink-0 ' : 'truncate ') + TONES[tone][1];
     };
     const visible = (el) => !!el && !el.classList.contains('hidden');
+
+    // The dock's single primary is always the project's current next step — the
+    // same control the action cluster lights, proxied here so a phone doesn't
+    // have to open the sheet to reach it (design 13A: "Build final" was the one
+    // that mattered and the one that was buried). Order walks the cluster's own
+    // precedence and the first VISIBLE control wins:
+    //   run in flight → ■ Stop      · approved   → ⤓ Approved
+    //   final ready   → ↓ Preview   · stale/none → ↻ Build final (amber)
+    //   chunks left   → ▶ Generate  · nothing    → dimmed ↓ Preview
+    // Reaching the rebuild row means no download was offered, i.e. there's no
+    // current final — so that lead is always the amber stale treatment.
+    // A busy lead (mid-stitch "Rebuilding…") keeps its own label and goes inert;
+    // the status line beside it is already carrying that run's progress.
+    const DOCK_PRIMARY_BASE = 'shrink-0 rounded-[9px] px-3.5 py-2.5 text-xs font-bold';
+    const DOCK_PRIMARY_LOOK = {
+        primary: 'bg-accent text-accent-on',
+        stale: 'border border-amber-500/55 bg-amber-500/15 text-amber-300',
+        quiet: 'border border-white/15 text-zinc-300',
+        off: 'bg-accent text-accent-on opacity-40 pointer-events-none',
+    };
+    const LEADS = [
+        [() => stopBtn, '■ Stop', 'quiet'],
+        [() => receiptLink, '⤓ Approved', 'primary'],
+        [() => downloadLink, '↓ Preview', 'primary'],
+        [() => rebuildBtn, '↻ Build final', 'stale'],
+        [() => generateAllBtn, '▶ Generate', 'primary'],
+    ];
+    const leadAction = () => {
+        for (const [get, label, look] of LEADS) {
+            const el = get();
+            if (! visible(el)) continue;
+            return el.dataset.busy ? { el, label: el.textContent.trim(), look: 'off' } : { el, label, look };
+        }
+        return null;
+    };
+
     const syncDock = () => {
         const chunkCount = root.querySelectorAll('.studio-chunk').length;
         const spend = spendValue ? spendValue.textContent.trim() : '';
@@ -4645,7 +4692,7 @@ function initStudioMobileDock() {
             statusOut.textContent = live;
             metaOut.textContent = '';
         } else {
-            setTone(status === 'ready' ? 'ok' : status === 'stale' ? 'warn' : 'idle');
+            setTone(status === 'ready' ? 'ok' : status === 'stale' ? 'warn' : 'idle', true);
             statusOut.textContent = status;
             metaOut.textContent = '· ' + chunkCount + ' chunks' + (spend ? ' · ' + spend : '');
         }
@@ -4653,24 +4700,52 @@ function initStudioMobileDock() {
         if (sheetChunks) sheetChunks.textContent = chunkCount;
         if (sheetSpend && spend) sheetSpend.textContent = spend;
         if (sheetTitle && titleLabel) sheetTitle.textContent = titleLabel.textContent;
-        // No final audio yet → the transport has nothing to play.
-        dockPlayer?.classList.toggle('is-idle', !visible(finalPlayer));
-        // The primary proxies whichever download currently leads the action
-        // cluster: the approved package once sealed, else the bare preview;
-        // dimmed while neither is offered (chunks outstanding, run active).
-        const lead = visible(receiptLink) ? receiptLink : (visible(downloadLink) ? downloadLink : null);
-        primary.textContent = lead === receiptLink ? '⤓ Approved' : '↓ Preview';
-        if (lead) primary.href = lead.href;
-        primary.classList.toggle('opacity-40', !lead);
-        primary.classList.toggle('pointer-events-none', !lead);
+        // No final audio yet → the transport has nothing to play. A superseded
+        // final is already taken off the page (setFinalCurrent), so a stale
+        // project idles the transport too — the dock never offers to play a cut
+        // the page won't let you download.
+        const idle = !visible(finalPlayer);
+        dockPlayer?.classList.toggle('is-idle', idle);
+        // While the worker is mid-run the play glyph becomes the .aplayer
+        // spinner, so the dock reads as working rather than as dead transport.
+        dockPlayer?.classList.toggle('is-loading', idle && Boolean(live));
+
+        const lead = leadAction();
+        primary.textContent = lead ? lead.label : '↓ Preview';
+        primary.className = DOCK_PRIMARY_BASE + ' ' + DOCK_PRIMARY_LOOK[lead ? lead.look : 'off'];
+        // Only download leads are real links. Keep the href for those (long-press
+        // and open-in-new-tab still work), and DROP it for button leads — an
+        // anchor still pointing at the audio while it reads "Build final" would
+        // hand a long-press the stale file the page just refused to offer.
+        if (lead?.el?.href) {
+            primary.href = lead.el.href;
+            primary.removeAttribute('role');
+        } else {
+            primary.removeAttribute('href');
+            primary.setAttribute('role', 'button'); // announce what it now is
+        }
         primary.setAttribute('aria-disabled', lead ? 'false' : 'true');
         primary.tabIndex = lead ? 0 : -1;
+        // The dock's top edge carries the same state colour as the button, so
+        // the whole bar reads stale at a glance (design 13A).
+        dock.classList.toggle('border-accent/35', lead?.look !== 'stale');
+        dock.classList.toggle('border-amber-500/45', lead?.look === 'stale');
     };
-    // Route through the cluster's managed download so its staged progress and
-    // errors land in the status line — which this dock mirrors right here.
+    // Route through the cluster's own control so its guards, staged download
+    // progress, and errors land in the status line — which this dock mirrors
+    // right here. Never re-implement an action; always proxy the real one.
     primary.addEventListener('click', (e) => {
         e.preventDefault();
-        (visible(receiptLink) ? receiptLink : (visible(downloadLink) ? downloadLink : null))?.click();
+        leadAction()?.el?.click();
+    });
+    // With the href dropped for a button lead the anchor keeps tabindex="0" but
+    // loses the browser's built-in Enter activation, so drive it here. Space is
+    // included because that's what role="button" promises.
+    primary.addEventListener('keydown', (e) => {
+        if (primary.hasAttribute('href')) return; // a real link — leave it to the browser
+        if (e.key !== 'Enter' && e.key !== ' ') return;
+        e.preventDefault();
+        leadAction()?.el?.click();
     });
 
     // Everything the mirror reads is already kept current by initStudioProject —
@@ -4678,8 +4753,13 @@ function initStudioMobileDock() {
     const mo = new MutationObserver(syncDock);
     [statusPill, finalStatus, spendValue, titleLabel].forEach((n) =>
         n && mo.observe(n, { childList: true, characterData: true, subtree: true }));
-    [downloadLink, receiptLink, finalPlayer].forEach((n) =>
-        n && mo.observe(n, { attributes: true, attributeFilter: ['class'] }));
+    // Every control the primary can proxy: `class` carries show/hide (showEl)
+    // and `data-busy` the in-flight flag, and startBusy rewrites the label —
+    // so the lead's text is watched as well as its attributes.
+    [downloadLink, receiptLink, finalPlayer, rebuildBtn, generateAllBtn, stopBtn].forEach((n) =>
+        n && mo.observe(n, { attributes: true, attributeFilter: ['class', 'data-busy'] }));
+    [rebuildBtn, generateAllBtn].forEach((n) =>
+        n && mo.observe(n, { childList: true, characterData: true, subtree: true }));
     const chunkList = root.querySelector('.studio-chunk')?.parentElement;
     if (chunkList) mo.observe(chunkList, { childList: true }); // delete-chunk updates the count
 

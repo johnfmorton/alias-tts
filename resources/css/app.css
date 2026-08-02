@@ -177,6 +177,14 @@
     color: var(--color-zinc-500);
     cursor: default;
 }
+/*
+ * Building the final: there's nothing to play yet (.is-idle), but the worker
+ * IS producing it, so the arc spins in the accent instead of inheriting the
+ * idle grey — the transport reads as working rather than as dead.
+ */
+.aplayer--dock.is-idle.is-loading .aplayer__btn::after {
+    border-top-color: var(--color-accent);
+}
 
 /*
  * The desktop header groups, restyled for the sheet they move into on mobile.
