@@ -489,6 +489,152 @@
 }
 
 /*
+ * Mobile chunk card (design "mobile-chunk-card" 3A, ≤640px). The desktop card
+ * leads with one flex row — identity left, controls right — which at phone width
+ * wraps into three right-ragged lines: nothing overflows, but nothing is placed
+ * either. Here that row dissolves (`display: contents` on .chunk-head) so its two
+ * halves become card-level flex items, and the card orders them into fixed rows:
+ *
+ *   identity → script → sound tags → player → controls footer → notice → takes
+ *
+ * The script is the point of the card, so it sits directly under the identity
+ * line; the controls collect into a footer beneath the audio they act on, with
+ * Regenerate — the one action in a fix-and-rehear loop — full width and never
+ * behind a menu. The notice follows the footer so a control's own feedback lands
+ * next to the thumb that triggered it rather than a scroll away at the top.
+ *
+ * Ordering is CSS-only: the DOM keeps its desktop order, so every `card.querySelector`
+ * in app.js, the skipped dim (`> :not(:first-child)` = .chunk-head), and the
+ * dirty-player rule above all keep working untouched. These rules sit un-layered
+ * so they beat the Tailwind utilities they override (same trick as .aplayer);
+ * none of them touch `display` on a JS-toggled element, which would fight `hidden`.
+ */
+@media (max-width: 639.98px) {
+    .studio-chunk {
+        display: flex;
+        flex-direction: column;
+    }
+    .studio-chunk > .chunk-head {
+        display: contents;
+    }
+    .studio-chunk > .chunk-head > .chunk-identity {
+        order: 1;
+    }
+    .studio-chunk > .chunk-script {
+        order: 2;
+    }
+    .studio-chunk > .chunk-sound-tags {
+        order: 3;
+    }
+    .studio-chunk > .aplayer--chunk {
+        order: 4;
+    }
+    .studio-chunk > .chunk-head > .chunk-controls {
+        order: 5;
+    }
+    .studio-chunk > .chunk-notice {
+        order: 6;
+    }
+    .studio-chunk > .chunk-tune {
+        order: 7;
+    }
+
+    /* Identity row: meta left, badges right against the card edge. Both the
+       status and the dirty badge get the push — while edits are pending the
+       amber badge REPLACES status + QA, and a display:none element can't
+       carry the auto margin for it. */
+    .chunk-identity {
+        width: 100%;
+    }
+    .chunk-identity > .chunk-status,
+    .chunk-identity > .chunk-dirty {
+        margin-left: auto;
+    }
+
+    /* The hero text drops 20px → 16px: still the largest thing on the card, but
+       it stops eating the viewport at phone width, and 16px is iOS Safari's
+       no-zoom-on-focus floor. The replica and the textarea MUST move together
+       or the auto-grow height drifts (see the metric note above). */
+    .chunk-script::after,
+    .chunk-script > .chunk-text {
+        padding: 13px 36px 13px 14px;
+        font-size: 16px;
+        line-height: 1.5;
+    }
+
+    /* The chunk transport is the card's "hear it" affordance — thumb-sized here,
+       where there's no cursor to land the desktop 40px circle precisely. */
+    .aplayer--chunk .aplayer__btn {
+        width: 44px;
+        height: 44px;
+    }
+
+    /* Controls footer, off the header and under the player, behind a hairline. */
+    .chunk-controls {
+        margin-top: 14px;
+        justify-content: flex-start;
+        border-top: 1px solid rgb(255 255 255 / 0.07);
+        padding-top: 12px;
+    }
+
+    /* Voice reads as one full-width labelled field (label inside-left, value and
+       the native chevron right) instead of a select squeezed against the buttons.
+       The field owns the focus ring so the borderless select doesn't draw a
+       second one inside it. */
+    .chunk-controls > .chunk-voice-field {
+        flex: 0 0 100%;
+        min-height: 44px;
+        gap: 10px;
+        border: 1px solid var(--color-edge);
+        border-radius: 10px;
+        background: var(--color-menu);
+        padding: 0 12px;
+    }
+    .chunk-controls > .chunk-voice-field:focus-within {
+        border-color: var(--color-accent);
+        box-shadow: 0 0 0 3px rgb(34 211 238 / 0.15);
+    }
+    .chunk-voice-field > .chunk-voice {
+        flex: 1;
+        min-height: 42px;
+        max-width: none;
+        border: 0;
+        border-radius: 0;
+        background: transparent;
+        padding: 0;
+    }
+    .chunk-voice-field > .chunk-voice:focus {
+        border-color: transparent;
+        box-shadow: none;
+        outline: none;
+    }
+
+    /* Action row: Regenerate takes the width, skip + delete are 44px targets.
+       (JS rewrites .chunk-skip's class list wholesale on toggle — sizing it by
+       class here survives that.) */
+    .chunk-controls > .chunk-generate,
+    .chunk-controls > .chunk-revert {
+        flex: 1 1 auto;
+        min-height: 44px;
+    }
+    .chunk-controls > .chunk-skip,
+    .chunk-controls > .chunk-delete {
+        flex: 0 0 44px;
+        width: 44px;
+        height: 44px;
+    }
+    /* The confirm step is wider than the icon it replaces — give it its own line. */
+    .chunk-controls > .chunk-delete-confirm {
+        flex: 0 0 100%;
+        justify-content: flex-end;
+    }
+    .chunk-delete-confirm > .chunk-delete-yes,
+    .chunk-delete-confirm > .chunk-delete-no {
+        min-height: 44px;
+    }
+}
+
+/*
  * Custom audio player (design 4A) — one anatomy at three weights so the final
  * audio reads as the hero and chunk/take players stay quieter. The native <audio>
  * lives inside as `.aplayer__native` (hidden) and does the actual playback; the JS

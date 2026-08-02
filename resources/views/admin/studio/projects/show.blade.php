@@ -424,8 +424,15 @@
                      data-skip-url="{{ route('admin.studio.projects.chunks.skip', [$project, $chunk]) }}"
                      data-skipped="{{ $chunk->skipped ? '1' : '0' }}"
                      data-takes='@json($takesByChunk[$chunk->id])'>
-                    <div class="flex flex-wrap items-center justify-between gap-2">
-                        <div class="flex min-w-0 flex-wrap items-center gap-2 text-sm text-zinc-400">
+                    {{-- Identity (left) + controls (right) on one line. Below 640px
+                         this wrapper dissolves — `display: contents` in app.css — and
+                         its two halves become card-level items the mobile layout
+                         orders independently: identity stays on top, the controls
+                         drop to a footer under the player (design "mobile-chunk-card"
+                         3A). Keep it the card's FIRST child: the skipped-chunk dim
+                         (`> :not(:first-child)`) leaves exactly this row crisp. --}}
+                    <div class="chunk-head flex flex-wrap items-center justify-between gap-2">
+                        <div class="chunk-identity flex min-w-0 flex-wrap items-center gap-2 text-sm text-zinc-400">
                             <span class="chunk-no font-mono text-zinc-300">#{{ $chunk->position + 1 }}</span>
                             {{-- Reverse navigation: seek the FINAL player to where this
                                  chunk's audio sits and play from there — hear an edit in
@@ -459,12 +466,14 @@
                                  swap is CSS on data-dirty, see app.css). --}}
                             <span class="chunk-dirty hidden rounded-md border border-amber-500/30 bg-amber-500/10 px-2 py-0.5 text-xs text-amber-300">edited — regenerate to hear</span>
                         </div>
-                        {{-- Wraps below sm: at phone width Voice + Regenerate + skip +
-                             delete (and the wider two-step delete confirm) overflow a
-                             single line and clip against the card edge. min-w-0 lets the
-                             voice select shrink instead of forcing the row wide. --}}
-                        <div class="flex min-w-0 flex-wrap items-center justify-end gap-2">
-                            <label class="flex min-w-0 items-center gap-1.5 text-xs text-zinc-500">
+                        {{-- Wraps below sm, where app.css also turns this into the card's
+                             controls footer: Voice becomes a full-width labelled field on
+                             its own line, then Regenerate takes the rest of the row beside
+                             44px skip/delete targets, and the wider two-step delete confirm
+                             gets a line to itself. min-w-0 lets the voice select shrink
+                             instead of forcing the row wide. --}}
+                        <div class="chunk-controls flex min-w-0 flex-wrap items-center justify-end gap-2">
+                            <label class="chunk-voice-field flex min-w-0 items-center gap-1.5 text-xs text-zinc-500">
                                 <span class="shrink-0 text-zinc-400">Voice</span>
                                 @php $effectiveVoice = $slimCards ? $voices->firstWhere('id', $chunk->voice_id ?? $project->voice_id) : null; @endphp
                                 <select class="chunk-voice min-w-0 max-w-[45vw] rounded-lg border border-edge bg-zinc-950 px-2 py-1.5 text-sm text-zinc-200 focus:border-cyan-500 focus:outline-none focus:ring-2 focus:ring-cyan-500/30 sm:max-w-none"

@@ -20,6 +20,22 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   carries its progress. Every one of these presses the same control the
   desktop header uses, so the confirmations, warnings, and error messages are
   exactly the ones you'd get from the full layout.
+- **The chunk card is laid out for a phone now, not just squeezed onto one.**
+  Keeping the controls from clipping got them back on screen, but the desktop
+  header — identity on the left, Voice and the buttons on the right — still
+  wrapped into three ragged lines that placed nothing in particular. Below
+  640px the card reads as fixed rows instead: the chunk's number, length, and
+  badges on one line, then the script, then its player, then a controls footer
+  set off by a hairline — Voice as a full-width labelled field, with
+  Regenerate taking the rest of the row beside the mute and delete buttons.
+  Regenerate is what you reach for most in a fix-and-rehear loop, so it stays
+  one tap away and never behind a menu, and every control on the card is now
+  at least 44px — including the play button. The script settles to 16px so
+  more of it fits without the field losing its place as the card's headline,
+  and the two-step delete confirm takes its own line rather than crowding the
+  row. Feedback from a control ("Chunk skipped", a failed render) now lands
+  under the footer where you tapped, not a scroll away at the top of the card.
+  The desktop layout is untouched.
 
 ### Fixed
 - **Chunk controls no longer run off the side of a phone screen.** The Voice
