@@ -4,6 +4,18 @@ All notable changes to this project are documented in this file. The format is
 based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this
 project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Security
+- **Dependency updates clear all nine open Dependabot alerts.** Bumped
+  league/commonmark 2.8.2 → 2.10.0 (several denial-of-service vectors when
+  parsing crafted Markdown, plus an unsafe-link filter bypass),
+  guzzlehttp/guzzle 7.15.1 → 7.15.2 (noncanonical hostnames could bypass
+  host-based checks and widen cookie domain scope), and the dev-only nanoid
+  3.3.16 → 3.3.18 (custom generators could loop forever on a zero size). All
+  are patch or minor bumps within the same major version; no application code
+  changed.
+
 ## [1.0.1] - 2026-08-02
 
 ### Changed
