@@ -162,6 +162,6 @@ HEALTHCHECK --interval=30s --timeout=5s --start-period=120s --retries=3 \
 LABEL org.opencontainers.image.title="Alias TTS" \
       org.opencontainers.image.description="Self-hosted TTS server speaking the ElevenLabs and OpenAI API dialects, with voice cloning, transcript QA, and provenance — complete in one image." \
       org.opencontainers.image.source="https://github.com/johnfmorton/alias-tts" \
-      org.opencontainers.image.licenses="LicenseRef-Proprietary"
+      org.opencontainers.image.licenses="MIT"
 
 ENTRYPOINT ["/usr/bin/tini", "--", "/usr/local/bin/alias-entrypoint"]

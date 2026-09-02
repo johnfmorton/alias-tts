@@ -1,7 +1,7 @@
 # Builds the single-image Docker package (see docs/DOCKER.md) for amd64 +
-# arm64 and pushes it to the GitHub Container Registry. The package inherits
-# the repo's visibility (private) — grant pull access per user in the
-# package's settings on GitHub.
+# arm64 and pushes it to the GitHub Container Registry. The package is public
+# (anyone can pull without a login); that visibility is set once in the
+# package's settings on GitHub, not here.
 #
 # Each architecture builds on its OWN NATIVE runner (amd64 on ubuntu-latest,
 # arm64 on ubuntu-24.04-arm) — no QEMU emulation, which is what made the old

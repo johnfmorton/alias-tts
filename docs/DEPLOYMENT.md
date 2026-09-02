@@ -32,9 +32,9 @@ On **Install a Laravel application**:
 - **Repository:** `johnfmorton/alias-tts` · **Branch:** `main`
 - **Connect to database:** on → **Create a new database** (Forge injects `DB_*`)
 - **Install Composer dependencies:** on
-- **Generate a site deploy key:** off — your connected GitHub account owns the
-  repo. If the install can't clone the private repo, enable this, add the shown
-  key to the repo's *Settings → Deploy keys*, and retry.
+- **Generate a site deploy key:** off — the repo is public, so Forge can clone
+  it without one. (Deploying a private fork? Enable this, add the shown key to
+  the fork's *Settings → Deploy keys*, and retry.)
 - **Advanced settings → PHP version:** 8.3+. Leave the web directory as `/public`.
 
 ### 2. Install ffmpeg (one time)

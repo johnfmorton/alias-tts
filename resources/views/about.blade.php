@@ -533,9 +533,8 @@
         Alias TTS
         <span class="mx-1.5 text-zinc-800">·</span><a href="{{ route('landing') }}" class="transition hover:text-zinc-400">Home</a>
         <span class="mx-1.5 text-zinc-800">·</span><a href="{{ route('verify') }}" class="transition hover:text-zinc-400">Verify a file</a>
-        {{-- Repo is private for now; restore when it goes public again.
         <span class="mx-1.5 text-zinc-800">·</span><a href="https://github.com/johnfmorton/alias-tts" class="transition hover:text-zinc-400">GitHub</a>
-        --}}
+        <span class="mx-1.5 text-zinc-800">·</span><a href="https://github.com/johnfmorton/alias-tts/blob/main/LICENSE" class="transition hover:text-zinc-400">MIT License</a>
         <span class="mx-1.5 text-zinc-800">·</span>© 2026 John F. Morton
     </footer>
 </body>

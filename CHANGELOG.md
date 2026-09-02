@@ -6,6 +6,14 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Changed
+- **Alias TTS is now MIT licensed.** The all-rights-reserved proprietary notice
+  is replaced by the MIT License, so anyone can install, run, modify, and
+  redistribute the app. `composer.json`, the Docker image's OCI license label,
+  the README's License section, and the About page footer (GitHub and license
+  links) now say MIT, and the Docker and deployment docs drop the private
+  registry / private repo login steps.
+
 ### Security
 - **Dependency updates clear all nine open Dependabot alerts.** Bumped
   league/commonmark 2.8.2 → 2.10.0 (several denial-of-service vectors when

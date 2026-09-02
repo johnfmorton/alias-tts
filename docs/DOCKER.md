@@ -18,13 +18,9 @@ Released images live on the GitHub Container Registry as
 **`ghcr.io/johnfmorton/alias-tts`** (`X.Y.Z` + `latest`, amd64 and arm64 —
 published per chosen release by a manual run of
 `.github/workflows/docker-publish.yml`, so not every git tag has an image).
-The package is **private**: you need pull access granted on GitHub, then a
-one-time login with a [personal access token](https://github.com/settings/tokens)
-that has the `read:packages` scope:
+The package is public, so there is nothing to log in to — pull and run:
 
 ```bash
-docker login ghcr.io -u <your-github-username>   # password: the PAT
-
 docker run -d --name alias-tts \
   -p 8080:80 \
   -v alias-data:/data \

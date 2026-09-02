@@ -5,7 +5,7 @@
     "version": "1.0.1",
     "description": "Self-hosted text-to-speech server that speaks both the ElevenLabs and OpenAI TTS API dialects, with zero-shot voice cloning (Chatterbox on Replicate) — point any ElevenLabs- or OpenAI-compatible client at it.",
     "keywords": ["tts", "text-to-speech", "elevenlabs", "openai", "chatterbox", "replicate", "voice-cloning", "self-hosted", "alias", "laravel"],
-    "license": "proprietary",
+    "license": "MIT",
     "require": {
         "php": "^8.3",
         "bacon/bacon-qr-code": "^3.1",

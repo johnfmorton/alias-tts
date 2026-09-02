@@ -459,7 +459,9 @@ management API, real streaming, additional provider drivers, a Docker image).
 
 ## License
 
-Copyright © 2026 John F. Morton. All rights reserved.
+[MIT](LICENSE). Copyright © 2026 John F. Morton.
 
-This is proprietary software — not open source (for now). See
-[LICENSE](LICENSE) for details.
+Install it, run it, modify it, and redistribute it freely; the only condition
+is keeping the copyright and license notice. The engines it calls (Chatterbox,
+Chatterbox Turbo, Qwen3 TTS) are licensed separately by their authors, and the
+bundled default voice clips are credited in [CREDITS.md](CREDITS.md).
