@@ -284,11 +284,11 @@ return [
     'short_trailer_words' => (int) env('TTS_SHORT_TRAILER_WORDS', 3),
 
     // Runs of >= this many spaces are treated as a block (paragraph) boundary,
-    // in addition to blank lines. The Bespoken plugin currently flattens posts
-    // to a single line and marks every block with a run of (4) spaces, so this
-    // recovers paragraph pacing from real traffic; it's well clear of the
-    // legitimate "two spaces after a period". Raise it high to rely on newlines
-    // only once the client emits proper paragraph breaks.
+    // in addition to blank lines. A safety net for clients that flatten text to
+    // a single line; the Bespoken plugin (5.4.0+) sends a real blank line
+    // between blocks, so it hits the newline rule instead. It's well clear of
+    // the legitimate "two spaces after a period". Raise it high to rely on
+    // newlines only.
     'block_space_run' => (int) env('TTS_BLOCK_SPACE_RUN', 4),
 
     // Each generated chunk is edge-trimmed before concatenation to remove

@@ -26,7 +26,7 @@ namespace App\Services;
  *    produce spacing/punctuation that normalization would rewrite.
  *
  * Paragraph boundaries mirror {@see TextChunker}: blank lines or runs of
- * >= $blockSpaceRun spaces (the Bespoken plugin's flattened block marker).
+ * >= $blockSpaceRun spaces (a safety net for clients that flatten text).
  */
 class SpokenQuotes
 {
