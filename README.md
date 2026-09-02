@@ -440,10 +440,11 @@ healthy. See [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md) for the details.
 ## Using it with Craft CMS
 
 The **[Bespoken plugin](https://github.com/johnfmorton/craft-bespoken)** for
-Craft CMS speaks the ElevenLabs dialect and understands the Alias extensions
-(async jobs, projects, pronunciation sync), so it works with Alias out of the
-box: set the plugin's base URL to your domain, the API key to an Alias key, and
-a `voice_id` that matches a registered voice slug. See
+Craft CMS (5.4.0 or later) speaks the ElevenLabs dialect and understands the
+Alias extensions (async jobs, projects, pronunciation sync), so it works with
+Alias out of the box: set the plugin's **TTS provider** to *Alias TTS service*,
+its API endpoint URL to your domain, the API key to an Alias key, and a
+`voice_id` that matches a registered voice slug. See
 **[docs/BESPOKEN.md](docs/BESPOKEN.md)** for the full step-by-step guide.
 
 ## Tests
