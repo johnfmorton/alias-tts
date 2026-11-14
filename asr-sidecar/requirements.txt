@@ -1,5 +1,8 @@
 # tts-asr sidecar dependencies. See docs/ASR-SETUP.md for install steps.
 faster-whisper==1.2.1
+# faster-whisper 1.2.1 calls av.open(..., metadata_errors=...), which PyAV 19
+# removed — every /transcribe then 500s with a TypeError. Cap until upstream fixes.
+av>=11,<19
 fastapi>=0.110,<1.0
 uvicorn[standard]>=0.27
 python-multipart>=0.0.9
