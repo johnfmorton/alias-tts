@@ -89,6 +89,40 @@ class ReplicateRetryTest extends TestCase
         Http::assertSentCount(1);
     }
 
+    public function test_it_retries_a_gateway_502_then_succeeds(): void
+    {
+        // Replicate's edge answering for a backend that is briefly down — plain
+        // text, no retry_after hint, so the wait is the exponential backoff.
+        Http::fake([
+            'api.replicate.com/v1/predictions' => Http::sequence()
+                ->push("error code: 502\n", 502)
+                ->push('upstream connect error', 503)
+                ->push(['id' => 'pred_1', 'status' => 'succeeded', 'output' => 'https://replicate.delivery/out.wav'], 200),
+            'replicate.delivery/*' => Http::response('AUDIO-BYTES', 200),
+        ]);
+
+        $this->assertSame('AUDIO-BYTES', $this->provider()->synthesize('Hello there.', null, []));
+
+        Sleep::assertSleptTimes(2);
+        Sleep::assertSlept(fn ($duration) => $duration->totalMilliseconds === 10.0, 1);
+        Sleep::assertSlept(fn ($duration) => $duration->totalMilliseconds === 20.0, 1);
+    }
+
+    public function test_it_gives_up_on_a_persistent_gateway_failure(): void
+    {
+        Http::fake([
+            'api.replicate.com/v1/predictions' => Http::response("error code: 502\n", 502),
+        ]);
+
+        try {
+            $this->provider(['max_retries' => 2])->synthesize('Hello there.', null, []);
+            $this->fail('Expected the provider to give up.');
+        } catch (RuntimeException $e) {
+            $this->assertStringContainsString('HTTP 502', $e->getMessage());
+            Sleep::assertSleptTimes(2);
+        }
+    }
+
     public function test_it_honors_the_retry_after_header_when_body_omits_it(): void
     {
         Http::fake([

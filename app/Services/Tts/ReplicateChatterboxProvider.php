@@ -313,12 +313,22 @@ class ReplicateChatterboxProvider implements TtsProvider
     }
 
     /**
-     * Send a Replicate request, retrying when it throttles us (HTTP 429).
+     * HTTP statuses that mean "Replicate's edge couldn't reach a healthy backend
+     * right now" rather than "this request is wrong": bad gateway, unavailable,
+     * gateway timeout. They come from the proxy in front of the API and clear on
+     * their own, so they are retried like a throttle instead of failing the chunk.
+     */
+    private const GATEWAY_STATUSES = [502, 503, 504];
+
+    /**
+     * Send a Replicate request, retrying when it throttles us (HTTP 429) or its
+     * gateway briefly fails ({@see self::GATEWAY_STATUSES}).
      *
-     * On 429 we honor Replicate's `retry_after` hint (JSON body, then the
-     * Retry-After header, both in seconds) and fall back to exponential
-     * backoff. Bounded by `max_retries` and the per-request timeout so a stuck
-     * call can't outlive the synchronous budget. Non-429 failures throw at once.
+     * We honor Replicate's `retry_after` hint when one is sent (JSON body, then
+     * the Retry-After header, both in seconds) and otherwise fall back to
+     * exponential backoff. Bounded by `max_retries` and the per-request timeout
+     * so a stuck call can't outlive the synchronous budget. Every other failure
+     * (bad input, auth, a plain 500) throws at once.
      *
      * @param  callable():Response  $send
      */
@@ -337,9 +347,13 @@ class ReplicateChatterboxProvider implements TtsProvider
                 return $response;
             }
 
-            if ($response->status() !== 429 || $attempt >= $maxRetries) {
+            $status = $response->status();
+            $throttled = $status === 429;
+            $retryable = $throttled || in_array($status, self::GATEWAY_STATUSES, true);
+
+            if (! $retryable || $attempt >= $maxRetries) {
                 throw new RuntimeException(
-                    "Replicate {$context} failed (HTTP {$response->status()}): ".$response->body(),
+                    "Replicate {$context} failed (HTTP {$status}): ".$response->body(),
                 );
             }
 
@@ -348,7 +362,7 @@ class ReplicateChatterboxProvider implements TtsProvider
             // Never sleep past the deadline — give up cleanly instead of hanging.
             if (time() + (int) ceil($delayMs / 1000) >= $deadline) {
                 throw new RuntimeException(
-                    "Replicate {$context} throttled (HTTP 429); retry budget exhausted: ".$response->body(),
+                    "Replicate {$context} ".($throttled ? 'throttled' : 'unavailable')." (HTTP {$status}); retry budget exhausted: ".$response->body(),
                 );
             }
 
@@ -358,7 +372,7 @@ class ReplicateChatterboxProvider implements TtsProvider
     }
 
     /**
-     * Backoff delay (ms) for a 429: prefer Replicate's `retry_after` hint, else
+     * Backoff delay (ms) for a retryable response: prefer Replicate's `retry_after` hint, else
      * exponential backoff (base, 2x, 4x, …). Capped so one wait can't dominate.
      */
     private function retryDelayMs(Response $response, int $attempt, int $baseMs, int $capMs): int

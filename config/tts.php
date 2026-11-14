@@ -960,7 +960,10 @@ return [
             // "6/min, burst 1"), returning 429 + a `retry_after` hint. We retry
             // up to max_retries, honoring retry_after, else exponential backoff
             // from retry_base_ms, with each wait capped at retry_max_ms. The
-            // total wait can never exceed request_timeout.
+            // total wait can never exceed request_timeout. A brief gateway
+            // failure in front of the API (HTTP 502/503/504) is retried on the
+            // same budget: with the defaults that rides out about half a
+            // minute (1+2+4+8+16s); raise REPLICATE_MAX_RETRIES to wait longer.
             'max_retries' => (int) env('REPLICATE_MAX_RETRIES', 5),
             'retry_base_ms' => (int) env('REPLICATE_RETRY_BASE_MS', 1000),
             'retry_max_ms' => (int) env('REPLICATE_RETRY_MAX_MS', 30000),
