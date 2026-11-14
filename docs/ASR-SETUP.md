@@ -203,8 +203,10 @@ php artisan tts:asr:health --deep
 
 A healthy install prints the loaded model + version, transcribes the bundled
 fixture, and reports `Self-test PASSED`. It exits non-zero on failure, so you can
-gate a deploy on it. The same status (without the transcription self-test) also
-appears on the admin **Health** page and in `php artisan tts:doctor`.
+gate a deploy on it. The admin **Health** page and `php artisan tts:doctor` run the
+same transcription self-test (without the metrics table), so a sidecar that is up
+but cannot actually transcribe shows as a **FAIL** there too — `/health` alone
+stays green in that state.
 
 > **If you relied on the Health-page auto-enable, pin `TTS_ASR_ENABLED=true` in
 > `.env` (then `php artisan config:cache`) before running this.** The
@@ -332,6 +334,19 @@ re-roll it by ear.
 - **`tts:asr:health` says UNREACHABLE / `curl` returns nothing** — the daemon isn't
   running or the port differs. Check Forge → Daemons (status + log), and that
   `TTS_ASR_URL`'s port matches the daemon command.
+- **"could not transcribe the bundled test clip" / every `/transcribe` returns 500**
+  while `/health` is fine — a dependency in the sidecar's venv is incompatible.
+  The daemon log names it; the known case is
+  `TypeError: open() got an unexpected keyword argument 'metadata_errors'`, which
+  is PyAV 19+ with faster-whisper 1.2.1. Reinstall from the pinned requirements
+  (`.venv/bin/pip install -r requirements.txt`) and restart the daemon. Chunks
+  rendered while this was broken have no QA verdict.
+- **`supervisor: couldn't exec …/.venv/bin/uvicorn: ENOENT` after renaming or
+  moving the site directory** — the file exists, but a Python venv is not
+  relocatable: every script in `.venv/bin` has the old absolute path in its
+  shebang. Recreate the venv in the new location (or rewrite the old path in
+  `.venv/bin/*` and `pyvenv.cfg`), and update `SITE=` in `run-genblaze.sh` — the
+  Genblaze runner's venv and launcher carry the old path the same way.
 - **"sidecar up but model did not load"** — the model download failed or the box is
   out of RAM. Re-run the pre-download step as `forge` and check free memory; try
   `tiny` if you tried `base`.

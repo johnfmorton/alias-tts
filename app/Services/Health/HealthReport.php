@@ -9,6 +9,7 @@ use App\Models\Speech;
 use App\Models\Voice;
 use App\Providers\AppServiceProvider;
 use App\Services\Asr\AsrClient;
+use App\Services\Asr\AsrSelfTest;
 use App\Services\Enhance\EnhanceProvider;
 use App\Services\Genblaze\GenblazeRunnerClient;
 use App\Services\Tts\ModelCatalog;
@@ -336,9 +337,12 @@ class HealthReport
 
     /**
      * The optional Whisper ASR sidecar (transcript QA of generated chunks). Off
-     * by default; when enabled, pings the sidecar's /health so the page and
-     * `tts:doctor` confirm the daemon is up and the model is loaded. The deeper
-     * transcription self-test lives in `php artisan tts:asr:health --deep`.
+     * by default; when enabled, pings the sidecar's /health (daemon up, model
+     * loaded) and then transcribes the bundled fixture. The round-trip is not
+     * gated behind --deep: /health stays green when decoding is broken (a bad
+     * dependency in the sidecar's venv makes every /transcribe 500), and since a
+     * failed transcription only skips QA, renders would go unscored silently.
+     * The sidecar is local and the clip is ~1s, so the probe is cheap.
      */
     private function checkAsr(): void
     {
@@ -369,12 +373,24 @@ class HealthReport
             return;
         }
 
+        $selfTest = app(AsrSelfTest::class)->run();
+        if (! $selfTest['ok']) {
+            $this->add('asr', HealthStatus::Fail, 'Transcript QA', sprintf(
+                'The sidecar at %s is up and its model is loaded, but it could not transcribe the bundled test clip (%s) — generated chunks are NOT being quality-checked. Check the tts-asr daemon log; a dependency mismatch in the sidecar\'s venv is the usual cause (reinstall from asr-sidecar/requirements.txt and restart the daemon).',
+                $url,
+                $selfTest['error'] ?? 'unknown',
+            ), $docs);
+
+            return;
+        }
+
         $detail = sprintf(
-            'sidecar up at %s (model %s, faster-whisper %s, %dms) — verify transcription with `php artisan tts:asr:health --deep`',
+            'sidecar up at %s (model %s, faster-whisper %s, %dms); test clip transcribed and scored OK%s',
             $url,
             $body['model'] ?? '?',
             $body['faster_whisper_version'] ?? '?',
             $health['latency_ms'] ?? 0,
+            $selfTest['transcribe_ms'] !== null ? " ({$selfTest['transcribe_ms']}ms)" : '',
         );
         $this->add('asr', HealthStatus::Pass, 'Transcript QA', $detail);
     }

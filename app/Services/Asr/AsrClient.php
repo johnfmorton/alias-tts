@@ -16,6 +16,8 @@ use Throwable;
  */
 class AsrClient
 {
+    private ?string $lastError = null;
+
     public function enabled(): bool
     {
         return (bool) config('tts.asr.enabled', false);
@@ -107,6 +109,8 @@ class AsrClient
      */
     public function transcribe(string $wavBytes, string $filename = 'chunk.wav'): ?array
     {
+        $this->lastError = null;
+
         try {
             $res = Http::timeout($this->timeout())
                 ->attach('audio', $wavBytes, $filename)
@@ -115,6 +119,7 @@ class AsrClient
                 ]);
 
             if (! $res->successful()) {
+                $this->lastError = '/transcribe returned HTTP '.$res->status();
                 Log::warning('ASR transcribe failed', ['status' => $res->status(), 'body' => $res->body()]);
 
                 return null;
@@ -122,6 +127,7 @@ class AsrClient
 
             $data = $res->json();
             if (! is_array($data) || ! array_key_exists('words', $data)) {
+                $this->lastError = '/transcribe returned an unexpected payload';
                 Log::warning('ASR transcribe returned an unexpected payload');
 
                 return null;
@@ -129,9 +135,20 @@ class AsrClient
 
             return $data;
         } catch (Throwable $e) {
+            $this->lastError = $e->getMessage();
             Log::warning('ASR sidecar unreachable', ['error' => $e->getMessage()]);
 
             return null;
         }
+    }
+
+    /**
+     * Why the most recent {@see transcribe()} returned null (null after a
+     * success). Diagnostics only — callers still treat a null transcript as
+     * "skip QA"; this lets the health checks say what went wrong.
+     */
+    public function lastError(): ?string
+    {
+        return $this->lastError;
     }
 }

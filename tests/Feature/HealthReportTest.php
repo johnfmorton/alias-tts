@@ -55,6 +55,60 @@ class HealthReportTest extends TestCase
         $this->assertEmpty(array_filter($results, fn (HealthCheckResult $r) => $r->isFailure()));
     }
 
+    public function test_asr_passes_when_the_sidecar_transcribes_the_test_clip(): void
+    {
+        config(['tts.asr.enabled' => true, 'tts.asr.url' => 'http://asr.test']);
+        Http::fake([
+            'asr.test/health' => Http::response(['status' => 'ok', 'model' => 'tiny', 'faster_whisper_version' => '1.2.1']),
+            'asr.test/transcribe' => Http::response([
+                'duration' => 1.6,
+                'text' => 'What is a dark pattern?',
+                'transcribe_ms' => 400,
+                'words' => [
+                    ['word' => 'What', 'start' => 0.10, 'end' => 0.30],
+                    ['word' => 'is', 'start' => 0.30, 'end' => 0.45],
+                    ['word' => 'a', 'start' => 0.45, 'end' => 0.55],
+                    ['word' => 'dark', 'start' => 0.55, 'end' => 0.90],
+                    ['word' => 'pattern?', 'start' => 0.90, 'end' => 1.45],
+                ],
+            ]),
+        ]);
+
+        $asr = $this->resultFor('asr');
+
+        $this->assertSame(HealthStatus::Pass, $asr->status);
+        $this->assertStringContainsString('test clip transcribed and scored OK', $asr->detail);
+    }
+
+    public function test_asr_fails_when_health_is_green_but_transcription_errors(): void
+    {
+        // The real-world failure: the model loads (so /health is fine) but a
+        // broken dependency in the sidecar's venv makes every /transcribe 500 —
+        // chunks then render unscored with nothing on screen to say so.
+        config(['tts.asr.enabled' => true, 'tts.asr.url' => 'http://asr.test']);
+        Http::fake([
+            'asr.test/health' => Http::response(['status' => 'ok', 'model' => 'tiny']),
+            'asr.test/transcribe' => Http::response('Internal Server Error', 500),
+        ]);
+
+        $asr = $this->resultFor('asr');
+
+        $this->assertSame(HealthStatus::Fail, $asr->status);
+        $this->assertStringContainsString('HTTP 500', $asr->detail);
+        $this->assertStringContainsString('NOT being quality-checked', $asr->detail);
+    }
+
+    public function test_asr_fails_when_the_test_clip_is_mistranscribed(): void
+    {
+        config(['tts.asr.enabled' => true, 'tts.asr.url' => 'http://asr.test']);
+        Http::fake([
+            'asr.test/health' => Http::response(['status' => 'ok', 'model' => 'tiny']),
+            'asr.test/transcribe' => Http::response(['duration' => 1.6, 'text' => '', 'words' => []]),
+        ]);
+
+        $this->assertSame(HealthStatus::Fail, $this->resultFor('asr')->status);
+    }
+
     public function test_image_processing_passes_when_gd_is_available(): void
     {
         // gd is bundled in DDEV, CI, and the Docker image; a missing gd is a

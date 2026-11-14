@@ -3,7 +3,7 @@
 namespace App\Console\Commands;
 
 use App\Services\Asr\AsrClient;
-use App\Services\Asr\ChunkQualityScorer;
+use App\Services\Asr\AsrSelfTest;
 use Illuminate\Console\Command;
 
 /**
@@ -19,10 +19,7 @@ class AsrHealth extends Command
 
     protected $description = 'Check the Whisper ASR sidecar: reachability, loaded model, and (with --deep) transcription accuracy';
 
-    /** A known-clean clip and the text it should transcribe to. */
-    private const SELFTEST_TEXT = 'What is a dark pattern?';
-
-    public function handle(AsrClient $client, ChunkQualityScorer $scorer): int
+    public function handle(AsrClient $client, AsrSelfTest $selfTest): int
     {
         if (! $client->enabled()) {
             $this->warn('ASR is disabled (TTS_ASR_ENABLED=false). Enable it once the sidecar is installed — see docs/ASR-SETUP.md.');
@@ -63,30 +60,23 @@ class AsrHealth extends Command
             return self::SUCCESS;
         }
 
-        return $this->selfTest($client, $scorer);
+        return $this->selfTest($selfTest);
     }
 
-    private function selfTest(AsrClient $client, ChunkQualityScorer $scorer): int
+    private function selfTest(AsrSelfTest $selfTest): int
     {
-        $fixture = resource_path('asr/selftest.wav');
-        if (! is_file($fixture)) {
-            $this->error("Self-test fixture missing: {$fixture}");
-
-            return self::FAILURE;
-        }
-
         $this->line('Transcribing the self-test fixture …');
-        $transcript = $client->transcribe((string) file_get_contents($fixture), 'selftest.wav');
-        if ($transcript === null) {
-            $this->error('Transcription failed (see the log for the sidecar error).');
+        $result = $selfTest->run();
+        $verdict = $result['verdict'];
+
+        if ($verdict === null) {
+            $this->error('Transcription failed — '.($result['error'] ?? 'unknown').' (see the log for the sidecar error).');
 
             return self::FAILURE;
         }
 
-        $this->line('  expected: "'.self::SELFTEST_TEXT.'"');
-        $this->line('  heard:    "'.trim((string) ($transcript['text'] ?? '')).'"  ('.($transcript['transcribe_ms'] ?? '?').'ms)');
-
-        $verdict = $scorer->score(self::SELFTEST_TEXT, $transcript);
+        $this->line('  expected: "'.AsrSelfTest::TEXT.'"');
+        $this->line('  heard:    "'.$result['heard'].'"  ('.($result['transcribe_ms'] ?? '?').'ms)');
 
         $this->table(['metric', 'value'], [
             ['coverage', $verdict->score],
@@ -97,8 +87,7 @@ class AsrHealth extends Command
             ['problems', $verdict->problems === [] ? '(none)' : implode(', ', $verdict->problems)],
         ]);
 
-        // A clean fixture should pass cleanly and recover most of its words.
-        if ($verdict->ok && $verdict->score >= 0.5) {
+        if ($result['ok']) {
             $this->info('Self-test PASSED — the sidecar transcribes and the scorer agrees.');
 
             return self::SUCCESS;
