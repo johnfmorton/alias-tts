@@ -2958,9 +2958,15 @@ function initStudioProject() {
         followResume?.classList.toggle('hidden', !show);
         followResume?.classList.toggle('inline-flex', show);
     };
-    const reflectResumeChip = () => showResumeChip(
-        !!timeline && followOn && followSuspended && !finalAudio.paused,
-    );
+    // The toggle reads as what the page is DOING, not the stored preference:
+    // a manual scroll suspends following, and a button still lit "on" then took
+    // two clicks (off, on) to get following back. Suspended, it shows unpressed
+    // and one click resumes. Every suspend/resume transition comes through
+    // here, so the chip and the toggle can't disagree.
+    const reflectResumeChip = () => {
+        showResumeChip(!!timeline && followOn && followSuspended && !finalAudio.paused);
+        followToggle?.setAttribute('aria-pressed', timeline && followOn && !followSuspended ? 'true' : 'false');
+    };
 
     // The toggle + every card's play-in-final button follow the timeline's
     // presence: a rebuilt final lights them, an untimed one explains itself.
@@ -2970,7 +2976,6 @@ function initStudioProject() {
             // off the page, so there's nothing to follow along with.
             showEl(followToggle, finalCurrent, 'inline-flex');
             followToggle.disabled = !timeline;
-            followToggle.setAttribute('aria-pressed', timeline && followOn ? 'true' : 'false');
             followToggle.title = timeline
                 ? 'While the final plays, scroll the page to the chunk you\'re hearing.'
                 : 'Rebuild the final to enable follow-along.';
@@ -3051,7 +3056,9 @@ function initStudioProject() {
     });
 
     followToggle?.addEventListener('click', () => {
-        followOn = !followOn;
+        // Suspended follow looks off (see reflectResumeChip), so the click
+        // means "follow again" — the preference was never turned off.
+        followOn = followSuspended ? true : !followOn;
         try { localStorage.setItem(FOLLOW_KEY, followOn ? '1' : '0'); } catch { /* preference just won't stick */ }
         followSuspended = false;
         reflectFollowUI();
