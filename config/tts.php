@@ -323,6 +323,19 @@ return [
     // soft final words keep their existing behavior. ZCR is in crossings/second
     // (rate-independent) because chunks are analyzed at the output sample rate.
     'chunk_tail_artifact_enabled' => (bool) env('TTS_CHUNK_TAIL_ARTIFACT', true),
+    // Leading "blip": the model sometimes opens a chunk with a brief hiss before
+    // the first word (heard as a stray "s"). The head silence trim can't remove
+    // it — it IS the first non-silent audio — so the first loud run is dropped
+    // when it is short (<= max_ms), followed by >= gap_min_ms of sub-floor quiet
+    // (a consonant runs straight into its vowel; stop closures inside a short
+    // first word measured 50-70 ms), AND at least under_speech_db fainter than the
+    // loudest speech after it (real short first words sit within ~5-10 dB of the
+    // peak; the observed blip was 14 dB under). All three must hold. Quiet is
+    // judged against chunk_tail_rms_floor_db. max_ms 0 / enabled false disables.
+    'chunk_head_blip_enabled' => (bool) env('TTS_CHUNK_HEAD_BLIP', true),
+    'chunk_head_blip_max_ms' => (int) env('TTS_CHUNK_HEAD_BLIP_MAX_MS', 100),
+    'chunk_head_blip_gap_min_ms' => (int) env('TTS_CHUNK_HEAD_BLIP_GAP_MIN_MS', 120),
+    'chunk_head_blip_under_speech_db' => (float) env('TTS_CHUNK_HEAD_BLIP_UNDER_SPEECH_DB', 10.0),
     'chunk_tail_window_ms' => (int) env('TTS_CHUNK_TAIL_WINDOW_MS', 50),       // analysis window
     'chunk_tail_rms_floor_db' => (float) env('TTS_CHUNK_TAIL_RMS_FLOOR_DB', -40), // quieter than this = not speech
     'chunk_tail_zcr_min_hz' => (float) env('TTS_CHUNK_TAIL_ZCR_MIN_HZ', 700),  // crossings/sec; below = tonal/low-freq

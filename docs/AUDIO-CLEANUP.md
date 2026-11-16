@@ -157,6 +157,31 @@ while that path leaves the aperiodic hiss to voicing. (Voiced *singing* tails ar
 periodic too, so neither path catches them — that's what the ASR round-trip in
 `docs/ASR-SETUP.md` is for.)
 
+## Leading blip (a stray "s" before the first word)
+
+Chatterbox occasionally opens a take with a brief burst of hiss, then a pause,
+then the first word — heard as "s Here's why…". On the real take it was 40 ms of
+noise at about −31 dBFS, 200 ms of silence, then speech. The head silence trim
+cannot remove it: `silenceremove` stops at the first non-silent audio, and the
+blip is exactly that, so both the blip and the pause behind it survive.
+
+`AudioConverter::detectLeadingBlip()` looks only at the chunk's **first loud
+run** (10 ms windows) and drops it when all three hold:
+
+- it is **short** — at most `chunk_head_blip_max_ms` (100 ms);
+- **sub-floor quiet follows** for at least `chunk_head_blip_gap_min_ms` (120 ms).
+  A word-initial consonant runs straight into its vowel, and the stop closure
+  inside a short first word ("It c…", "My f…") measured 50–70 ms on real takes;
+- it is **faint** — its loudest window is at least
+  `chunk_head_blip_under_speech_db` (10 dB) below the loudest speech after it.
+  Real short first words ("I", "It", "My") sat within ~5–10 dB of the peak.
+
+The chunk then starts mid-gap and the normal head trim closes the rest. Run
+against 155 real takes from one project plus the debugging corpus, it fired on
+exactly one file — the reported one. It is calibrated on that single example, so
+treat the thresholds as a starting point. Note it acts at stitch time: the
+stored take (what a chunk's own player plays) still contains the blip.
+
 ## Tuning knobs (`config/tts.php`, all env-overridable)
 
 | Key | Env | Default | Role |
@@ -165,6 +190,10 @@ periodic too, so neither path catches them — that's what the ASR round-trip in
 | `chunk_fade_ms` | `TTS_CHUNK_FADE_MS` | `8` | click-free edge fade |
 | `chunk_trim_tail_window_ms` | `TTS_CHUNK_TRIM_TAIL_WINDOW_MS` | `300` | bound for the short-swoosh tail trim |
 | `chunk_tail_artifact_enabled` | `TTS_CHUNK_TAIL_ARTIFACT` | `true` | enable the long-tail detector |
+| `chunk_head_blip_enabled` | `TTS_CHUNK_HEAD_BLIP` | `true` | enable the leading-blip removal |
+| `chunk_head_blip_max_ms` | `TTS_CHUNK_HEAD_BLIP_MAX_MS` | `100` | longest opening run that can be a blip |
+| `chunk_head_blip_gap_min_ms` | `TTS_CHUNK_HEAD_BLIP_GAP_MIN_MS` | `120` | sub-floor quiet required behind it |
+| `chunk_head_blip_under_speech_db` | `TTS_CHUNK_HEAD_BLIP_UNDER_SPEECH_DB` | `10.0` | how far below the speech peak it must sit |
 | `chunk_tail_window_ms` | `TTS_CHUNK_TAIL_WINDOW_MS` | `50` | detector analysis window |
 | `chunk_tail_rms_floor_db` | `TTS_CHUNK_TAIL_RMS_FLOOR_DB` | `-40` | below this = not speech (rejects gaps) |
 | `chunk_tail_zcr_min_hz` | `TTS_CHUNK_TAIL_ZCR_MIN_HZ` | `700` | crossings/sec; below = tonal/low-freq drone |

@@ -362,11 +362,21 @@ class AudioConverter
             ? $this->detectLongTailArtifact($pcm, $rate)
             : null;
 
+        // A leading blip (a short hiss the model emits before the first word)
+        // stops silenceremove dead — it IS the first non-silent audio — so it is
+        // cut away first, on the same buffer and timeline the tail cut uses.
+        $head = (bool) config('tts.chunk_head_blip_enabled', true)
+            ? $this->detectLeadingBlip($pcm, $rate)
+            : null;
+        $headTrim = $head === null ? '' : 'atrim=start='.number_format($head, 3, '.', '').',';
+        $headReset = $head === null ? '' : 'asetpts=PTS-STARTPTS,';
+
         if ($cut !== null) {
             // Long tonal tail: hard-cut at the speech end, then the usual head
             // (leading-silence) trim and click-free edge fades. atrim runs first,
             // on the same buffer the cut was measured against, so it is exact.
-            $chain = 'atrim=end='.number_format($cut, 3, '.', '').','.$silenceRemove;
+            $chain = 'atrim='.($head === null ? '' : 'start='.number_format($head, 3, '.', '').':')
+                .'end='.number_format($cut, 3, '.', '').','.$headReset.$silenceRemove;
             if ($fadeMs > 0) {
                 $chain .= ",afade=t=in:d={$fade},areverse,afade=t=in:d={$fade},areverse";
             }
@@ -380,7 +390,7 @@ class AudioConverter
             if ($fadeMs > 0) {
                 $tail .= ",afade=t=in:d={$fade},areverse,afade=t=in:d={$fade},areverse";
             }
-            $graph = "[0:a]{$silenceRemove},asplit=2[a][b];"
+            $graph = "[0:a]{$headTrim}{$headReset}{$silenceRemove},asplit=2[a][b];"
                 ."[a]areverse,atrim=start={$window},areverse[body];"
                 ."[b]areverse,atrim=end={$window},{$silenceRemove},areverse[tail];"
                 .$tail.'[out]';
@@ -398,6 +408,92 @@ class AudioConverter
         }
 
         return $trimmed;
+    }
+
+    /**
+     * Find a leading "blip" in a mono 16-bit PCM WAV — a brief burst of noise the
+     * model sometimes emits before the first word (heard as a stray "s": a real
+     * "Here's why I liked it for this." opened with 40 ms of hiss, then 200 ms of
+     * silence, then the word) — returning the seconds-offset to start the chunk
+     * at (inside the silence after the blip), or null when there is none.
+     *
+     * The head trim cannot catch it: silenceremove stops at the first non-silent
+     * audio, and the blip is exactly that. Three things together separate it from
+     * a real word-initial sound, and ALL must hold:
+     *   - it is SHORT (<= head_blip_max_ms) — shorter than any word;
+     *   - genuine sub-floor QUIET follows it for >= head_blip_gap_min_ms before
+     *     anything else sounds. A word-initial consonant runs straight into its
+     *     vowel, and the stop closure inside a short first word ("It c…", "My
+     *     f…") measured 50-70 ms on real takes — well under the 120 ms default;
+     *   - it is FAINT: its loudest window sits >= head_blip_under_speech_db below
+     *     the loudest window of the speech that follows. Real short first words
+     *     ("I", "It", "My") measured within ~5-10 dB of the speech peak; the
+     *     blip was 14 dB under.
+     * Only the first loud run is ever considered, so the worst case of a miss is
+     * the old behavior (blip kept), never a clipped word mid-chunk.
+     */
+    private function detectLeadingBlip(string $pcmWav, int $rate): ?float
+    {
+        $offset = $this->wavDataOffset($pcmWav);
+        if ($offset === null) {
+            return null;
+        }
+
+        $floorDb = (float) config('tts.chunk_tail_rms_floor_db', -40);
+        $blipMaxSec = max(0, (int) config('tts.chunk_head_blip_max_ms', 100)) / 1000;
+        $gapMinSec = max(0, (int) config('tts.chunk_head_blip_gap_min_ms', 120)) / 1000;
+        $underDb = (float) config('tts.chunk_head_blip_under_speech_db', 10.0);
+        if ($blipMaxSec <= 0) {
+            return null;
+        }
+
+        // 10 ms windows over the opening seconds only: the blip is far shorter
+        // than the tail detector's 50 ms window, and nothing past the first
+        // word's onset matters here.
+        $windowSec = 0.01;
+        $win = max(1, (int) round($rate * $windowSec));
+        $totalSamples = min(intdiv(strlen($pcmWav) - $offset, 2), $rate * 3);
+        $db = [];
+        for ($i = 0; $i + $win <= $totalSamples; $i += $win) {
+            $samples = unpack('s*', substr($pcmWav, $offset + $i * 2, $win * 2));
+            if ($samples === false) {
+                break;
+            }
+            $db[] = $this->samplesDbfs($samples);
+        }
+        $n = count($db);
+
+        // First loud run [a, b).
+        $a = 0;
+        while ($a < $n && $db[$a] <= $floorDb) {
+            $a++;
+        }
+        $b = $a;
+        while ($b < $n && $db[$b] > $floorDb) {
+            $b++;
+        }
+        if ($a >= $n || ($b - $a) * $windowSec > $blipMaxSec) {
+            return null; // silent opening, or a run too long to be a blip
+        }
+
+        // The quiet gap [b, c) behind it, and whatever sounds next.
+        $c = $b;
+        while ($c < $n && $db[$c] <= $floorDb) {
+            $c++;
+        }
+        if ($c >= $n || ($c - $b) * $windowSec < $gapMinSec) {
+            return null; // nothing follows, or it runs into the next sound — part of a word
+        }
+
+        $blipPeak = max(array_slice($db, $a, $b - $a));
+        $speechPeak = max(array_slice($db, $c));
+        if (($speechPeak - $blipPeak) < $underDb) {
+            return null; // as loud as the speech — a real (short) first word
+        }
+
+        // Start mid-gap: clear of the blip's decay, and the head silence trim
+        // then closes the rest of the gap up to the word's onset.
+        return ($b + $c) / 2 * $windowSec;
     }
 
     /**

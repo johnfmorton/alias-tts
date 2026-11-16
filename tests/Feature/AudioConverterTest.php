@@ -520,6 +520,60 @@ class AudioConverterTest extends TestCase
         $this->assertGreaterThan(2.3, $seconds, 'A stressed unvoiced coda must not be clipped on a pause-heavy chunk.');
     }
 
+    public function test_leading_blip_before_the_first_word_is_removed(): void
+    {
+        // Regression for the stray "s" ("s Here's why I liked it for this."): the
+        // model opened the take with ~40ms of faint hiss, then ~200ms of silence,
+        // then the first word. silenceremove stops at the first non-silent audio —
+        // the blip — so the blip AND the pause behind it survived the head trim.
+        // Layout: 20ms silence, a 40ms faint noise blip (~-31 dB), 200ms silence,
+        // then 1.0s of speech-level audio.
+        $converter = new AudioConverter(config('tts.ffmpeg_path', 'ffmpeg'));
+        $chunk = $this->wrapWav(
+            $this->rawTone(0.02, 0, 0.0)
+            .$this->noiseWav(0.04, 1600)        // the blip
+            .$this->rawTone(0.2, 0, 0.0)        // quiet gap
+            .$this->noiseWav(1.0, 14000)        // speech
+        );
+
+        [$out] = $converter->concatenate([$chunk], 'wav', 'wav', []);
+        $seconds = $this->wavDataBytes($out) / (44100 * 2);
+
+        // Just the speech (~1.0s + the trim's 30ms lead-in). With the blip kept
+        // the chunk ran ~1.24s.
+        $this->assertGreaterThan(0.95, $seconds, 'The speech itself must survive.');
+        $this->assertLessThan(1.1, $seconds, 'The leading blip and the gap behind it must be cut.');
+
+        config(['tts.chunk_head_blip_enabled' => false]);
+        [$kept] = $converter->concatenate([$chunk], 'wav', 'wav', []);
+        $this->assertGreaterThan(1.2, $this->wavDataBytes($kept) / (44100 * 2), 'Disabled, the blip stays (proves the detector is what removes it).');
+    }
+
+    public function test_short_first_word_before_a_pause_is_not_taken_for_a_blip(): void
+    {
+        // The three gates must ALL hold. A short opening sound that is as LOUD as
+        // the speech (a real one-syllable first word before a pause), or one that
+        // runs into the next sound within a stop-closure's worth of quiet, is a
+        // word — neither may be cut.
+        $converter = new AudioConverter(config('tts.ffmpeg_path', 'ffmpeg'));
+
+        $loudWord = $this->wrapWav(
+            $this->noiseWav(0.08, 14000)        // short but speech-level
+            .$this->rawTone(0.2, 0, 0.0)
+            .$this->noiseWav(1.0, 14000)
+        );
+        [$out] = $converter->concatenate([$loudWord], 'wav', 'wav', []);
+        $this->assertGreaterThan(1.25, $this->wavDataBytes($out) / (44100 * 2), 'A speech-level short first word must be kept.');
+
+        $closure = $this->wrapWav(
+            $this->noiseWav(0.04, 1600)         // faint, but only a 70ms closure behind it
+            .$this->rawTone(0.07, 0, 0.0)
+            .$this->noiseWav(1.0, 14000)
+        );
+        [$out] = $converter->concatenate([$closure], 'wav', 'wav', []);
+        $this->assertGreaterThan(1.08, $this->wavDataBytes($out) / (44100 * 2), 'A faint onset that runs into the word must be kept.');
+    }
+
     public function test_voicing_disabled_leaves_the_unvoiced_tail_in_place(): void
     {
         // Turning the voicing refinement off proves it is what removes the tail:
