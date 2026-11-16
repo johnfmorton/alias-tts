@@ -4,6 +4,17 @@ All notable changes to this project are documented in this file. The format is
 based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this
 project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.2.1] - 2026-11-16
+
+### Security
+- **Dependency updates clear eight advisories published in November.** Bumped
+  laravel/framework 13.39.0 → 13.42.0 (task output injection in the Concurrency
+  process driver) and symfony/http-foundation, http-kernel, routing and
+  filesystem 7.4.22 → 7.4.23 (trusted-proxy address spoofing, client-chosen
+  hosts in generated URLs, path-rule and host-placeholder bypasses, and a path
+  escape in filesystem). None is rated high or critical. All are minor or patch
+  bumps within the existing constraints; no application code changed.
+
 ## [1.2.0] - 2026-11-16
 
 ### Added
