@@ -141,8 +141,11 @@ relationship** does separate them: a real coda is energy tapering off the end of
 a word, so it sits at or below the speech body's level, whereas a real
 hiss/swoosh tail is *louder* (the corpus swoosh measured ~+9 dB over speech).
 The voicing cut therefore only fires when the trailing run's peak window is at
-least `chunk_tail_voicing_over_speech_db` (6 dB) **louder** than the speech
-body's RMS — the same over-speech discriminator the ASR `TAILNOISE` signal uses.
+least `chunk_tail_voicing_over_speech_db` (6 dB) **louder** than the loudest
+speech window before it — the same over-speech discriminator the ASR `TAILNOISE`
+signal uses. The reference is the speech **peak** window, not the span's mean
+RMS: pauses dilute the mean, so a stressed word-final cluster ("…moving fast.")
+measured 6 dB "over speech" and lost its /t/ at the seam.
 Without this gate the path clipped the last word off otherwise-perfect clips.
 
 This **combines** with the ZCR/tonal cut above (the detector takes the *earlier* of
@@ -178,7 +181,7 @@ periodic too, so neither path catches them — that's what the ASR round-trip in
 | `chunk_tail_voicing_f0_max_hz` | `TTS_CHUNK_TAIL_VOICING_F0_MAX_HZ` | `600` | high end of the pitch search |
 | `chunk_tail_unvoiced_min_ms` | `TTS_CHUNK_TAIL_UNVOICED_MIN_MS` | `400` | only cut when the trailing unvoiced run is ≥ this (`0` disables the voicing path) |
 | `chunk_tail_fricative_allowance_ms` | `TTS_CHUNK_TAIL_FRICATIVE_ALLOWANCE_MS` | `250` | keep this much unvoiced audio after the last voiced window (protects word-final fricatives) |
-| `chunk_tail_voicing_over_speech_db` | `TTS_CHUNK_TAIL_VOICING_OVER_SPEECH_DB` | `6.0` | the voicing cut fires only when the trailing run peaks ≥ this much LOUDER than the speech body's RMS (protects long word-final unvoiced codas) |
+| `chunk_tail_voicing_over_speech_db` | `TTS_CHUNK_TAIL_VOICING_OVER_SPEECH_DB` | `6.0` | the voicing cut fires only when the trailing run peaks ≥ this much LOUDER than the loudest speech window (protects long word-final unvoiced codas) |
 
 **Tuning hints.** If a drone still survives, lower `chunk_tail_min_artifact_ms` or
 raise `chunk_tail_zcr_min_hz`. If a real, sustained trailing vowel gets clipped,

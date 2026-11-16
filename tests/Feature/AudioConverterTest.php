@@ -490,6 +490,36 @@ class AudioConverterTest extends TestCase
         $this->assertGreaterThan(1.7, $seconds, 'A coda-level unvoiced tail must not be cut.');
     }
 
+    public function test_voicing_keeps_a_stressed_unvoiced_coda_on_a_pause_heavy_chunk(): void
+    {
+        // Regression for the clipped "fast" ("...brand new and moving fast." heard
+        // as "fass" at the seam): the voicing cut's over-speech gate compared the
+        // trailing unvoiced run to the speech span's MEAN RMS, which pauses and
+        // quiet phones dilute. A stressed word-final /st/ (-14.5 dB: within 2 dB
+        // of the chunk's loudest speech window, but 6+ dB over the diluted mean)
+        // read as an appended hiss and the cut landed between the /s/ and the /t/
+        // burst. The reference must be the speech PEAK window, as in the coda fold.
+        // Layout: a short loud voiced phrase (~-10 dB), then pauses and much
+        // quieter voiced phrases (mean ~-19 dB), then an unvoiced coda at ~-12 dB —
+        // over the diluted mean +6 (the old cut) but under the peak (a word).
+        $converter = new AudioConverter(config('tts.ffmpeg_path', 'ffmpeg'));
+        $chunk = $this->wrapWav(
+            $this->rawTone(0.2, 14000, 150.0)   // loud voiced phrase (the speech peak)
+            .$this->rawTone(0.35, 0, 0.0)       // pause (dilutes the mean)
+            .$this->rawTone(0.45, 3000, 150.0)  // quieter voiced phrase
+            .$this->rawTone(0.35, 0, 0.0)       // pause
+            .$this->rawTone(0.45, 3000, 150.0)  // quieter voiced phrase
+            .$this->noiseWav(0.6, 14000)        // stressed unvoiced word-final coda
+        );
+
+        [$out] = $converter->concatenate([$chunk], 'wav', 'wav', []);
+        $seconds = $this->wavDataBytes($out) / (44100 * 2);
+
+        // Everything survives (~2.4s). The mean-referenced gate cut at the last
+        // voiced window + fricative allowance + guard (~2.11s).
+        $this->assertGreaterThan(2.3, $seconds, 'A stressed unvoiced coda must not be clipped on a pause-heavy chunk.');
+    }
+
     public function test_voicing_disabled_leaves_the_unvoiced_tail_in_place(): void
     {
         // Turning the voicing refinement off proves it is what removes the tail:

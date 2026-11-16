@@ -716,8 +716,8 @@ class AudioConverter
      * is the energy tapering off the end of a word, so its peak sits at or below
      * the speech body's level; an appended hiss/swoosh tail is LOUDER than speech.
      * So we only cut when the trailing run's peak window is at least over_speech_db
-     * louder than the speech-body RMS (the same over-speech discriminator the ASR
-     * TAILNOISE signal uses). Without that gate this path clipped the last word off
+     * louder than the loudest speech window (the same over-speech discriminator the
+     * ASR TAILNOISE signal uses; the peak, not the pause-diluted mean RMS). Without that gate this path clipped the last word off
      * otherwise-perfect single-chunk clips. When it does cut, it cuts back to the
      * last voiced window plus fricative_allowance_ms.
      *
@@ -765,13 +765,18 @@ class AudioConverter
 
         // Over-speech gate: only a tail LOUDER than the speech body is a hiss/swoosh
         // artifact. A genuine word-final unvoiced coda tapers off the word, so it
-        // sits at/below speech level — keep it. Speech body = RMS up to voicedEnd;
-        // tail = loudest window in the unvoiced run.
+        // sits at/below speech level — keep it. Speech reference = the LOUDEST
+        // window up to voicedEnd, not the span's mean RMS: the mean averages in
+        // every pause and quiet phone, so a stressed word-final cluster (a real
+        // "...moving fast." — /s/ at -14.5 dB against a -16 dB speech peak but a
+        // ~-21 dB mean) read as "louder than speech" and the cut landed between
+        // the /s/ and the /t/ burst. Same reference the coda fold uses
+        // ({@see voicedCodaEnd}). Tail = loudest window in the unvoiced run.
         $totalSamples = intdiv(strlen($pcmWav) - $offset, 2);
         $windowSec = $win / $rate;
-        $speechDb = $this->spanRmsDbfs($pcmWav, $offset, $rate, $totalSamples, 0.0, $voicedEnd);
+        $speechDb = max(array_slice($dbWindows, 0, $lastVoiced + 1));
         $tailPeak = $this->windowPeakDbfs($pcmWav, $offset, $rate, $totalSamples, $voicedEnd, $totalSec, $windowSec);
-        if ($speechDb === null || $tailPeak === null || ($tailPeak - $speechDb) < $overSpeechDb) {
+        if (! is_finite($speechDb) || $tailPeak === null || ($tailPeak - $speechDb) < $overSpeechDb) {
             return null; // quiet/decaying word-final coda, not a loud tail — keep it
         }
 

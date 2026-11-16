@@ -400,9 +400,10 @@ return [
     // the energy tapering off the end of a word, so it is QUIETER than or about
     // equal to the speech body (measured rel +0.7..+4.3 dB), whereas a real hiss/
     // swoosh tail is LOUDER (rel ~+9 dB). So the voicing cut only fires when the
-    // trailing run's peak window is at least over_speech_db LOUDER than the speech
-    // body's RMS — the same over-speech discriminator the ASR TAILNOISE signal
-    // uses. Without it this path clipped the last word off otherwise-perfect clips.
+    // trailing run's peak window is at least over_speech_db LOUDER than the LOUDEST
+    // speech window before it (the peak, not the pause-diluted mean RMS, which got
+    // a stressed word-final "fast" cut to "fass") — the same over-speech
+    // discriminator the ASR TAILNOISE signal uses. Without it this path clipped the last word off otherwise-perfect clips.
     'chunk_tail_voicing_enabled' => (bool) env('TTS_CHUNK_TAIL_VOICING', true),
     'chunk_tail_voicing_acf_min' => (float) env('TTS_CHUNK_TAIL_VOICING_ACF_MIN', 0.5),
     'chunk_tail_voicing_f0_min_hz' => (float) env('TTS_CHUNK_TAIL_VOICING_F0_MIN_HZ', 75),
