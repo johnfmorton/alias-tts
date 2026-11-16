@@ -4,6 +4,56 @@ All notable changes to this project are documented in this file. The format is
 based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this
 project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.2.0] - 2026-11-16
+
+### Added
+- **Regenerate every edited chunk in one click.** Edits made while listening
+  through a long project pile up, and each one had to be regenerated from its
+  own card. The amber "unsaved edits" line in the project header now ends with a
+  **Regenerate all N** button whenever two or more chunks have pending edits. It
+  saves each chunk as shown and queues them all into one background run, in
+  page order; Build final returns when the run finishes. An edit long enough to
+  be split into new chunks still reloads the page, but only after every other
+  edit has been saved and queued.
+- **The health check now proves transcription works.** `tts:doctor` and the
+  Health page used to ping the transcript-QA sidecar's `/health`, which stays
+  green even when decoding itself is broken. The Transcript QA check now sends
+  a bundled test clip through `/transcribe` and scores it, failing with the
+  reason when it cannot.
+
+### Fixed
+- **A final word ending in a loud consonant cluster no longer loses its last
+  sound at the seam.** A chunk ending "…moving fast." was stitched as "fass".
+  The tail cleanup judges whether trailing noise is louder than the speech, and
+  it measured "the speech" as the chunk's average level, which pauses drag
+  down, so a stressed "st" read as an appended hiss and was cut before the "t".
+  It now compares against the loudest moment of speech instead.
+- **A stray "s" before the first word is removed.** The model sometimes opens a
+  take with a brief, faint hiss, a pause, and then the first word, heard as
+  "s Here's why…". The head trim stopped at that hiss and kept it. A chunk's
+  opening sound is now dropped when it is very short, followed by real silence,
+  and much quieter than the speech after it. This applies when the final is
+  built; the stored take itself is unchanged. Thresholds are the
+  `TTS_CHUNK_HEAD_BLIP*` settings, described in `docs/AUDIO-CLEANUP.md`.
+- **The Follow button shows whether the page is actually following.** Scrolling
+  by hand while the final plays suspends follow-along, but the button stayed
+  lit, so getting it back took two clicks (off, then on). The button now unlights
+  when following is suspended, and one click resumes.
+- **A brief Replicate gateway outage no longer fails the render.** HTTP 502, 503
+  and 504 from the proxy in front of Replicate are now retried with the same
+  budget and backoff as rate limits, instead of failing the chunk on the first
+  attempt.
+- **Transcript QA works again on a fresh install.** PyAV 19 removed an argument
+  faster-whisper still passes, so every transcription failed while the sidecar
+  reported healthy and renders went unscored. PyAV is now capped below 19.
+
+### Security
+- **Dependency updates clear the open advisories.** laravel/framework 13.16.1 →
+  13.39.0, league/commonmark 2.10.0 → 2.10.7, symfony/http-foundation and
+  symfony/mime 7.4.13 → 7.4.22, phpseclib 3.0.55 → 3.0.58, league/flysystem
+  3.34.0 → 3.36.0, plus the dev-only npm packages concurrently, shell-quote,
+  vite and source-map-js. No application code changed for these.
+
 ## [1.1.0] - 2026-09-02
 
 ### Changed
