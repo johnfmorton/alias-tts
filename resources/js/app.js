@@ -2070,6 +2070,7 @@ function initStudioProject() {
     // final is locked and per-chunk Regenerate queues into the run instead: the
     // direct endpoint 409s, since it would race the worker over the same chunks.
     let runActive = false;
+    let bulkRegenActive = false; // "Regenerate all N" is walking the edited cards
     const stopBtn = document.getElementById('project-generate-stop');
 
     // The pre-run time estimate lives in its own element and is refreshed
@@ -2186,8 +2187,19 @@ function initStudioProject() {
                     (links.length === 1 ? ' has' : ' have')
                         + ' unsaved edits — Regenerate or Revert before building the final.',
                 );
+                // One click for the whole set: edits made while listening
+                // through pile up, and hunting each card's own button is busywork.
+                if (links.length > 1) {
+                    const all = document.createElement('button');
+                    all.type = 'button';
+                    all.className = 'ml-2 rounded-md border border-amber-400/40 px-2 py-0.5 font-medium hover:bg-amber-400/10';
+                    all.textContent = `Regenerate all ${links.length}`;
+                    all.title = 'Saves each edited chunk as shown and queues them all to render in the background.';
+                    all.addEventListener('click', () => regenerateDirty(dirtyCards));
+                    dirtyHint.append(all);
+                }
             }
-            showEl(dirtyHint, blocked);
+            showEl(dirtyHint, blocked && ! bulkRegenActive);
         }
 
         // Build final: lit primary (pulsing) while a final is due; a quiet outline
@@ -2487,7 +2499,7 @@ function initStudioProject() {
         setDirty(card, false);
     };
 
-    async function patchChunk(card) {
+    async function patchChunk(card, { deferReload = false } = {}) {
         const textarea = card.querySelector('.chunk-text');
         const res = await fetch(card.dataset.patchUrl, {
             method: 'PATCH',
@@ -2499,6 +2511,9 @@ function initStudioProject() {
         // An over-long edit was split into new chunks — the list changed
         // structurally, so reload to re-render it. Returns true so callers stop.
         if (data.rechunked) {
+            // A bulk caller still has other cards' edits to save — it reloads
+            // itself once they're all safe (see regenerateDirty).
+            if (deferReload) return true;
             skipUnloadGuard = true; // the edit is saved server-side; reload is intentional
             window.location.reload();
             return true;
@@ -2558,7 +2573,10 @@ function initStudioProject() {
     // what's on screen. The server marks a generated chunk stale as it adopts
     // it and reports its place in line ('queued' + queue_label); followRun's
     // poll then delivers the take and keeps the line fresh as it moves.
-    async function queueChunkRegen(card) {
+    // Returns 'rechunked' when the text edit split the chunk (the caller must
+    // not go on treating this card as live), 'failed' on an error (already
+    // shown on the card), 'queued' otherwise.
+    async function queueChunkRegen(card, { deferReload = false } = {}) {
         ensureTune(card); // the payload below reads the tuning panel
         const btn = card.querySelector('.chunk-generate');
         startBusy(btn, 'Queueing…');
@@ -2566,7 +2584,7 @@ function initStudioProject() {
             const textarea = card.querySelector('.chunk-text');
             if (textarea.value !== textarea.dataset.original) {
                 // A re-chunking edit reloads the page — don't queue the orphan.
-                if (await patchChunk(card)) return;
+                if (await patchChunk(card, { deferReload })) return 'rechunked';
             }
             const res = await fetch(card.dataset.queueUrl, {
                 method: 'POST',
@@ -2590,14 +2608,55 @@ function initStudioProject() {
             // (followRun guards on its own timer); a run that already finished
             // inline (sync queue) settles on the first poll.
             if (data.job) followRun();
+            return 'queued';
         } catch (err) {
             chunkNotice(card, `✗ ${err.message}`, 'error');
+            return 'failed';
         } finally {
             endBusy(btn);
             // endBusy restores a possibly stale label and busy suppressed the
             // dirty styling — re-derive both from the panel's real state.
             setDirty(card, isDirty(card));
         }
+    }
+
+    // "Regenerate all N" on the unsaved-edits hint: the per-chunk Regenerate,
+    // once per edited card. The first click-equivalent starts a background run
+    // and the rest join its line, so nothing renders in this request and the
+    // page just follows the run. Sent last-card-first because each join lands
+    // right behind the clip in flight — the line then reads top to bottom.
+    // One at a time on purpose: every call takes the run row's lock, and a
+    // burst of parallel PATCH+POST pairs buys nothing on a handful of chunks.
+    async function regenerateDirty(cards) {
+        if (bulkRegenActive) return;
+        bulkRegenActive = true;
+        reflectActionState(); // the hint (and its button) step aside while this works
+        let queued = 0;
+        let failed = 0;
+        let rechunked = false;
+        try {
+            for (const card of [...cards].reverse()) {
+                setStatus(finalStatus, `Queueing edited clips… ${queued + failed + 1} of ${cards.length}`);
+                const result = await queueChunkRegen(card, { deferReload: true });
+                if (result === 'queued') queued++;
+                else if (result === 'failed') failed++;
+                else rechunked = true;
+            }
+        } finally {
+            bulkRegenActive = false;
+        }
+        if (rechunked && failed === 0) {
+            // An over-long edit was split into new chunks. Every other edit is
+            // saved and queued by now, so the reload costs nothing; the new
+            // pieces arrive stale and Generate remaining picks them up.
+            skipUnloadGuard = true;
+            window.location.reload();
+            return;
+        }
+        if (failed) {
+            setStatus(finalStatus, `✗ ${failed} of ${cards.length} edited clips couldn't be queued — see the note on each.`, 'error');
+        }
+        reflectActionState();
     }
 
     // One-shot accent glow (chunk-rendered-glow in app.css) on a card whose
