@@ -39,6 +39,10 @@ Schedule::command('voices:prune-clips')->dailyAt('03:20');
 // (queued/running) runs are never touched.
 Schedule::command('jobs:prune')->dailyAt('03:30');
 
+// Daily prune of the local prepared-chunk cache: files no build has used for
+// tts.prepared_cache.days (see PreparedChunkCache). Purely a cache — safe.
+Schedule::command('audio:prune-prepared')->dailyAt('03:50');
+
 // Daily prune of first-party analytics events past tts.analytics.retention_days
 // (page views dominate the row count). 0 days = keep everything forever.
 Schedule::command('analytics:prune')->dailyAt('03:40');

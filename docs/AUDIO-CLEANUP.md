@@ -220,6 +220,36 @@ long tails, so it cannot regress normal clips. If a re-swell blip still survives
 *raise* `chunk_tail_blip_max_ms`; if a genuine short final word that follows a long
 in-chunk pause gets clipped, *lower* it (or set `0` to disable the peel).
 
+## Prepared-chunk cache
+
+All of the cleanup above runs per chunk, and its result depends only on that
+chunk: its take's audio, the output sample rate, whether its tail is preserved,
+and the `chunk_*` settings. Neighbouring chunks only decide how long the silence
+between them is, and that silence is added when the final is joined. So the
+prepared (trimmed, cut, faded) WAV of each take is cached on local disk in
+`storage/app/tts-prepared` and reused by every build and seam preview
+(`App\Services\Audio\PreparedChunkCache`). A chunk is also prepared the moment
+it is generated, so the build that follows only joins and encodes.
+
+A cached build must be byte-for-byte what an uncached build produces
+(`PreparedChunkCacheTest` asserts this). Two rules keep that true:
+
+- **Changed a setting?** Nothing to do. Every `tts.chunk_trim_*`,
+  `chunk_fade_*`, `chunk_head_*` and `chunk_tail_*` value is part of the cache
+  key, along with the ffmpeg version. A new knob must use one of those prefixes;
+  a test fails otherwise.
+- **Changed the code** of `AudioConverter`? Also nothing to do: a hash of that
+  file is in the key, so every project prepares from scratch once after the
+  deploy. Bump `PreparedChunkCache::VERSION` only if prepare logic moves into
+  another file.
+
+Audio produced by a fallback (ffmpeg failed, or trimming removed everything) is
+stitched but never cached, so a transient failure heals on the next build.
+
+`TTS_PREPARED_CACHE=false` disables it; `php artisan audio:prune-prepared`
+(daily; `--all` empties it) removes files unused for `TTS_PREPARED_CACHE_DAYS`.
+The cache is safe to delete at any time.
+
 ## Scope / known limits
 
 The detector targets **low-ZCR (tonal/rumble)** tails, the **decay-then-blip**

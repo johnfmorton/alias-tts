@@ -4,6 +4,36 @@ All notable changes to this project are documented in this file. The format is
 based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this
 project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+- **The final rebuilds itself after a fix.** When a background run finishes
+  cleanly (a single Regenerate, or Generate remaining) and every included chunk
+  is up to date, the final is rebuilt straight away and returns to the main player; no
+  Build final click. It never starts playing on its own. A run with failed
+  chunks, or one you stopped, leaves the final alone. A Regenerate clicked while
+  that build is still waiting for a worker replaces it instead of being refused.
+  `TTS_AUTO_BUILD_FINAL=false` restores manual-only builds.
+- **Hear a chunk in context.** Each chunk card has a new button beside its play
+  control that plays the previous chunk, this one and the next, stitched with
+  the same trimming and pauses as the final, so a fix can be judged where it
+  sits without waiting for a build.
+
+### Changed
+- **Rebuilding a large project no longer redoes every chunk.** Trimming and
+  cleaning each chunk was about 80% of a build and was repeated for all chunks
+  on every build, even when one word had changed. Each chunk's prepared audio is
+  now kept in a local cache (`storage/app/tts-prepared`) and reused, and it is
+  prepared as soon as the chunk is generated. On a 96-chunk project a rebuild
+  dropped from 12.7s to 2.5s locally, and a warm build no longer reads chunk
+  audio from storage (takes recorded before audio hashes existed are still read
+  once per build to identify them). A cached build is byte-for-byte identical to an uncached one:
+  the cache key covers the take's audio, the output sample rate, every trim and
+  cleanup setting, the ffmpeg build and the cleanup code itself. `audio:prune-prepared` runs daily and
+  drops files unused for `TTS_PREPARED_CACHE_DAYS` (14);
+  `TTS_PREPARED_CACHE=false` turns the cache off.
+- Each build logs one `Project final built` line with per-phase timings.
+
 ## [1.2.1] - 2026-11-16
 
 ### Security

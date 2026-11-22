@@ -2,7 +2,10 @@
 
 namespace App\Jobs;
 
+use App\Enums\ChunkStatus;
 use App\Enums\ProjectJobStatus;
+use App\Enums\ProjectStatus;
+use App\Models\TtsProject;
 use App\Models\TtsProjectJob;
 use App\Services\ProjectService;
 use App\Services\Settings\SettingsManager;
@@ -12,6 +15,7 @@ use Illuminate\Foundation\Bus\Dispatchable;
 use Illuminate\Queue\InteractsWithQueue;
 use Illuminate\Queue\MaxAttemptsExceededException;
 use Illuminate\Queue\SerializesModels;
+use RuntimeException;
 use Throwable;
 
 /**
@@ -43,6 +47,95 @@ class StitchProjectJob implements ShouldQueue
         $this->timeout = (int) config('tts.async_timeout', 1800);
     }
 
+    /**
+     * Book a stitch run for a project: the row only — hand it to
+     * {@see start()} once any surrounding transaction has committed.
+     * $chunkIds is the finished generate run's line when the stitch is its
+     * automatic follow-up (empty for a manual "Build final"): the status poll
+     * serves those chunks' fresh takes even though the stitch is now the
+     * latest run, so a page that missed the generate run's last payload still
+     * lands them on their cards.
+     *
+     * @param  array<int, string>  $chunkIds
+     */
+    public static function book(TtsProject $project, ?int $createdById, array $chunkIds = []): TtsProjectJob
+    {
+        return TtsProjectJob::create([
+            'tts_project_id' => $project->id,
+            'user_id' => $project->user_id,
+            'created_by_id' => $createdById,
+            'type' => TtsProjectJob::TYPE_STITCH,
+            'chunk_ids' => array_values($chunkIds),
+            'chunks_total' => $project->chunks()->where('skipped', false)->count(),
+        ]);
+    }
+
+    /**
+     * Queue the worker for a booked stitch. Interactive lane, like single-chunk
+     * Regenerate: someone is waiting at the page for the final, so it may jump
+     * bulk runs and API speech jobs. Dispatched as an instance so the queue is
+     * pinned before dispatch() fires.
+     */
+    public static function start(TtsProjectJob $run): void
+    {
+        $stitch = new self($run->id);
+        if ($queue = config('tts.generation.interactive_queue')) {
+            $stitch->onQueue($queue);
+        }
+        dispatch($stitch);
+    }
+
+    /**
+     * Auto-build: book the stitch that follows a generate run which just
+     * completed, or null when the final should not (or cannot) be rebuilt.
+     * MUST be called inside the transaction that holds the run row's lock and
+     * flips it to Completed — that is what makes the follow-up exactly-once
+     * when several workers settle together, and leaves no instant in which
+     * the project has no active run for a competing request to slip into.
+     * The caller {@see start()}s the returned row after the commit.
+     *
+     * Only a clean run qualifies: a run with failed chunks leaves the user
+     * something to retry first, and a cancelled run was told to stop. The
+     * build runs as the same user the generate run ran as, so the seam gaps
+     * resolve from the same per-user settings.
+     */
+    public static function bookAfter(TtsProjectJob $run): ?TtsProjectJob
+    {
+        if (! config('tts.auto_build_final', true)
+            || $run->type !== TtsProjectJob::TYPE_GENERATE
+            || $run->status !== ProjectJobStatus::Completed
+            || $run->chunks_failed > 0) {
+            return null;
+        }
+
+        $project = $run->project;
+        // Ready = the final already reflects every chunk (the run found
+        // nothing to render); rebuilding would only clear a seal for nothing.
+        if (! $project || $project->status === ProjectStatus::Ready) {
+            return null;
+        }
+
+        // Stricter than a manual Build final, which only needs every chunk to
+        // HAVE audio: a Stale or Failed chunk still holds its previous take,
+        // and building that in unasked would present outdated audio as the
+        // current final. Auto-build only when every included chunk is current.
+        $outstanding = $project->chunks()
+            ->where('skipped', false)
+            ->where('status', '!=', ChunkStatus::Completed->value)
+            ->exists();
+        if ($outstanding) {
+            return null;
+        }
+
+        try {
+            app(ProjectService::class)->assertRebuildable($project);
+        } catch (RuntimeException) {
+            return null; // nothing buildable (no chunks, or all skipped)
+        }
+
+        return self::book($project, $run->created_by_id ?? $run->user_id, (array) $run->chunk_ids);
+    }
+
     public function handle(ProjectService $service): void
     {
         $job = TtsProjectJob::find($this->jobId);
@@ -59,7 +152,17 @@ class StitchProjectJob implements ShouldQueue
             return;
         }
 
-        $job->update(['status' => ProjectJobStatus::Running, 'started_at' => now()]);
+        // Claim the run with a conditional update: a Regenerate click may
+        // supersede a still-queued stitch (StudioProjectController::queueChunk
+        // flips it to Cancelled the same way), and exactly one side must win.
+        $claimed = TtsProjectJob::query()
+            ->whereKey($job->id)
+            ->where('status', ProjectJobStatus::Queued->value)
+            ->update(['status' => ProjectJobStatus::Running->value, 'started_at' => now()]);
+        if ($claimed === 0) {
+            return;
+        }
+        $job->refresh();
 
         $project = $job->project;
         if (! $project) {
@@ -74,7 +177,14 @@ class StitchProjectJob implements ShouldQueue
         app(SettingsManager::class)->applyForUser($job->created_by_id ?? $job->user_id);
 
         try {
-            $service->rebuild($project);
+            // Climb the counter as chunks are readied (a cold build prepares
+            // each one; a warm one flies through), written at most every few
+            // chunks and held one short of full until the final has landed.
+            $service->rebuild($project, function (int $done) use ($job): void {
+                if ($done % 8 === 0 && $done < $job->chunks_total) {
+                    $job->update(['chunks_done' => $done]);
+                }
+            });
         } catch (Throwable $e) {
             report($e);
             $this->finish($job, ProjectJobStatus::Failed, $e->getMessage());

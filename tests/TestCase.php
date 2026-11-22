@@ -23,5 +23,11 @@ abstract class TestCase extends BaseTestCase
         // generation tests don't incur a project side-effect; ApiProjectRecoveryTest
         // sets this config explicitly per case to exercise each mode.
         config(['tts.api_project_mode' => 'never']);
+
+        // The prepared-chunk cache writes to local disk and would both leak
+        // between tests and route project builds around the AudioConverter
+        // doubles that override concatenate(). Off by default; the cache's own
+        // tests turn it on against a per-test temp directory.
+        config(['tts.prepared_cache.enabled' => false]);
     }
 }

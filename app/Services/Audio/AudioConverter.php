@@ -2,6 +2,7 @@
 
 namespace App\Services\Audio;
 
+use App\Services\ProjectService;
 use RuntimeException;
 use Symfony\Component\Process\Process;
 use Tests\Feature\AudioConverterTest;
@@ -89,22 +90,105 @@ class AudioConverter
      */
     public function concatenate(array $inputChunks, string $outputFormat, string $inputContainer = 'wav', array $seamGapsMs = [], array $preserveTails = [], array $metadata = []): array
     {
-        $inputChunks = array_values($inputChunks);
+        $this->timings = [];
+        $files = [];
+
+        try {
+            foreach (array_values($inputChunks) as $i => $bytes) {
+                [$prepared] = $this->prepareChunk($bytes, $outputFormat, (bool) ($preserveTails[$i] ?? false));
+                $chunkFile = tempnam(sys_get_temp_dir(), 'tts_cat_');
+                file_put_contents($chunkFile, $prepared);
+                $files[] = $chunkFile;
+            }
+
+            return $this->concatenatePrepared($files, $outputFormat, $seamGapsMs, $metadata);
+        } finally {
+            foreach ($files as $file) {
+                @unlink($file);
+            }
+        }
+    }
+
+    /**
+     * The per-chunk half of {@see concatenate()}: edge-trim, artifact-cut and
+     * fade ONE chunk into mono pcm_s16le WAV at the output format's rate. The
+     * result depends only on this chunk's bytes, the output rate, $preserveTail
+     * and the tts.chunk_* trim config — never on its neighbours — which is what
+     * lets {@see PreparedChunkCache} reuse it across builds byte-for-byte.
+     *
+     * The second element is false when a fallback produced the audio (the
+     * decode or trim ffmpeg call failed, or trimming ate the whole chunk). That
+     * audio is still safe to stitch — it is what a build has always used in
+     * that case — but it must not be cached: a transient failure would
+     * otherwise be pinned instead of healing on the next build.
+     *
+     * @return array{0: string, 1: bool} [prepared WAV bytes, took the normal path]
+     */
+    public function prepareChunk(string $bytes, string $outputFormat, bool $preserveTail = false): array
+    {
         $spec = $this->parseFormat($outputFormat);
 
-        $threshold = (string) config('tts.chunk_trim_threshold', '-40dB');
-        $fadeMs = max(0, (int) config('tts.chunk_fade_ms', 8));
-        $tailWindowMs = max(0, (int) config('tts.chunk_trim_tail_window_ms', 300));
+        $prepared = $this->trimChunk(
+            $bytes,
+            $spec['rate'],
+            (string) config('tts.chunk_trim_threshold', '-40dB'),
+            max(0, (int) config('tts.chunk_fade_ms', 8)),
+            max(0, (int) config('tts.chunk_trim_tail_window_ms', 300)),
+            $preserveTail,
+        );
 
-        if (count($inputChunks) === 1) {
-            // Trim the single chunk's edges too (drops the trailing artifact),
-            // then encode to the requested format.
-            $trimmed = $this->trimChunk($inputChunks[0], $spec['rate'], $threshold, $fadeMs, $tailWindowMs, (bool) ($preserveTails[0] ?? false));
+        return [$prepared, $this->trimClean];
+    }
+
+    /** The sample rate {@see prepareChunk()} renders to for an output format. */
+    public function sampleRate(string $outputFormat): int
+    {
+        return $this->parseFormat($outputFormat)['rate'];
+    }
+
+    /**
+     * First line of `ffmpeg -version` (memoized per process) — part of the
+     * prepared-chunk cache key, so audio prepared by one ffmpeg build is never
+     * mixed into a final assembled by another.
+     */
+    public function ffmpegVersion(): string
+    {
+        if ($this->ffmpegVersion === null) {
+            $process = new Process([$this->ffmpegPath, '-version']);
+            $process->setTimeout(15);
+            $process->run();
+            $this->ffmpegVersion = $process->isSuccessful()
+                ? trim(strtok($process->getOutput(), "\n") ?: 'unknown')
+                : 'unknown';
+        }
+
+        return $this->ffmpegVersion;
+    }
+
+    /**
+     * The joining half of {@see concatenate()}: splice already-prepared chunk
+     * WAVs ({@see prepareChunk()} output, given as file paths) with the seam
+     * silences and encode ONCE to the output format. The caller owns the input
+     * files; nothing here modifies or deletes them.
+     *
+     * @param  array<int, string>  $preparedFiles  paths to prepared chunk WAVs, in order
+     * @param  array<int, int>  $seamGapsMs  silence (ms) after chunk i; the last entry is ignored
+     * @param  array<string, string>  $metadata  ID3 tags to stamp on the output (MP3 only)
+     * @return array{0: string, 1: string, 2: string, 3: array<int, int|null>} [bytes, mimeType, extension, per-chunk post-trim ms]
+     */
+    public function concatenatePrepared(array $preparedFiles, string $outputFormat, array $seamGapsMs = [], array $metadata = []): array
+    {
+        $preparedFiles = array_values($preparedFiles);
+        $spec = $this->parseFormat($outputFormat);
+
+        if (count($preparedFiles) === 1) {
+            // A single chunk has no seams: encode its prepared audio directly.
+            $trimmed = (string) file_get_contents($preparedFiles[0]);
 
             return [...$this->convert($trimmed, $outputFormat, 'wav', $metadata), [$this->trimmedMs($trimmed)]];
         }
 
-        $files = [];          // every temp file to clean up
+        $files = [];          // every temp file to clean up (never the inputs)
         $silenceCache = [];    // gap ms => silence temp file (reused across seams)
         $entries = [];         // concat demuxer list lines
         $chunkMs = [];         // per-chunk post-trim duration — the final's true timeline
@@ -114,14 +198,10 @@ class AudioConverter
         $files[] = $list;
 
         try {
-            $last = count($inputChunks) - 1;
+            $last = count($preparedFiles) - 1;
 
-            foreach ($inputChunks as $i => $bytes) {
-                $trimmed = $this->trimChunk($bytes, $spec['rate'], $threshold, $fadeMs, $tailWindowMs, (bool) ($preserveTails[$i] ?? false));
-                $chunkMs[] = $this->trimmedMs($trimmed);
-                $chunkFile = tempnam(sys_get_temp_dir(), 'tts_cat_');
-                file_put_contents($chunkFile, $trimmed);
-                $files[] = $chunkFile;
+            foreach ($preparedFiles as $i => $chunkFile) {
+                $chunkMs[] = $this->wavFileMs($chunkFile);
                 $entries[] = "file '".$chunkFile."'";
 
                 if ($i >= $last) {
@@ -135,7 +215,9 @@ class AudioConverter
 
                 if (! isset($silenceCache[$gapMs])) {
                     $silenceFile = tempnam(sys_get_temp_dir(), 'tts_sil_');
+                    $t = hrtime(true);
                     file_put_contents($silenceFile, $this->silenceWav($gapMs, $spec['rate']));
+                    $this->clock('silence', $t);
                     $files[] = $silenceFile;
                     $silenceCache[$gapMs] = $silenceFile;
                 }
@@ -157,7 +239,9 @@ class AudioConverter
 
             $process = new Process($args);
             $process->setTimeout(300);
+            $t = hrtime(true);
             $process->run();
+            $this->clock('join', $t);
 
             if (! $process->isSuccessful()) {
                 throw new RuntimeException('ffmpeg concatenation failed: '.trim($process->getErrorOutput()));
@@ -175,6 +259,47 @@ class AudioConverter
             }
             @unlink($outFile);
         }
+    }
+
+    /** Post-trim milliseconds of a prepared chunk file ({@see trimmedMs()}). */
+    private function wavFileMs(string $file): ?int
+    {
+        $bytes = @file_get_contents($file);
+
+        return $bytes === false ? null : $this->trimmedMs($bytes);
+    }
+
+    /** @var array<string, float> per-phase ms of the current/last concatenate() */
+    private array $timings = [];
+
+    /** Whether the last trimChunk() ran its normal path (no fallback audio). */
+    private bool $trimClean = true;
+
+    private ?string $ffmpegVersion = null;
+
+    /**
+     * Wall-clock milliseconds the most recent concatenate() spent per phase
+     * (decode / detect / trim are summed over every chunk). Diagnostic only —
+     * {@see ProjectService::rebuild()} logs it so a slow build
+     * can be attributed to a phase instead of guessed at.
+     *
+     * @return array<string, int>
+     */
+    public function lastTimings(): array
+    {
+        return array_map(fn (float $ms): int => (int) round($ms), $this->timings);
+    }
+
+    /** Start a fresh timing window (concatenate() does this itself). */
+    public function resetTimings(): void
+    {
+        $this->timings = [];
+    }
+
+    /** Add the time elapsed since $startedNs (an hrtime(true) reading) to a phase. */
+    private function clock(string $phase, int $startedNs): void
+    {
+        $this->timings[$phase] = ($this->timings[$phase] ?? 0.0) + (hrtime(true) - $startedNs) / 1e6;
     }
 
     /**
@@ -351,13 +476,20 @@ class AudioConverter
 
         // Canonicalize to PCM first so the detector and the trim graph share one
         // timeline (the detected cut time is measured on exactly these samples).
-        $pcm = $this->runFilterToWav($bytes, $rate, null) ?? $bytes;
+        $t = hrtime(true);
+        $decoded = $this->runFilterToWav($bytes, $rate, null);
+        $this->clock('decode', $t);
+        // Fallback audio (a failed decode here, or the canonicalize path at the
+        // end) is stitched but never cached — see prepareChunk().
+        $this->trimClean = $decoded !== null;
+        $pcm = $decoded ?? $bytes;
 
         // A tail-preserved chunk ends in WANTED non-speech (a rendered sound
         // tag) — loud audio after the last word is precisely the signature the
         // artifact detector hunts, so it MUST sit this one out. The bounded
         // sub-threshold silence trim below is still safe (it only eats the
         // quiet decay), so seams stay clean.
+        $t = hrtime(true);
         $cut = ! $preserveTail && (bool) config('tts.chunk_tail_artifact_enabled', true)
             ? $this->detectLongTailArtifact($pcm, $rate)
             : null;
@@ -368,9 +500,11 @@ class AudioConverter
         $head = (bool) config('tts.chunk_head_blip_enabled', true)
             ? $this->detectLeadingBlip($pcm, $rate)
             : null;
+        $this->clock('detect', $t);
         $headTrim = $head === null ? '' : 'atrim=start='.number_format($head, 3, '.', '').',';
         $headReset = $head === null ? '' : 'asetpts=PTS-STARTPTS,';
 
+        $t = hrtime(true);
         if ($cut !== null) {
             // Long tonal tail: hard-cut at the speech end, then the usual head
             // (leading-silence) trim and click-free edge fades. atrim runs first,
@@ -398,10 +532,13 @@ class AudioConverter
             $trimmed = $this->runGraphToWav($pcm, $rate, $graph);
         }
 
+        $this->clock('trim', $t);
+
         // A header-only / vanishingly short result means trimming ate the whole
         // chunk (e.g. a fully-silent chunk); canonicalize the original instead so
         // it isn't dropped.
         if ($trimmed === null || strlen($trimmed) < 1000) {
+            $this->trimClean = false;
             $canon = $this->runFilterToWav($bytes, $rate, null);
 
             return ($canon === null || $canon === '') ? $bytes : $canon;

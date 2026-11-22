@@ -562,6 +562,13 @@ return [
     'jobs_keep_days' => (int) env('TTS_JOBS_KEEP_DAYS', 7),
     'jobs_keep_per_user' => (int) env('TTS_JOBS_KEEP_PER_USER', 100),
 
+    // Auto-build: when a background generate run (Generate remaining, or a
+    // single Regenerate) finishes with no failures and every chunk has audio,
+    // the final is rebuilt straight away instead of waiting for a "Build
+    // final" click. Cheap because of the prepared-chunk cache below. false
+    // restores the manual-only behaviour.
+    'auto_build_final' => (bool) env('TTS_AUTO_BUILD_FINAL', true),
+
     /*
     |--------------------------------------------------------------------------
     | Storage
@@ -683,6 +690,27 @@ return [
     |
     */
     'async_timeout' => (int) env('TTS_ASYNC_TIMEOUT', 1800),
+
+    /*
+    |--------------------------------------------------------------------------
+    | Prepared-chunk cache
+    |--------------------------------------------------------------------------
+    |
+    | Building a project's final trims and cleans every chunk, then joins them.
+    | The per-chunk half is most of the build and depends only on the chunk, so
+    | its output is kept on LOCAL disk and reused: a rebuild after fixing one
+    | chunk prepares one chunk instead of all of them. Hits are byte-identical
+    | to preparing from scratch (see PreparedChunkCache). Purely a cache — safe
+    | to delete; `audio:prune-prepared` drops files unused for `days` days.
+    | Set TTS_PREPARED_CACHE=false to fall back to preparing every chunk on
+    | every build.
+    |
+    */
+    'prepared_cache' => [
+        'enabled' => (bool) env('TTS_PREPARED_CACHE', true),
+        'path' => env('TTS_PREPARED_CACHE_PATH') ?: storage_path('app/tts-prepared'),
+        'days' => (int) env('TTS_PREPARED_CACHE_DAYS', 14),
+    ],
 
     /*
     |--------------------------------------------------------------------------

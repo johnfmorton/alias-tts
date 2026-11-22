@@ -136,7 +136,7 @@ class TtsProjectJob extends Model
         return self::query()
             ->where('tts_project_id', $projectId)
             ->active()
-            ->latest('created_at')
+            ->latest('created_at')->orderByDesc('id')
             ->first();
     }
 
@@ -167,8 +167,10 @@ class TtsProjectJob extends Model
                 // A single-chunk run (per-chunk Regenerate): "All 1 chunk(s)
                 // generated" reads as project-wide on a 30-chunk project — name
                 // the one clip that landed instead.
-                $this->status === ProjectJobStatus::Completed && $this->chunks_total === 1 => ['✓ '.$this->singleClipLabel().' generated — build the final to include it.', 'ok'],
-                $this->status === ProjectJobStatus::Completed => [sprintf('✓ All %d chunk(s) generated — build the final to stitch.', $this->chunks_done), 'ok'],
+                // With auto-build on, the final rebuilds by itself after a clean
+                // run, so there is nothing left to tell the user to do.
+                $this->status === ProjectJobStatus::Completed && $this->chunks_total === 1 => ['✓ '.$this->singleClipLabel().' generated'.(config('tts.auto_build_final', true) ? '.' : ' — build the final to include it.'), 'ok'],
+                $this->status === ProjectJobStatus::Completed => [sprintf('✓ All %d chunk(s) generated', $this->chunks_done).(config('tts.auto_build_final', true) ? '.' : ' — build the final to stitch.'), 'ok'],
                 $this->status === ProjectJobStatus::Failed => ['✗ '.($this->error ?: 'The run failed.'), 'error'],
                 default => [sprintf('Stopped — %d of %d generated.', $this->chunks_done, $this->chunks_total), null],
             });

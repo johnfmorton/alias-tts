@@ -1912,6 +1912,7 @@ function initStudioProject() {
             t.closest('#project-duplicate-form') || // copies; the original is untouched
             t.closest('.seam-preview') ||           // renders a temporary preview only
             t.closest('.chunk-play-final') ||       // seeks the final player (playback only)
+            t.closest('.chunk-play-context') ||     // plays a temporary in-context preview only
             t.closest('#follow-toggle') ||          // follow-playback preference (this viewer's, not the project's)
             t.closest('#follow-resume') ||          // re-centers the playing chunk (scroll only)
             t.closest('#dock-handle') ||            // mobile dock: expands the production sheet (read-only)
@@ -2707,9 +2708,28 @@ function initStudioProject() {
     async function pollRun() {
         try {
             const res = await fetch(generationStatusUrl, { headers: { 'Accept': 'application/json' } });
-            if (res.ok && applyRunState(await res.json())) {
-                endRun();
-                return;
+            if (res.ok) {
+                const data = await res.json();
+                const over = applyRunState(data);
+                // Auto-build: a clean run books a stitch the instant it
+                // completes, so the latest run is now that stitch (it carries
+                // the run's chunks — applyRunState just landed their takes).
+                // Hand over to the stitch follow; never autoplay, nobody
+                // clicked Build final.
+                if (data.job?.type === 'stitch') {
+                    endRun();
+                    if (data.job.active) {
+                        followStitch(false);
+                    } else {
+                        applyStitchResult(data.job, false);
+                        reflectActionState();
+                    }
+                    return;
+                }
+                if (over) {
+                    endRun();
+                    return;
+                }
             }
         } catch { /* transient — keep polling */ }
         runTimer = setTimeout(pollRun, RUN_POLL_MS);
@@ -2819,10 +2839,21 @@ function initStudioProject() {
                 const res = await fetch(generationStatusUrl, { headers: { 'Accept': 'application/json' } });
                 if (res.ok) {
                     const data = await res.json();
+                    // A Regenerate click superseded the queued stitch: the
+                    // latest run is a generate run again. Step aside for the
+                    // run follow — its auto-build brings the stitch back.
+                    if (data.job?.active && data.job.type !== 'stitch') {
+                        stitchTimer = null;
+                        endBusy(rebuildBtn);
+                        followRun();
+                        return;
+                    }
                     if (!data.job || !data.job.active) {
                         stitchTimer = null;
                         endBusy(rebuildBtn);
-                        applyStitchResult(data.job, autoplay);
+                        // Only a stitch settles the final; anything else that
+                        // is the latest run here means the stitch never ran.
+                        if (data.job?.type === 'stitch') applyStitchResult(data.job, autoplay);
                         reflectActionState();
                         return;
                     }
@@ -3257,6 +3288,105 @@ function initStudioProject() {
             label.textContent = restore;
         }
     }
+
+    // ---- Hear in context ----------------------------------------------------
+    // A card's context button plays previous + this + next stitched exactly as
+    // the final will join them (same trim, same seam pauses — the server runs
+    // the Preview-stitch code over three chunks), so a fix can be judged where
+    // it sits without waiting for a build. One shared, never-attached Audio
+    // serves every card: no per-card player markup on a 100-chunk page.
+    let contextAudio = null;
+    let contextBtn = null;
+    let contextUrl = null;
+
+    const setContextPlaying = (btn, playing) => {
+        btn.setAttribute('aria-pressed', playing ? 'true' : 'false');
+        btn.classList.toggle('text-cyan-200', playing);
+        btn.classList.toggle('border-cyan-400/40', playing);
+    };
+
+    const stopContext = () => {
+        if (contextAudio) contextAudio.pause();
+        if (contextBtn) setContextPlaying(contextBtn, false);
+        contextBtn = null;
+    };
+
+    // The nearest chunk in a direction that will actually reach the stitch.
+    const contextNeighbor = (card, step) => {
+        let el = card;
+        while ((el = step < 0 ? el.previousElementSibling : el.nextElementSibling)) {
+            if (el.classList.contains('studio-chunk') && !isChunkSkipped(el)) return el;
+        }
+        return null;
+    };
+
+    async function playContext(btn) {
+        const card = btn.closest('.studio-chunk');
+        if (!card || btn.dataset.busy) return;
+        if (contextBtn === btn && contextAudio && !contextAudio.paused) {
+            stopContext();
+            return;
+        }
+        stopContext();
+        if (isChunkSkipped(card)) {
+            chunkNotice(card, 'This chunk is skipped — include it to hear it in context.');
+            return;
+        }
+
+        // The server drops any chunk that has no audio yet, so a neighbor
+        // still waiting to render simply isn't in the preview.
+        const ids = [contextNeighbor(card, -1), card, contextNeighbor(card, 1)]
+            .filter(Boolean)
+            .map((c) => c.dataset.chunkId);
+
+        btn.dataset.busy = '1';
+        btn.classList.add('animate-pulse');
+        try {
+            const res = await fetch(previewUrl, {
+                method: 'POST',
+                headers: { 'X-CSRF-TOKEN': csrfToken(), 'Accept': 'audio/*', 'Content-Type': 'application/json' },
+                body: JSON.stringify({ chunks: ids }),
+            });
+            if (!res.ok) throw new Error(await errorMessage(res));
+            if (contextUrl) URL.revokeObjectURL(contextUrl);
+            contextUrl = URL.createObjectURL(await res.blob());
+            if (!contextAudio) {
+                contextAudio = new Audio();
+                const settle = () => { if (contextBtn) setContextPlaying(contextBtn, false); };
+                contextAudio.addEventListener('pause', settle);
+                contextAudio.addEventListener('ended', settle);
+            }
+            contextAudio.src = contextUrl;
+            contextBtn = btn;
+            setContextPlaying(btn, true);
+            await contextAudio.play();
+        } catch (err) {
+            setContextPlaying(btn, false);
+            chunkNotice(card, `✗ ${err.message}`, 'error');
+        } finally {
+            delete btn.dataset.busy;
+            btn.classList.remove('animate-pulse');
+        }
+    }
+
+    root.addEventListener('click', (e) => {
+        const btn = e.target instanceof Element ? e.target.closest('.chunk-play-context') : null;
+        if (btn && !btn.disabled) playContext(btn);
+    });
+
+    // One thing sounding at a time: any other player starting (the final, a
+    // chunk, a take, a seam preview) ends the context preview, and starting
+    // the preview pauses whatever else was playing.
+    document.addEventListener('play', (e) => {
+        if (e.target === contextAudio) return;
+        stopContext();
+    }, true);
+    const pauseOthersForContext = () => {
+        document.querySelectorAll('audio').forEach((a) => { if (!a.paused) a.pause(); });
+    };
+    root.addEventListener('click', (e) => {
+        if (e.target instanceof Element && e.target.closest('.chunk-play-context')) pauseOthersForContext();
+    }, true);
 
     root.querySelectorAll('.chunk-seam').forEach((seam) => {
         seam.querySelector('.seam-preview')?.addEventListener('click', () => previewSeam(seam));

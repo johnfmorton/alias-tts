@@ -213,12 +213,19 @@ class ConcurrentGenerationTest extends TestCase
             ->assertJsonPath('job.chunks_done', 2)
             ->assertJsonPath('job.chunks_failed', 0);
 
-        $run = TtsProjectJob::sole();
+        $run = TtsProjectJob::where('type', TtsProjectJob::TYPE_GENERATE)->sole();
         $this->assertSame(2, $run->chunks_claimed);
         $this->assertSame(
             [ChunkStatus::Completed, ChunkStatus::Completed],
             $project->chunks()->get()->pluck('status')->all(),
         );
+
+        // Auto-build: the worker that settled the run booked exactly one
+        // stitch (worker 2 found the run terminal and booked nothing), and on
+        // the sync queue it already built the final.
+        $stitch = TtsProjectJob::where('type', TtsProjectJob::TYPE_STITCH)->sole();
+        $this->assertSame(ProjectJobStatus::Completed, $stitch->status);
+        $this->assertNotNull($project->refresh()->final_audio_path);
     }
 
     public function test_a_worker_leaves_the_run_open_while_a_sibling_still_renders(): void

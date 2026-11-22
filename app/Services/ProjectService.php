@@ -18,6 +18,7 @@ use App\Services\Asr\AsrClient;
 use App\Services\Asr\ChunkQualityVerdict;
 use App\Services\Asr\ChunkRemediator;
 use App\Services\Audio\AudioConverter;
+use App\Services\Audio\PreparedChunkCache;
 use App\Services\Credit\CreditService;
 use App\Services\Pronunciation\PronunciationSubstituter;
 use App\Services\Tts\ChunkGaps;
@@ -62,6 +63,7 @@ class ProjectService
         private SpokenQuotes $quotes,
         private VoiceService $voices,
         private CreditService $credit,
+        private PreparedChunkCache $prepared,
     ) {}
 
     /**
@@ -664,6 +666,10 @@ class ProjectService
                 (int) round((microtime(true) - $start) * 1000),
             );
 
+            // After the timing sample, so the ETA model keeps measuring the
+            // render alone.
+            $this->prewarmPrepared($chunk, $bytes);
+
             // source=internal: a render can originate from the panel, a queued
             // run, or the API — the billing split lives in credit_transactions.
             AppEvent::record(AppEvent::CHUNK_GENERATED, $project->user_id, AppEvent::SOURCE_INTERNAL, [
@@ -1046,6 +1052,14 @@ class ProjectService
      * many are missing otherwise.
      */
     /**
+     * Per-phase wall-clock ms of the most recent concatenateChunks() call.
+     * Diagnostic only; rebuild() logs it.
+     *
+     * @var array<string, int>
+     */
+    public array $lastStitchTimings = [];
+
+    /**
      * The cheap half of {@see rebuild()}'s validation, for the request that
      * BOOKS an async stitch: the same refusals, as count queries, so the user
      * gets an instant 422 instead of a background run that fails a minute
@@ -1068,7 +1082,10 @@ class ProjectService
         }
     }
 
-    public function rebuild(TtsProject $project): TtsProject
+    /**
+     * @param  (callable(int): void)|null  $progress  called with the number of chunks readied so far
+     */
+    public function rebuild(TtsProject $project, ?callable $progress = null): TtsProject
     {
         // Eager-load each chunk's override voice so the final-file metadata can
         // enumerate the distinct voices without an N+1 (the project's own voice
@@ -1094,10 +1111,17 @@ class ProjectService
             $project->output_format,
             $seamGapsMs,
             $this->buildFinalMetadata($project, $included),
+            $progress,
         );
 
         $path = config('tts.storage_path').'/projects/'.$project->id.'/final.'.$ext;
+        $t = hrtime(true);
         Storage::disk($this->disk())->put($path, $bytes);
+
+        // One line per build, per phase (ms), so a slow build is attributable.
+        Log::info('Project final built', ['project_id' => $project->id]
+            + $this->lastStitchTimings
+            + ['upload' => (int) round((hrtime(true) - $t) / 1e6)]);
 
         // New bytes replace whatever was approved — drop the seal so it must be
         // re-approved deliberately. The project lands Ready + unsealed.
@@ -1252,14 +1276,21 @@ class ProjectService
      * @param  array<int, int>  $seamGapsMs
      * @return array{0: string, 1: string, 2: string, 3: array<int, int|null>} [bytes, mimeType, extension, per-chunk post-trim ms]
      */
-    private function concatenateChunks($chunks, string $outputFormat, array $seamGapsMs, array $metadata = []): array
+    private function concatenateChunks($chunks, string $outputFormat, array $seamGapsMs, array $metadata = [], ?callable $progress = null): array
     {
+        if ($this->prepared->enabled()) {
+            return $this->concatenateChunksCached($chunks, $outputFormat, $seamGapsMs, $metadata, $progress);
+        }
+
         $disk = Storage::disk($this->disk());
 
         $rawParts = [];
         $preserveTails = [];
+        $downloadMs = 0.0;
         foreach ($chunks as $chunk) {
+            $t = hrtime(true);
             $rawParts[] = $disk->get($chunk->audio_path);
+            $downloadMs += (hrtime(true) - $t) / 1e6;
             // A chunk whose effective voice renders sound tags AND whose text
             // ends in one keeps its tail — the artifact detectors would crop
             // the rendered laugh/sigh as junk.
@@ -1276,9 +1307,151 @@ class ProjectService
             $metadata,
         );
 
+        $this->lastStitchTimings = ['chunks' => count($rawParts), 'download' => (int) round($downloadMs)]
+            + $this->converter->lastTimings();
+
         // Tolerate a converter (test double, older subclass) that returns the
         // classic 3-tuple: no durations simply means no timeline.
         return [$result[0], $result[1], $result[2], $result[3] ?? []];
+    }
+
+    /**
+     * Whether a chunk keeps its tail at prepare time: its effective voice
+     * renders sound tags AND its text ends in one, so the artifact detectors
+     * (which would crop the rendered laugh/sigh as junk) sit it out.
+     */
+    private function preservesTail(TtsChunk $chunk, ?TtsProject $project = null): bool
+    {
+        return ModelCatalog::supportsTags(ModelCatalog::forVoice($chunk->voice ?? ($project ?? $chunk->project)->voice))
+            && ParalinguisticTags::endsWith($chunk->text);
+    }
+
+    /**
+     * concatenateChunks() through the {@see PreparedChunkCache}: same output,
+     * but a chunk whose prepared audio is already cached costs no storage read
+     * and no ffmpeg — only chunks whose take (or the trim config) changed are
+     * downloaded and prepared. The join + single encode are the same call the
+     * uncached path ends in, over byte-identical prepared audio.
+     *
+     * @param  Collection<int, TtsChunk>  $chunks
+     * @param  array<int, int>  $seamGapsMs
+     * @return array{0: string, 1: string, 2: string, 3: array<int, int|null>}
+     */
+    private function concatenateChunksCached($chunks, string $outputFormat, array $seamGapsMs, array $metadata, ?callable $progress = null): array
+    {
+        $disk = Storage::disk($this->disk());
+        $project = $chunks->first()?->project;
+
+        // The raw-audio hash is stamped on the take row at record time, so a
+        // hit is decided without reading the audio at all.
+        $shas = TtsChunkTake::query()
+            ->whereIn('audio_path', $chunks->pluck('audio_path')->filter()->all())
+            ->whereNotNull('audio_sha256')
+            ->pluck('audio_sha256', 'audio_path');
+
+        $files = [];
+        $temp = [];
+        $stats = ['chunks' => $chunks->count(), 'cache_hits' => 0, 'prepared' => 0, 'download' => 0.0];
+        $this->converter->resetTimings();
+
+        try {
+            foreach ($chunks as $chunk) {
+                $preserveTail = $this->preservesTail($chunk, $project);
+                $bytes = null;
+                $fetch = function () use (&$bytes, $disk, $chunk, &$stats): string {
+                    if ($bytes === null) {
+                        $t = hrtime(true);
+                        $bytes = (string) $disk->get($chunk->audio_path);
+                        $stats['download'] += (hrtime(true) - $t) / 1e6;
+                    }
+
+                    return $bytes;
+                };
+
+                // Legacy takes (pre-hash) and non-take audio: hash the bytes.
+                $sha = $shas[$chunk->audio_path] ?? hash('sha256', $fetch());
+                $key = $this->prepared->key($sha, $outputFormat, $preserveTail);
+
+                $file = $this->prepared->path($key);
+                if ($file !== null) {
+                    $stats['cache_hits']++;
+                    $files[] = $file;
+                    $progress && $progress(count($files));
+
+                    continue;
+                }
+
+                [$wav, $clean] = $this->converter->prepareChunk($fetch(), $outputFormat, $preserveTail);
+                $stats['prepared']++;
+                $bytes = null;
+
+                // Fallback audio is used for this build but never cached.
+                $file = $clean ? $this->prepared->put($key, $wav) : null;
+                if ($file === null) {
+                    $file = tempnam(sys_get_temp_dir(), 'tts_prep_');
+                    file_put_contents($file, $wav);
+                    $temp[] = $file;
+                }
+                $files[] = $file;
+                $progress && $progress(count($files));
+            }
+
+            $result = $this->converter->concatenatePrepared($files, $outputFormat, $seamGapsMs, $metadata);
+        } finally {
+            foreach ($temp as $file) {
+                @unlink($file);
+            }
+        }
+
+        $stats['download'] = (int) round($stats['download']);
+        $this->lastStitchTimings = $stats + $this->converter->lastTimings();
+
+        return $result;
+    }
+
+    /**
+     * Prepare a just-recorded take into the {@see PreparedChunkCache} while its
+     * bytes are still in memory, so the build that follows a generation only
+     * joins. Strictly best-effort: a failure here must never fail the render.
+     */
+    private function prewarmPrepared(TtsChunk $chunk, string $bytes): void
+    {
+        if (! $this->prepared->enabled()) {
+            return;
+        }
+
+        try {
+            // What the build will stitch is the chunk's SELECTED take, which
+            // auto-remediation may have swapped for a re-roll or a trimmed
+            // copy since $bytes was rendered.
+            $chunk->refresh();
+            if ($chunk->audio_path === null) {
+                return;
+            }
+            $sha = TtsChunkTake::where('audio_path', $chunk->audio_path)->value('audio_sha256');
+            if ($sha === null || $sha !== hash('sha256', $bytes)) {
+                $bytes = (string) Storage::disk($this->disk())->get($chunk->audio_path);
+                $sha = hash('sha256', $bytes);
+            }
+
+            $project = $chunk->project;
+            $preserveTail = $this->preservesTail($chunk, $project);
+            $key = $this->prepared->key($sha, $project->output_format, $preserveTail);
+
+            if ($this->prepared->path($key) !== null) {
+                return;
+            }
+
+            [$wav, $clean] = $this->converter->prepareChunk($bytes, $project->output_format, $preserveTail);
+            if ($clean) {
+                $this->prepared->put($key, $wav);
+            }
+        } catch (Throwable $e) {
+            Log::warning('Could not pre-prepare a generated chunk', [
+                'chunk' => $chunk->id,
+                'error' => $e->getMessage(),
+            ]);
+        }
     }
 
     /**

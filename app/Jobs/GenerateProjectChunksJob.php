@@ -15,6 +15,7 @@ use Illuminate\Foundation\Bus\Dispatchable;
 use Illuminate\Queue\InteractsWithQueue;
 use Illuminate\Queue\MaxAttemptsExceededException;
 use Illuminate\Queue\SerializesModels;
+use Illuminate\Support\Facades\DB;
 use Throwable;
 
 /**
@@ -185,8 +186,31 @@ class GenerateProjectChunksJob implements ShouldQueue
             }
         }
 
-        // $job is the fresh read the loop just broke on.
-        $this->finish($job, ProjectJobStatus::Completed);
+        // Complete the run and book its auto-build in one locked step, so no
+        // request can find the project idle between the two.
+        // A Regenerate can append to the line (queueChunk, under this same
+        // lock) after the loop saw it empty; completing over that entry would
+        // strand it and auto-build a final without its new take, so hand the
+        // remainder to a continuation instead.
+        $next = $i;
+        $outcome = DB::transaction(function () use ($job, $next): TtsProjectJob|bool|null {
+            $run = TtsProjectJob::query()->whereKey($job->id)->lockForUpdate()->first();
+            if (! $run || ! $run->isActive()) {
+                return null;
+            }
+            if (! $run->cancel_requested && count(array_values((array) $run->chunk_ids)) > $next) {
+                return true;
+            }
+            $this->finish($run, $run->cancel_requested ? ProjectJobStatus::Cancelled : ProjectJobStatus::Completed);
+
+            return StitchProjectJob::bookAfter($run);
+        });
+
+        if ($outcome === true) {
+            self::dispatch($this->jobId, $next)->onQueue($this->queue);
+        } elseif ($outcome instanceof TtsProjectJob) {
+            StitchProjectJob::start($outcome);
+        }
     }
 
     /**

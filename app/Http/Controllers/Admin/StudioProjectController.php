@@ -1425,6 +1425,23 @@ class StudioProjectController extends Controller
         if (! $active) {
             return $this->startSingleChunkRun($request, $project, $chunk);
         }
+        // A stitch still WAITING for a worker is superseded rather than waited
+        // on: this render makes its final stale the moment it lands, and the
+        // run's own auto-build produces the current one. That keeps a burst of
+        // fixes moving instead of bouncing every second click. The conditional
+        // update is the same claim StitchProjectJob::handle() makes, so only
+        // one of "the worker started it" / "this click cancelled it" happens.
+        // Only with auto-build on — otherwise nothing would rebuild the final
+        // the user just asked for.
+        if (config('tts.auto_build_final', true) && $active->isStitch() && $active->status === ProjectJobStatus::Queued) {
+            $superseded = TtsProjectJob::query()
+                ->whereKey($active->id)
+                ->where('status', ProjectJobStatus::Queued->value)
+                ->update(['status' => ProjectJobStatus::Cancelled->value, 'finished_at' => now()]);
+            if ($superseded === 1) {
+                return $this->startSingleChunkRun($request, $project, $chunk);
+            }
+        }
         if ($active->isStitch()) {
             return response()->json(['message' => 'The final is being stitched — wait for it to finish, then regenerate the clip.'], 409);
         }
@@ -1436,7 +1453,7 @@ class StudioProjectController extends Controller
             $run = TtsProjectJob::query()
                 ->where('tts_project_id', $project->id)
                 ->active()
-                ->latest('created_at')
+                ->latest('created_at')->orderByDesc('id')
                 ->lockForUpdate()
                 ->first();
 
@@ -1640,7 +1657,7 @@ class StudioProjectController extends Controller
     {
         $job = TtsProjectJob::query()
             ->where('tts_project_id', $project->id)
-            ->latest('created_at')
+            ->latest('created_at')->orderByDesc('id')
             ->first();
 
         if (! $job) {
@@ -1695,7 +1712,9 @@ class StudioProjectController extends Controller
      */
     private function queuedLabels(?TtsProjectJob $job): array
     {
-        if (! $job || ! $job->isActive() || $job->cancel_requested) {
+        // An auto-build stitch carries its generate run's chunk_ids only so the
+        // poll can serve their takes — nothing in that list is waiting to render.
+        if (! $job || ! $job->isActive() || $job->cancel_requested || $job->isStitch()) {
             return [];
         }
 
@@ -1976,24 +1995,10 @@ class StudioProjectController extends Controller
             return response()->json(['message' => $e->getMessage()], 422);
         }
 
-        $job = TtsProjectJob::create([
-            'tts_project_id' => $project->id,
-            'user_id' => $project->user_id,
-            'created_by_id' => $request->user()?->id,
-            'type' => TtsProjectJob::TYPE_STITCH,
-            'chunk_ids' => [],
-            'chunks_total' => $project->chunks()->where('skipped', false)->count(),
-        ]);
-
-        // Same interactive lane as single-chunk Regenerate: a Build final
-        // click is someone waiting at the page, so it may jump bulk runs and
-        // API speech jobs. Dispatched as an instance so the queue is pinned
-        // before dispatch() fires.
-        $stitch = new StitchProjectJob($job->id);
-        if ($queue = config('tts.generation.interactive_queue')) {
-            $stitch->onQueue($queue);
-        }
-        dispatch($stitch);
+        // Booked and queued exactly like the auto-build that follows a clean
+        // generate run (StitchProjectJob::bookAfter).
+        $job = StitchProjectJob::book($project, $request->user()?->id);
+        StitchProjectJob::start($job);
 
         // Under QUEUE_CONNECTION=sync the stitch already ran inline — the
         // refreshed row is terminal and the page settles on its first poll.

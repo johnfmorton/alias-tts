@@ -218,7 +218,9 @@ class GenerateProjectChunkWorkerJob implements ShouldQueue
      */
     private function settleOrContinue(): bool
     {
-        return DB::transaction(function (): bool {
+        $stitch = null;
+
+        $continue = DB::transaction(function () use (&$stitch): bool {
             $run = TtsProjectJob::query()->whereKey($this->jobId)->lockForUpdate()->first();
 
             if (! $run || ! $run->isActive()) {
@@ -238,12 +240,21 @@ class GenerateProjectChunkWorkerJob implements ShouldQueue
 
             if ($run->chunks_claimed >= count(array_values((array) $run->chunk_ids))) {
                 $this->finish($run, ProjectJobStatus::Completed);
+                // Auto-build, booked under this same lock: only the worker
+                // that performs the terminal transition gets here.
+                $stitch = StitchProjectJob::bookAfter($run);
 
                 return false;
             }
 
             return true;
         });
+
+        if ($stitch) {
+            StitchProjectJob::start($stitch);
+        }
+
+        return $continue;
     }
 
     /**

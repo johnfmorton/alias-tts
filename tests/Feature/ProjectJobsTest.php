@@ -504,10 +504,174 @@ class ProjectJobsTest extends TestCase
             ->assertJsonPath('job.chunks_done', 1)
             // Scoped to the one clip — "All 1 chunk(s) generated" would read
             // as the whole project on a many-chunk page.
-            ->assertJsonPath('job.message', '✓ Clip 1 generated — build the final to include it.');
+            ->assertJsonPath('job.message', '✓ Clip 1 generated.');
 
         $this->assertSame(ChunkStatus::Completed, $chunk->fresh()->status);
         $this->assertGreaterThan(0, $chunk->takes()->count());
+        // The project's other chunk still has no audio, so there is nothing
+        // to auto-build yet.
+        $this->assertSame(0, TtsProjectJob::where('type', TtsProjectJob::TYPE_STITCH)->count());
+    }
+
+    // --- Auto-build ----------------------------------------------------------
+
+    public function test_a_clean_run_books_and_builds_the_final_once(): void
+    {
+        $owner = $this->admin();
+        $clicker = $this->admin();
+        $project = $this->project($owner->id);
+        $run = $this->queuedRun($project, $clicker->id);
+
+        $this->runJob($run);
+
+        $stitch = TtsProjectJob::where('type', TtsProjectJob::TYPE_STITCH)->sole();
+        $this->assertSame(ProjectJobStatus::Completed, $stitch->status);
+        // Built as the user the run ran as (their seam-gap settings), and
+        // carrying the run's chunks so the status poll still serves them.
+        $this->assertSame($clicker->id, $stitch->created_by_id);
+        $this->assertSame($run->fresh()->chunk_ids, $stitch->chunk_ids);
+
+        $project->refresh();
+        $this->assertSame(ProjectStatus::Ready, $project->status);
+        Storage::disk('local')->assertExists($project->final_audio_path);
+
+        // Re-running a finished run is a no-op: no second build.
+        $this->runJob($run->fresh());
+        $this->assertSame(1, TtsProjectJob::where('type', TtsProjectJob::TYPE_STITCH)->count());
+    }
+
+    public function test_regenerating_one_chunk_of_a_built_project_rebuilds_the_final(): void
+    {
+        $project = $this->generatedProject();
+        app(ProjectService::class)->rebuild($project);
+        $chunk = $project->chunks()->orderBy('position')->first();
+
+        $this->actingAs($this->admin())
+            ->postJson(route('admin.studio.projects.chunks.queue', [$project, $chunk]))
+            ->assertOk();
+
+        $this->assertSame(ProjectJobStatus::Completed, TtsProjectJob::where('type', TtsProjectJob::TYPE_STITCH)->sole()->status);
+        $this->assertSame(ProjectStatus::Ready, $project->refresh()->status);
+    }
+
+    public function test_the_status_poll_serves_the_runs_chunks_once_the_stitch_is_latest(): void
+    {
+        $project = $this->project();
+        $this->runJob($this->queuedRun($project));
+
+        // The stitch is now the latest run; a page that never saw the generate
+        // run's final payload must still receive the fresh takes.
+        $res = $this->actingAs($this->admin())
+            ->getJson(route('admin.studio.projects.generation-status', $project))
+            ->assertOk()
+            ->assertJsonPath('job.type', 'stitch')
+            ->assertJsonPath('project_status', 'ready');
+
+        $this->assertCount(2, $res->json('chunks'));
+        $this->assertSame('completed', $res->json('chunks.0.status'));
+        $this->assertNotNull($res->json('chunks.0.selected_take_id'));
+    }
+
+    public function test_a_run_with_a_failed_chunk_does_not_auto_build(): void
+    {
+        $project = $this->project();
+        $this->app->instance(TtsProvider::class, new class extends FakeTtsProvider
+        {
+            private int $calls = 0;
+
+            public function synthesize(string $text, ?string $referenceAudio, array $settings): string
+            {
+                if (++$this->calls === 2) {
+                    throw new RuntimeException('provider exploded');
+                }
+
+                return parent::synthesize($text, $referenceAudio, $settings);
+            }
+        });
+
+        $this->runJob($run = $this->queuedRun($project));
+
+        $this->assertSame(1, $run->fresh()->chunks_failed);
+        $this->assertSame(0, TtsProjectJob::where('type', TtsProjectJob::TYPE_STITCH)->count());
+    }
+
+    public function test_auto_build_waits_while_another_chunk_is_stale_or_failed(): void
+    {
+        foreach ([ChunkStatus::Stale, ChunkStatus::Failed] as $status) {
+            $project = $this->generatedProject();
+            app(ProjectService::class)->rebuild($project);
+            [$first, $second] = $project->chunks()->orderBy('position')->get()->all();
+
+            // The other chunk still HOLDS audio (its previous take) but is not
+            // current — a manual Build final may include it, an unasked one
+            // must not present it as the finished cut.
+            $second->update(['status' => $status]);
+            $this->assertNotNull($second->fresh()->audio_path);
+
+            $this->actingAs($this->admin())
+                ->postJson(route('admin.studio.projects.chunks.queue', [$project, $first]))
+                ->assertOk();
+
+            $this->assertSame(0, TtsProjectJob::where('tts_project_id', $project->id)->where('type', TtsProjectJob::TYPE_STITCH)->count(), $status->value);
+            $this->assertSame(ProjectStatus::Stale, $project->refresh()->status, $status->value);
+        }
+    }
+
+    public function test_a_cancelled_run_does_not_auto_build(): void
+    {
+        $project = $this->generatedProject();
+        $run = $this->queuedRun($project);
+        $run->update(['cancel_requested' => true]);
+
+        $this->runJob($run);
+
+        $this->assertSame(ProjectJobStatus::Cancelled, $run->fresh()->status);
+        $this->assertSame(0, TtsProjectJob::where('type', TtsProjectJob::TYPE_STITCH)->count());
+    }
+
+    public function test_a_run_that_changed_nothing_leaves_a_current_final_alone(): void
+    {
+        $project = $this->generatedProject();
+        app(ProjectService::class)->rebuild($project);
+
+        // Every chunk is already Completed: the run renders nothing, the final
+        // is still current, and rebuilding would only clear a seal for nothing.
+        $this->runJob($this->queuedRun($project));
+
+        $this->assertSame(0, TtsProjectJob::where('type', TtsProjectJob::TYPE_STITCH)->count());
+    }
+
+    public function test_auto_build_can_be_switched_off(): void
+    {
+        config(['tts.auto_build_final' => false]);
+        $project = $this->project();
+
+        $this->runJob($run = $this->queuedRun($project));
+
+        $this->assertSame(0, TtsProjectJob::where('type', TtsProjectJob::TYPE_STITCH)->count());
+        $this->assertNull($project->refresh()->final_audio_path);
+        $this->assertSame('✓ All 2 chunk(s) generated — build the final to stitch.', $run->fresh()->statusPayload()['message']);
+    }
+
+    public function test_regenerate_supersedes_a_stitch_still_waiting_for_a_worker(): void
+    {
+        Queue::fake();
+        $project = $this->generatedProject();
+        $stitch = $this->queuedStitch($project);
+        $chunk = $project->chunks()->orderBy('position')->first();
+
+        // The render will outdate that final anyway and auto-build the current
+        // one, so the click goes through instead of bouncing with a 409.
+        $this->actingAs($this->admin())
+            ->postJson(route('admin.studio.projects.chunks.queue', [$project, $chunk]))
+            ->assertStatus(202);
+
+        $this->assertSame(ProjectJobStatus::Cancelled, $stitch->fresh()->status);
+
+        // The superseded stitch's queue job finds the row terminal and leaves
+        // the final alone.
+        (new StitchProjectJob($stitch->id))->handle(app(ProjectService::class));
+        $this->assertNull($project->refresh()->final_audio_path);
     }
 
     public function test_queueing_is_refused_while_the_run_is_stopping(): void
@@ -1182,7 +1346,10 @@ class ProjectJobsTest extends TestCase
     {
         Queue::fake();
         $project = $this->generatedProject();
-        $this->queuedStitch($project);
+        // RUNNING: a stitch a worker has started can't be stopped. (One still
+        // queued is superseded by a Regenerate — see
+        // test_regenerate_supersedes_a_stitch_still_waiting_for_a_worker.)
+        $this->queuedStitch($project)->update(['status' => ProjectJobStatus::Running]);
         $chunk = $project->chunks()->orderBy('position')->first();
         $admin = $this->admin();
 

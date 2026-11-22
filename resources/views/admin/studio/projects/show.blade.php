@@ -444,6 +444,14 @@
                             <button type="button" class="chunk-play-final flex h-6 w-6 items-center justify-center rounded-md border border-zinc-700 p-0 text-zinc-500 transition hover:border-cyan-400/40 hover:text-cyan-200 disabled:cursor-not-allowed disabled:opacity-35 disabled:hover:border-zinc-700 disabled:hover:text-zinc-500" disabled
                                     aria-label="Play the final audio from this chunk."
                                     title="Rebuild the final to enable play-from-here."><svg width="11" height="11" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M4.5 2.8v10.4c0 .6.6.9 1.1.6l8.2-5.2c.4-.3.4-.9 0-1.2L5.6 2.2c-.5-.3-1.1 0-1.1.6z"></path></svg></button>
+                            {{-- Hear in context: previous + this + next, stitched like the
+                                 final (same trim and seam pauses) — judge a fix where it
+                                 sits without waiting for a build. Plays through one shared
+                                 Audio in app.js, so this button is the only per-card markup. --}}
+                            <button type="button" class="chunk-play-context flex h-6 w-7 items-center justify-center rounded-md border border-zinc-700 p-0 text-zinc-500 transition hover:border-cyan-400/40 hover:text-cyan-200"
+                                    aria-pressed="false"
+                                    aria-label="Play this chunk in context, stitched with the chunks before and after it."
+                                    title="Hear in context: the previous chunk, this one and the next, stitched like the final."><svg width="15" height="11" viewBox="0 0 22 16" fill="currentColor" aria-hidden="true"><rect x="0" y="4" width="2.5" height="8" rx="1"></rect><path d="M7.5 2.8v10.4c0 .6.6.9 1.1.6l8.2-5.2c.4-.3.4-.9 0-1.2L8.6 2.2c-.5-.3-1.1 0-1.1.6z"></path><rect x="19.5" y="4" width="2.5" height="8" rx="1"></rect></svg></button>
                             <span class="chunk-chars">{{ $chunk->characters }} chars</span>
                             @if(\App\Support\GenerationCost::enabled())
                                 {{-- This chunk's lifetime render spend; hidden until the first
