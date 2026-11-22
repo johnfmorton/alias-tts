@@ -16,6 +16,7 @@ use App\Services\Audio\AudioConverter;
 use App\Services\SpeechService;
 use App\Services\Tts\ModelCatalog;
 use App\Services\VoiceClipService;
+use App\Services\VoicePreview;
 use App\Services\VoiceService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
@@ -353,10 +354,35 @@ class VoiceController extends Controller
     }
 
     /**
-     * Generate a short preview through the real backend (spends provider credit).
-     * Returns raw audio bytes for the dashboard's inline player.
+     * Replay the voice's saved Test sample (free — no render). 404 once the
+     * sample no longer matches the voice (clip, tuning or name changed since),
+     * so an outdated sample is never played as the voice's current sound.
      */
-    public function test(Request $request, Voice $voice): Response
+    public function preview(Request $request, Voice $voice, VoicePreview $previews): Response
+    {
+        abort_unless($voice->isVisibleTo($request->user()), 404);
+        abort_unless($previews->isCurrent($voice), 404);
+
+        $diskName = (string) config('tts.storage_disk');
+        $path = (string) $voice->preview_audio_path;
+        $mime = str_ends_with($path, '.wav') ? 'audio/wav' : 'audio/mpeg';
+
+        if ($redirect = $this->presignedAudioRedirect($diskName, $path, $mime)) {
+            return $redirect;
+        }
+
+        $disk = Storage::disk($diskName);
+        abort_unless($disk->exists($path), 404);
+
+        return $this->rangedAudio((string) $disk->get($path), $mime, $request);
+    }
+
+    /**
+     * Generate a short preview through the real backend (spends provider credit).
+     * Returns raw audio bytes for the dashboard's inline player, and keeps them
+     * as the voice's saved sample so later visits replay instead of re-rendering.
+     */
+    public function test(Request $request, Voice $voice, VoicePreview $previews): Response
     {
         abort_unless($voice->isVisibleTo($request->user()), 404);
 
@@ -370,15 +396,16 @@ class VoiceController extends Controller
             $speech = $this->speechService->synthesize(
                 apiKey: $apiKey,
                 voice: $voice,
-                text: "This is a preview of the {$voice->name} voice on my self hosted text to speech service.",
+                text: $previews->text($voice),
                 settings: config('tts.default_voice_settings'),
                 modelId: config('tts.default_model_id'),
                 outputFormat: config('tts.default_output_format'),
                 seed: null, // resolves to the voice's default seed if set
-                // Always generate live: a "Test" must reflect the voice's CURRENT
-                // reference/settings, never replay a cached preview. Without this a
-                // stale cached preview (e.g. one captured while the voice briefly
-                // had a different reference) would play back indefinitely.
+                // Always generate live: clicking Test / Re-test asks for a NEW
+                // render of the voice's CURRENT reference/settings, so the
+                // speech cache (keyed on text + settings, blind to a replaced
+                // clip) is bypassed. Replaying is a separate, explicit path —
+                // preview() — gated on the sample's fingerprint.
                 forceRefresh: true,
                 studioProject: false, // a preview is play-once, not a project
             );
@@ -388,8 +415,18 @@ class VoiceController extends Controller
             return response()->json(['message' => 'Preview failed: '.$e->getMessage()], 502);
         }
 
-        return response($this->speechService->audioBytes($speech), 200)
-            ->header('Content-Type', $speech->mime_type ?: 'audio/mpeg');
+        $bytes = $this->speechService->audioBytes($speech);
+        $mime = $speech->mime_type ?: 'audio/mpeg';
+
+        // Best-effort: the sample still plays from this response if storing
+        // it for later fails.
+        try {
+            $previews->store($voice, $bytes, $mime);
+        } catch (Throwable $e) {
+            report($e);
+        }
+
+        return response($bytes, 200)->header('Content-Type', $mime);
     }
 
     /**

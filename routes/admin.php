@@ -237,4 +237,6 @@ Route::put('/voices/{voice}', [VoiceController::class, 'update'])->name('voices.
 Route::post('/voices/{voice}/duplicate', [VoiceController::class, 'duplicate'])->name('voices.duplicate');
 Route::get('/voices/{voice}/export', [VoiceController::class, 'export'])->name('voices.export');
 Route::post('/voices/{voice}/test', [VoiceController::class, 'test'])->name('voices.test');
+// Replays the saved Test sample (no render); 404 once it no longer matches the voice.
+Route::get('/voices/{voice}/preview', [VoiceController::class, 'preview'])->name('voices.preview');
 Route::delete('/voices/{voice}', [VoiceController::class, 'destroy'])->name('voices.destroy');

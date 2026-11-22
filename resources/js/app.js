@@ -300,7 +300,10 @@ document.addEventListener('click', async (e) => {
             });
             if (!res.ok) throw new Error('Request failed');
             playAudio(audio, await res.blob());
-            testBtn.textContent = label;
+            // The server kept this sample: from now on the button renders a
+            // fresh one, and the player replays without a render.
+            testBtn.textContent = 'Re-test';
+            testBtn.title = 'Render a fresh sample (a new provider call). The saved one below plays without re-rendering.';
         } catch (_) {
             // Transient inline error (like the data-copy "Copied!" flip) —
             // an alert() here blocked the page for a routine provider hiccup.

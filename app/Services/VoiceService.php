@@ -711,6 +711,9 @@ class VoiceService
             $disk->delete($voice->reference_audio_path);
         }
 
+        // The saved Test sample (Voices page) goes with the voice.
+        app(VoicePreview::class)->deleteFile($voice);
+
         $voice->delete();
     }
 }

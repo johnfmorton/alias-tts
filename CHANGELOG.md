@@ -19,6 +19,14 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   the same trimming and pauses as the final, so a fix can be judged where it
   sits without waiting for a build.
 
+- **Voice samples are kept for replay.** Testing a voice on the Voices page
+  used to render a new sample every time, and the sample was gone on the next
+  visit. The last sample is now saved with the voice: the player is there when
+  you come back and plays without a render, and the button reads **Re-test**
+  when you want a fresh one. A saved sample is only offered while it still
+  matches the voice; replacing the clip, changing its tuning or renaming it
+  puts the button back to **Test**.
+
 ### Changed
 - **Rebuilding a large project no longer redoes every chunk.** Trimming and
   cleaning each chunk was about 80% of a build and was repeated for all chunks

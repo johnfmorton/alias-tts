@@ -1,4 +1,5 @@
 <x-layout title="Voices" description="Each voice maps a voice_id to a reference clip for zero-shot cloning. Your voices are yours alone — other users only ever see the built-ins and their own.">
+    @inject('voicePreviews', 'App\Services\VoicePreview')
     <x-getting-started page="voices" title="Welcome to Voices">
         <p class="mt-1.5 max-w-[760px] text-sm text-zinc-400">A voice is a short reference recording plus your saved delivery settings. Record or upload 15–20 seconds of clean speech to clone a voice of your own, or start with the built-in defaults.</p>
         <ul class="mt-3 max-w-[760px] list-disc space-y-1.5 pl-5 text-[13px] leading-relaxed text-zinc-400">
@@ -107,9 +108,19 @@
                             @endif
                         </td>
                         <td class="px-4 py-3">
+                            {{-- A Test renders a sample (a provider call) and keeps it, so
+                                 later visits replay it for free: the player below arrives
+                                 already loaded and the button reads Re-test. A sample from
+                                 before the voice's clip/tuning last changed is not offered
+                                 (VoicePreview::isCurrent). preload="none": nothing is
+                                 fetched until play. --}}
+                            @php $hasSample = $voicePreviews->isCurrent($voice); @endphp
                             <button data-test-voice="{{ route('admin.voices.test', $voice) }}" data-audio-target="#audio-{{ $voice->id }}"
-                                    class="rounded-md border border-zinc-700 px-2.5 py-1 text-xs hover:bg-zinc-800 disabled:cursor-not-allowed disabled:opacity-40">Test</button>
-                            <x-aplayer variant="take" audio-id="audio-{{ $voice->id }}" label="Play voice sample" class="mt-2 hidden w-64 max-w-full" />
+                                    title="{{ $hasSample ? 'Render a fresh sample (a new provider call). The saved one below plays without re-rendering.' : 'Render a short sample of this voice. It is kept, so later visits can replay it.' }}"
+                                    class="rounded-md border border-zinc-700 px-2.5 py-1 text-xs hover:bg-zinc-800 disabled:cursor-not-allowed disabled:opacity-40">{{ $hasSample ? 'Re-test' : 'Test' }}</button>
+                            <x-aplayer variant="take" audio-id="audio-{{ $voice->id }}" label="Play voice sample"
+                                       :src="$hasSample ? route('admin.voices.preview', $voice) : null"
+                                       class="mt-2 {{ $hasSample ? '' : 'hidden' }} w-64 max-w-full" />
                         </td>
                         <td class="px-4 py-3">
                             <div class="flex justify-end gap-1.5">

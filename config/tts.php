@@ -588,6 +588,12 @@ return [
     // pending clip; its own TTL prune (voices:prune-clips) owns cleanup here.
     'voice_clip_path' => trim((string) env('TTS_VOICE_CLIP_PATH', 'voice-clips'), '/'),
 
+    // Saved "Test" samples from the Voices page (one per voice; see
+    // App\Services\VoicePreview). Also a top-level prefix outside storage_path,
+    // so the orphan sweep never touches them; a sample is replaced by the next
+    // Test and deleted with its voice.
+    'voice_preview_path' => trim((string) env('TTS_VOICE_PREVIEW_PATH', 'voice-previews'), '/'),
+
     // Accept file UPLOADS on the public /verify page? Off by default: the page
     // fingerprints the file in the visitor's browser (Web Crypto) and sends only
     // the 64-char SHA-256, so nothing is uploaded and no large file can exhaust

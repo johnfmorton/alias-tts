@@ -103,7 +103,7 @@ class SpendCountersTest extends TestCase
         // table, the generation-timings table, the voice-clip status column, the
         // take-voice column, the app-events table, and the final-timeline
         // column sit on top of it.
-        Artisan::call('migrate:rollback', ['--step' => 15]);
+        Artisan::call('migrate:rollback', ['--step' => 16]);
         $this->assertFalse(DB::getSchemaBuilder()->hasTable('tts_spend_counters'));
         Artisan::call('migrate', ['--force' => true]);
 

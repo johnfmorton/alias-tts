@@ -3,10 +3,10 @@
      app.js. Weights: hero (final audio) | chunk (medium) | take (small, muted).
      JS targets the native element by `audio-id`; playAudio() reveals the
      wrapper, so a player that starts `hidden` shows on first playback. --}}
-@props(['variant' => 'chunk', 'audioId' => null, 'label' => 'Play audio'])
+@props(['variant' => 'chunk', 'audioId' => null, 'label' => 'Play audio', 'src' => null])
 <div {{ $attributes->merge(['class' => 'aplayer aplayer--'.$variant]) }}>
     <button type="button" class="aplayer__btn" aria-label="{{ $label }}"><span class="aplayer__icon"></span></button>
     <div class="aplayer__track"><div class="aplayer__fill"></div><div class="aplayer__knob"></div></div>
     <span class="aplayer__time">0:00 / 0:00</span>
-    <audio @if($audioId) id="{{ $audioId }}" @endif class="aplayer__native" preload="none"></audio>
+    <audio @if($audioId) id="{{ $audioId }}" @endif @if($src) src="{{ $src }}" @endif class="aplayer__native" preload="none"></audio>
 </div>
